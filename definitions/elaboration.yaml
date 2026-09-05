@@ -5,12 +5,14 @@
 # goes to the book and its claims (187). It may cover several intents (188):
 # `covers` names them, the parent first, and its finish fans the records out
 # to every covered intent's change directory while the book is written once.
-# The dictation `explore <intents...>` creates one directly in approved,
-# covering the named intents, as a with-operator or standing session (189).
+# The `explore` tool, arguments {intents, type}, creates one directly in
+# approved covering the selected intents, as a with-operator or standing
+# session (189, 193); the operator selects the intents and invokes it, and
+# no typed word is parsed.
 machine: elaboration
 version: 2
 kind: object
-satisfies: [4, 5, 24, 27, 54, 187, 188, 189]
+satisfies: [4, 5, 24, 27, 54, 187, 188, 189, 193]
 object: elaboration
 parent: intent
 record:
@@ -44,7 +46,7 @@ regions:
           - when: {response: drop}
             to: dropped
       approved:
-        doc: approval given once is never re-asked (6); the record holds the type version in force; also the state the dictation `explore <intents...>` creates an elaboration in, covering the named intents (189)
+        doc: approval given once is never re-asked (6); the record holds the type version in force; also the state the `explore` tool ({intents, type}) creates an elaboration in, covering the selected intents (189, 193)
         transitions:
           - when: {response: drop}
             to: dropped

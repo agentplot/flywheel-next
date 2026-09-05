@@ -15,6 +15,51 @@
 format: flywheel-profile/1
 name: surfaces
 complete: false
+tools:
+  doc: |
+    The tool surface (193): every operation the operator may invoke is one
+    tool with a schema naming its arguments by object id, served by the
+    control plane (the `flywheel` binary's MCP server and its HTTP twin the
+    page calls). The page's controls, the Discord bot, the dispatch agent and
+    the machinery's own commands (`flywheel exit|offer|service`) call these
+    and nothing else; no caller has an operation the others lack. Each call
+    is recorded once as an op-response with `tool` and `proposed_by` (153).
+  catalogue:
+    answer:        {args: [decision, answer, text], doc: "answer a numbered decision; the deterministic path, `yes 412` or `421: <text>` in chat is this tool (194)"}
+    capture:       {args: [text, source], doc: "a capture with one signal of kind ask (19)"}
+    mark-intent:   {args: [capture], doc: "the operator's judgment that a capture is an intent: an intent in open with its first elaboration in approved (12, 19)"}
+    propose-unit:  {args: [bolt, text], doc: "a unit in approved on the bolt (34)"}
+    propose-chore: {args: [repository, text], doc: "a chore unit in approved on the repository's shared line (60)"}
+    ask:           {args: [repository, text], doc: "an ask record for planning (28)"}
+    explore:       {args: [intents, type], doc: "an elaboration in approved covering the selected intents, type with-operator or standing (189)"}
+    open-session:  {args: [repository, text], doc: "the operator's own session (69)"}
+    drop:          {args: [object], doc: "undo work (4)"}
+    later:         {args: [decision], doc: "defer a proposal a week (172)"}
+    hold:          {args: [object], doc: "hold a place or a bolt's close (55)"}
+    release:       {args: [object]}
+    rename:        {args: [bolt, name], doc: "a bolt's name is never its identity (29)"}
+    start:         {args: [service]}
+    stop:          {args: [service], doc: "start and stop are the pair 47 grants beyond undo-or-defer"}
+    finish:        {args: [elaboration], doc: "a standing session, without waiting for the idle decision (26)"}
+    end:           {args: [session], doc: "a with-operator session (25)"}
+    close:         {args: [object], doc: "a bolt or an intent whose close is offered (22, 39)"}
+    send-back:     {args: [item], doc: "to the stage the type names (41)"}
+    retire:        {args: [object], doc: "an item, planning, curation or capture session (4)"}
+    takeover:      {args: [host], doc: "a stale host before the 30m bound (150)"}
+    revive:        {args: [signal], doc: "clears the move (107)"}
+    take:          {args: [line], doc: "order a take now (50)"}
+  guard: "a tool that would assert work was done (done, pass, yes on nothing) does not exist; the response machine reports one that arrives anyway as unapplicable (4)"
+interpreter:
+  doc: |
+    Free text is never parsed by the machinery (194). An interpreter resolves
+    the names in it against the live objects (list and read through the
+    control plane) and proposes exactly one tool call, shown to the operator
+    as what will be sent; the operator's confirmation is the response, and
+    only the confirmed call is recorded (153). A name that resolves to
+    nothing, or to more than one object, is asked about, never guessed.
+  chat: "the organization's dispatch agent (tracker.yaml): it reads the message, proposes one call as a reply with a confirm control, and calls the tool on the operator's confirmation; a bare number reply (`yes 412`) needs no interpreter and is the answer tool at once"
+  page: "a model running in the page's browser (the page ships it as a script under the same private network; no text leaves the operator's network); a control on the page is a tool call with no interpreter at all, and the capture box sends its text to the capture tool unparsed"
+  none: "a control — a button, a board move, a checklist tick, a plannotator annotation — is already one tool call; nothing is interpreted"
 evidence:
   sink.due:        {read: "the sink record's routes name the kind or group of a decision whose register entry is newer than the sink's mark; or the sink's cadence (`flywheel.yaml` sinks.<name>.cadence) fired since the mark; or the operator asked (`plan` in chat, a page reload with refresh); a bell sink is due only for the kinds it routes"}
   sink.delivered:  {read: "the sink's mark is newer than every register entry of a decision routed to it, and the sink's last delivery id (a chat message id, the page's build id, the bell's event id) is recorded on the sink"}

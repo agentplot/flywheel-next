@@ -8,7 +8,12 @@
 # is this profile's binding for signals appended by adapters (106) and for
 # capture in one gesture (112): it is the capture endpoint a delivery system
 # or a chat calls, and it writes the capture and signal records in the books
-# through the books binding; nothing in `machines/` names it (C.1).
+# through the books binding; nothing in `machines/` names it (C.1). It is
+# also the interpreter for chat (194): free text in Discord is never parsed
+# by the machinery; dispatch resolves the names against the live objects,
+# proposes exactly one tool call with a confirm control, and calls the tool
+# on the operator's confirmation, which is the response recorded once. A
+# numbered reply needs no interpreter (surfaces.yaml).
 #
 # Tools: GitHub REST and GraphQL through the `octocrab` crate with a GitHub
 # App installation token per organization; the chat, page, bell and review

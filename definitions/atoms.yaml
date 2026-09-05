@@ -234,7 +234,7 @@ effects:
   record_citation_choice: {of: [bolt, unit], args: [choice, claim], proof: citation_choice_recorded, satisfies: [35, 103]}
   # ---- plan, sinks, status, reports
   number_decisions: {of: plan, args: [], proof: plan.numbered, satisfies: [15], doc: give every standing decision without a number the next number from the organization's counter; a number is given once and never reused}
-  deliver_plan:    {of: sink, args: [], proof: sink.delivered, satisfies: [2, 14, 18, 82, 152, 155], doc: deliver the standing decisions and the tail since this sink's mark to the sink (a chat message, the page, a bell on a named surface), then advance the mark; no rendering is stored}
+  deliver_plan:    {of: sink, args: [], proof: sink.delivered, satisfies: [2, 14, 18, 82, 152, 155, 193, 194], doc: deliver the standing decisions and the tail since this sink's mark to the sink (a chat message, the page, a bell on a named surface), then advance the mark; no rendering is stored; every control the delivery carries calls one of the control plane's tools, and free text on the page or in chat goes to the interpreter, never to a parser}
   render_status:   {of: plan, args: [], proof: plan.status_current, satisfies: [77, 118, 146], doc: write the status projection from list and read}
   report:          {of: any, args: [text], proof: report.recorded, satisfies: [79, 81], doc: a machinery problem or a refusal, to the run record and the attention lines; never work}
   ensure_signal:   {of: capture, args: [], proof: capture.signals_present, satisfies: [19, 112], doc: a one-message capture is its own signal; no judgment is involved}
