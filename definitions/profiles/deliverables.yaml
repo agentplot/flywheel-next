@@ -1,0 +1,30 @@
+# The deliverables binding: the shipped set of deliverables and, for each,
+# the skill that produces it, the schema it must satisfy (88) and the surface
+# that reviews it (17). Versioned as one thing: `version` below moves when any
+# entry moves, and a session's work order header names it beside the books
+# commit, so a session started before a change and one after can be told
+# apart (123). An elaboration type or a stage names its deliverables as
+# entries {name, producer, schema, surface}; `default` in an entry resolves
+# here, and `by-type` means the stage's own type skill and schema instruction
+# with no review surface. An organization replaces or adds a producer per
+# deliverable in the manifest — `flywheel.yaml` deliverables.<name>.producer,
+# .schema or .surface — without touching the engine (119); the engine reads
+# only the resolved names and paths, never the text. Changing a producer, here
+# or in the manifest, is a chore on the books (123). Not a profile on its
+# own; every profile inherits it, since it binds no evidence and no effect.
+# (190)
+format: flywheel-profile/1
+name: deliverables
+complete: false
+version: 1
+shipped:
+  book-chapter:       {producer: flywheel/skills/producers/book-chapter/SKILL.md,       schema: flywheel/schemas/book-chapter.md,       surface: review-view,  doc: "a chapter of the book in destination voice; the review view of 122 shows what changed"}
+  claim:              {producer: flywheel/skills/producers/claim/SKILL.md,              schema: flywheel/schemas/claim.md,              surface: review-view,  doc: "a fenced claim block in the chapter that explains it, hash-locked (8.1); written in the same commit as the chapter (120)"}
+  context-map:        {producer: flywheel/skills/producers/context-map/SKILL.md,        schema: flywheel/schemas/context-map.md,        surface: review-view,  doc: "the system context map, moved whenever a claim is written or amended (120, 121)"}
+  conceptual-diagram: {producer: flywheel/skills/producers/conceptual-diagram/SKILL.md, schema: flywheel/schemas/diagram-conceptual.md, surface: review-view,  doc: "a conceptual diagram in the house style the schema fixes: palette, shapes, labelling"}
+  logical-diagram:    {producer: flywheel/skills/producers/logical-diagram/SKILL.md,    schema: flywheel/schemas/diagram-logical.md,    surface: review-view,  doc: "a logical diagram in the same house style"}
+  proposal-document:  {producer: flywheel/skills/producers/proposal-document/SKILL.md,  schema: flywheel/schemas/proposal.md,           surface: plannotator,  doc: "planning's one document per run (172); reviewed as one document and an annotation is the response (17)"}
+  verdict:            {producer: flywheel/skills/producers/verdict/SKILL.md,            schema: flywheel/schemas/verdict.md,            surface: ledger,       doc: "one judgment that a repository satisfies a claim, with its inputs (100); reaches the operator through the ledger and the status view, never as a decision"}
+override:
+  manifest: "`flywheel.yaml` deliverables.<name>: {producer, schema, surface}, any subset; an unknown <name> adds a deliverable a type may then ask for; the resolved set is what prepare_place writes into the work order"
+  resolution: "for each entry a type names: an explicit path is taken as written; `default` reads the manifest override for the name, else the shipped entry; `by-type` reads the stage's type skill and the type's schema instruction; a name neither the manifest nor the shipped set knows, with `default`, is refused when the type file is loaded, and the refusal is reported (79)"

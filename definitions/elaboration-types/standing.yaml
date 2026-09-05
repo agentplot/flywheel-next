@@ -3,12 +3,13 @@
 # operator's response ends it (25, 26, I6). A process that vanished is brought
 # back: a restart never forgets a standing session.
 machine: standing
-version: 1
+version: 2
 kind: template
-satisfies: [4, 25, 26, 54]
+satisfies: [4, 25, 26, 54, 190]
 params:
   place: the elaboration's place
   agent: the agent for the session
+  deliverables: "entries {name, producer, schema, surface}; the defaults below name the shipped set, and the elaboration's proposal may narrow them; `default` resolves through the deliverables binding in force (190)"
 record:
   kept_at: time
 regions:
@@ -17,7 +18,7 @@ regions:
     states:
       session:
         machine: session
-        params: {agent: $agent, place: $place, work_order: rendered, keep_alive: true}
+        params: {agent: $agent, place: $place, work_order: rendered, keep_alive: true, deliverables: [{name: book-chapter, producer: default, schema: default, surface: default}, {name: claim, producer: default, schema: default, surface: default}, {name: context-map, producer: default, schema: default, surface: default}, {name: conceptual-diagram, producer: default, schema: default, surface: default}, {name: logical-diagram, producer: default, schema: default, surface: default}]}
         transitions:
           - when: {all: [{region: {name: activity, in: [idle]}}, {ev: session.idle_since, older: 30m}, {not: {ev: elaboration.kept_since, exists: true}}]}
             to: idle-offered

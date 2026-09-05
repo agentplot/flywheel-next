@@ -2,9 +2,9 @@
 # definition found in the repository being worked and completes when all have
 # exited. Composed only of existing atoms: no code changed.
 machine: persona-test
-version: 1
+version: 2
 kind: template
-satisfies: [56, 57, 85]
+satisfies: [56, 57, 85, 190]
 doc: unit type
 params:
   place: the item's place
@@ -17,21 +17,21 @@ regions:
     states:
       build:
         machine: stage
-        params: {agents: [builder], join: all, on_fail: build, max_send_backs: 2, deliverables: [commits, as-built-statements-naming-claims]}
+        params: {agents: [builder], join: all, on_fail: build, max_send_backs: 2, deliverables: [{name: commits, producer: by-type, schema: by-type, surface: none}, {name: as-built-statements-naming-claims, producer: by-type, schema: by-type, surface: none}]}
         transitions:
           - {when: {final: passed}, to: test}
           - {when: {final: sent-back}, to: build}
           - {when: {final: stopped}, to: stopped}
       test:
         machine: stage
-        params: {agents: {rule: every-persona-definition, pattern: "personas/*.md"}, join: all, on_fail: build, max_send_backs: 2, deliverables: [test-report, findings]}
+        params: {agents: {rule: every-persona-definition, pattern: "personas/*.md"}, join: all, on_fail: build, max_send_backs: 2, deliverables: [{name: test-report, producer: by-type, schema: by-type, surface: none}, {name: findings, producer: by-type, schema: by-type, surface: none}]}
         transitions:
           - {when: {final: passed}, to: review}
           - {when: {final: sent-back}, to: build}
           - {when: {final: stopped}, to: stopped}
       review:
         machine: stage
-        params: {agents: [reviewer], join: all, on_fail: build, max_send_backs: 2, deliverables: [review-verdict, verdicts-for-named-claims]}
+        params: {agents: [reviewer], join: all, on_fail: build, max_send_backs: 2, deliverables: [{name: review-verdict, producer: by-type, schema: by-type, surface: none}, {name: verdict, producer: default, schema: default, surface: default}]}
         transitions:
           - {when: {final: passed}, to: passed}
           - {when: {final: sent-back}, to: build}

@@ -1,8 +1,8 @@
 # The fast type: build then review, one send-back. Needs a change directory.
 machine: fast
-version: 1
+version: 2
 kind: template
-satisfies: [37, 41]
+satisfies: [37, 41, 190]
 doc: unit type
 params:
   place: the item's place
@@ -15,14 +15,14 @@ regions:
     states:
       build:
         machine: stage
-        params: {agents: [builder], join: all, on_fail: build, max_send_backs: 1, deliverables: [commits, as-built-statements-naming-claims]}
+        params: {agents: [builder], join: all, on_fail: build, max_send_backs: 1, deliverables: [{name: commits, producer: by-type, schema: by-type, surface: none}, {name: as-built-statements-naming-claims, producer: by-type, schema: by-type, surface: none}]}
         transitions:
           - {when: {final: passed}, to: review}
           - {when: {final: sent-back}, to: build}
           - {when: {final: stopped}, to: stopped}
       review:
         machine: stage
-        params: {agents: [reviewer], join: all, on_fail: build, max_send_backs: 1, deliverables: [review-verdict]}
+        params: {agents: [reviewer], join: all, on_fail: build, max_send_backs: 1, deliverables: [{name: review-verdict, producer: by-type, schema: by-type, surface: none}]}
         transitions:
           - {when: {final: passed}, to: passed}
           - {when: {final: sent-back}, to: build}

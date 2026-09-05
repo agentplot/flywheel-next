@@ -3,19 +3,20 @@
 # the pane within the window the profile states; the machinery infers nothing
 # more from it. Also the type of the operator's own session (69).
 machine: with-operator
-version: 2
+version: 3
 kind: template
-satisfies: [4, 25, 26, 69]
+satisfies: [4, 25, 26, 69, 190]
 params:
   place: the elaboration's place
   agent: the agent for the session
+  deliverables: "entries {name, producer, schema, surface}; the defaults below name the shipped set, and the elaboration's proposal may narrow them; `default` resolves through the deliverables binding in force (190)"
 regions:
   work:
     initial: session
     states:
       session:
         machine: session
-        params: {agent: $agent, place: $place, work_order: rendered, keep_alive: true}
+        params: {agent: $agent, place: $place, work_order: rendered, keep_alive: true, deliverables: [{name: book-chapter, producer: default, schema: default, surface: default}, {name: claim, producer: default, schema: default, surface: default}, {name: context-map, producer: default, schema: default, surface: default}]}
         transitions:
           - when: {final: lost}
             to: session

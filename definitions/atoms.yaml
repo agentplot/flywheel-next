@@ -46,7 +46,7 @@ evidence:
   session.message_delivered: {of: session, type: bool, doc: the last message the machinery queued for the session reached it}
   session.operator_present: {of: session, type: bool, doc: a person typed in the pane within the window the profile states (25)}
   session.host_alive: {of: session, type: bool}
-  session.expected:   {of: session, type: list, doc: deliverables the work order named}
+  session.expected:   {of: session, type: list, doc: the deliverable names the work order asked for, each with the producer, schema and surface in force when the session started (190)}
   session.delivered:  {of: session, type: list}
   # ---- place and line (bound to git and the worktree tool, the same in every profile)
   place.exists:        {of: place, type: bool}
@@ -138,7 +138,7 @@ evidence:
   line.absent:              {of: line, type: bool, proof_of: remove_line}
   line.request_opened:      {of: line, type: bool, proof_of: open_request, doc: a request from this line exists at the git host, open, merged or closed}
   line.request_review_recorded: {of: line, type: bool, proof_of: seed_request_finding, doc: every review on the request that asks for a change has a finding record pointing at it}
-  place.ready:              {of: place, type: bool, proof_of: prepare_place, doc: exists, contains its line, holds the closed inputs and the refusing hooks}
+  place.ready:              {of: place, type: bool, proof_of: prepare_place, doc: exists, contains its line, holds the closed inputs — the schema instruction, the type skill, the producers in force for each deliverable, the work order, the change's artifacts — and the refusing hooks (89, 190)}
   place.absent:             {of: place, type: bool, proof_of: remove_place}
   place.endpoints_recorded: {of: place, type: bool, proof_of: record_endpoints, doc: the owner record's endpoints equal the endpoints served}
   service.process_absent:   {of: service, type: bool, proof_of: stop_service, doc: no process by the service's tether name in the place}
@@ -189,7 +189,7 @@ effects:
   open_request:    {of: line, args: [], proof: line.request_opened, satisfies: [53, 175, 179], doc: the pull-request policy's landing; open the request from the line and let the repository's own merge setting land it}
   seed_request_finding: {of: line, args: [], proof: line.request_review_recorded, satisfies: [176], doc: a review on the open request that asks for a change becomes a finding record on the bolt, pointing at the review; accepted, it is a chore on the bolt line}
   remove_line:     {of: line, args: [], proof: line.absent, satisfies: [42, 54]}
-  prepare_place:   {of: place, args: [line, agent_inputs], proof: place.ready, satisfies: [42, 43, 45, 88, 89, 119, 173], doc: worktree at the line's head, hooks that refuse line operations, the closed set of inputs written in, ports derived from the place}
+  prepare_place:   {of: place, args: [line, agent_inputs], proof: place.ready, satisfies: [42, 43, 45, 88, 89, 119, 173, 190], doc: worktree at the line's head, hooks that refuse line operations, the closed set of inputs written in — for each deliverable the producer skill, schema and review surface in force, resolved through the deliverables binding and the manifest's overrides at the books commit named in the header — ports derived from the place}
   rebase_place:    {of: place, args: [], proof: place.contains_line, satisfies: [42, 51, 179], doc: rebase onto the line while no session works in the place; aborted whole on conflict}
   seed_conflict_job: {of: place, args: [], proof: place.job_seeded, satisfies: [52]}
   merge_place:     {of: place, args: [], proof: place.merged, satisfies: [38, 42, 54, 179], doc: merge the place into its line, one place at a time in the fixed order; an item's merge is a squash to one commit naming the item unless the manifest says otherwise for the repository}

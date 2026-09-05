@@ -2,9 +2,9 @@
 # belongs on, no change directory, never a bolt of its own. The one session
 # gathers every accepted chore of the same bolt (63).
 machine: chore
-version: 1
+version: 2
 kind: template
-satisfies: [60, 61, 63, 91, 123]
+satisfies: [60, 61, 63, 91, 123, 190]
 doc: unit type
 params:
   place: the item's place
@@ -18,7 +18,7 @@ regions:
     states:
       fix:
         machine: stage
-        params: {agents: [chore-fixer], join: all, on_fail: fix, max_send_backs: 1, deliverables: [commits, verdicts-for-named-claims]}
+        params: {agents: [chore-fixer], join: all, on_fail: fix, max_send_backs: 1, deliverables: [{name: commits, producer: by-type, schema: by-type, surface: none}, {name: verdict, producer: default, schema: default, surface: default}]}
         transitions:
           - {when: {final: passed}, to: passed}
           - {when: {final: sent-back}, to: fix}
