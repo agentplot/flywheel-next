@@ -12,13 +12,17 @@
 # the two dictations that are neither undo nor defer, allowed by 47) and a
 # session moves it only through `flywheel service start|stop <name>`, which
 # writes the same op-response record, so the state is one record however it
-# was moved (48).
+# was moved (48). How the service is reached is the host's router binding,
+# never this machine's: the machinery gives the process a port derived from
+# the place and an address to bind, and the endpoint it records is whatever
+# URL the router in force — local, private-network or platform — names for
+# it (191).
 machine: service
-version: 1
+version: 2
 kind: object
 object: service
 parent: bolt
-satisfies: [4, 12, 45, 46, 47, 48, 55]
+satisfies: [4, 12, 45, 46, 47, 48, 55, 191]
 record:
   name: string           # from the declaration; the id is <bolt>/<name>
   command: string        # how it starts in a place, from the declaration
@@ -66,7 +70,7 @@ regions:
             to: starting
             effects: [{do: start_service}]
       running:
-        doc: the process is present and serves; its endpoint is recorded with the service and shown beside the bolt as a link (46)
+        doc: the process is present and serves; its endpoint, as the host's router names it (191), is recorded with the service and shown beside the bolt as a link (46)
         transitions:
           - when: {any: [{ev: service.place_present, is: false}, {ev: service.declared, is: false}]}
             to: gone

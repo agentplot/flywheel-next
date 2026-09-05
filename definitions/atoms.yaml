@@ -59,11 +59,11 @@ evidence:
   place.conflict_retries: {of: place, type: int, doc: the owner record counter}
   place.line_moved_told: {of: place, type: bool}
   place.held:          {of: place, type: bool, doc: the operator holds this place by dictation; it is not removed while held (55)}
-  place.endpoints_served: {of: place, type: list, doc: the endpoints the processes tethered to the place serve now (46)}
+  place.endpoints_served: {of: place, type: list, doc: the endpoints the processes tethered to the place serve now, as URLs the host's router in force names (46, 191)}
   # ---- service (a declared process in a bolt's place; bound to the tether and the port router, the same in every profile)
   service.process:       {of: service, type: enum, values: [absent, present, exited], doc: the process by the service's tether name in the bolt's place — none, running, or ended with its exit recorded (47)}
   service.serving:       {of: service, type: bool, doc: the endpoint answers, or the declaration's readiness command passes}
-  service.endpoint:      {of: service, type: string, doc: the URL the place serves for this service, derived from the place so two places on one host never collide (45, 46)}
+  service.endpoint:      {of: service, type: string, doc: the URL the host's router names for this service's port in this place — local, private-network or platform, per the manifest — so two places on one host never collide and nothing beyond the private network is published (45, 46, 191)}
   service.failure:       {of: service, type: string, doc: the exit status and the last lines of the process's log}
   service.place_present: {of: service, type: bool, doc: the bolt's place the service belongs to exists on the host}
   service.declared:      {of: service, type: bool, doc: the repository's service data at the place's head still names this service (47)}
@@ -197,9 +197,9 @@ effects:
   record_endpoints: {of: place, args: [], proof: place.endpoints_recorded, satisfies: [46], doc: write the endpoints the place's processes serve into the owner record, so the page shows them beside the bolt}
   # ---- service (the tether and the port router in the bolt's place; start and stop are the one path a dictation and a session's command share, 48)
   declare_services: {of: bolt, args: [], proof: bolt.services_declared, satisfies: [47], doc: one service object in stopped per declaration in the repository's service data at the place's head that has no live object yet; name, command and serves copied from the declaration}
-  start_service:    {of: service, args: [], proof: service.process, satisfies: [45, 47, 48], doc: start the declared command in the bolt's place under the tether name, bound to the worktree so it ends with it, with its port derived from the place; the response that asked is recorded as moved_by}
+  start_service:    {of: service, args: [], proof: service.process, satisfies: [45, 47, 48, 191], doc: start the declared command in the bolt's place under the tether name, bound to the worktree so it ends with it, with its port derived from the place and the address to bind that the host's router requires; the response that asked is recorded as moved_by}
   stop_service:     {of: service, args: [], proof: service.process_absent, satisfies: [47, 48], doc: end the tethered process by name in the place}
-  record_service_endpoint: {of: service, args: [], proof: service.endpoint_recorded, satisfies: [46, 47], doc: write the endpoint the place serves for this service into its record, so the page shows it beside the bolt as a link}
+  record_service_endpoint: {of: service, args: [], proof: service.endpoint_recorded, satisfies: [46, 47, 191], doc: write the endpoint the host's router names for this service into its record, so the page shows it beside the bolt as a link}
   # ---- host
   remove_stray_places: {of: host, args: [], proof: host.no_stray_places, satisfies: [55], doc: reconciliation found a place on this host belonging to no live object; remove it and record the removal}
   expire_leases:   {of: host, args: [], proof: host.leases_expired, satisfies: [150]}

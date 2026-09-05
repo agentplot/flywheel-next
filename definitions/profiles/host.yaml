@@ -7,7 +7,8 @@
 # Tools: git (libgit2 through the `gix` crate for reads, the `git` binary for
 # merges, rebases and pushes so hooks and credentials behave as the operator's
 # do); worktrunk `wt` for places (`wt worktree add/remove`, `wt tether` for
-# the processes bound to a worktree, portless for ports and endpoints);
+# the processes bound to a worktree, portless for ports and, under the local
+# router, endpoints; the `router:` section below binds the other routers);
 # mdBook books; OpenSpec change directories;
 # `gh` is not used anywhere in this binding. Nothing a session leaves on the
 # place's disk is read as state (64): the place holds the session's work and
@@ -24,18 +25,51 @@ declarations:
   services: |
     A built repository declares its services as data in `.flywheel/services.yaml`
     at its root (46). Read at the head of the bolt's place; one record per service.
-    `$PORT` and `$PLACE` are set by the machinery from the place (44). One record:
+    `$PORT`, `$BIND` and `$PLACE` are set by the machinery from the place and
+    the host's router (44, 191): the port derived from the place, the address
+    the router requires the process to bind, the place's path. One record:
 
       format: flywheel-services/1
       services:
         - name: web                                        # the service id within the bolt: service/<bolt>/web
-          command: "uv run fastapi dev app/main.py --port $PORT"
-          serves: "http://localhost:$PORT/"                # what it serves; the page shows the routed endpoint (45)
-          ready: "curl -sf http://localhost:$PORT/health"  # optional; serving when it exits 0, else when the endpoint answers
+          command: "uv run fastapi dev app/main.py --host $BIND --port $PORT"
+          serves: "http://$BIND:$PORT/"                    # what it serves; the page shows the routed endpoint (45)
+          ready: "curl -sf http://$BIND:$PORT/health"      # optional; serving when it exits 0, else when the endpoint answers
 
-    Adding or changing a record is a chore on the repository (47); a session's
-    edit of the file in its own place reaches the bolt's services only when
-    it merges into the bolt's line and the place is refreshed to that head.
+    The same declaration serves under every router (191). Adding or changing
+    a record is a chore on the repository (47); a session's edit of the file
+    in its own place reaches the bolt's services only when it merges into the
+    bolt's line and the place is refreshed to that head.
+router:
+  doc: |
+    How a place's services are reached is this binding's, never the machinery's
+    (191). The machinery gives each service `$PORT`, derived from the place so
+    two places on one host never collide (45), and `$BIND`, the address the
+    router in force requires; it then asks the router for the URL it records
+    as `service.endpoint` and lists as `place.endpoints_served` (46). The
+    manifest names the router per host — `flywheel.yaml` hosts.<host>.router:
+    {kind: portless | tailnet | platform, ...} — and nothing beyond the
+    operator's private network is published unless the operator says so
+    there. A reverse proxy owned by the flywheel binary is not required by
+    any of the three (gaps.md).
+  portless:
+    where: the operator's own machine; the place is named, the host is implicit
+    bind: "127.0.0.1"
+    port: "`portless port <name>` for the worktree, hashed from the place's path"
+    endpoint: "`https://<place>.localhost` as `portless list` names it for the service in this worktree; `<place>` is the worktree name portless derives, so `https://atlas-plan-rows-web.localhost` for service `web` of bolt `plan-rows` of repository `atlas`"
+    served: "`portless list` filtered to the worktree's hash"
+  tailnet:
+    where: a host on the operator's private network, named by its tailnet hostname; each service gets a name on that host
+    bind: "127.0.0.1"
+    port: "hashed from the place's path by the machinery, the same derivation portless uses, so a place moved between routers keeps its port"
+    endpoint: "`https://<host>.<tailnet>.ts.net/<place>/<service>/` when `serve: tailscale` — the machinery runs `tailscale serve --bg --set-path /<place>/<service> 127.0.0.1:$PORT` on start and `tailscale serve --set-path /<place>/<service> off` on stop, and the URL is what `tailscale serve status --json` reports for that path; or `https://<place>-<service>.<host>.<tailnet>.ts.net` when `serve: caddy` — the machinery drives the host's caddy through its admin API (`POST /config/apps/http/servers/flywheel/routes` with a host matcher for `<place>-<service>.<host>.<tailnet>.ts.net` and a reverse_proxy upstream of 127.0.0.1:$PORT, `DELETE` by route id on stop), caddy holding the tailnet certificate; the manifest names which of the two and the proxy's admin endpoint"
+    served: "the routes the serve feature or the proxy reports whose upstream port belongs to the place"
+  platform:
+    where: a managed platform runs the host and exposes it; the platform hands the machinery the hostname or the URL
+    bind: "0.0.0.0"
+    port: "hashed from the place's path by the machinery; the platform's ingress reaches it on every interface"
+    endpoint: "the URL the platform's ingress publishes for the host and port, read from what the platform hands the host — an environment variable or a metadata endpoint the manifest names (`router: {kind: platform, url_from: env:FLYWHEEL_INGRESS_URL}` or `url_from: http://169.254.169.254/...`) — with the port or a path per service as the platform's scheme requires; published within the operator's private network by the platform's own access control, never wider by the machinery"
+    served: "the ingress routes the platform reports for the host whose port belongs to the place, or, when it reports none, the URL template applied to every port the place's tethers listen on"
 evidence:
   now:                 {read: the host clock, synchronized by the operating system's time service; every duration guard tolerates 60s of skew}
   session.host_alive:  {read: the host record's heartbeat, as the state profile binds host.last_seen}
@@ -50,10 +84,10 @@ evidence:
   place.line_moved_told: {read: "the session's thread holds a `moved` entry naming the line's current head with delivered = true"}
   place.ready:         {read: "exists, contains its line, the work order file and the hooks are present"}
   place.absent:        {read: "`wt worktree list` does not name it and the directory is gone"}
-  place.endpoints_served: {read: "`portless list` filtered to the place's hash: every service the tethered processes of this worktree serve, as URLs on the operator's private network"}
+  place.endpoints_served: {read: "the router in force's `served` read for this place (router: above): every service the tethered processes of this worktree serve, as URLs on the operator's private network (191)"}
   service.process:     {read: "`wt tether status service/<name>` in the bolt's place: present while the tethered process runs, exited when the tether records its exit status, absent when no tether by that name exists"}
   service.serving:     {read: "the declaration's `ready` command exits 0 in the place; without one, a GET on service.endpoint answers within 5s with any status"}
-  service.endpoint:    {read: "`portless list` entry for `<name>` in this worktree: the URL portless routes to the port it gave the service, on the operator's private network"}
+  service.endpoint:    {read: "the router in force's `endpoint` read for this service's port in this place (router: above): under portless the `portless list` entry for `<name>` in this worktree, under tailnet the serve or proxy route, under platform the ingress URL; always on the operator's private network (191)"}
   service.failure:     {read: "the tether's exit status and the last 20 lines of its log (`wt tether log service/<name> --tail 20`)"}
   service.place_present: {read: "as place.exists for the bolt's place"}
   service.declared:    {read: "`.flywheel/services.yaml` at the bolt's place's head holds a record with this name"}
@@ -104,8 +138,8 @@ effects:
   remove_place:    {do: "`wt worktree remove <path>`; tethered processes end with it (`wt tether`); refused and reported while the owner record is held; recorded with the path and the head it had"}
   record_endpoints: {do: "put(owner): endpoints = place.endpoints_served; the page renders them as links beside the bolt"}
   declare_services: {do: "read `.flywheel/services.yaml` at the bolt's place's head; for each record with no service object in a live state: put(new service, stopped, parent = the bolt, id = service/<bolt>/<name>, name, command, serves from the record); one put per record, each recorded as its own effect"}
-  start_service:   {do: "in the bolt's place: `wt tether start --name service/<name> -- sh -c '<command>'` with PORT from `portless port <name>` for this worktree and PLACE = the path; the tether binds the process to the worktree so `wt worktree remove` ends it (44, 54); put(service): moved_by = the response id; a tether already present by that name is refused by wt, which is the proof"}
-  stop_service:    {do: "`wt tether stop service/<name>` in the bolt's place; put(service): moved_by = the response id; nothing when no tether by that name exists"}
+  start_service:   {do: "in the bolt's place: `wt tether start --name service/<name> -- sh -c '<command>'` with PORT from the router in force's `port` (under portless `portless port <name>` for this worktree), BIND from its `bind` (127.0.0.1 under portless and tailnet, 0.0.0.0 under platform) and PLACE = the path; then the router's registration for the port where it needs one (`tailscale serve`, the proxy's admin API), and none under portless or platform (191); the tether binds the process to the worktree so `wt worktree remove` ends it (44, 54); put(service): moved_by = the response id; a tether already present by that name is refused by wt, which is the proof"}
+  stop_service:    {do: "`wt tether stop service/<name>` in the bolt's place, then the router's deregistration where it registered one (191); put(service): moved_by = the response id; nothing when no tether by that name exists"}
   remove_stray_places: {do: "for each stray worktree under the places root: `wt worktree remove <path>`; one effect per removal, each recorded with the path and why it was stray"}
   archive_intent:  {do: "`openspec archive <intent-id>` in the intent's place, committed on the intent's line"}
   open_intent:     {do: "`openspec new <intent-id>` from the schema instruction in force, committed on the intent's line"}
