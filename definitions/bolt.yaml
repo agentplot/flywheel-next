@@ -13,7 +13,7 @@ kind: object
 object: bolt
 parent: null
 owns: [unit, service]
-satisfies: [4, 30, 33, 39, 40, 44, 46, 47, 48, 55, 63, 74, 103]
+satisfies: [4, 30, 33, 39, 40, 44, 46, 47, 48, 55, 63, 74, 103, 175, 177]
 record:
   repository: string
   name: string           # the operator's to change at any time; never the identity
@@ -55,7 +55,7 @@ regions:
                                  {not: {ev: bolt.hold_since_last_merge, is: true}}]}
                     to: offered
               offered:
-                decision: {kind: bolt-close, group: approve, answers: ["yes", hold], shows: [children.unit.count, line.landing], satisfies: [10, 39]}
+                decision: {kind: bolt-close, group: approve, answers: ["yes", hold], shows: [children.unit.count, line.landing, line.request_links], satisfies: [10, 39, 177]}
                 transitions:
                   - when: {response: hold}
                     to: held
@@ -76,7 +76,7 @@ regions:
             enter: {line: removing, place: removing}
             note: dictation; units still open are retired and their sessions ended (74); the operator's place goes unless held (55)
       landing:
-        doc: the final take, then the repository's policy; only a landing that passes the gates moves the shared line (53)
+        doc: the final take, then the repository's policy; only a landing that passes the gates moves the shared line (53); under pull-request the bolt stays here while the request is open, and a chore from a review merges into its line like any other (175, 176)
         transitions:
           - when: {final: line.removed}
             to: landed
@@ -85,7 +85,7 @@ regions:
             to: land-failed
       land-failed:
         doc: reported, the bolt stays open with the failure on it; no session is asked anything until the response (40, S33)
-        decision: {kind: land-failed, group: decide, answers: [retry, hold], shows: [landing_failure], satisfies: [40, 82]}
+        decision: {kind: land-failed, group: decide, answers: [retry, hold], shows: [landing_failure, line.request_links], satisfies: [40, 82, 175, 177]}
         transitions:
           - when: {response: retry}
             to: landing

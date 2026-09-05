@@ -25,7 +25,7 @@ evidence:
 commands:
   service: {do: "a script entry `service: {start: <name>}` or `service: {stop: <name>}` is played by the stand-in running `flywheel service start|stop <name>` in the session's place, exactly as a session would; the op-response it writes is real and the trace shows it (47)"}
 effects:
-  start_session:   {do: "record the start in the stand-in's table by session id; refuse a second start of the same name, as herdr does; then play the script entries for that id at their `after` offsets, committing any `commits` into the place with git so the git effects see real work"}
+  start_session:   {do: "record the start in the stand-in's table by session id, with the kind and the multiplexer session it would have used (173, 174); refuse a second start of the same name, as herdr does; then play the script entries for that id at their `after` offsets, committing any `commits` into the place with git so the git effects see real work"}
   end_session:     {do: "remove the id from the table; a later script entry for it is ignored and reported to the trace"}
   deliver_answer:  {do: "append the answer to the id's inbox in the table and mark the thread entry delivered; a script entry may key on it (`after: answer`)"}
   tell_moved:      {do: "append(session thread) the moved entry and mark it delivered; the trace shows it"}

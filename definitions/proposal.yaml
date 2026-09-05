@@ -1,0 +1,71 @@
+# Planning's document for one run (172): the bolts it proposes, new or open,
+# and the units in each with their types and dependencies. One decision on
+# the plan, reviewed on the review surface as one document (17, 36). Each
+# unit in it is separately answerable before the yes; the answer is forwarded
+# to the unit as a response of its own. Nothing becomes a bolt or a unit's
+# items until the yes: the units it names wait in in-proposal and read this
+# object's state. Planning's next run supersedes it silently (35).
+machine: proposal
+version: 1
+kind: object
+object: proposal
+parent: planning
+satisfies: [17, 35, 36, 171, 172]
+record:
+  repository: string
+  document: ref          # the proposal document the session delivered; presented for review (17)
+  bolts: list            # the bolts it proposes: open ids, or new names
+  units: list            # the unit ids it names, in in-proposal
+  redo_notes: string
+regions:
+  life:
+    initial: proposed
+    states:
+      proposed:
+        doc: the one decision of the run; the document is reviewed on its own surface and an annotation on it is the response (17)
+        decision: {kind: proposal, group: approve, document: document,
+                   answers: ["yes", "redo: <notes>", later, "<unit>: bolt <name>", "<unit>: new bolt <name>", "<unit>: rename <name>", "<unit>: type <name>", "<unit>: drop"],
+                   shows: [bolts, units], satisfies: [10, 11, 17, 36, 172]}
+        transitions:
+          - when: {ev: proposal.replaced, is: true}
+            to: superseded
+            note: planning ran again; a proposal is not work, so nothing is asked (35)
+          - when: {response: "<unit>: bolt <name>"}
+            to: proposed
+            effects: [{do: forward_answer, args: {answer: $response}}]
+          - when: {response: "<unit>: new bolt <name>"}
+            to: proposed
+            effects: [{do: forward_answer, args: {answer: $response}}]
+          - when: {response: "<unit>: rename <name>"}
+            to: proposed
+            effects: [{do: forward_answer, args: {answer: $response}}]
+          - when: {response: "<unit>: type <name>"}
+            to: proposed
+            effects: [{do: forward_answer, args: {answer: $response}}]
+          - when: {response: "<unit>: drop"}
+            to: proposed
+            effects: [{do: forward_answer, args: {answer: $response}}]
+          - when: {response: "yes"}
+            to: approved
+            note: the units read approved and become work; bolts are created by the first unit that names each new one (I8)
+          - when: {response: "redo: <notes>"}
+            to: withdrawn
+            effects: [{do: request_replan, args: {notes: $response}}]
+          - when: {response: later}
+            to: deferred
+      deferred:
+        doc: out of the count for a week, then offered again as a new decision with a new number; nothing was approved
+        transitions:
+          - when: {ev: proposal.replaced, is: true}
+            to: superseded
+          - when: {ev: entered_at, older: 7d}
+            to: proposed
+      approved:
+        doc: approval given once is never re-asked (6); the units that named this proposal carry the response as their approval (I1)
+        final: true
+      withdrawn:
+        doc: back to planning with the notes; the next run's proposal is a new one
+        final: true
+      superseded:
+        doc: replaced by planning's next proposal; no tail entry, since nothing the operator approved changed (35)
+        final: true

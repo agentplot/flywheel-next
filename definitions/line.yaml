@@ -3,11 +3,14 @@
 # line). Every operation here is an effect the machinery performs; a session
 # never touches a line (I12). A take that conflicts becomes a chore on the
 # line whose approval is the cadence the operator set or the response that
-# ordered the take (52).
+# ordered the take (52). The landing is the repository's policy (175): direct
+# is one merge commit; pull-request opens the request and waits in
+# request-open while its reviews and checks are evidence on the bolt (176).
+# History on a line is never rewritten: every take is a merge (179).
 machine: line
-version: 2
+version: 3
 kind: template
-satisfies: [42, 49, 50, 52, 53, 54]
+satisfies: [42, 49, 50, 52, 53, 54, 175, 176, 177, 179, 180]
 params:
   parent: the shared line this line is off
   landing_policy: pull-request or direct, from the manifest
@@ -52,14 +55,14 @@ regions:
           - when: {ev: line.retries, gte: 3}
             to: conflict-stalled
       conflict-stalled:
-        decision: {kind: stalled, group: decide, answers: [retry, hold], shows: [line.retries], satisfies: [52]}
+        decision: {kind: stalled, group: decide, answers: [retry, hold], shows: [line.retries], satisfies: [52, 180]}
         transitions:
           - when: {response: retry}
             to: taking
           - when: {response: hold}
             to: conflict-stalled
       landing:
-        doc: entered by the owner's response (bolt close, intent archive); one final take, then the policy's landing
+        doc: entered by the owner's response (bolt close, intent archive); one final take, then the policy's landing (175)
         transitions:
           - when: {ev: line.landed, is: true}
             to: landed
@@ -68,11 +71,27 @@ regions:
           - when: {not: {ev: line.contains_parent, is: true}}
             to: landing
             effects: [{do: take_parent, note: the take before landing (50)}]
+          - when: {ev: line.policy, is: pull-request}
+            to: request-open
+            effects: [{do: open_request, note: "the request is opened from the line; the repository's own merge setting lands it (175, 179)"}]
           - when: {ev: line.landing, in: [none]}
             to: landing
-            effects: [{do: land_line, args: {policy: $landing_policy}}]
+            effects: [{do: land_line, args: {policy: $landing_policy}, note: "direct: one merge commit into the shared line (175)"}]
+      request-open:
+        doc: the bolt stays open, landing, while the request is open (175); a review that asks for a change is seeded as a finding on the bolt, and the chore it becomes merges into this line and so updates the request (176); the request's links are evidence shown on the bolt (177)
+        transitions:
+          - when: {ev: line.request, is: merged}
+            to: landed
+          - when: {ev: line.request, is: closed}
+            to: land-failed
+          - when: {ev: line.request_review_pending, is: true}
+            to: request-open
+            effects: [{do: seed_request_finding}]
+          - when: {ev: line.request, is: none}
+            to: request-open
+            effects: [{do: open_request, note: "the request vanished without merging or closing; opened again by the same name"}]
       land-failed:
-        doc: the gates failed; the line stays; nothing is asked of any session until the operator's response (40, S33)
+        doc: the gates failed or the request was closed; the line stays; nothing is asked of any session until the operator's response (40, 175, S33)
         final: true
       landed:
         transitions:

@@ -7,11 +7,12 @@
 # finding, a chore or a signal go the same way. Nothing on the place's disk is
 # state. This is the one binding a stand-in replaces (93).
 machine: session
-version: 2
+version: 3
 kind: template
-satisfies: [4, 24, 65, 66, 67, 70, 71, 72, 73, 80, 93]
+satisfies: [4, 24, 65, 66, 67, 70, 71, 72, 73, 80, 93, 171, 173, 174]
 params:
   agent: the agent definition to start
+  kind: the agent program that runs it — claude, codex or opencode; default claude; started through the one command whatever the kind (173)
   place: the place prepared for it
   work_order: the closed set of inputs, rendered by the engine and handed into the place
   keep_alive: whether idle keeps the process (standing, with-operator) or the type ends it
@@ -32,7 +33,7 @@ regions:
         transitions:
           - when: {always: true}
             to: starting
-            effects: [{do: start_session, args: {agent: $agent, place: $place, work_order: $work_order}}]
+            effects: [{do: start_session, args: {agent: $agent, kind: $kind, place: $place, work_order: $work_order}, note: "in the multiplexer session the manifest gives it — by default intents, bolts or machinery, by who charged it (174)"}]
       starting:
         doc: slow is slow, not failed (72); the proof is the pane, never the start command's return
         transitions:
@@ -40,7 +41,7 @@ regions:
             to: alive
           - when: {always: true}
             to: starting
-            effects: [{do: start_session, args: {agent: $agent, place: $place, work_order: $work_order}, note: retry by the same name; refused if it already exists}]
+            effects: [{do: start_session, args: {agent: $agent, kind: $kind, place: $place, work_order: $work_order}, note: retry by the same name; refused if it already exists}]
       alive:
         doc: the process exists; its inner state is what the multiplexer and the command's records report
         regions:

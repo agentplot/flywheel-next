@@ -285,6 +285,12 @@ impl Store {
             "line.landed" => json!(line.map(|l| l.landed).unwrap_or(false)),
             "line.landing" => json!(line.map(|l| if l.landing.is_empty() { "none".to_string() } else { l.landing.clone() }).unwrap_or_else(|| "none".into())),
             "line.retries" => json!(obj.and_then(|o| o.counters.get("retries").copied()).unwrap_or(0)),
+            // the pull-request landing (175–177): the stand-in's lines land direct unless a scenario says otherwise
+            "line.policy" => json!("direct"),
+            "line.request" => json!("none"),
+            "line.request_opened" | "line.request_review_pending" => json!(false),
+            "line.request_review_recorded" => json!(true),
+            "line.request_links" => json!([]),
             // ---- session
             "session.pane" => json!(sess.map(|s| if s.pane { "present" } else { "absent" }).unwrap_or("absent")),
             "session.activity" => json!(sess.map(|s| if s.pane { s.activity.clone() } else { "none".into() }).unwrap_or_else(|| "none".into())),

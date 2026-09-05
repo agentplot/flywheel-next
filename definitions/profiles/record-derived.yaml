@@ -53,6 +53,10 @@ evidence:
   unit.type:      {read: "get(id).type"}
   unit.type_version: {read: "get(id).type_version"}
   unit.batch:     {read: "get(id).batch"}
+  unit.proposal:  {read: "get(get(id).proposal).state, or none when the unit names no proposal"}
+  proposal.replaced: {read: "a proposal record of the same repository with a newer entered_at exists"}
+  planning.proposal_recorded: {read: "a proposal record in proposed exists whose units equal the ids the session delivered"}
+  proposal.answer_forwarded: {read: "the unit the answer names lists a response with id <this response id>/forward in applied_responses"}
   unit.target_is_new_bolt: {read: "get(id).target.new_name is set and target.bolt is not"}
   unit.deps_merged: {read: "every id in get(id).depends_on has state merged or landed"}
   unit.claim_moved: {read: "get(id).claims names claim@v and the books' shared line holds that claim at a version > v, and get(id).citation_choices holds no choice for that claim and version"}
@@ -66,7 +70,6 @@ evidence:
   bolt.moved_claim: {read: "the claim and versions of the first such citation"}
   citation_choice_recorded: {read: "get(id).citation_choices holds the claim and version"}
   bolt.hold_since_last_merge: {read: "get(bolt).held_at is newer than every child unit's entered_at of merged"}
-  bolt.land_policy: {read: "`flywheel.yaml` repositories[bolt.repository].landing"}
   place.held:     {read: "get(owner).held_at is set (by the dictation `hold place <owner>`; `release place <owner>` clears it)"}
   place.endpoints_recorded: {read: "get(owner).endpoints equals place.endpoints_served"}
   service.endpoint_recorded: {read: "get(service).endpoint equals service.endpoint"}
@@ -91,13 +94,15 @@ effects:
   propose_elaboration: {do: "put(new elaboration, proposed, type from the material's kind, sources = the pending material) or put(existing proposed elaboration, sources += pending)"}
   split_intent:    {do: "put(two new intents, proposed, split_from = id) with the signals partitioned by the response; the signals get join moves naming each"}
   propose_intents: {do: "put(one intent, proposed) per join with its signals, challenges and proposed elaborations"}
-  propose_units:   {do: "put(one unit, proposed) per delivered unit: type, document, target, depends_on, claims, batch = baseline id on a first planning; asks consumed get consumed_by"}
+  propose_units:   {do: "put(one unit, in-proposal) per delivered unit: type, document, target, depends_on, claims, proposal = the run's proposal id; asks consumed get consumed_by"}
+  record_proposal: {do: "put(new proposal, proposed, parent = the planning, repository, document = the delivered document's path, bolts, units = the ids just put); a first planning's proposal is the baseline"}
+  forward_answer:  {do: "write an op-response through the state profile's receive on the unit the answer names — object = the unit, answer = the remainder (`bolt <name>`, `new bolt <name>`, `rename <name>`, `type <name>`, `drop`), by = the proposal's response, id = <response id>/forward — exactly the record the unit's own decision would produce; `rename` is written on every unit of the proposal whose target.new_name is the named bolt"}
   record_fingerprint: {do: "put(planning): planned_fingerprint = planning.fingerprint, redo_notes cleared"}
   request_replan:  {do: "put(planning of the unit's repository): redo_notes += the response's text, or the moved claim"}
   create_bolt:     {do: "put(new bolt, open, repository, name = target.new_name); put(unit): target.bolt = the new id, approval = the response id; never for a chore"}
   rename_bolt:     {do: "put(bolt): name"}
   route_unit:      {do: "put(unit): target.bolt = the named open bolt, or target.new_name for `new bolt`"}
-  create_items:    {do: "put(one work-item, waiting) per task in the document, ordinal by unit approval then position, depends_on from the document; put(unit): type_version = the type file's version now, approval = the response or dictation id"}
+  create_items:    {do: "put(one work-item, waiting) per task in the document, ordinal by unit approval then position, depends_on from the document; put(unit): type_version = the type file's version now, approval = the response or dictation id, or the proposal's applied response when the unit came from one (172)"}
   record_service_endpoint: {do: "put(service): endpoint = service.endpoint; the page renders it as a link beside the bolt, with the service's state and its start/stop controls"}
   record_citation_choice: {do: "put(bolt or unit): citation_choices += {claim, version, choice}; choice amend also sets needs_amend on the citing units; choice keep pins the unit's cited version"}
   number_decisions: {do: "put(plan): for each unnumbered decision, register += {decision id, number = next_number, since = now}, next_number += 1; entries whose decision is retracted are pruned 30 days after retraction; the counter never goes back"}

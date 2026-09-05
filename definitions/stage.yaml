@@ -3,11 +3,12 @@
 # blocked or stalled by the join rule. The session set is a fixed list or a
 # rule read against the repository worked.
 machine: stage
-version: 1
+version: 2
 kind: template
-satisfies: [4, 41, 56, 70]
+satisfies: [4, 41, 56, 70, 173]
 params:
-  agents: a fixed list of agent names, or a rule such as every persona definition matching a pattern
+  agents: "a fixed list of agent entries — a name, or {name, kind} where kind is claude, codex or opencode, default claude (173) — or a rule such as every persona definition matching a pattern"
+
   join: all | any | count:<n>
   on_fail: the stage an item returns to when this stage judges it not done
   max_send_backs: how many times before the item stops and waits on the operator
@@ -24,7 +25,7 @@ regions:
       sessions:
         doc: one session submachine per agent in the set, side by side, each with its own instruction and persona
         machine: session
-        params: {agent: $each, place: $place, work_order: rendered, keep_alive: false}
+        params: {agent: $each, kind: $each.kind, place: $place, work_order: rendered, keep_alive: false}
         transitions:
           - when: {ev: stage.verdict, is: blocked}
             to: sessions

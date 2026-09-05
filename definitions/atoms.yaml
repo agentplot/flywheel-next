@@ -75,6 +75,10 @@ evidence:
   line.landing:          {of: line, type: enum, values: [none, pending, passed, failed], doc: the repository's own gates on the landing}
   line.retries:          {of: line, type: int}
   line.conflict_job_done: {of: line, type: bool, doc: the conflict chore unit on this line is merged}
+  line.policy:           {of: line, type: enum, values: [direct, pull-request], doc: the repository's landing policy from the manifest (175); the books' lines land direct}
+  line.request:          {of: line, type: enum, values: [none, open, merged, closed], doc: the pull request opened from this line, as the git host reports it (175)}
+  line.request_review_pending: {of: line, type: bool, doc: a review on the request asks for a change and no finding record yet points at it (176)}
+  line.request_links:    {of: line, type: list, doc: links the git host or an integration publishes for the request — check runs, deployments, ephemeral environments — read by an adapter, never made by the machinery (177)}
   # ---- design side
   intent.material_pending: {of: intent, type: bool, doc: attached signals or findings no proposal yet holds}
   intent.close_declined_since_last_final: {of: intent, type: bool}
@@ -107,13 +111,14 @@ evidence:
   bolt.citations_moved:    {of: bolt, type: bool, doc: a started unit of this bolt cites a claim whose standing version is newer, and no citation choice is recorded (103)}
   bolt.moved_claim:        {of: bolt, type: string}
   bolt.hold_since_last_merge: {of: bolt, type: bool}
-  bolt.land_policy:        {of: bolt, type: enum, values: [pull-request, direct]}
   unit.claim_moved:        {of: unit, type: bool, doc: this unit cites a claim whose standing version is newer than the one cited, and no choice is recorded for it (35)}
   unit.target_is_new_bolt: {of: unit, type: bool}
   unit.deps_merged:        {of: unit, type: bool}
   unit.type:               {of: unit, type: string}
   unit.type_version:       {of: unit, type: int}
   unit.batch:              {of: unit, type: string, doc: baseline id or none; equal values fold into one decision}
+  unit.proposal:           {of: unit, type: enum, values: [none, proposed, approved, withdrawn, deferred, superseded], doc: the state of the proposal that names this unit; none when no proposal does (172)}
+  proposal.replaced:       {of: proposal, type: bool, doc: planning's next run recorded a newer proposal for the repository (35, 172)}
   item.deps_merged:        {of: work-item, type: bool}
   item.slot_free:          {of: work-item, type: bool, doc: this host has a free slot and no earlier ready item is waiting for it}
   item.send_backs:         {of: work-item, type: int}
@@ -130,6 +135,8 @@ evidence:
   session.refusals_recorded: {of: session, type: bool, proof_of: record_refusals}
   line.conflict_job_seeded: {of: line, type: bool, proof_of: seed_take_conflict, doc: a chore unit in approved exists for this line and this take}
   line.absent:              {of: line, type: bool, proof_of: remove_line}
+  line.request_opened:      {of: line, type: bool, proof_of: open_request, doc: a request from this line exists at the git host, open, merged or closed}
+  line.request_review_recorded: {of: line, type: bool, proof_of: seed_request_finding, doc: every review on the request that asks for a change has a finding record pointing at it}
   place.ready:              {of: place, type: bool, proof_of: prepare_place, doc: exists, contains its line, holds the closed inputs and the refusing hooks}
   place.absent:             {of: place, type: bool, proof_of: remove_place}
   place.endpoints_recorded: {of: place, type: bool, proof_of: record_endpoints, doc: the owner record's endpoints equal the endpoints served}
@@ -147,6 +154,8 @@ evidence:
   curation.intents_proposed: {of: curation, type: bool, proof_of: propose_intents}
   planning.units_proposed:  {of: planning, type: bool, proof_of: propose_units}
   planning.fingerprint_recorded: {of: planning, type: bool, proof_of: record_fingerprint}
+  planning.proposal_recorded: {of: planning, type: bool, proof_of: record_proposal, doc: a proposal record in proposed names every unit the session delivered}
+  proposal.answer_forwarded: {of: proposal, type: bool, proof_of: forward_answer, doc: the unit the answer names lists the forwarded response as applied}
   unit.bolt_exists:         {of: unit, type: bool, proof_of: create_bolt}
   bolt.named:               {of: bolt, type: bool, proof_of: rename_bolt}
   unit.routed:              {of: unit, type: bool, proof_of: route_unit}
@@ -161,7 +170,7 @@ evidence:
 
 effects:
   # ---- session (the multiplexer and the exit command; faked whole by the stand-in, 93)
-  start_session:   {of: session, args: [agent, place, work_order], proof: session.pane, satisfies: [65, 72, 73, 89, 93], doc: start the named agent in the place; the name is the session id, so a second start of the same name is refused by the multiplexer}
+  start_session:   {of: session, args: [agent, kind, place, work_order], proof: session.pane, satisfies: [65, 72, 73, 89, 93, 173, 174], doc: start the named agent of the named kind (claude, codex, opencode) in the place, through the one command, in the multiplexer session the manifest gives the session; the name is the session id, so a second start of the same name is refused by the multiplexer}
   end_session:     {of: session, args: [], proof: session.pane_absent, satisfies: [26, 69, 74], doc: end the pane; only ever run from a state the operator's response or the type reached}
   record_exit:     {of: session, args: [], proof: session.exit_recorded, satisfies: [66, 67, 70, 80], doc: read the exit the session reported through the command, compare expected with delivered, and write both to the session record}
   record_offers:   {of: session, args: [], proof: session.offers_recorded, satisfies: [58, 59, 62], doc: for each offer the session made, one record pointing at its document — a chore becomes a proposed chore unit, a finding on the session's own thread a proposal there, anything else a signal; the record never holds the text}
@@ -170,14 +179,16 @@ effects:
   tell_moved:      {of: session, args: [], proof: place.line_moved_told, satisfies: [51, 71], doc: tell an idle session what moved under it}
   # ---- line and place (git and worktree tool)
   create_line:     {of: line, args: [parent], proof: line.exists, satisfies: [42, 49]}
-  take_parent:     {of: line, args: [], proof: line.contains_parent, satisfies: [42, 50], doc: merge the parent line into this line; aborted whole on conflict}
-  seed_take_conflict: {of: line, args: [], proof: line.conflict_job_seeded, satisfies: [52], doc: a chore unit in approved on this line, its approval the cadence the operator set or the response that ordered the take; its session resolves the conflict in a place off the line}
-  land_line:       {of: line, args: [policy], proof: line.landed, satisfies: [39, 42, 53], doc: pull request through the gates, or direct merge, as the manifest says}
+  take_parent:     {of: line, args: [], proof: line.contains_parent, satisfies: [42, 50, 179], doc: merge the parent line into this line, never a rebase; aborted whole on conflict}
+  seed_take_conflict: {of: line, args: [], proof: line.conflict_job_seeded, satisfies: [52, 180], doc: a chore unit in approved on this line, its approval the cadence the operator set or the response that ordered the take; its session resolves the conflict in a place off the line}
+  land_line:       {of: line, args: [policy], proof: line.landed, satisfies: [39, 42, 53, 175, 179], doc: the direct policy's landing; a merge commit of the line into the shared line}
+  open_request:    {of: line, args: [], proof: line.request_opened, satisfies: [53, 175, 179], doc: the pull-request policy's landing; open the request from the line and let the repository's own merge setting land it}
+  seed_request_finding: {of: line, args: [], proof: line.request_review_recorded, satisfies: [176], doc: a review on the open request that asks for a change becomes a finding record on the bolt, pointing at the review; accepted, it is a chore on the bolt line}
   remove_line:     {of: line, args: [], proof: line.absent, satisfies: [42, 54]}
-  prepare_place:   {of: place, args: [line, agent_inputs], proof: place.ready, satisfies: [42, 43, 45, 88, 89, 119], doc: worktree at the line's head, hooks that refuse line operations, the closed set of inputs written in, ports derived from the place}
-  rebase_place:    {of: place, args: [], proof: place.contains_line, satisfies: [42, 51], doc: rebase onto the line; aborted whole on conflict}
+  prepare_place:   {of: place, args: [line, agent_inputs], proof: place.ready, satisfies: [42, 43, 45, 88, 89, 119, 173], doc: worktree at the line's head, hooks that refuse line operations, the closed set of inputs written in, ports derived from the place}
+  rebase_place:    {of: place, args: [], proof: place.contains_line, satisfies: [42, 51, 179], doc: rebase onto the line while no session works in the place; aborted whole on conflict}
   seed_conflict_job: {of: place, args: [], proof: place.job_seeded, satisfies: [52]}
-  merge_place:     {of: place, args: [], proof: place.merged, satisfies: [38, 42, 54], doc: merge the place into its line, one place at a time in the fixed order}
+  merge_place:     {of: place, args: [], proof: place.merged, satisfies: [38, 42, 54, 179], doc: merge the place into its line, one place at a time in the fixed order; an item's merge is a squash to one commit naming the item unless the manifest says otherwise for the repository}
   remove_place:    {of: place, args: [], proof: place.absent, satisfies: [42, 45, 55], doc: remove the worktree; the processes tethered to it end with it; never while the operator holds it}
   record_endpoints: {of: place, args: [], proof: place.endpoints_recorded, satisfies: [46], doc: write the endpoints the place's processes serve into the owner record, so the page shows them beside the bolt}
   # ---- service (the tether and the port router in the bolt's place; start and stop are the one path a dictation and a session's command share, 48)
@@ -196,13 +207,15 @@ effects:
   propose_elaboration: {of: intent, args: [material, type], proof: intent.material_held, satisfies: [21], doc: create the intent's one proposed elaboration, or join the material to it}
   set_type:        {of: elaboration, args: [type], proof: elaboration.type_set, satisfies: [27, 37]}
   # ---- claims and ledger
-  record_verdict:  {of: ledger-cell, args: [verdict, claim_version, revision, evidence], proof: cell.verdict_recorded, satisfies: [100, 101, 104]}
+  record_verdict:  {of: ledger-cell, args: [verdict, claim_version, revision, evidence], proof: cell.verdict_recorded, satisfies: [100, 101, 104, 181], doc: the ledger is a file in the books repository, readable from git by any system}
   # ---- planning and curation
   record_moves:    {of: curation, args: [moves], proof: curation.moves_recorded, satisfies: [107, 116]}
   propose_intents: {of: curation, args: [intents], proof: curation.intents_proposed, satisfies: [109]}
-  propose_units:   {of: planning, args: [units], proof: planning.units_proposed, satisfies: [29, 34, 36, 64]}
+  propose_units:   {of: planning, args: [units], proof: planning.units_proposed, satisfies: [29, 34, 36, 64, 172, 182], doc: one unit in in-proposal per unit the session delivered, each naming its proposal; a signal from operation routed to an open bolt arrives here like any other}
+  record_proposal: {of: planning, args: [document, units], proof: planning.proposal_recorded, satisfies: [171, 172], doc: one proposal record in proposed for the run, naming the bolts it proposes and the units in each; the one decision the run raises}
   record_fingerprint: {of: planning, args: [], proof: planning.fingerprint_recorded, satisfies: [28]}
-  request_replan:  {of: planning, args: [notes], proof: planning.redo_pending, satisfies: [17, 35]}
+  request_replan:  {of: planning, args: [notes], proof: planning.redo_pending, satisfies: [17, 35, 172]}
+  forward_answer:  {of: proposal, args: [answer], proof: proposal.answer_forwarded, satisfies: [172], doc: a per-unit answer on the proposal is written as an op-response on the unit it names, so the unit's own guard applies it; rename reaches every unit of the proposal that targets the named new bolt}
   # ---- construction objects
   create_bolt:     {of: unit, args: [name, repository], proof: unit.bolt_exists, satisfies: [16, 29]}
   rename_bolt:     {of: bolt, args: [name], proof: bolt.named, satisfies: [16, 29]}

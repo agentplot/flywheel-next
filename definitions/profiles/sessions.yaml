@@ -5,8 +5,10 @@
 # runs. Not a profile on its own.
 #
 # Tools: herdr `herdr agent` (start, status, send, stop) as the multiplexer
-# with an agent-aware API; Claude Code `claude --agent <name>` as the agent
-# runtime; the `flywheel` binary's session commands, run inside the place:
+# with an agent-aware API; the agent runtime by kind — Claude Code, codex or
+# opencode — under `kinds:` below, every kind started through the same
+# `herdr agent start` (173), in the multiplexer session `multiplexer_sessions`
+# gives it (174); the `flywheel` binary's session commands, run inside the place:
 #   flywheel exit done --deliverables <list>       flywheel exit blocked --question <text>
 #   flywheel exit stalled --note <text>            flywheel offer finding|chore|signal <document> --about <object> [--scope ..]
 #   flywheel note <text>                           flywheel refuse <what>   (run by the hooks)
@@ -18,6 +20,16 @@
 format: flywheel-profile/1
 name: sessions
 complete: false
+kinds:
+  doc: "the command each kind of agent is started with, the agent name and the work order path substituted (173); a stage names a kind per agent entry, default claude; the operator adds a kind by adding a line here"
+  claude:   "claude --agent <agent> -- <work order path>"
+  codex:    "codex --profile <agent> <work order path>"
+  opencode: "opencode --agent <agent> --prompt <work order path>"
+multiplexer_sessions:
+  doc: "the herdr session a pane is started in (174); defaults by who charged the session, overridable per host in `flywheel.yaml` hosts.<host>.multiplexer_sessions by kind (`codex: flywheel-<org>-codex`) or by repository (`atlas: flywheel-atlas`), the most specific winning: repository over kind over default. The machinery creates the session when herdr does not list it"
+  intents:   "flywheel-<org>-intents — elaboration sessions and the operator's own session"
+  bolts:     "flywheel-<org>-bolts — stage sessions of units the operator approved"
+  machinery: "flywheel-<org>-machinery — curation, planning, capture reading, and the fix of a take conflict (171)"
 evidence:
   session.pane:        {read: "`herdr agent status <session-id>`; present when the multiplexer lists the pane by that name"}
   session.activity:    {read: "`herdr agent status`: the agent-aware state (working | idle); none when absent"}
@@ -31,7 +43,7 @@ evidence:
 commands:
   service: {do: "`flywheel service start|stop <name>` run inside a session's place: the machinery resolves the place's line to its bolt and writes an op-response through the state profile's `receive` — object = service/<bolt>/<name>, answer = start | stop, by = session/<session id>, id = the thread entry id — exactly the record the operator's dictation `start <bolt>/<name>` produces; the service machine's `{response: start}` and `{response: stop}` guards see one record whichever wrote it (47). A name the bolt's place does not declare is refused with the declared names, and the refusal is a thread entry. Anything a session starts without the command is its own process under the place's rule (44): tethered to the session's own place, never shown, gone with it"}
 effects:
-  start_session:   {do: "`herdr agent start --name <session-id> --cwd <place> -- claude --agent <agent>`; the work order path is the first message; a name already present is refused by herdr, which is the proof"}
+  start_session:   {do: "`herdr agent start --session <multiplexer session> --name <session-id> --cwd <place> -- <the kind's command from kinds:>`, the multiplexer session created first when absent (174); the work order path is the first message; a name already present is refused by herdr, which is the proof (173)"}
   end_session:     {do: "`herdr agent stop <session-id>`"}
   deliver_answer:  {do: "`herdr agent send <session-id> <answer>` when the pane is present; else start_session with the answer prepended to the work order; the thread's answer entry is marked delivered"}
   tell_moved:      {do: "append(session thread) a `moved` entry listing the commits that moved under the place, then `herdr agent send` its text; the entry is marked delivered"}

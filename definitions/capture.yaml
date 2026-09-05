@@ -4,7 +4,7 @@
 machine: capture
 version: 1
 kind: object
-satisfies: [4, 19, 106, 111, 112, 114, 115]
+satisfies: [4, 19, 106, 111, 112, 114, 115, 178, 181]
 object: capture
 parent: null
 owns: [signal]

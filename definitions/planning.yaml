@@ -3,13 +3,16 @@
 # a claim in scope became standing, a verdict was recorded or fell stale, an
 # ask named the repository, or a unit came back with notes (28). It sees
 # every open bolt of the repository because the fingerprint and the work order
-# both include them.
+# both include them. A run delivers one proposal: the bolts it proposes and
+# the units in each, one decision on the plan (172); the session is charged by
+# the machinery and has the fixed exits like any other (171).
 machine: planning
-version: 1
+version: 2
 kind: object
-satisfies: [4, 28, 29, 64, 98, 102, 104]
+satisfies: [4, 28, 29, 64, 98, 102, 104, 171, 172, 182]
 object: planning
 singleton: repository
+owns: [proposal]
 record:
   repository: string
   planned_fingerprint: hash
@@ -27,7 +30,7 @@ regions:
           - when: {always: true}
             to: running
       running:
-        doc: one session reads the backlog, the as-built and the open bolts and proposes units, each with a target bolt
+        doc: one session reads the backlog, the as-built and the open bolts and delivers one proposal, the units in it each with a target bolt (172)
         regions:
           place:
             initial: place
@@ -53,10 +56,11 @@ regions:
             enter: {session: ended, place: removing}
             note: dictation retires the session (4); the run is due again on the next tick
       applying:
-        doc: verdicts to the ledger, units to the plan, the fingerprint recorded, all in one write
+        doc: verdicts to the ledger, the proposal and its units to the plan, the fingerprint recorded, all in one write
         entry:
           - {do: record_verdict, args: {verdict: each, claim_version: each, revision: each, evidence: each}, note: "every verdict the session delivered, including not-applicable"}
-          - {do: propose_units, args: {units: delivered}, note: a first planning delivers its units as one baseline batch}
+          - {do: propose_units, args: {units: delivered}, note: "each unit in in-proposal, naming the proposal; a first planning's proposal is the baseline"}
+          - {do: record_proposal, args: {document: delivered, units: delivered}, note: "one proposal in proposed; the previous one of this repository still open is superseded by it, silently (35, 172)"}
           - {do: record_fingerprint}
         transitions:
           - when: {always: true}
