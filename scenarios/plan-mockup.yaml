@@ -58,7 +58,7 @@ given:
     unit/atlas/plan-tail/wi-1/review:     [{after: 1t, exit: done}]
     unit/atlas/plan-tail/wi-2/build:      [{after: 6t, exit: done}]
     unit/atlas/plan-tail/wi-2/review:     [{after: 1t, exit: done}]
-    intent/atlas-provider-limits/research/work: [{after: 3t, exit: done}]
+    elaboration/atlas-provider-limits/research/work: [{after: 3t, exit: done}]
   objects:
     # ---- APPROVE
     - id: intent/atlas-provider-limits
