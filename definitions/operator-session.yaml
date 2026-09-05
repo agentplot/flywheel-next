@@ -3,12 +3,13 @@
 # with-operator session on no thread; it ends by dictation and its place goes
 # with it unless held. The operator need never open a pane (68); this is the
 # one they may open when they want to.
+# It is a workspace of its own in the intents multiplexer session (196).
 machine: operator-session
-version: 1
+version: 2
 kind: object
 object: operator-session
 parent: null
-satisfies: [68, 69]
+satisfies: [68, 69, 196]
 record:
   opened_by: string
   opened_at: time

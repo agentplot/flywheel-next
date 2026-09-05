@@ -1,13 +1,14 @@
 # A host that runs the machinery. Engine machine: it names no domain object.
 # The manifest says what the host takes — kinds, repositories, unit types,
 # whether it presents — and it takes leases only within that (149). Its
-# reconciliation finds stray places on its own disk and removes them (55).
+# reconciliation finds stray places on its own disk and removes them (55), and
+# closes multiplexer tabs and workspaces whose object has left every view (196).
 machine: host
-version: 2
+version: 3
 kind: engine
 object: host
 parent: null
-satisfies: [4, 32, 55, 96, 147, 149, 150, 151]
+satisfies: [4, 32, 55, 96, 147, 149, 150, 151, 186, 196]
 record:
   bound: int            # sessions this host may run at once (a setting of the host)
   last_seen: time       # its heartbeat
@@ -22,6 +23,9 @@ regions:
           - when: {ev: host.stray_places, is: true}
             to: alive
             effects: [{do: remove_stray_places, note: "a place that belongs to no live object and is not held is removed; every removal is recorded (55)"}]
+          - when: {ev: host.layout_current, is: false}
+            to: alive
+            effects: [{do: remove_stale_layout, note: "a tab or workspace naming an object that has left every view is closed; recorded like any removal (186, 196)"}]
           - when: {ev: host.last_seen, older: 5m}
             to: stale
       stale:

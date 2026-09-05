@@ -46,6 +46,8 @@ evidence:
   session.message_delivered: {of: session, type: bool, doc: the last message the machinery queued for the session reached it}
   session.operator_present: {of: session, type: bool, doc: a person typed in the pane within the window the profile states (25)}
   session.host_alive: {of: session, type: bool}
+  session.identity:   {of: session, type: string, doc: the token issued when the machinery started the session and written into its work order; every tool call from the pane carries it, and the tool server refuses a mismatch (197)}
+  host.layout_current: {of: host, type: bool, proof_of: remove_stale_layout, doc: the multiplexer's workspaces and tabs on this host name only objects still in a view (186, 196)}
   session.expected:   {of: session, type: list, doc: the deliverable names the work order asked for, each with the producer, schema and surface in force when the session started (190)}
   session.delivered:  {of: session, type: list}
   # ---- place and line (bound to git and the worktree tool, the same in every profile)
@@ -178,13 +180,13 @@ evidence:
 
 effects:
   # ---- session (the multiplexer and the exit command; faked whole by the stand-in, 93)
-  start_session:   {of: session, args: [agent, kind, place, work_order], proof: session.pane, satisfies: [65, 72, 73, 89, 93, 173, 174], doc: start the named agent of the named kind (claude, codex, opencode) in the place, through the one command, in the multiplexer session the manifest gives the session; the name is the session id, so a second start of the same name is refused by the multiplexer}
-  end_session:     {of: session, args: [], proof: session.pane_absent, satisfies: [26, 69, 74], doc: end the pane; only ever run from a state the operator's response or the type reached}
+  start_session:   {of: session, args: [agent, kind, place, work_order], proof: session.pane, satisfies: [65, 72, 73, 89, 93, 173, 174, 196, 197], doc: start the named agent of the named kind (claude, codex, opencode) in the place, through the one command, in the multiplexer session the manifest gives the session, in the workspace of its bolt or intent and the tab of its unit or elaboration, created when absent; the pane and the agent are named by the session id, so a second start of the same name is refused by the multiplexer; the session's identity token is issued and written into the work order first}
+  end_session:     {of: session, args: [], proof: session.pane_absent, satisfies: [26, 69, 74, 196], doc: end the pane; only ever run from a state the operator's response or the type reached; the tab and workspace outlive it until their object leaves every view}
   record_exit:     {of: session, args: [], proof: session.exit_recorded, satisfies: [66, 67, 70, 80], doc: read the exit the session reported through the command, compare expected with delivered, and write both to the session record}
   record_offers:   {of: session, args: [], proof: session.offers_recorded, satisfies: [58, 59, 62], doc: for each offer the session made, one record pointing at its document — a chore becomes a proposed chore unit, a finding on the session's own thread a proposal there, anything else a signal; the record never holds the text}
   record_refusals: {of: session, args: [], proof: session.refusals_recorded, satisfies: [43]}
-  deliver_answer:  {of: session, args: [text], proof: session.answer_delivered, satisfies: [68, 70], doc: send the answer to the living session, or start a fresh one whose work order opens with it}
-  tell_moved:      {of: session, args: [], proof: place.line_moved_told, satisfies: [51, 71], doc: tell an idle session what moved under it}
+  deliver_answer:  {of: session, args: [text], proof: session.answer_delivered, satisfies: [68, 70, 197], doc: send the answer to the living session through its thread and the multiplexer, or start a fresh one whose work order opens with it; one of the two ways the machinery speaks to a session}
+  tell_moved:      {of: session, args: [], proof: place.line_moved_told, satisfies: [51, 71, 197], doc: tell an idle session what moved under it, through its thread and the multiplexer; the other way the machinery speaks to a session}
   # ---- line and place (git and worktree tool)
   create_line:     {of: line, args: [parent], proof: line.exists, satisfies: [42, 49]}
   take_parent:     {of: line, args: [], proof: line.contains_parent, satisfies: [42, 50, 179], doc: merge the parent line into this line, never a rebase; aborted whole on conflict}
@@ -207,6 +209,7 @@ effects:
   record_service_endpoint: {of: service, args: [], proof: service.endpoint_recorded, satisfies: [46, 47, 191], doc: write the endpoint the host's router names for this service into its record, so the page shows it beside the bolt as a link}
   # ---- host
   remove_stray_places: {of: host, args: [], proof: host.no_stray_places, satisfies: [55], doc: reconciliation found a place on this host belonging to no live object; remove it and record the removal}
+  remove_stale_layout: {of: host, args: [], proof: host.layout_current, satisfies: [186, 196], doc: reconciliation found a workspace or tab in this host's multiplexer sessions naming an object that has left every view; close it and record the removal}
   expire_leases:   {of: host, args: [], proof: host.leases_expired, satisfies: [150]}
   # ---- design objects
   open_intent:     {of: intent, args: [], proof: intent.change_open, satisfies: [23, 49], doc: create the intent's change directory on its line}

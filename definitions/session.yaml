@@ -6,10 +6,15 @@
 # machinery provides, which writes to the control plane (67); offers of a
 # finding, a chore or a signal go the same way. Nothing on the place's disk is
 # state. This is the one binding a stand-in replaces (93).
+# The pane and the agent are named by the session id, in the workspace of the
+# object's bolt or intent and the tab of its unit or elaboration (196). A
+# session speaks to the machinery only through the tools, each call carrying
+# the identity issued at its start; the machinery speaks to it only through
+# its thread; sessions never message each other (197).
 machine: session
-version: 3
+version: 4
 kind: template
-satisfies: [4, 24, 65, 66, 67, 70, 71, 72, 73, 80, 93, 171, 173, 174, 190]
+satisfies: [4, 24, 65, 66, 67, 70, 71, 72, 73, 80, 93, 171, 173, 174, 190, 196, 197]
 params:
   agent: the agent definition to start
   kind: the agent program that runs it — claude, codex or opencode; default claude; started through the one command whatever the kind (173)
@@ -18,7 +23,8 @@ params:
   deliverables: "the entries {name, producer, schema, surface} the owner names; the producers, schemas and surfaces in force are resolved when the session starts and written into the work order with their versions, and the names are recorded as expected (88, 89, 190)"
   keep_alive: whether idle keeps the process (standing, with-operator) or the type ends it
 record:
-  id: session-id           # deterministic: <owner id>/<stage or type>/<attempt>
+  id: session-id           # deterministic: <owner id>/<stage or type>/<attempt>; also the pane's and the agent's name (196)
+  identity: string         # the token issued at start and written into the work order; every tool call from the pane carries it (197)
   host: host-id
   started_at: time
   exit: enum
@@ -34,7 +40,7 @@ regions:
         transitions:
           - when: {always: true}
             to: starting
-            effects: [{do: start_session, args: {agent: $agent, kind: $kind, place: $place, work_order: $work_order}, note: "in the multiplexer session the manifest gives it — by default intents, bolts or machinery, by who charged it (174)"}]
+            effects: [{do: start_session, args: {agent: $agent, kind: $kind, place: $place, work_order: $work_order}, note: "in the multiplexer session the manifest gives it — by default intents, bolts or machinery, by who charged it (174) — in its object's workspace and tab, the pane named by the session id (196), with its identity issued first (197)"}]
       starting:
         doc: slow is slow, not failed (72); the proof is the pane, never the start command's return
         transitions:

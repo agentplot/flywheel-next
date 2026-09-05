@@ -36,6 +36,40 @@ multiplexer_sessions:
   intents:   "flywheel-<org>-intents — elaboration sessions and the operator's own session"
   bolts:     "flywheel-<org>-bolts — stage sessions of units the operator approved"
   machinery: "flywheel-<org>-machinery — curation, planning, capture reading, and the fix of a take conflict (171)"
+layout:
+  doc: |
+    The multiplexer layout (196), a binding with this shipped default. Every
+    pane and agent is named by the object it works — the session id — so
+    `herdr agent list` is a status view of its own (B.4). Inside the
+    multiplexer session the role gives (174): one workspace per bolt and per
+    intent, labelled by the object id; one tab per unit and per elaboration;
+    one pane per session, so the sessions of one unit's stage running side by
+    side (56) are split panes of one tab. Curation, planning and capture
+    reading are one workspace each in the machinery session, one tab per run.
+    The operator's own session (69) is a workspace of its own in the intents
+    session. The machinery creates a workspace, tab or pane when absent and
+    removes it when its object leaves every view (186); a pane is removed by
+    end_session, a tab or workspace by the host's layout reconciliation.
+  workspace: "`herdr workspace create --session <multiplexer session> --label <bolt or intent id>` when `herdr workspace list --session <s>` lacks the label; `herdr workspace close --label <id>` when the object has left every view"
+  tab:       "`herdr tab create --workspace <label> --label <unit or elaboration id>` when absent; `herdr tab close --label <id>` when the object has left every view"
+  pane:      "the first session of a tab takes its pane; a further session of the same tab is `herdr pane split --tab <label>`; the pane's id is handed to `herdr agent start --pane <id>`"
+  override:  "`flywheel.yaml` hosts.<host>.layout may set `workspace_per: bolt|intent|repository` and `tab_per: unit|elaboration|item`; the defaults above hold otherwise"
+identity:
+  doc: |
+    A session speaks to the machinery only through the tools (193, 197).
+    start_session issues the session an identity — a token bound to the
+    session id and the pane — and writes it into the work order's header;
+    every `flywheel` command and every tool call from the pane carries it.
+    The tool server checks the token against the pane the call came from
+    (`herdr agent status` gives the pane's session name) and refuses a
+    mismatch with a refusal entry on the calling session's thread, so a
+    session can act only in its own job (43, 89). The machinery speaks to a
+    session only through its thread, delivered by `herdr agent send`
+    (deliver_answer, tell_moved); no session is sent anything else, and
+    `herdr agent send` is not exposed to any session. Messaging built into
+    an agent program and the multiplexer's own messaging are not used by
+    any session: the work order says so and the place's settings deny them
+    (173).
 evidence:
   session.pane:        {read: "`herdr agent status <session-id>`; present when the multiplexer lists the pane by that name"}
   session.activity:    {read: "`herdr agent status`: the agent-aware state (working | idle); none when absent"}
@@ -46,10 +80,13 @@ evidence:
   session.offers_pending: {read: "`offer` entries on the session's thread (kind, document path in the change directory, about, scope) that no unit, elaboration or signal record cites by entry id"}
   session.refusals_pending: {read: "`refusal` entries on the session's thread, written by the hooks through `flywheel refuse`, not yet carried to the report"}
   session.delivered:   {read: "the deliverables field of the newest exit entry"}
+  session.identity:    {read: "the token the session record carries, issued by start_session and written into the work order's header (197)"}
+  host.layout_current: {read: "`herdr workspace list` and `herdr tab list` in each of the host's multiplexer sessions name only objects still in a view (186); every live session's pane is in its object's tab"}
 commands:
   service: {do: "`flywheel service start|stop <name>` run inside a session's place: the machinery resolves the place's line to its bolt and writes an op-response through the state profile's `receive` — object = service/<bolt>/<name>, answer = start | stop, by = session/<session id>, id = the thread entry id — exactly the record the operator's dictation `start <bolt>/<name>` produces; the service machine's `{response: start}` and `{response: stop}` guards see one record whichever wrote it (47). A name the bolt's place does not declare is refused with the declared names, and the refusal is a thread entry. Anything a session starts without the command is its own process under the place's rule (44): tethered to the session's own place, never shown, gone with it"}
 effects:
-  start_session:   {do: "`herdr agent start --session <multiplexer session> --name <session-id> --cwd <place> -- <the kind's command from kinds:>`, the multiplexer session created first when absent (174); the work order path is the first message; a name already present is refused by herdr, which is the proof (173)"}
+  start_session:   {do: "the multiplexer session created first when absent (174), then the object's workspace and the unit's or elaboration's tab when absent and the pane split when the tab already has one (layout: above, 196); `herdr agent start --session <multiplexer session> --pane <pane id> --name <session-id> --cwd <place> -- <the kind's command from kinds:>`; the identity token is issued and written into the work order's header before the start (197); the work order path is the first message; a name already present is refused by herdr, which is the proof (173)"}
+  remove_stale_layout: {do: "`herdr tab close` and `herdr workspace close` for every label naming an object that has left every view (186, 196); recorded like any removal"}
   end_session:     {do: "`herdr agent stop <session-id>`"}
   deliver_answer:  {do: "`herdr agent send <session-id> <answer>` when the pane is present; else start_session with the answer prepended to the work order; the thread's answer entry is marked delivered"}
   tell_moved:      {do: "append(session thread) a `moved` entry listing the commits that moved under the place, then `herdr agent send` its text; the entry is marked delivered"}
