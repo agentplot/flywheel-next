@@ -1,10 +1,10 @@
 # Research, writing, a throwaway prototype whose answer is a note. The session
 # ends itself when its deliverable is written; the machinery finishes the
-# elaboration (24).
+# elaboration (25).
 machine: self-closing
 version: 1
 kind: template
-satisfies: [23, 24, 51]
+satisfies: [24, 25, 54]
 params:
   place: the elaboration's place
   agent: the agent for the session
@@ -26,7 +26,7 @@ regions:
             to: stalled
             note: idle with no exit written is a stall for a self-closing type
       stalled:
-        decision: {kind: stalled, group: decide, answers: [retry, drop], satisfies: [24]}
+        decision: {kind: stalled, group: decide, answers: [retry, drop], satisfies: [25]}
         transitions:
           - when: {response: retry}
             to: session

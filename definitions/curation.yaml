@@ -6,7 +6,7 @@
 machine: curation
 version: 1
 kind: object
-satisfies: [4, 19, 105, 107, 115]
+satisfies: [4, 20, 108, 110, 118]
 object: curation
 singleton: organization
 record:

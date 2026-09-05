@@ -1,14 +1,14 @@
 # One thread of design work about one subject (A.3). Proposed by curation or by
-# the operator's dictation; closed only by the operator (21). Its line is off
+# the operator's dictation; closed only by the operator (22). Its line is off
 # the books' shared line, a region of its own; archiving is the landing of that
-# line (46, 51).
+# line (49, 54).
 machine: intent
 version: 2
 kind: object
 object: intent
 parent: null
-owns: [elaboration, unit]   # units only as chores resolving the line's take conflicts (49)
-satisfies: [19, 20, 21, 22, 46, 51, 106, 114]
+owns: [elaboration, unit]   # units only as chores resolving the line's take conflicts (52)
+satisfies: [20, 21, 22, 23, 49, 54, 109, 117]
 record:
   subject: string
   signals: list          # cited signal ids; weight is derived from them by event date
@@ -20,14 +20,14 @@ regions:
     states:
       proposed:
         doc: a decision with its proposed elaborations folded in (10); dictation skips this state
-        decision: {kind: intent-proposed, group: approve, answers: ["yes", drop, split], shows: [signals, challenges], satisfies: [10, 106]}
+        decision: {kind: intent-proposed, group: approve, answers: ["yes", drop, split], shows: [signals, challenges], satisfies: [10, 109]}
         transitions:
           - when: {response: "yes"}
             to: open
             effects: [{do: open_intent}]
           - when: {response: drop}
             to: dropped
-            effects: [{do: drop_signals, args: {reason: intent dropped}, note: each signal keeps a move naming the drop (114)}]
+            effects: [{do: drop_signals, args: {reason: intent dropped}, note: each signal keeps a move naming the drop (117)}]
           - when: {response: split}
             to: dropped
             effects: [{do: split_intent, args: {partition: $response}, note: two proposed intents replace this one; signals re-moved to each}]
@@ -41,7 +41,7 @@ regions:
                 transitions:
                   - when: {ev: intent.material_pending, is: true}
                     to: settled
-                    effects: [{do: propose_elaboration, args: {material: pending, type: from-material}, note: new material joins the one proposal awaiting approval (20)}]
+                    effects: [{do: propose_elaboration, args: {material: pending, type: from-material}, note: new material joins the one proposal awaiting approval (21)}]
           close:
             initial: not-offered
             states:
@@ -52,7 +52,7 @@ regions:
                                  {not: {ev: intent.close_declined_since_last_final, is: true}}]}
                     to: offered
               offered:
-                decision: {kind: intent-close, group: decide, answers: [close, keep open], satisfies: [10, 21]}
+                decision: {kind: intent-close, group: decide, answers: [close, keep open], satisfies: [10, 22]}
                 transitions:
                   - when: {response: "keep open"}
                     to: declined
@@ -69,7 +69,7 @@ regions:
             to: archiving
             enter: {line: landing}
       archiving:
-        doc: the archive lands the intent's line on the books' shared line; proposed claims become standing (46, S34)
+        doc: the archive lands the intent's line on the books' shared line; proposed claims become standing (49, S34)
         transitions:
           - when: {all: [{ev: intent.archived, is: true}, {final: line.removed}]}
             to: closed
@@ -79,7 +79,7 @@ regions:
             to: archiving
             effects: [{do: archive_intent, note: "the archive commit on the intent's line, before its landing"}]
       archive-failed:
-        decision: {kind: land-failed, group: decide, answers: [retry, hold], satisfies: [39]}
+        decision: {kind: land-failed, group: decide, answers: [retry, hold], satisfies: [40]}
         transitions:
           - when: {response: retry}
             to: archiving

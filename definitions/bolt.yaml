@@ -1,19 +1,19 @@
-# One delivery of construction work to a built repository (29). Created by the
+# One delivery of construction work to a built repository (30). Created by the
 # operator's yes on a unit that names a new bolt, or by dictation. Lives as
-# long as its work; nothing ages it out (32). Its close is proposed when every
+# long as its work; nothing ages it out (33). Its close is proposed when every
 # unit is merged and no chore is outstanding; the landing is the machinery's
 # effect. Its line and the operator's own place are regions of their own, so
 # they outlive the open state and are landed, removed or held under the
-# bolt's command (43, 54). Its services — one object per declaration in the
+# bolt's command (44, 55). Its services — one object per declaration in the
 # repository's service data — are made when the operator's place is first
-# ready and go when it is removed (46).
+# ready and go when it is removed (47).
 machine: bolt
 version: 2
 kind: object
 object: bolt
 parent: null
 owns: [unit, service]
-satisfies: [4, 29, 32, 38, 39, 43, 45, 46, 47, 54, 60, 71, 100]
+satisfies: [4, 30, 33, 39, 40, 44, 46, 47, 48, 55, 63, 74, 103]
 record:
   repository: string
   name: string           # the operator's to change at any time; never the identity
@@ -34,8 +34,8 @@ regions:
                   - when: {ev: bolt.citations_moved, is: true}
                     to: moved
               moved:
-                doc: a started unit cites a claim whose standing version moved; amend the open work, or land it and follow (100)
-                decision: {kind: claim-moved, group: decide, answers: [amend bolt, land and follow], shows: [bolt.moved_claim], satisfies: [100]}
+                doc: a started unit cites a claim whose standing version moved; amend the open work, or land it and follow (103)
+                decision: {kind: claim-moved, group: decide, answers: [amend bolt, land and follow], shows: [bolt.moved_claim], satisfies: [103]}
                 transitions:
                   - when: {response: "amend bolt"}
                     to: current
@@ -55,7 +55,7 @@ regions:
                                  {not: {ev: bolt.hold_since_last_merge, is: true}}]}
                     to: offered
               offered:
-                decision: {kind: bolt-close, group: approve, answers: ["yes", hold], shows: [children.unit.count, line.landing], satisfies: [10, 38]}
+                decision: {kind: bolt-close, group: approve, answers: ["yes", hold], shows: [children.unit.count, line.landing], satisfies: [10, 39]}
                 transitions:
                   - when: {response: hold}
                     to: held
@@ -74,9 +74,9 @@ regions:
           - when: {response: drop}
             to: dropped
             enter: {line: removing, place: removing}
-            note: dictation; units still open are retired and their sessions ended (71); the operator's place goes unless held (52)
+            note: dictation; units still open are retired and their sessions ended (74); the operator's place goes unless held (55)
       landing:
-        doc: the final take, then the repository's policy; only a landing that passes the gates moves the shared line (50)
+        doc: the final take, then the repository's policy; only a landing that passes the gates moves the shared line (53)
         transitions:
           - when: {final: line.removed}
             to: landed
@@ -84,8 +84,8 @@ regions:
           - when: {final: line.land-failed}
             to: land-failed
       land-failed:
-        doc: reported, the bolt stays open with the failure on it; no session is asked anything until the response (39, S33)
-        decision: {kind: land-failed, group: decide, answers: [retry, hold], shows: [landing_failure], satisfies: [39, 79]}
+        doc: reported, the bolt stays open with the failure on it; no session is asked anything until the response (40, S33)
+        decision: {kind: land-failed, group: decide, answers: [retry, hold], shows: [landing_failure], satisfies: [40, 82]}
         transitions:
           - when: {response: retry}
             to: landing
@@ -105,14 +105,14 @@ regions:
         machine: line
         params: {parent: built-shared-line, landing_policy: from-manifest}
   place:
-    doc: the operator's own place at the head of the line, refreshed after each merge (43); no session works here; its served endpoints are shown beside the bolt (45); removed when the bolt lands or is dropped, unless held (52)
+    doc: the operator's own place at the head of the line, refreshed after each merge (44); no session works here; its served endpoints are shown beside the bolt (46); removed when the bolt lands or is dropped, unless held (55)
     initial: place
     states:
       place:
         machine: place
         params: {line: own-line, inputs: none, keep: true}
   services:
-    doc: one service object per declaration in the repository's service data, made when the operator's place is first ready and re-read at every head the place reaches (46); the objects go with the place (54)
+    doc: one service object per declaration in the repository's service data, made when the operator's place is first ready and re-read at every head the place reaches (47); the objects go with the place (55)
     initial: none
     states:
       none:
@@ -126,7 +126,7 @@ regions:
             to: gone
           - when: {all: [{region: {name: place.place.life, in: [ready]}}, {not: {ev: bolt.services_declared, is: true}}]}
             to: declared
-            effects: [{do: declare_services, note: "the declaration file at the place's head gained a service, by a chore merged into the bolt (47)"}]
+            effects: [{do: declare_services, note: "the declaration file at the place's head gained a service, by a chore merged into the bolt (48)"}]
       gone:
         doc: the place is gone and every service with it; each service record reaches gone on its own
         final: true

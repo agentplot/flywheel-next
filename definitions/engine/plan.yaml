@@ -1,4 +1,4 @@
-# The plan as an object: one per organization (145). Engine machine. Its
+# The plan as an object: one per organization (148). Engine machine. Its
 # decisions are derived every tick from every object's state (7) and are never
 # stored; this machine keeps only the decision register — a short number per
 # decision, unique in the organization, given once and never reused (15) —
@@ -8,7 +8,7 @@ version: 2
 kind: engine
 object: plan
 singleton: organization
-satisfies: [7, 8, 9, 11, 15, 80, 83, 145]
+satisfies: [7, 8, 9, 11, 15, 83, 86, 148]
 record:
   next_number: int              # the counter; it only grows
   register: list                # {decision id, number, since}; a decision id is <object>/<kind>/<entered_at>
@@ -32,8 +32,8 @@ regions:
     initial: current
     states:
       current:
-        doc: the status projection is rewritten whenever the state it projects moved; reading twice with nothing changed writes nothing (75)
+        doc: the status projection is rewritten whenever the state it projects moved; reading twice with nothing changed writes nothing (78)
         transitions:
           - when: {not: {ev: plan.status_current, is: true}}
             to: current
-            effects: [{do: render_status, note: "the status view from list and read, stating the as-of point (142)"}]
+            effects: [{do: render_status, note: "the status view from list and read, stating the as-of point (145)"}]

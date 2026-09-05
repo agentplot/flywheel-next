@@ -4,7 +4,7 @@
 machine: persona-test
 version: 1
 kind: template
-satisfies: [53, 54, 82]
+satisfies: [56, 57, 85]
 doc: unit type
 params:
   place: the item's place

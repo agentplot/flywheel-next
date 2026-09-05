@@ -1,10 +1,10 @@
-# One source event as recorded (108). Captured by an adapter unattended;
-# read into signals by a session's judgment (112), except a forwarded
+# One source event as recorded (111). Captured by an adapter unattended;
+# read into signals by a session's judgment (115), except a forwarded
 # single message, which is its own excerpt and needs no judgment (S21).
 machine: capture
 version: 1
 kind: object
-satisfies: [4, 103, 108, 109, 111, 112]
+satisfies: [4, 19, 106, 111, 112, 114, 115]
 object: capture
 parent: null
 owns: [signal]

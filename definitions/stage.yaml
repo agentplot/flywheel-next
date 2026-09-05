@@ -1,11 +1,11 @@
-# One stage of a unit type (53). Runs the stage's session set over the
+# One stage of a unit type (56). Runs the stage's session set over the
 # item's place, collects their exits as one set, and judges pass, not-done,
 # blocked or stalled by the join rule. The session set is a fixed list or a
 # rule read against the repository worked.
 machine: stage
 version: 1
 kind: template
-satisfies: [4, 40, 53, 67]
+satisfies: [4, 41, 56, 70]
 params:
   agents: a fixed list of agent names, or a rule such as every persona definition matching a pattern
   join: all | any | count:<n>

@@ -1,5 +1,5 @@
 # One declared service in a bolt's place: a dev server, a worker, anything
-# the repository says listens (46). The repository declares its services as
+# the repository says listens (47). The repository declares its services as
 # data (`.flywheel/services.yaml` in the host binding); the bolt's `services`
 # region makes one service object per declaration when the operator's place
 # is first ready (`declare_services`), and the object goes when the place is
@@ -8,24 +8,24 @@
 # command; running means the process is expected and its absence is a
 # failure — and the tethered process is evidence. Starting and stopping are
 # effects the machinery performs in the place, bound to the worktree so they
-# end with it (44, 54). The operator moves it by dictation (`start`, `stop`,
-# the two dictations that are neither undo nor defer, allowed by 46) and a
+# end with it (45, 55). The operator moves it by dictation (`start`, `stop`,
+# the two dictations that are neither undo nor defer, allowed by 47) and a
 # session moves it only through `flywheel service start|stop <name>`, which
 # writes the same op-response record, so the state is one record however it
-# was moved (47).
+# was moved (48).
 machine: service
 version: 1
 kind: object
 object: service
 parent: bolt
-satisfies: [4, 12, 44, 45, 46, 47, 54]
+satisfies: [4, 12, 45, 46, 47, 48, 55]
 record:
   name: string           # from the declaration; the id is <bolt>/<name>
   command: string        # how it starts in a place, from the declaration
   serves: string         # what it serves, from the declaration
-  endpoint: string       # the URL the place serves for it, shown beside the bolt (45)
+  endpoint: string       # the URL the place serves for it, shown beside the bolt (46)
   failure: string        # the exit status and the last lines of the log, on failed
-  moved_by: string       # the response that last started or stopped it: the operator's dictation id or a session's command entry id (47)
+  moved_by: string       # the response that last started or stopped it: the operator's dictation id or a session's command entry id (48)
 regions:
   life:
     initial: stopped
@@ -66,7 +66,7 @@ regions:
             to: starting
             effects: [{do: start_service}]
       running:
-        doc: the process is present and serves; its endpoint is recorded with the service and shown beside the bolt as a link (45)
+        doc: the process is present and serves; its endpoint is recorded with the service and shown beside the bolt as a link (46)
         transitions:
           - when: {any: [{ev: service.place_present, is: false}, {ev: service.declared, is: false}]}
             to: gone
@@ -84,7 +84,7 @@ regions:
             effects: [{do: record_service_endpoint, note: publishing beyond the private network is never the machinery's}]
       failed:
         doc: the process exited or never served; the operator or a session starts it again, or stops it to clear the failure
-        decision: {kind: service-failed, group: attention, answers: [start, stop], shows: [service.failure, service.endpoint], satisfies: [46]}
+        decision: {kind: service-failed, group: attention, answers: [start, stop], shows: [service.failure, service.endpoint], satisfies: [47]}
         transitions:
           - when: {any: [{ev: service.place_present, is: false}, {ev: service.declared, is: false}]}
             to: gone
@@ -95,5 +95,5 @@ regions:
             to: stopped
             effects: [{do: stop_service}]
       gone:
-        doc: the place was removed, and the tethered process with it (54), or the declaration left the file; the record stays as history
+        doc: the place was removed, and the tethered process with it (55), or the declaration left the file; the record stays as history
         final: true

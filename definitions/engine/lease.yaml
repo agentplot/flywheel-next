@@ -1,13 +1,13 @@
 # A host's bounded ownership of one object. Engine machine: one instance per
 # object the engine acts on. Taking is a compare-and-swap on the control plane
-# (125); the loser reads again. A host takes only what its manifest declaration
-# covers (146). Nothing in the domain names a lease.
+# (128); the loser reads again. A host takes only what its manifest declaration
+# covers (149). Nothing in the domain names a lease.
 machine: lease
 version: 2
 kind: engine
 object: lease
 parent: null
-satisfies: [125, 131, 144, 146, 147]
+satisfies: [128, 134, 147, 149, 150]
 record:
   holder: host-id
   taken_at: time
@@ -24,8 +24,8 @@ regions:
           - when: {ev: lease.coverable, is: false}
             to: uncovered
       uncovered:
-        doc: no host's declaration covers this object; a decision under attention, not a silent wait (146)
-        decision: {kind: uncovered, group: attention, answers: [ok], satisfies: [146]}
+        doc: no host's declaration covers this object; a decision under attention, not a silent wait (149)
+        decision: {kind: uncovered, group: attention, answers: [ok], satisfies: [149]}
         transitions:
           - when: {ev: lease.coverable, is: true}
             to: free
@@ -53,7 +53,7 @@ regions:
             note: the holder returned
           - when: {any: [{ev: lease.renewed_at, older: 24h}, {ev: host.last_seen, older: 24h}]}
             to: expired
-            note: the stated rule; also reached at once when the holder host's gone decision is answered takeover, which is the operator's response the rule names for session-backed work (147)
+            note: the stated rule; also reached at once when the holder host's gone decision is answered takeover, which is the operator's response the rule names for session-backed work (150)
       expired:
         doc: another host may replace the holder by compare-and-swap; the old holder, on return, reads that it lost and stops
         transitions:

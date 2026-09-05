@@ -1,11 +1,11 @@
-# A back-and-forth the operator is in (24). The machinery never asks about it
+# A back-and-forth the operator is in (25). The machinery never asks about it
 # and ends it only by the operator's dictation. Present means a keystroke in
 # the pane within the window the profile states; the machinery infers nothing
-# more from it. Also the type of the operator's own session (66).
+# more from it. Also the type of the operator's own session (69).
 machine: with-operator
 version: 2
 kind: template
-satisfies: [4, 24, 25, 66]
+satisfies: [4, 25, 26, 69]
 params:
   place: the elaboration's place
   agent: the agent for the session

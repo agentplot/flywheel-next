@@ -1,9 +1,9 @@
-# One raw piece of input (110). Immutable once written; exactly one
-# standing move, replaced only by the operator's response (104).
+# One raw piece of input (113). Immutable once written; exactly one
+# standing move, replaced only by the operator's response (107).
 machine: signal
 version: 1
 kind: object
-satisfies: [103, 104, 110, 111, 113, 115]
+satisfies: [106, 107, 113, 114, 116, 118]
 object: signal
 parent: capture
 record:
@@ -20,7 +20,7 @@ regions:
     initial: unmoved
     states:
       unmoved:
-        doc: counted and aged by source on the status view; never discarded (115)
+        doc: counted and aged by source on the status view; never discarded (118)
         transitions:
           - {when: {ev: signal.move, is: attach}, to: attached}
           - {when: {ev: signal.move, is: challenge}, to: challenging}

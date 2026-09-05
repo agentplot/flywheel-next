@@ -3,13 +3,13 @@
 # operator's own session. Event-driven life is read as evidence each tick; the
 # machinery never pushes anything into a working session (I5). Its exits are
 # the fixed set — done, blocked, stalled — reported through the command the
-# machinery provides, which writes to the control plane (64); offers of a
+# machinery provides, which writes to the control plane (67); offers of a
 # finding, a chore or a signal go the same way. Nothing on the place's disk is
-# state. This is the one binding a stand-in replaces (90).
+# state. This is the one binding a stand-in replaces (93).
 machine: session
 version: 2
 kind: template
-satisfies: [4, 23, 62, 63, 64, 67, 68, 69, 70, 77, 90]
+satisfies: [4, 24, 65, 66, 67, 70, 71, 72, 73, 80, 93]
 params:
   agent: the agent definition to start
   place: the place prepared for it
@@ -34,7 +34,7 @@ regions:
             to: starting
             effects: [{do: start_session, args: {agent: $agent, place: $place, work_order: $work_order}}]
       starting:
-        doc: slow is slow, not failed (69); the proof is the pane, never the start command's return
+        doc: slow is slow, not failed (72); the proof is the pane, never the start command's return
         transitions:
           - when: {ev: session.pane, is: present}
             to: alive
@@ -51,7 +51,7 @@ regions:
                 transitions:
                   - when: {ev: session.offers_pending, is: true}
                     to: working
-                    effects: [{do: record_offers, note: "findings, chores and signals are recorded the moment they are offered, as records pointing at their documents; the session is not interrupted (55, 59)"}]
+                    effects: [{do: record_offers, note: "findings, chores and signals are recorded the moment they are offered, as records pointing at their documents; the session is not interrupted (58, 62)"}]
                   - when: {ev: session.refusals_pending, is: true}
                     to: working
                     effects: [{do: record_refusals}, {do: report, args: {text: a session attempted a line operation and was refused}}]
@@ -61,7 +61,7 @@ regions:
                     effects: [{do: record_exit}]
                   - when: {ev: session.exit, in: [done, stalled, invalid]}
                     to: exited
-                    effects: [{do: record_exit, note: "expected and delivered recorded together (77); an invalid report is recorded as stalled with the raw text"}]
+                    effects: [{do: record_exit, note: "expected and delivered recorded together (80); an invalid report is recorded as stalled with the raw text"}]
                   - when: {ev: session.activity, is: idle}
                     to: idle
               idle:
@@ -80,8 +80,8 @@ regions:
                     to: exited
                     effects: [{do: record_exit}]
               blocked:
-                doc: the session stopped only itself; its question is a decision answerable on the page or in chat, never in the pane (65, 67)
-                decision: {kind: question, group: answer, answers: ["<text>"], page_only: false, satisfies: [10, 65, 67, 79]}
+                doc: the session stopped only itself; its question is a decision answerable on the page or in chat, never in the pane (68, 70)
+                decision: {kind: question, group: answer, answers: ["<text>"], page_only: false, satisfies: [10, 68, 70, 82]}
                 transitions:
                   - when: {response: "<text>"}
                     to: working
@@ -105,12 +105,12 @@ regions:
           - when: {all: [{region: {name: presence, in: [gone]}}, {not: {ev: session.exit, in: [done, blocked, stalled, invalid]}}]}
             to: lost
       exited:
-        doc: exit recorded; the owner reads session.exit and decides what it means (63)
+        doc: exit recorded; the owner reads session.exit and decides what it means (66)
         final: true
       lost:
         doc: process gone without an exit — including a pane the operator killed by hand, which is never read as a response (4); standing owners restart it, stages start a fresh attempt
         final: true
       ended:
-        doc: reached only by the owner's explicit end (a type's rule, the operator's response, or retirement of the work, I6, 70)
+        doc: reached only by the owner's explicit end (a type's rule, the operator's response, or retirement of the work, I6, 74)
         entry: [{do: end_session}]
         final: true

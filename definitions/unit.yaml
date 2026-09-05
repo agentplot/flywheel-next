@@ -1,16 +1,16 @@
-# One approved piece of construction work (35, 36). Proposed as one document
+# One approved piece of construction work (36, 37). Proposed as one document
 # the operator reads whole on the review surface; approval turns it into work
 # items under the type version in force. A chore is a unit of the chore type
-# (57). A proposed unit whose cited claim moved is replaced by planning
+# (60). A proposed unit whose cited claim moved is replaced by planning
 # silently; an approved unstarted one is a decision; a started one follows the
-# bolt's claim-moved decision (34).
+# bolt's claim-moved decision (35).
 machine: unit
 version: 2
 kind: object
 object: unit
-parent: [bolt, intent]   # an intent owns only the chore units that resolve its line's take conflicts (49)
+parent: [bolt, intent]   # an intent owns only the chore units that resolve its line's take conflicts (52)
 owns: [work-item]
-satisfies: [4, 5, 13, 16, 17, 30, 34, 35, 36, 54, 57, 71]
+satisfies: [4, 5, 13, 16, 17, 31, 35, 36, 37, 57, 60, 74]
 record:
   type: string
   type_version: int
@@ -31,11 +31,11 @@ regions:
         doc: the decision names the target bolt and what a yes starts, derived from the type's stages and the item count (13, 16); the document is reviewed on its own surface and an annotation on it is the response (17)
         decision: {kind: unit-proposed, group: approve, batch: batch, document: document,
                    answers: ["yes", drop, "redo: <notes>", "bolt <name>", "new bolt <name>", "rename <name>", "type <name>", "pick <letters>", later],
-                   shows: [unit.type, target, depends_on, claims], satisfies: [10, 11, 16, 17, 28]}
+                   shows: [unit.type, target, depends_on, claims], satisfies: [10, 11, 16, 17, 29]}
         transitions:
           - when: {ev: unit.claim_moved, is: true}
             to: superseded
-            note: a proposal is not work; planning's fingerprint moved with the claim, so its next proposal replaces this one silently (34)
+            note: a proposal is not work; planning's fingerprint moved with the claim, so its next proposal replaces this one silently (35)
           - when: {response: "bolt <name>"}
             to: proposed
             effects: [{do: route_unit, args: {bolt: $response}}]
@@ -52,7 +52,7 @@ regions:
             to: approved
             effects:
               - {do: create_bolt, args: {name: target.new_name, repository: parent.repository}, note: only when the target is a new bolt; a chore never creates one (I8)}
-              - {do: create_items, note: the type version in force is recorded with the unit (54)}
+              - {do: create_items, note: the type version in force is recorded with the unit (57)}
           - when: {response: "redo: <notes>"}
             to: withdrawn
             effects: [{do: request_replan, args: {notes: $response}}]
@@ -68,7 +68,7 @@ regions:
           - when: {response: drop}
             to: dropped
       superseded:
-        doc: replaced by planning's next proposal; no tail entry, since nothing the operator approved changed (34)
+        doc: replaced by planning's next proposal; no tail entry, since nothing the operator approved changed (35)
         final: true
       approved:
         doc: approval given once is never re-asked (6); the record names the response or dictation that approved it (I1)
@@ -85,7 +85,7 @@ regions:
           - when: {always: true}
             to: waiting
       waiting:
-        doc: a dependency of the same bolt is not merged yet (30)
+        doc: a dependency of the same bolt is not merged yet (31)
         transitions:
           - when: {response: drop}
             to: dropped
@@ -96,8 +96,8 @@ regions:
           - when: {ev: unit.deps_merged, is: true}
             to: in-flight
       claim-moved:
-        doc: approved, not started, and a cited claim's version moved; redo sends it back to planning, keep pins the cited version (34)
-        decision: {kind: unit-claim-moved, group: decide, answers: [redo, keep], shows: [claims], satisfies: [34, 100]}
+        doc: approved, not started, and a cited claim's version moved; redo sends it back to planning, keep pins the cited version (35)
+        decision: {kind: unit-claim-moved, group: decide, answers: [redo, keep], shows: [claims], satisfies: [35, 103]}
         transitions:
           - when: {response: redo}
             to: withdrawn
@@ -106,7 +106,7 @@ regions:
             to: approved
             effects: [{do: record_citation_choice, args: {choice: keep, claim: moved}}]
       in-flight:
-        doc: items run the type's stage machine, side by side where their own dependencies allow; a moved claim here is the bolt's decision (100)
+        doc: items run the type's stage machine, side by side where their own dependencies allow; a moved claim here is the bolt's decision (103)
         transitions:
           - when: {response: drop}
             to: dropped
@@ -126,7 +126,7 @@ regions:
         doc: back to planning with the notes; the next proposal is a new unit
         final: true
       retired:
-        doc: the bolt was dropped; the unit's items end their sessions and release their places (71)
+        doc: the bolt was dropped; the unit's items end their sessions and release their places (74)
         tail: dropped
         final: true
       dropped:

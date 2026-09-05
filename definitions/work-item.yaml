@@ -1,11 +1,11 @@
 # One task of a unit, worked through the type's stages by sessions and merged
-# into the bolt when complete (40, 37). The stage list comes from the
+# into the bolt when complete (41, 38). The stage list comes from the
 # unit's type at the version the unit recorded; a type change never moves an
-# item in flight (54).
+# item in flight (57).
 machine: work-item
 version: 1
 kind: object
-satisfies: [4, 31, 37, 40, 42, 54, 71]
+satisfies: [4, 32, 38, 41, 43, 57, 74]
 object: work-item
 parent: unit
 record:
@@ -43,7 +43,7 @@ regions:
           - when: {parent: {in: [retired, dropped]}}
             to: dropped
             enter: {session: ended, place: removing}
-            note: the unit was dropped or the bolt retired; the session is retired with the work and its place released (71)
+            note: the unit was dropped or the bolt retired; the session is retired with the work and its place released (74)
           - when: {response: retire}
             to: ready
             enter: {session: ended, place: removing}
@@ -54,8 +54,8 @@ regions:
           - when: {final: stopped}
             to: stopped
       stopped:
-        doc: the retry bound was reached; the item waits on the operator (40)
-        decision: {kind: stalled, group: decide, answers: [retry, drop], shows: [item.send_backs, stage], satisfies: [40]}
+        doc: the retry bound was reached; the item waits on the operator (41)
+        decision: {kind: stalled, group: decide, answers: [retry, drop], shows: [item.send_backs, stage], satisfies: [41]}
         transitions:
           - when: {response: retry}
             to: in-type

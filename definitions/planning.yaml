@@ -1,13 +1,13 @@
 # Planning: one machine per built repository (section 10). Due when the
 # repository's backlog fingerprint differs from the one last planned against:
 # a claim in scope became standing, a verdict was recorded or fell stale, an
-# ask named the repository, or a unit came back with notes (27). It sees
+# ask named the repository, or a unit came back with notes (28). It sees
 # every open bolt of the repository because the fingerprint and the work order
 # both include them.
 machine: planning
 version: 1
 kind: object
-satisfies: [4, 27, 28, 61, 95, 99, 101]
+satisfies: [4, 28, 29, 64, 98, 102, 104]
 object: planning
 singleton: repository
 record:

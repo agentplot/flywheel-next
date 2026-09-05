@@ -2,7 +2,7 @@
 machine: fast
 version: 1
 kind: template
-satisfies: [36, 40]
+satisfies: [37, 41]
 doc: unit type
 params:
   place: the item's place

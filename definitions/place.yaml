@@ -1,13 +1,13 @@
-# A worktree the machinery prepares for one session off one line (46).
+# A worktree the machinery prepares for one session off one line (49).
 # Template run inside a work item, an elaboration, a bolt (the operator's own
 # place), an operator session, curation and planning. Rebased only while its
 # session is idle and no operator is typing in it (I16). Removed by the
 # machinery when the work it served is merged, dropped or retired, unless the
-# operator holds it; every removal is a recorded effect (52).
+# operator holds it; every removal is a recorded effect (55).
 machine: place
 version: 2
 kind: template
-satisfies: [4, 41, 44, 45, 48, 49, 52]
+satisfies: [4, 42, 45, 46, 51, 52, 55]
 params:
   line: the line it is off
   inputs: the closed set of session inputs to write into it
@@ -15,8 +15,8 @@ params:
 record:
   head: revision
   conflict_retries: int
-  endpoints: list          # what the processes tethered to the place serve; shown on the page beside the bolt (45)
-  held_at: time            # set by the operator's dictation; the place is not removed while held (52)
+  endpoints: list          # what the processes tethered to the place serve; shown on the page beside the bolt (46)
+  held_at: time            # set by the operator's dictation; the place is not removed while held (55)
 regions:
   life:
     initial: absent
@@ -35,7 +35,7 @@ regions:
             to: preparing
             effects: [{do: prepare_place, args: {line: $line, agent_inputs: $inputs}}]
       ready:
-        doc: current with its line and holding no working session; the endpoints its processes serve are recorded with it (45)
+        doc: current with its line and holding no working session; the endpoints its processes serve are recorded with it (46)
         transitions:
           - when: {not: {ev: place.contains_line, is: true}}
             to: behind
@@ -68,12 +68,12 @@ regions:
           - when: {ev: place.conflict_retries, gte: 3}
             to: conflict-stalled
       conflict-stalled:
-        decision: {kind: stalled, group: decide, answers: [retry, hold], shows: [place.conflict_retries], satisfies: [49]}
+        decision: {kind: stalled, group: decide, answers: [retry, hold], shows: [place.conflict_retries], satisfies: [52]}
         transitions:
           - when: {response: retry}
             to: behind
       merging:
-        doc: entered by the owner when its work is done; one place merges at a time in the fixed order (37)
+        doc: entered by the owner when its work is done; one place merges at a time in the fixed order (38)
         transitions:
           - when: {ev: place.merged, is: true}
             to: merged
@@ -88,7 +88,7 @@ regions:
           - when: {always: true}
             to: removing
       removing:
-        doc: entered from merged, or by the owner when the work the place served was dropped or retired, or when the bolt landed; the removal is an effect recorded like any other (52)
+        doc: entered from merged, or by the owner when the work the place served was dropped or retired, or when the bolt landed; the removal is an effect recorded like any other (55)
         transitions:
           - when: {ev: place.held, is: true}
             to: held
@@ -98,7 +98,7 @@ regions:
             to: removing
             effects: [{do: remove_place, note: tethered processes end with the place}]
       held:
-        doc: the operator holds the place by dictation; nothing removes it while held; released by dictation (52)
+        doc: the operator holds the place by dictation; nothing removes it while held; released by dictation (55)
         transitions:
           - when: {not: {ev: place.held, is: true}}
             to: removing

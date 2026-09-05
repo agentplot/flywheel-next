@@ -197,7 +197,7 @@
         },
         "note": {
           "type": "string",
-          "description": "the reason recorded with the write (76)"
+          "description": "the reason recorded with the write (79)"
         }
       }
     },
@@ -490,7 +490,7 @@
         },
         "document": {
           "type": "string",
-          "description": "record field naming a document presented for review on the surface the profile binds (plannotator); the operator's annotations return as the response (17, 126)"
+          "description": "record field naming a document presented for review on the surface the profile binds (plannotator); the operator's annotations return as the response (17, 129)"
         },
         "satisfies": {
           "type": "array",

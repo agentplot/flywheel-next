@@ -1,12 +1,12 @@
-# One operator response, recorded as op-response (150). Engine machine: a
+# One operator response, recorded as op-response (153). Engine machine: a
 # response answers a numbered decision, or is a dictation naming an object;
-# the engine knows no more than that (12). Applied exactly once (1, 134).
+# the engine knows no more than that (12). Applied exactly once (1, 137).
 machine: response
 version: 2
 kind: engine
 object: response
 parent: null
-satisfies: [1, 3, 4, 6, 12, 134, 150, 151]
+satisfies: [1, 3, 4, 6, 12, 137, 153, 154]
 record:
   kind: enum             # answer | dictation; a dictation may name only a transition that undoes or defers work — drop, hold, release, send back, retire, takeover, finish, close, end — never one that asserts work was done (4); one that does is unapplicable
   decision: number       # for an answer: the decision's number; resolved through the plan's register
@@ -21,7 +21,7 @@ regions:
     initial: given
     states:
       given:
-        doc: recorded before any work follows (150); the object's own transition applies it and lists the id in applied_responses; a session ended by hand is read as a session gone, never as a response (4)
+        doc: recorded before any work follows (153); the object's own transition applies it and lists the id in applied_responses; a session ended by hand is read as a session gone, never as a response (4)
         transitions:
           - when: {ev: response.applied, is: true}
             to: applied
@@ -30,8 +30,8 @@ regions:
       applied:
         final: true
       unapplicable:
-        doc: the decision was gone before the response arrived; reported once under attention, never dropped (6, 126)
-        decision: {kind: response-unapplicable, group: attention, answers: [ok], shows: [response.answer], satisfies: [6, 126]}
+        doc: the decision was gone before the response arrived; reported once under attention, never dropped (6, 129)
+        decision: {kind: response-unapplicable, group: attention, answers: [ok], shows: [response.answer], satisfies: [6, 129]}
         transitions:
           - when: {any: [{ev: response.reported, is: true}, {response: ok}]}
             to: reported

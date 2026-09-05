@@ -1,11 +1,11 @@
 # An exploration, a running prototype, an interactive page. The session stays
 # alive after it goes idle; idle is offered as finish or keep; only the
-# operator's response ends it (23-23, I6). A process that vanished is brought
+# operator's response ends it (25, 26, I6). A process that vanished is brought
 # back: a restart never forgets a standing session.
 machine: standing
 version: 1
 kind: template
-satisfies: [4, 24, 25, 51]
+satisfies: [4, 25, 26, 54]
 params:
   place: the elaboration's place
   agent: the agent for the session
@@ -35,7 +35,7 @@ regions:
             note: dictation finishes a standing session without waiting for the idle decision (4)
       idle-offered:
         doc: the decision; the prototype keeps running the whole time (S2)
-        decision: {kind: idle, group: decide, answers: [finish, keep], shows: [session.idle_since], satisfies: [10, 24, 25]}
+        decision: {kind: idle, group: decide, answers: [finish, keep], shows: [session.idle_since], satisfies: [10, 25, 26]}
         transitions:
           - when: {response: finish}
             to: finished
