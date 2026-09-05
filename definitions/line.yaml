@@ -6,11 +6,15 @@
 # ordered the take (52). The landing is the repository's policy (175): direct
 # is one merge commit; pull-request opens the request and waits in
 # request-open while its reviews and checks are evidence on the bolt (176).
-# History on a line is never rewritten: every take is a merge (179).
+# History on a line is never rewritten: every take is a merge (179). A bolt's
+# line, before its landing, gets one commit the machinery writes: the
+# acceptance file beside the as-built, naming the claims the bolt's units
+# named with their scenarios, for any delivery system to read from git (192);
+# an intent's line has none.
 machine: line
-version: 3
+version: 4
 kind: template
-satisfies: [42, 49, 50, 52, 53, 54, 183, 185, 175, 176, 177, 179, 180]
+satisfies: [42, 49, 50, 52, 53, 54, 183, 185, 175, 176, 177, 179, 180, 192]
 params:
   parent: the shared line this line is off
   landing_policy: pull-request or direct, from the manifest
@@ -71,6 +75,9 @@ regions:
           - when: {not: {ev: line.contains_parent, is: true}}
             to: landing
             effects: [{do: take_parent, note: the take before landing (50)}]
+          - when: {not: {ev: line.acceptance_written, is: true}}
+            to: landing
+            effects: [{do: write_acceptance, note: "one commit on the line after the final take and before the policy's landing, so the file lands with the work; nothing on an intent's line (192)"}]
           - when: {ev: line.policy, is: pull-request}
             to: request-open
             effects: [{do: open_request, note: "the request is opened from the line; the repository's own merge setting lands it (175, 179)"}]

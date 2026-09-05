@@ -289,7 +289,7 @@ impl Store {
             "line.policy" => json!("direct"),
             "line.request" => json!("none"),
             "line.request_opened" | "line.request_review_pending" => json!(false),
-            "line.request_review_recorded" => json!(true),
+            "line.request_review_recorded" | "line.acceptance_written" => json!(true),
             "line.request_links" => json!([]),
             // ---- session
             "session.pane" => json!(sess.map(|s| if s.pane { "present" } else { "absent" }).unwrap_or("absent")),
