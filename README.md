@@ -27,11 +27,14 @@ later at `http://<repo>.<bolt>.localhost:<port>`; `fails: true` on a
 declaration scripts a process that exits instead, so the service reaches
 `failed` with an attention decision.
 
-The capture box at the top of the page (requirement 19): plain text posts
-`/api/capture` and becomes a `capture` with one `signal` of kind ask;
-`intent: …` proposes an intent, `chore <repo>: …` a chore unit on that
-repository's shared line, `bolt <name>: …` a unit on that bolt. Each
-submission is recorded once as a response naming the object it made.
+The capture box at the top of the page (requirements 19, 193, 194): typed
+text posts `/api/capture` as `{text, intent}` and becomes a `capture` with
+one `signal` of kind ask, so curation sees it. A separate control marks
+the capture as an intent (`intent: true` on the capture record); nothing
+in the text is parsed — no `intent:`, `chore <repo>:` or `bolt <name>:`
+prefixes. The box shows what will be sent (`capture` or `capture ·
+intent`), and each submission is recorded once as a response naming the
+capture it made.
 
 Crates: `flywheel-engine` (definitions, guards, tick, decisions, rec
 format; no domain name in it), `flywheel-scenario` (the stand-in store and

@@ -106,15 +106,15 @@ async fn api_dictate(State(app): State<App>, Json(input): Json<DictateIn>) -> im
 }
 
 #[derive(Deserialize)]
-struct CaptureIn { text: String, #[serde(default)] by: Option<String> }
+struct CaptureIn { text: String, #[serde(default)] intent: bool, #[serde(default)] by: Option<String> }
 
 async fn api_capture(State(app): State<App>, Json(input): Json<CaptureIn>) -> impl IntoResponse {
     let mut rt = app.rt.lock().await;
-    let made = rt.capture(&input.text, input.by.as_deref().unwrap_or("page"));
+    let made = rt.capture(&input.text, input.intent, input.by.as_deref().unwrap_or("page"));
     let fired = rt.settle(50);
     let _ = flywheel_scenario::save(&rt.store, &app.state_path);
     let mut v = plan_json(&mut rt);
-    v["applied"] = json!({"id": made["response"], "made": made["id"], "kind": made["kind"], "fired": fired});
+    v["applied"] = json!({"id": made["response"], "made": made["id"], "kind": made["kind"], "intent": made["intent"], "fired": fired});
     Json(v)
 }
 

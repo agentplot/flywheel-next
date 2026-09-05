@@ -59,10 +59,11 @@
   <span class="meta" id="meta"></span>
   <button id="tickbtn" title="let scripted sessions work: one tick = one minute">tick ×5</button>
 </header>
-<form class="capture" id="capture" title="plain text is a capture with one ask signal · a prefix is a dictation">
-  <input type="text" id="captext" placeholder="capture: type a thought · intent: … · chore atlas: … · bolt plan-rows: …" autocomplete="off">
+<form class="capture" id="capture" title="typed text is a capture with one ask signal · the toggle marks it as an intent · nothing in the text is parsed">
+  <input type="text" id="captext" placeholder="capture: type a thought" autocomplete="off">
+  <label class="hint" for="capintent"><input type="checkbox" id="capintent"> mark as intent</label>
   <button type="submit">capture</button>
-  <span class="hint">plain text → signal (ask) · <code>intent:</code> opens an intent · <code>chore &lt;repo&gt;:</code> proposes a chore · <code>bolt &lt;name&gt;:</code> proposes a unit</span>
+  <span class="hint" id="capwill">will send: capture</span>
 </form>
 <main>
   <div id="left"></div>
@@ -78,8 +79,10 @@ async function api(path, body) { const r = await fetch(path, {method: body ? 'PO
 async function refresh() { data = await api('/api/plan'); render(); }
 async function respond(number, answer) { data = await api('/api/respond', {number, answer}); toast(`${number} → ${answer} · recorded · ${data.applied.fired} transitions`); render(); }
 async function dictate(object, answer) { data = await api('/api/dictate', {object, answer}); toast(`${object} → ${answer} · ${data.applied.fired} transitions`); render(); }
-async function capture(text) { data = await api('/api/capture', {text}); toast(`${data.applied.kind} ${short(data.applied.made)} · recorded · ${data.applied.fired} transitions`); render(); }
-$('#capture').onsubmit = async (ev) => { ev.preventDefault(); const t = $('#captext').value.trim(); if (!t) return; $('#captext').value = ''; await capture(t); };
+async function capture(text, intent) { data = await api('/api/capture', {text, intent}); toast(`${data.applied.kind} ${short(data.applied.made)} · recorded · ${data.applied.fired} transitions`); render(); }
+function willSend() { $('#capwill').textContent = 'will send: capture' + ($('#capintent').checked ? ' · intent' : ''); }
+$('#capintent').onchange = willSend;
+$('#capture').onsubmit = async (ev) => { ev.preventDefault(); const t = $('#captext').value.trim(); if (!t) return; const intent = $('#capintent').checked; $('#captext').value = ''; $('#capintent').checked = false; willSend(); await capture(t, intent); };
 $('#tickbtn').onclick = async () => { data = await api('/api/tick', {n: 5}); toast(`5 ticks · ${data.applied.fired} transitions`); render(); };
 
 function short(id) { return id.replace(/^(unit|bolt|intent|elaboration|work-item|response|host|service|capture|signal)\//, ''); }
@@ -204,7 +207,7 @@ function render() {
   cap.innerHTML = `<h2>Captured <span class="n">${(data.captured||[]).length}</span> <span class="hint">from the box above · read into signals · curation sees them</span></h2>`;
   if (!(data.captured||[]).length) { const e = document.createElement('div'); e.className = 'empty'; e.textContent = 'nothing captured yet'; cap.append(e); }
   const ulc = document.createElement('ul');
-  for (const c of (data.captured||[]).slice(0, 12)) { const li = document.createElement('li'); li.innerHTML = `<span class="k">${short(c.id)}</span>${c.raw||''}<span class="st">${c.state}${c.signals.length ? ' · ' + c.signals.map(s => s.kind + ' ' + s.state).join(', ') : ''}${c.at ? ' · ' + fmtAgo(c.at, data.now) + ' ago' : ''}</span>`; ulc.append(li); }
+  for (const c of (data.captured||[]).slice(0, 12)) { const li = document.createElement('li'); li.innerHTML = `<span class="k">${short(c.id)}</span>${c.raw||''}<span class="st">${c.intent ? 'intent · ' : ''}${c.state}${c.signals.length ? ' · ' + c.signals.map(s => s.kind + ' ' + s.state).join(', ') : ''}${c.at ? ' · ' + fmtAgo(c.at, data.now) + ' ago' : ''}</span>`; ulc.append(li); }
   cap.append(ulc); R.append(cap);
   const log = document.createElement('section'); log.className = 'log';
   log.innerHTML = `<h2>Responses sent <span class="n">${data.responses.length}</span></h2>`;

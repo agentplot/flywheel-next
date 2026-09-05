@@ -169,53 +169,51 @@ fn services_start_stop_and_fail_by_dictation() {
 }
 
 #[test]
-fn the_capture_box_makes_captures_intents_chores_and_units() {
+fn the_capture_box_makes_captures_and_marks_intents_with_a_control() {
     let mut rt = seeded();
     rt.settle(50);
     let before = rt.decisions().len();
 
-    // plain text: a capture read into one signal of kind ask, no session
-    let r = rt.capture("retries hammer the provider on 429", "test");
+    // typed text: a capture read into one signal of kind ask, no session, no decision
+    let r = rt.capture("retries hammer the provider on 429", false, "test");
     run_until_quiet(&mut rt, 20, 3);
     let cap = r["id"].as_str().unwrap().to_string();
+    assert_eq!(r["kind"], "capture");
     assert_eq!(state(&rt, &cap).as_deref(), Some("read"));
     let sig = rt.store.objects.values().find(|o| o.parent.as_deref() == Some(&cap)).expect("one signal under the capture");
     assert_eq!(sig.machine, "signal");
     assert_eq!(sig.record.get("kind").and_then(|v| v.as_str()), Some("ask"));
     assert_eq!(sig.top_state(), Some("unmoved"));
+    assert_eq!(rt.store.objects[&cap].record["intent"], false);
     assert!(!rt.store.world.sessions.keys().any(|k| k.starts_with(&cap)), "a page capture needs no reader session");
     assert_eq!(rt.decisions().len(), before, "a capture is not a decision");
 
-    // intent: a proposed intent, one decision to approve
-    let r = rt.capture("intent: host liveness on the mac mini", "test");
+    // the control marks a capture as an intent: still a capture with one ask signal, flagged for curation
+    let r = rt.capture("host liveness on the mac mini", true, "test");
     run_until_quiet(&mut rt, 20, 3);
-    assert_eq!(r["id"], "intent/host-liveness-on-the-mac-mini");
-    assert_eq!(state(&rt, "intent/host-liveness-on-the-mac-mini").as_deref(), Some("proposed"));
-    assert!(rt.decisions().iter().any(|d| d.object == "intent/host-liveness-on-the-mac-mini" && d.kind == "intent-proposed"));
+    let marked = r["id"].as_str().unwrap().to_string();
+    assert_eq!(r["kind"], "capture · intent");
+    let o = &rt.store.objects[&marked];
+    assert_eq!((o.machine.as_str(), o.top_state()), ("capture", Some("read")));
+    assert_eq!(o.record["intent"], true);
+    assert_eq!(rt.store.objects.values().filter(|s| s.parent.as_deref() == Some(&marked) && s.machine == "signal").count(), 1);
+    assert!(rt.captured().iter().any(|c| c["id"] == marked && c["intent"] == true));
 
-    // chore <repo>: a proposed chore unit on the shared line, no bolt
-    let r = rt.capture("chore atlas: stale AGENTS.md", "test");
-    run_until_quiet(&mut rt, 20, 3);
-    let chore = r["id"].as_str().unwrap().to_string();
-    let o = &rt.store.objects[&chore];
-    assert_eq!((o.machine.as_str(), o.top_state()), ("unit", Some("proposed")));
-    assert_eq!(o.record.get("type").and_then(|v| v.as_str()), Some("chore"));
-    assert_eq!(o.record.get("repository").and_then(|v| v.as_str()), Some("atlas"));
-    assert!(o.parent.is_none() && o.record["target"].get("bolt").is_none(), "a shared-line chore has no bolt");
+    // nothing in the text is parsed: prefixes are just words in a capture
+    let before_objects = rt.store.objects.len();
+    for text in ["intent: host liveness on the mac mini", "chore atlas: stale AGENTS.md", "bolt plan-rows: tail grouping by day"] {
+        let r = rt.capture(text, false, "test");
+        run_until_quiet(&mut rt, 20, 3);
+        let id = r["id"].as_str().unwrap().to_string();
+        assert_eq!((rt.store.objects[&id].machine.as_str(), rt.store.objects[&id].record["raw"].as_str()), ("capture", Some(text)));
+    }
+    assert!(!rt.store.objects.values().any(|o| o.id == "intent/host-liveness-on-the-mac-mini" || o.id.starts_with("unit/atlas/chore-")), "no prefix opens an intent or a unit");
+    assert_eq!(rt.store.objects.len() - before_objects, 3 * 3, "each submission: one capture, one signal, one response");
 
-    // bolt <name>: a proposed unit targeting that bolt
-    let r = rt.capture("bolt plan-rows: tail grouping by day", "test");
-    run_until_quiet(&mut rt, 20, 3);
-    let unit = r["id"].as_str().unwrap().to_string();
-    let o = &rt.store.objects[&unit];
-    assert_eq!((o.machine.as_str(), o.top_state()), ("unit", Some("proposed")));
-    assert_eq!(o.parent.as_deref(), Some("bolt/atlas/plan-rows"));
-    assert_eq!(o.record["target"]["bolt"], "bolt/atlas/plan-rows");
-
-    // each submission is one response, already applied; none stands as unapplicable
-    assert_eq!(rt.store.responses.len(), 4);
+    // each submission is one response, already applied; none stands as unapplicable; none is a decision
+    assert_eq!(rt.store.responses.len(), 5);
     assert!(rt.store.objects.values().filter(|o| o.machine == "response" && o.id.starts_with("response/page-")).all(|o| o.top_state() == Some("applied")));
-    assert_eq!(rt.decisions().len(), before + 3);
+    assert_eq!(rt.decisions().len(), before);
 }
 
 
