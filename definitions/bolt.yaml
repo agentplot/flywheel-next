@@ -4,14 +4,16 @@
 # unit is merged and no chore is outstanding; the landing is the machinery's
 # effect. Its line and the operator's own place are regions of their own, so
 # they outlive the open state and are landed, removed or held under the
-# bolt's command (43, 52).
+# bolt's command (43, 54). Its services — one object per declaration in the
+# repository's service data — are made when the operator's place is first
+# ready and go when it is removed (46).
 machine: bolt
 version: 2
 kind: object
 object: bolt
 parent: null
-owns: [unit]
-satisfies: [4, 29, 32, 38, 39, 43, 45, 52, 60, 71, 100]
+owns: [unit, service]
+satisfies: [4, 29, 32, 38, 39, 43, 45, 46, 47, 54, 60, 71, 100]
 record:
   repository: string
   name: string           # the operator's to change at any time; never the identity
@@ -109,3 +111,22 @@ regions:
       place:
         machine: place
         params: {line: own-line, inputs: none, keep: true}
+  services:
+    doc: one service object per declaration in the repository's service data, made when the operator's place is first ready and re-read at every head the place reaches (46); the objects go with the place (54)
+    initial: none
+    states:
+      none:
+        transitions:
+          - when: {region: {name: place.place.life, in: [ready]}}
+            to: declared
+            effects: [{do: declare_services, note: one object in stopped per declaration; nothing is started until asked}]
+      declared:
+        transitions:
+          - when: {region: {name: place.place.life, in: [removed]}}
+            to: gone
+          - when: {all: [{region: {name: place.place.life, in: [ready]}}, {not: {ev: bolt.services_declared, is: true}}]}
+            to: declared
+            effects: [{do: declare_services, note: "the declaration file at the place's head gained a service, by a chore merged into the bolt (47)"}]
+      gone:
+        doc: the place is gone and every service with it; each service record reaches gone on its own
+        final: true

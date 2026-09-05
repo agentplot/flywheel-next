@@ -34,6 +34,11 @@ given:
       activity: idle
       idle_since: "2026-09-04T00:40:00Z"
       ticks_alive: 900
+  services:
+    # what each repository's `.flywheel/services.yaml` declares; one service object per entry on every open bolt
+    atlas:
+      - {name: web, command: "uv run fastapi dev app/main.py --port $PORT", serves: "http://localhost:$PORT/", port: 41231}
+      - {name: worker, command: "uv run python -m atlas.worker --port $PORT", serves: "http://localhost:$PORT/metrics", port: 41232}
   script:
     # what sessions will do once started by an approval on the page
     unit/atlas/status-writer/wi-1/spec:   [{after: 2t, exit: done, deliverables: [change-directory, spec]}]

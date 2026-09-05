@@ -117,3 +117,103 @@ fn dropping_a_unit_retires_its_items_and_ends_their_sessions() {
     for id in items { assert!(dropped.contains(&id.to_string()), "{id} in the tail"); }
     assert!(rt.decisions().iter().all(|d| !d.object.starts_with(unit)), "no decision stands on dropped work");
 }
+
+#[test]
+fn services_start_stop_and_fail_by_dictation() {
+    let mut rt = seeded();
+    // The atlas repository declares two services; the open bolt's ready place declares them.
+    rt.settle(50);
+    let bolt = "bolt/atlas/plan-rows";
+    let web = "service/atlas/plan-rows/web";
+    let worker = "service/atlas/plan-rows/worker";
+    assert_eq!(rt.store.objects[bolt].config.get("services").map(String::as_str), Some("declared"));
+    for s in [web, worker] {
+        assert_eq!(state(&rt, s).as_deref(), Some("stopped"), "{s} is declared in stopped");
+        assert_eq!(rt.store.objects[s].parent.as_deref(), Some(bolt));
+    }
+    assert!(!rt.store.objects.values().any(|o| o.machine == "service" && o.id.contains("switchboard")), "a repository with no declarations gets no services");
+    assert!(rt.decisions().iter().all(|d| !d.object.starts_with("service/")), "nothing is started until asked");
+
+    // start: present after the effect, serving one tick later, endpoint recorded, no decision
+    rt.dictate(web, "start", "test");
+    run_until_quiet(&mut rt, 20, 3);
+    assert_eq!(state(&rt, web).as_deref(), Some("running"));
+    assert_eq!(rt.store.objects[web].record.get("endpoint").and_then(|v| v.as_str()), Some("http://atlas.plan-rows.localhost:41231"));
+    assert_eq!(rt.store.objects[web].record.get("moved_by").and_then(|v| v.as_str()), Some(rt.store.responses[0].id.as_str()), "the dictation that started it is recorded");
+    assert_eq!(state(&rt, worker).as_deref(), Some("stopped"), "the other service is untouched");
+    assert!(rt.decisions().iter().all(|d| d.object != web));
+
+    // stop: back to stopped, the endpoint gone with the process
+    rt.dictate(web, "stop", "test");
+    run_until_quiet(&mut rt, 20, 3);
+    assert_eq!(state(&rt, web).as_deref(), Some("stopped"));
+    assert!(rt.store.objects[web].record.get("endpoint").is_none());
+    assert_eq!(rt.store.world.services[web].process, "absent");
+
+    // a scripted failure: the worker's declaration says it exits instead of serving
+    rt.store.world.declarations.get_mut("atlas").unwrap().iter_mut().find(|d| d.name == "worker").unwrap().fails = true;
+    rt.dictate(worker, "start", "test");
+    run_until_quiet(&mut rt, 20, 3);
+    assert_eq!(state(&rt, worker).as_deref(), Some("failed"));
+    let failed: Vec<_> = rt.decisions().into_iter().filter(|d| d.object == worker).collect();
+    assert_eq!(failed.len(), 1, "one standing decision on the failed service");
+    assert_eq!((failed[0].kind.as_str(), failed[0].group.as_str()), ("service-failed", "attention"));
+    assert_eq!(failed[0].answers, vec!["start", "stop"]);
+    assert!(rt.store.world.services[worker].failure.as_deref().unwrap_or("").starts_with("exit 1"));
+
+    // stop clears the failure; the decision goes with the state
+    rt.dictate(worker, "stop", "test");
+    run_until_quiet(&mut rt, 20, 3);
+    assert_eq!(state(&rt, worker).as_deref(), Some("stopped"));
+    assert!(rt.decisions().iter().all(|d| d.object != worker));
+}
+
+#[test]
+fn the_capture_box_makes_captures_intents_chores_and_units() {
+    let mut rt = seeded();
+    rt.settle(50);
+    let before = rt.decisions().len();
+
+    // plain text: a capture read into one signal of kind ask, no session
+    let r = rt.capture("retries hammer the provider on 429", "test");
+    run_until_quiet(&mut rt, 20, 3);
+    let cap = r["id"].as_str().unwrap().to_string();
+    assert_eq!(state(&rt, &cap).as_deref(), Some("read"));
+    let sig = rt.store.objects.values().find(|o| o.parent.as_deref() == Some(&cap)).expect("one signal under the capture");
+    assert_eq!(sig.machine, "signal");
+    assert_eq!(sig.record.get("kind").and_then(|v| v.as_str()), Some("ask"));
+    assert_eq!(sig.top_state(), Some("unmoved"));
+    assert!(!rt.store.world.sessions.keys().any(|k| k.starts_with(&cap)), "a page capture needs no reader session");
+    assert_eq!(rt.decisions().len(), before, "a capture is not a decision");
+
+    // intent: a proposed intent, one decision to approve
+    let r = rt.capture("intent: host liveness on the mac mini", "test");
+    run_until_quiet(&mut rt, 20, 3);
+    assert_eq!(r["id"], "intent/host-liveness-on-the-mac-mini");
+    assert_eq!(state(&rt, "intent/host-liveness-on-the-mac-mini").as_deref(), Some("proposed"));
+    assert!(rt.decisions().iter().any(|d| d.object == "intent/host-liveness-on-the-mac-mini" && d.kind == "intent-proposed"));
+
+    // chore <repo>: a proposed chore unit on the shared line, no bolt
+    let r = rt.capture("chore atlas: stale AGENTS.md", "test");
+    run_until_quiet(&mut rt, 20, 3);
+    let chore = r["id"].as_str().unwrap().to_string();
+    let o = &rt.store.objects[&chore];
+    assert_eq!((o.machine.as_str(), o.top_state()), ("unit", Some("proposed")));
+    assert_eq!(o.record.get("type").and_then(|v| v.as_str()), Some("chore"));
+    assert_eq!(o.record.get("repository").and_then(|v| v.as_str()), Some("atlas"));
+    assert!(o.parent.is_none() && o.record["target"].get("bolt").is_none(), "a shared-line chore has no bolt");
+
+    // bolt <name>: a proposed unit targeting that bolt
+    let r = rt.capture("bolt plan-rows: tail grouping by day", "test");
+    run_until_quiet(&mut rt, 20, 3);
+    let unit = r["id"].as_str().unwrap().to_string();
+    let o = &rt.store.objects[&unit];
+    assert_eq!((o.machine.as_str(), o.top_state()), ("unit", Some("proposed")));
+    assert_eq!(o.parent.as_deref(), Some("bolt/atlas/plan-rows"));
+    assert_eq!(o.record["target"]["bolt"], "bolt/atlas/plan-rows");
+
+    // each submission is one response, already applied; none stands as unapplicable
+    assert_eq!(rt.store.responses.len(), 4);
+    assert!(rt.store.objects.values().filter(|o| o.machine == "response" && o.id.starts_with("response/page-")).all(|o| o.top_state() == Some("applied")));
+    assert_eq!(rt.decisions().len(), before + 3);
+}

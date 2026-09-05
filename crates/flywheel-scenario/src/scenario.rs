@@ -1,6 +1,6 @@
 //! Scenario files: `given` seeds the store, `when` drives it.
 
-use crate::store::{ScriptEntry, SessionFact, Store};
+use crate::store::{ScriptEntry, ServiceDecl, SessionFact, Store};
 use crate::world;
 use crate::runner::Runtime;
 use anyhow::{Context, Result};
@@ -30,6 +30,9 @@ pub struct Given {
     pub script: BTreeMap<String, Vec<ScriptEntry>>,
     #[serde(default)]
     pub sessions: BTreeMap<String, SessionFact>,
+    /// Service declarations per repository: what `.flywheel/services.yaml` would say.
+    #[serde(default)]
+    pub services: BTreeMap<String, Vec<ServiceDecl>>,
     #[serde(default)]
     pub hosts: Vec<BTreeMap<String, Value>>,
     #[serde(default)]
@@ -82,6 +85,7 @@ pub fn seed(defs: Definitions, sc: &Scenario) -> Runtime {
     }
     store.world.script = sc.given.script.clone();
     store.world.sessions = sc.given.sessions.clone();
+    store.world.declarations = sc.given.services.clone();
     store.tail = sc.given.tail.clone();
     for g in &sc.given.objects {
         world::new_object(&defs, &mut store, &g.id, &g.machine, g.parent.as_deref(), g.record.clone());

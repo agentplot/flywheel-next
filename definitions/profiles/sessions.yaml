@@ -10,8 +10,11 @@
 #   flywheel exit done --deliverables <list>       flywheel exit blocked --question <text>
 #   flywheel exit stalled --note <text>            flywheel offer finding|chore|signal <document> --about <object> [--scope ..]
 #   flywheel note <text>                           flywheel refuse <what>   (run by the hooks)
+#   flywheel service start|stop <name>             (the bolt's declared service, 47)
 # Each writes one entry on the session's thread through the control plane and
-# nothing else; the machinery decides what the entry means (63).
+# nothing else; the machinery decides what the entry means (63). The service
+# command is the one exception: it writes an op-response, not a thread entry,
+# so that it is the very record the operator's dictation produces (below).
 format: flywheel-profile/1
 name: sessions
 complete: false
@@ -25,6 +28,8 @@ evidence:
   session.offers_pending: {read: "`offer` entries on the session's thread (kind, document path in the change directory, about, scope) that no unit, elaboration or signal record cites by entry id"}
   session.refusals_pending: {read: "`refusal` entries on the session's thread, written by the hooks through `flywheel refuse`, not yet carried to the report"}
   session.delivered:   {read: "the deliverables field of the newest exit entry"}
+commands:
+  service: {do: "`flywheel service start|stop <name>` run inside a session's place: the machinery resolves the place's line to its bolt and writes an op-response through the state profile's `receive` — object = service/<bolt>/<name>, answer = start | stop, by = session/<session id>, id = the thread entry id — exactly the record the operator's dictation `start <bolt>/<name>` produces; the service machine's `{response: start}` and `{response: stop}` guards see one record whichever wrote it (47). A name the bolt's place does not declare is refused with the declared names, and the refusal is a thread entry. Anything a session starts without the command is its own process under the place's rule (44): tethered to the session's own place, never shown, gone with it"}
 effects:
   start_session:   {do: "`herdr agent start --name <session-id> --cwd <place> -- claude --agent <agent>`; the work order path is the first message; a name already present is refused by herdr, which is the proof"}
   end_session:     {do: "`herdr agent stop <session-id>`"}

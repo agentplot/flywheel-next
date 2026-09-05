@@ -6,7 +6,7 @@
 machine: curation
 version: 1
 kind: object
-satisfies: [19, 105, 107, 115]
+satisfies: [4, 19, 105, 107, 115]
 object: curation
 singleton: organization
 record:
@@ -43,6 +43,10 @@ regions:
             to: failed
           - when: {final: lost}
             to: failed
+          - when: {response: retire}
+            to: failed
+            enter: {session: ended, place: removing}
+            note: dictation retires the session (4); the run is due again on the next tick
       applying:
         doc: every judged signal gets its one standing move; each join becomes or grows a proposed intent with its elaborations
         entry:

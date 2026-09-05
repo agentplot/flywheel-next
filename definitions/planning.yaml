@@ -7,7 +7,7 @@
 machine: planning
 version: 1
 kind: object
-satisfies: [27, 28, 61, 95, 99, 101]
+satisfies: [4, 27, 28, 61, 95, 99, 101]
 object: planning
 singleton: repository
 record:
@@ -48,6 +48,10 @@ regions:
             to: failed
           - when: {final: lost}
             to: failed
+          - when: {response: retire}
+            to: failed
+            enter: {session: ended, place: removing}
+            note: dictation retires the session (4); the run is due again on the next tick
       applying:
         doc: verdicts to the ledger, units to the plan, the fingerprint recorded, all in one write
         entry:

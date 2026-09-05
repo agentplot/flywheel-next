@@ -4,7 +4,7 @@
 machine: capture
 version: 1
 kind: object
-satisfies: [103, 108, 109, 111, 112]
+satisfies: [4, 103, 108, 109, 111, 112]
 object: capture
 parent: null
 owns: [signal]
@@ -48,5 +48,9 @@ regions:
           - when: {any: [{final: lost}, {all: [{final: exited}, {ev: session.exit, in: [stalled, invalid]}]}]}
             to: captured
             effects: [{do: report, args: {text: capture reader did not deliver}}]
+          - when: {response: retire}
+            to: captured
+            enter: {session: ended, place: removing}
+            note: dictation retires the reader (4)
       read:
         final: true

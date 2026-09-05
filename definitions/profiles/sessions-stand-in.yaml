@@ -22,6 +22,8 @@ evidence:
   session.offers_pending: {read: "as sessions.yaml: offer entries on the thread that no record cites; the stand-in writes them with `flywheel offer` from the script's offers"}
   session.refusals_pending: {read: "as sessions.yaml; the stand-in writes them with `flywheel refuse` from the script's refusal"}
   session.delivered:   {read: "the deliverables field of the newest exit entry"}
+commands:
+  service: {do: "a script entry `service: {start: <name>}` or `service: {stop: <name>}` is played by the stand-in running `flywheel service start|stop <name>` in the session's place, exactly as a session would; the op-response it writes is real and the trace shows it (47)"}
 effects:
   start_session:   {do: "record the start in the stand-in's table by session id; refuse a second start of the same name, as herdr does; then play the script entries for that id at their `after` offsets, committing any `commits` into the place with git so the git effects see real work"}
   end_session:     {do: "remove the id from the table; a later script entry for it is ignored and reported to the trace"}

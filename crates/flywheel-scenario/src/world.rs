@@ -1,7 +1,7 @@
 //! Performing effects in the stand-in world. Each effect is bound by name to
 //! a small simulation; an unbound effect is logged and counts as done.
 
-use crate::store::{place_key, session_key, LineFact, SessionFact, Store};
+use crate::store::{place_key, session_key, LineFact, ServiceFact, SessionFact, Store};
 use flywheel_engine::runtime::Object;
 use flywheel_engine::{Definitions, PlannedEffect};
 use serde_json::{json, Value};
@@ -89,6 +89,39 @@ pub fn perform(defs: &Definitions, store: &mut Store, object: &str, region: &str
             if let Some(u) = store.objects.get_mut(object) { u.record.insert("type".into(), json!(ty)); }
         }
         "archive_intent" => { store.world.archived.insert(object.to_string(), true); }
+        "declare_services" => {
+            let Some(bolt) = store.objects.get(object).cloned() else { return };
+            let repo = bolt.record.get("repository").and_then(|v| v.as_str()).unwrap_or("").to_string();
+            let decls = store.world.declarations.get(&repo).cloned().unwrap_or_default();
+            let live = |store: &Store, id: &str| store.objects.get(id).and_then(|o| o.top_state()).map(|s| s != "gone").unwrap_or(false);
+            for d in decls {
+                let id = Store::service_id(object, &d.name);
+                if live(store, &id) { continue; }
+                let rec = [("name", json!(d.name)), ("command", json!(d.command)), ("serves", json!(d.serves))].into_iter().map(|(k, v)| (k.to_string(), v)).collect();
+                new_object(defs, store, &id, "service", Some(object), rec);
+            }
+        }
+        "start_service" => {
+            let moved_by = store.objects.get(object).and_then(|o| o.applied_responses.last().cloned());
+            let tick = store.tick;
+            let f = store.world.services.entry(object.to_string()).or_default();
+            if f.process != "present" { *f = ServiceFact { process: "present".into(), started_tick: tick, ..Default::default() }; }
+            if let (Some(o), Some(r)) = (store.objects.get_mut(object), moved_by) { o.record.insert("moved_by".into(), json!(r)); }
+        }
+        "stop_service" => {
+            let moved_by = store.objects.get(object).and_then(|o| o.applied_responses.last().cloned());
+            store.world.services.insert(object.to_string(), ServiceFact { process: "absent".into(), ..Default::default() });
+            if let Some(o) = store.objects.get_mut(object) {
+                o.record.remove("endpoint");
+                if let Some(r) = moved_by { o.record.insert("moved_by".into(), json!(r)); }
+            }
+        }
+        "record_service_endpoint" => {
+            let ep = store.world.services.get(object).and_then(|f| f.endpoint.clone());
+            if let Some(o) = store.objects.get_mut(object) {
+                match ep { Some(e) => { o.record.insert("endpoint".into(), json!(e)); } None => { o.record.remove("endpoint"); } }
+            }
+        }
         "record_exit" => {
             if let Some(s) = store.world.sessions.get(&skey) {
                 if let Some(q) = &s.question { let q = q.clone(); if let Some(o) = store.objects.get_mut(object) { o.record.insert("question".into(), json!(q)); } }

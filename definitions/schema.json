@@ -197,7 +197,7 @@
         },
         "note": {
           "type": "string",
-          "description": "the reason recorded with the write (A.9.68)"
+          "description": "the reason recorded with the write (76)"
         }
       }
     },
@@ -417,9 +417,11 @@
                 "name",
                 "in"
               ],
+              "description": "a sibling region of the same object is in one of these states",
               "properties": {
                 "name": {
-                  "type": "string"
+                  "type": "string",
+                  "description": "a region of this object (`life`), or a dotted path into a submachine run beside it: `<region>.<state>.<region>`, as `place.place.life` names the `life` region of the place machine run in the `place` state of this object's `place` region. The path is read on the same object, never across objects."
                 },
                 "in": {
                   "type": "array"

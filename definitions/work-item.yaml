@@ -31,7 +31,7 @@ regions:
           - when: {ev: item.slot_free, is: true}
             to: placing
       placing:
-        doc: the place region prepares the item's place; the item proceeds when it is proven current
+        doc: the place region beside this one prepares the item's place; the item proceeds when it is proven current
         transitions:
           - when: {region: {name: place.place.life, in: [ready]}}
             to: in-type
@@ -80,7 +80,7 @@ regions:
         tail: dropped
         final: true
   place:
-    doc: the item's own place, a region beside its life so the owner can command it (merging, removing) after leaving placing
+    doc: the object's own place, a region beside its life so the owner can command it (merging, removing) after leaving placing; a region inside placing would be gone by then
     initial: none
     states:
       none:

@@ -41,6 +41,16 @@
   #toast { position:fixed; bottom:18px; left:50%; transform:translateX(-50%); background:var(--ink); color:var(--bg); padding:8px 14px; border-radius:16px; font-size:13px; opacity:0; transition:opacity .2s; pointer-events:none }
   #toast.on { opacity:1 }
   .empty { color:var(--mute); font-size:12.5px; padding:6px 0 }
+  .capture { display:flex; gap:8px; align-items:center; padding:10px 18px; border-bottom:1px solid var(--line); background:var(--card) }
+  .capture input[type=text] { flex:1; min-width:200px; font-size:13.5px; padding:6px 10px }
+  .capture .hint { color:var(--mute); font-size:12px; white-space:nowrap } .capture .hint code { font:11.5px ui-monospace,Menlo,monospace }
+  .svc { display:flex; flex-wrap:wrap; gap:6px; margin-top:6px; padding-top:6px; border-top:1px dashed var(--line); align-items:center }
+  .svc .lbl { color:var(--mute); font-size:11px; text-transform:uppercase; letter-spacing:.08em; margin-right:2px }
+  .svc .tok { padding-right:4px } .svc .tok a { color:var(--answer); text-decoration:none; font:12px ui-monospace,Menlo,monospace } .svc .tok a:hover { text-decoration:underline }
+  .svc .tok button { padding:1px 8px; font-size:11.5px; border-radius:10px; margin-left:2px }
+  .tok.stopped i { background:var(--mute) } .tok.starting i { background:var(--decide) } .tok.running i { background:var(--approve) } .tok.failed i { background:var(--attn) } .tok.gone i { background:transparent; border:1.5px solid var(--line) }
+  .cap li { list-style:none; font-size:12.5px; padding:3px 0; border-bottom:1px dashed var(--line) } .cap ul { padding:0; margin:0 }
+  .cap .k { display:inline-block; min-width:64px; color:var(--mute) } .cap .st { color:var(--mute); font-size:11.5px; margin-left:6px }
 </style>
 </head>
 <body>
@@ -49,6 +59,11 @@
   <span class="meta" id="meta"></span>
   <button id="tickbtn" title="let scripted sessions work: one tick = one minute">tick ×5</button>
 </header>
+<form class="capture" id="capture" title="plain text is a capture with one ask signal · a prefix is a dictation">
+  <input type="text" id="captext" placeholder="capture: type a thought · intent: … · chore atlas: … · bolt plan-rows: …" autocomplete="off">
+  <button type="submit">capture</button>
+  <span class="hint">plain text → signal (ask) · <code>intent:</code> opens an intent · <code>chore &lt;repo&gt;:</code> proposes a chore · <code>bolt &lt;name&gt;:</code> proposes a unit</span>
+</form>
 <main>
   <div id="left"></div>
   <div id="right"></div>
@@ -63,9 +78,28 @@ async function api(path, body) { const r = await fetch(path, {method: body ? 'PO
 async function refresh() { data = await api('/api/plan'); render(); }
 async function respond(number, answer) { data = await api('/api/respond', {number, answer}); toast(`${number} → ${answer} · recorded · ${data.applied.fired} transitions`); render(); }
 async function dictate(object, answer) { data = await api('/api/dictate', {object, answer}); toast(`${object} → ${answer} · ${data.applied.fired} transitions`); render(); }
+async function capture(text) { data = await api('/api/capture', {text}); toast(`${data.applied.kind} ${short(data.applied.made)} · recorded · ${data.applied.fired} transitions`); render(); }
+$('#capture').onsubmit = async (ev) => { ev.preventDefault(); const t = $('#captext').value.trim(); if (!t) return; $('#captext').value = ''; await capture(t); };
 $('#tickbtn').onclick = async () => { data = await api('/api/tick', {n: 5}); toast(`5 ticks · ${data.applied.fired} transitions`); render(); };
 
-function short(id) { return id.replace(/^(unit|bolt|intent|elaboration|work-item|response|host)\//, ''); }
+function short(id) { return id.replace(/^(unit|bolt|intent|elaboration|work-item|response|host|service|capture|signal)\//, ''); }
+function serviceRow(bolt) {
+  const svcs = (data.services || []).filter(s => s.bolt === bolt && s.state !== 'gone');
+  if (!svcs.length) return null;
+  const row = document.createElement('div'); row.className = 'svc';
+  const l = document.createElement('span'); l.className = 'lbl'; l.textContent = 'services'; row.append(l);
+  for (const s of svcs) {
+    const t = document.createElement('span'); t.className = 'tok ' + s.state; t.title = (s.command || '') + (s.failure ? '\n' + s.failure : '');
+    t.innerHTML = `<i></i>${s.name} <small style="color:var(--mute)">${s.state}</small>`;
+    if (s.endpoint) { const a = document.createElement('a'); a.href = s.endpoint; a.target = '_blank'; a.textContent = s.endpoint.replace(/^https?:\/\//, ''); t.append(' ', a); }
+    if (s.state === 'failed' && s.failure) { const f = document.createElement('small'); f.style.color = 'var(--attn)'; f.textContent = ' ' + s.failure.split('\n')[0]; t.append(f); }
+    const b = document.createElement('button');
+    if (s.state === 'stopped' || s.state === 'failed') { b.textContent = 'start'; b.onclick = () => dictate(s.id, 'start'); }
+    else { b.textContent = 'stop'; b.className = 'drop'; b.onclick = () => dictate(s.id, 'stop'); }
+    t.append(b); row.append(t);
+  }
+  return row;
+}
 function tailFor(d) {
   const r = d.record || {}; const bits = [];
   if (d.kind === 'intent-proposed') { bits.push(`curation · ${(r.signals||[]).length} signals · ${r.sources||''} sources`); if (r.challenges) bits.push('challenges ' + r.challenges.join(', '));
@@ -143,7 +177,7 @@ function render() {
   const run = document.createElement('section'); run.innerHTML = `<h2>Running <span class="n">${data.running.length}</span> <span class="hint">sessions · host bound ${data.host_bound}</span></h2>`;
   const lanes = {};
   for (const o of data.objects.filter(o => (o.machine === 'bolt' || o.machine === 'intent') && !['landed','dropped','closed'].includes(o.state))) lanes[o.id] = {o, items: []};
-  for (const o of data.objects.filter(o => o.machine === 'unit' || o.machine === 'elaboration')) { const laneId = o.parent || (o.record.target && (o.record.target.bolt)) || '·unrouted'; (lanes[laneId] = lanes[laneId] || {o: {id: laneId, machine:'?', record:{}}, items: []}).items.push(o); }
+  for (const o of data.objects.filter(o => o.machine === 'unit' || o.machine === 'elaboration')) { const laneId = o.parent || (o.record.target && (o.record.target.bolt)) || (o.record.type === 'chore' && o.record.repository ? 'shared line · ' + o.record.repository : '·unrouted'); (lanes[laneId] = lanes[laneId] || {o: {id: laneId, machine:'?', record:{}}, items: []}).items.push(o); }
   for (const [id, lane] of Object.entries(lanes)) {
     const el = document.createElement('div'); el.className = 'lane';
     const r = lane.o.record || {};
@@ -157,6 +191,7 @@ function render() {
       t.title = u.id; el.append(t);
     }
     if (!lane.items.length) { const e = document.createElement('span'); e.className = 'empty'; e.textContent = 'no units'; el.append(e); }
+    if (lane.o.machine === 'bolt') { const sr = serviceRow(id); if (sr) el.append(sr); }
     run.append(el);
   }
   R.append(run);
@@ -165,6 +200,12 @@ function render() {
   const ul = document.createElement('ul');
   for (const t of [...data.tail].reverse().slice(0, 12)) { const li = document.createElement('li'); li.innerHTML = `<span class="k">${t.kind}</span>${short(t.object)} <small style="color:var(--mute)">${fmtAgo(t.at, data.now)} ago${t.by ? ' · by your response' : ''}</small>`; ul.append(li); }
   since.append(ul); R.append(since);
+  const cap = document.createElement('section'); cap.className = 'cap';
+  cap.innerHTML = `<h2>Captured <span class="n">${(data.captured||[]).length}</span> <span class="hint">from the box above · read into signals · curation sees them</span></h2>`;
+  if (!(data.captured||[]).length) { const e = document.createElement('div'); e.className = 'empty'; e.textContent = 'nothing captured yet'; cap.append(e); }
+  const ulc = document.createElement('ul');
+  for (const c of (data.captured||[]).slice(0, 12)) { const li = document.createElement('li'); li.innerHTML = `<span class="k">${short(c.id)}</span>${c.raw||''}<span class="st">${c.state}${c.signals.length ? ' · ' + c.signals.map(s => s.kind + ' ' + s.state).join(', ') : ''}${c.at ? ' · ' + fmtAgo(c.at, data.now) + ' ago' : ''}</span>`; ulc.append(li); }
+  cap.append(ulc); R.append(cap);
   const log = document.createElement('section'); log.className = 'log';
   log.innerHTML = `<h2>Responses sent <span class="n">${data.responses.length}</span></h2>`;
   const ul2 = document.createElement('ul');

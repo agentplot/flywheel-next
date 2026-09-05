@@ -25,7 +25,7 @@ regions:
             note: no decision of its own; the intent's response carries it
           - when: {response: "type <name>"}
             to: proposed
-            effects: [{do: set_type, args: {type: $word}}]
+            effects: [{do: set_type, args: {type: $response}}]
           - when: {response: "yes"}
             to: approved
           - when: {response: drop}
@@ -39,7 +39,7 @@ regions:
           - when: {parent: {in: [open]}}
             to: placing
       placing:
-        doc: the intent's line takes the shared line first if due; then the place is made and proven current
+        doc: the intent's line takes the shared line first if due; then the place region beside this one makes the place and proves it current
         transitions:
           - when: {region: {name: place.place.life, in: [ready]}}
             to: working
@@ -67,7 +67,7 @@ regions:
         tail: dropped
         final: true
   place:
-    doc: the elaboration's own place, a region beside its life so the owner can command it after leaving placing
+    doc: the object's own place, a region beside its life so the owner can command it (merging, removing) after leaving placing; a region inside placing would be gone by then
     initial: none
     states:
       none:

@@ -31,6 +31,9 @@ regions:
             to: alive
           - when: {ev: host.last_seen, older: 30m}
             to: gone
+          - when: {response: takeover}
+            to: released
+            effects: [{do: expire_leases, note: "dictation takes over a stale host before the 30m bound (4)"}]
       gone:
         doc: an attention line offers takeover; the leases expire only by the operator's response or the long bound
         decision: {kind: host-gone, group: attention, answers: [takeover, wait], shows: [host.last_seen], satisfies: [79, 147]}

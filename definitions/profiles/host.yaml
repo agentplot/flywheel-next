@@ -6,8 +6,9 @@
 #
 # Tools: git (libgit2 through the `gix` crate for reads, the `git` binary for
 # merges, rebases and pushes so hooks and credentials behave as the operator's
-# do); worktrunk `wt` for places (`wt worktree add/remove`, `wt tether`,
-# portless for ports and endpoints); mdBook books; OpenSpec change directories;
+# do); worktrunk `wt` for places (`wt worktree add/remove`, `wt tether` for
+# the processes bound to a worktree, portless for ports and endpoints);
+# mdBook books; OpenSpec change directories;
 # `gh` is not used anywhere in this binding. Nothing a session leaves on the
 # place's disk is read as state (64): the place holds the session's work and
 # the inputs handed in; every report from a session goes through the
@@ -15,6 +16,22 @@
 format: flywheel-profile/1
 name: host
 complete: false
+declarations:
+  services: |
+    A built repository declares its services as data in `.flywheel/services.yaml`
+    at its root (46). Read at the head of the bolt's place; one record per service.
+    `$PORT` and `$PLACE` are set by the machinery from the place (44). One record:
+
+      format: flywheel-services/1
+      services:
+        - name: web                                        # the service id within the bolt: service/<bolt>/web
+          command: "uv run fastapi dev app/main.py --port $PORT"
+          serves: "http://localhost:$PORT/"                # what it serves; the page shows the routed endpoint (45)
+          ready: "curl -sf http://localhost:$PORT/health"  # optional; serving when it exits 0, else when the endpoint answers
+
+    Adding or changing a record is a chore on the repository (47); a session's
+    edit of the file in its own place reaches the bolt's services only when
+    it merges into the bolt's line and the place is refreshed to that head.
 evidence:
   now:                 {read: the host clock, synchronized by the operating system's time service; every duration guard tolerates 60s of skew}
   session.host_alive:  {read: the host record's heartbeat, as the state profile binds host.last_seen}
@@ -30,6 +47,14 @@ evidence:
   place.ready:         {read: "exists, contains its line, the work order file and the hooks are present"}
   place.absent:        {read: "`wt worktree list` does not name it and the directory is gone"}
   place.endpoints_served: {read: "`portless list` filtered to the place's hash: every service the tethered processes of this worktree serve, as URLs on the operator's private network"}
+  service.process:     {read: "`wt tether status service/<name>` in the bolt's place: present while the tethered process runs, exited when the tether records its exit status, absent when no tether by that name exists"}
+  service.serving:     {read: "the declaration's `ready` command exits 0 in the place; without one, a GET on service.endpoint answers within 5s with any status"}
+  service.endpoint:    {read: "`portless list` entry for `<name>` in this worktree: the URL portless routes to the port it gave the service, on the operator's private network"}
+  service.failure:     {read: "the tether's exit status and the last 20 lines of its log (`wt tether log service/<name> --tail 20`)"}
+  service.place_present: {read: "as place.exists for the bolt's place"}
+  service.declared:    {read: "`.flywheel/services.yaml` at the bolt's place's head holds a record with this name"}
+  service.process_absent: {read: "`wt tether status service/<name>` reports no tether by that name"}
+  bolt.services_declared: {read: "for every record in `.flywheel/services.yaml` at the bolt's place's head, a service object with parent = the bolt and that name exists in a state other than gone, from the state profile's list"}
   host.stray_places:   {read: "`wt worktree list` under the places root names a worktree whose derived owner id is no listed object in a live state, or is a listed object whose place region is removed, and whose owner record is not held"}
   host.no_stray_places: {read: the same list finds none}
   line.exists:         {read: "`git ls-remote <repo> refs/heads/<line>` returns the ref"}
@@ -65,6 +90,9 @@ effects:
   merge_place:     {do: "in the line's own checkout: `git merge --no-ff <place head>`, push with expected-old = the line head read; the bolt's operator place is then reset to the new head"}
   remove_place:    {do: "`wt worktree remove <path>`; tethered processes end with it (`wt tether`); refused and reported while the owner record is held; recorded with the path and the head it had"}
   record_endpoints: {do: "put(owner): endpoints = place.endpoints_served; the page renders them as links beside the bolt"}
+  declare_services: {do: "read `.flywheel/services.yaml` at the bolt's place's head; for each record with no service object in a live state: put(new service, stopped, parent = the bolt, id = service/<bolt>/<name>, name, command, serves from the record); one put per record, each recorded as its own effect"}
+  start_service:   {do: "in the bolt's place: `wt tether start --name service/<name> -- sh -c '<command>'` with PORT from `portless port <name>` for this worktree and PLACE = the path; the tether binds the process to the worktree so `wt worktree remove` ends it (44, 54); put(service): moved_by = the response id; a tether already present by that name is refused by wt, which is the proof"}
+  stop_service:    {do: "`wt tether stop service/<name>` in the bolt's place; put(service): moved_by = the response id; nothing when no tether by that name exists"}
   remove_stray_places: {do: "for each stray worktree under the places root: `wt worktree remove <path>`; one effect per removal, each recorded with the path and why it was stray"}
   archive_intent:  {do: "`openspec archive <intent-id>` in the intent's place, committed on the intent's line"}
   open_intent:     {do: "`openspec new <intent-id>` from the schema instruction in force, committed on the intent's line"}

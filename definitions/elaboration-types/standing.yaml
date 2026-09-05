@@ -30,6 +30,9 @@ regions:
           - when: {all: [{final: exited}, {ev: session.exit, is: done}]}
             to: session
             note: a standing session that declares done still stands; only the operator finishes it
+          - when: {response: finish}
+            to: finished
+            note: dictation finishes a standing session without waiting for the idle decision (4)
       idle-offered:
         doc: the decision; the prototype keeps running the whole time (S2)
         decision: {kind: idle, group: decide, answers: [finish, keep], shows: [session.idle_since], satisfies: [10, 24, 25]}

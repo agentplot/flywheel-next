@@ -22,6 +22,7 @@ pub async fn serve(rt: Runtime, state_path: PathBuf, port: u16) -> anyhow::Resul
         .route("/api/plan", get(api_plan))
         .route("/api/respond", post(api_respond))
         .route("/api/dictate", post(api_dictate))
+        .route("/api/capture", post(api_capture))
         .route("/api/tick", post(api_tick))
         .with_state(app);
     let addr = format!("0.0.0.0:{port}");
@@ -33,6 +34,7 @@ pub async fn serve(rt: Runtime, state_path: PathBuf, port: u16) -> anyhow::Resul
 
 fn plan_json(rt: &mut Runtime) -> Value {
     let decisions = rt.decisions();
+    let rt_captured = rt.captured();
     let store = &rt.store;
     let dec: Vec<Value> = decisions.iter().map(|d| {
         let obj = store.objects.get(&d.object);
@@ -55,11 +57,19 @@ fn plan_json(rt: &mut Runtime) -> Value {
     let objects: Vec<Value> = store.objects.values().filter(|o| matches!(o.machine.as_str(), "bolt" | "unit" | "work-item" | "intent" | "elaboration")).map(|o| json!({
         "id": o.id, "machine": o.machine, "parent": o.parent, "state": o.top_state(), "record": o.record, "config": o.config,
     })).collect();
+    let services: Vec<Value> = store.objects.values().filter(|o| o.machine == "service").map(|o| {
+        let fact = store.world.services.get(&o.id);
+        json!({
+            "id": o.id, "bolt": o.parent, "name": o.record.get("name"), "state": o.top_state(), "command": o.record.get("command"),
+            "endpoint": o.record.get("endpoint"), "served": fact.and_then(|f| f.endpoint.clone()), "failure": fact.and_then(|f| f.failure.clone()), "moved_by": o.record.get("moved_by"),
+        })
+    }).collect();
+    let captured = rt_captured;
     let log: Vec<Value> = store.log.iter().rev().take(40).map(|l| json!({"tick": l.tick, "kind": l.kind, "object": l.object, "text": l.text})).collect();
     let responses: Vec<Value> = store.responses.iter().rev().take(40).map(|r| json!({"id": r.id, "decision": r.decision, "object": r.object, "answer": r.answer, "at": r.given_at})).collect();
     json!({
         "now": store.now, "tick": store.tick, "scenario": store.scenario,
-        "decisions": dec, "tail": store.tail, "running": running, "objects": objects, "log": log, "responses": responses,
+        "decisions": dec, "tail": store.tail, "running": running, "objects": objects, "services": services, "captured": captured, "log": log, "responses": responses,
         "host_bound": store.host_bound,
     })
 }
@@ -92,6 +102,19 @@ async fn api_dictate(State(app): State<App>, Json(input): Json<DictateIn>) -> im
     let _ = flywheel_scenario::save(&rt.store, &app.state_path);
     let mut v = plan_json(&mut rt);
     v["applied"] = json!({"id": id, "fired": fired});
+    Json(v)
+}
+
+#[derive(Deserialize)]
+struct CaptureIn { text: String, #[serde(default)] by: Option<String> }
+
+async fn api_capture(State(app): State<App>, Json(input): Json<CaptureIn>) -> impl IntoResponse {
+    let mut rt = app.rt.lock().await;
+    let made = rt.capture(&input.text, input.by.as_deref().unwrap_or("page"));
+    let fired = rt.settle(50);
+    let _ = flywheel_scenario::save(&rt.store, &app.state_path);
+    let mut v = plan_json(&mut rt);
+    v["applied"] = json!({"id": made["response"], "made": made["id"], "kind": made["kind"], "fired": fired});
     Json(v)
 }
 

@@ -62,13 +62,42 @@ pub struct ScriptEntry {
     pub deliverables: Vec<String>,
 }
 
+/// One service declaration a repository carries (`.flywheel/services.yaml` in the host
+/// binding; `given.services` here). `fails: true` scripts a process that exits instead of serving.
 #[derive(Debug, Clone, Serialize, Deserialize, Default)]
+#[serde(default)]
+pub struct ServiceDecl {
+    pub name: String,
+    pub command: String,
+    pub serves: String,
+    pub port: Option<u16>,
+    pub fails: bool,
+}
+
+/// The tethered process behind one service object: what `wt tether` and portless would report.
+#[derive(Debug, Clone, Serialize, Deserialize, Default)]
+#[serde(default)]
+pub struct ServiceFact {
+    /// absent | present | exited
+    pub process: String,
+    pub serving: bool,
+    pub endpoint: Option<String>,
+    pub failure: Option<String>,
+    pub started_tick: u64,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize, Default)]
+#[serde(default)]
 pub struct World {
     pub places: BTreeMap<String, PlaceFact>,
     pub lines: BTreeMap<String, LineFact>,
     pub sessions: BTreeMap<String, SessionFact>,
     pub script: BTreeMap<String, Vec<ScriptEntry>>,
     pub archived: BTreeMap<String, bool>,
+    /// Service declarations per repository.
+    pub declarations: BTreeMap<String, Vec<ServiceDecl>>,
+    /// Service facts per service object id.
+    pub services: BTreeMap<String, ServiceFact>,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -174,6 +203,36 @@ impl Store {
         deps.iter().all(|d| d.as_str().map(|id| self.state_of(id) == Some("merged") || self.state_of(id) == Some("landed")).unwrap_or(true))
     }
 
+    /// The bolt a service belongs to, and its declaration if the repository still names it.
+    fn service_context(&self, object: &str) -> (Option<&Object>, Option<&ServiceDecl>) {
+        let obj = self.objects.get(object);
+        let bolt = obj.and_then(|o| o.parent.as_deref()).and_then(|b| self.objects.get(b));
+        let name = obj.and_then(|o| o.record.get("name")).and_then(|v| v.as_str()).unwrap_or("");
+        let decl = bolt.and_then(|b| self.declarations_of(b)).and_then(|d| d.iter().find(|d| d.name == name));
+        (bolt, decl)
+    }
+
+    fn declarations_of(&self, bolt: &Object) -> Option<&Vec<ServiceDecl>> {
+        bolt.record.get("repository").and_then(|v| v.as_str()).and_then(|r| self.world.declarations.get(r))
+    }
+
+    /// The bolt's own place exists: its place region is anywhere but absent or removed.
+    fn bolt_place_present(bolt: Option<&Object>) -> bool {
+        bolt.and_then(|b| b.config.get("place.place.life")).map(|s| s != "removed" && s != "absent").unwrap_or(false)
+    }
+
+    /// The service object a bolt would hold for a declaration name.
+    pub fn service_id(bolt: &str, name: &str) -> String {
+        format!("service/{}/{name}", bolt.strip_prefix("bolt/").unwrap_or(bolt))
+    }
+
+    /// Every declaration of the bolt's repository has a service object in a state other than gone.
+    fn services_declared(&self, bolt: &Object) -> bool {
+        self.declarations_of(bolt).map(|decls| decls.iter().all(|d| {
+            self.objects.get(&Self::service_id(&bolt.id, &d.name)).and_then(|o| o.top_state()).map(|s| s != "gone").unwrap_or(false)
+        })).unwrap_or(true)
+    }
+
     fn derived(&self, object: &str, region: &str, name: &str) -> Option<Value> {
         let obj = self.objects.get(object);
         let skey = session_key(object, region);
@@ -181,7 +240,27 @@ impl Store {
         let sess = self.world.sessions.get(&skey);
         let place = self.world.places.get(&pkey);
         let line = self.world.lines.get(object);
+        let svc = self.world.services.get(object);
         let v = match name {
+            // ---- service
+            "service.process" => json!(svc.map(|s| if s.process.is_empty() { "absent".to_string() } else { s.process.clone() }).unwrap_or_else(|| "absent".into())),
+            "service.process_absent" => json!(svc.map(|s| s.process.is_empty() || s.process == "absent").unwrap_or(true)),
+            "service.serving" => json!(svc.map(|s| s.serving).unwrap_or(false)),
+            "service.endpoint" => svc.and_then(|s| s.endpoint.clone()).map(Value::String)?,
+            "service.failure" => svc.and_then(|s| s.failure.clone()).map(Value::String)?,
+            "service.endpoint_recorded" => json!(match (svc.and_then(|s| s.endpoint.as_deref()), obj.and_then(|o| o.record.get("endpoint")).and_then(|v| v.as_str())) {
+                (Some(served), Some(recorded)) => served == recorded,
+                (None, None) => true,
+                (None, Some(recorded)) => recorded.is_empty(),
+                _ => false,
+            }),
+            "service.place_present" => { let (bolt, _) = self.service_context(object); json!(Self::bolt_place_present(bolt)) }
+            "service.declared" => { let (_, decl) = self.service_context(object); json!(decl.is_some()) }
+            "bolt.services_declared" => json!(obj.map(|b| self.services_declared(b)).unwrap_or(true)),
+            // ---- capture and signal
+            "capture.signals_present" => json!(self.objects.values().any(|o| o.parent.as_deref() == Some(object) && o.machine == "signal")),
+            "capture.source" => obj.and_then(|o| o.record.get("source").cloned())?,
+            "signal.move" => json!(obj.and_then(|o| o.record.get("move")).and_then(|m| m.get("target")).and_then(|t| t.as_str()).filter(|t| !t.is_empty()).unwrap_or("none")),
             // ---- place
             "place.exists" => json!(place.map(|p| p.exists && !p.absent).unwrap_or(false)),
             "place.absent" => json!(place.map(|p| p.absent || !p.exists).unwrap_or(true)),
@@ -286,6 +365,36 @@ impl Store {
                 s.played.push(i);
             }
         }
+    }
+
+    /// Advance every started service by one tick: a process started last tick now serves, or
+    /// exits when its declaration says it fails.
+    pub fn play_services(&mut self) {
+        let tick = self.tick;
+        let ids: Vec<String> = self.world.services.iter().filter(|(_, f)| f.process == "present" && !f.serving && f.started_tick < tick).map(|(k, _)| k.clone()).collect();
+        for id in ids {
+            let (bolt, decl) = self.service_context(&id);
+            let fails = decl.map(|d| d.fails).unwrap_or(false);
+            let command = decl.map(|d| d.command.clone()).unwrap_or_default();
+            let endpoint = bolt.map(|b| Self::endpoint_for(b, decl, &id));
+            let Some(f) = self.world.services.get_mut(&id) else { continue };
+            if fails {
+                f.process = "exited".into();
+                f.failure = Some(format!("exit 1 · {command}\nerror: address already in use"));
+            } else {
+                f.serving = true;
+                f.endpoint = endpoint;
+            }
+        }
+    }
+
+    /// The URL the place would serve for a service: the place names the host, the declaration's port
+    /// hint (or one derived from the id) the port, so two places on one host never collide.
+    fn endpoint_for(bolt: &Object, decl: Option<&ServiceDecl>, id: &str) -> String {
+        let repo = bolt.record.get("repository").and_then(|v| v.as_str()).unwrap_or("repo");
+        let name = bolt.record.get("name").and_then(|v| v.as_str()).unwrap_or("bolt");
+        let port = decl.and_then(|d| d.port).unwrap_or_else(|| 40000 + (id.bytes().fold(0u32, |h, b| h.wrapping_mul(31).wrapping_add(b as u32)) % 10000) as u16);
+        format!("http://{repo}.{name}.localhost:{port}")
     }
 
     pub fn play_after_answer(&mut self, key: &str) {
