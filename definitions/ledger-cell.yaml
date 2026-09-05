@@ -5,14 +5,14 @@
 # stands against the claim since the verdict was judged (101, 116). The
 # backlog is derived: every cell not in judged.satisfied or
 # judged.not-applicable (102). A cell exists for every standing claim and
-# repository in its scope, and scope is read from the manifest's kinds and
-# capabilities beside the repository: adding one makes cells appear unjudged
+# repository in its scope, and scope is read through the context map, whose
+# repository nodes carry kinds and capabilities (198): adding one makes cells appear unjudged
 # and planning due; removing one takes the cell out of scope, where its
 # verdict reads as not-applicable (195).
 machine: ledger-cell
 version: 3
 kind: object
-satisfies: [100, 101, 102, 104, 116, 195]
+satisfies: [100, 101, 102, 104, 116, 195, 198]
 object: ledger-cell
 parent: null
 record:

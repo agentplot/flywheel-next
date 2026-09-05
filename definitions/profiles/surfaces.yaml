@@ -48,7 +48,7 @@ tools:
     takeover:      {args: [host], doc: "a stale host before the 30m bound (150)"}
     revive:        {args: [signal], doc: "clears the move (107)"}
     take:          {args: [line], doc: "order a take now (50)"}
-    scope:         {args: [claim, scope], doc: "correct a claim's scope — all, kinds, capabilities or repositories; the page's repository view shows each claim's scope beside this control (105, 195)"}
+    scope:         {args: [claim, scope], doc: "correct a claim's scope — all, kinds, capabilities or repositories — as the claim's attachment in the context map; the page's repository view shows each claim's scope beside this control, and the map view's gesture on nodes (select nodes, attach the claim) sends this one tool with the rule the selection matches, so no separate map tool exists (105, 195, 198)"}
   guard: "a tool that would assert work was done (done, pass, yes on nothing) does not exist; the response machine reports one that arrives anyway as unapplicable (4)"
   identity: "a call from a session's pane carries the identity token start_session issued to that session (sessions.yaml identity:); the tool server matches it against the pane the call came from and refuses a mismatch with a refusal entry on the calling session's thread, so a session can act only in its own job and never on another session (43, 89, 197); a call from the page, the chat or dispatch carries the operator's or dispatch's identity instead"
 interpreter:

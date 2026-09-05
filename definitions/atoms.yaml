@@ -95,15 +95,15 @@ evidence:
   claim.on_intent_line: {of: claim, type: bool}
   claim.scope_set:      {of: claim, type: bool, proof_of: set_claim_scope, doc: the block's scope line equals the response's scope}
   claim.version:        {of: claim, type: int}
-  claim.scope_repos:    {of: claim, type: list, doc: the repositories the claim's scope resolves to against the manifest's kinds and capabilities beside each repository (105, 195)}
+  claim.scope_repos:    {of: claim, type: list, doc: the repositories the claim's scope resolves to — the attachment's rule in the context map matched against the repository nodes' kinds, capabilities and ids (105, 195, 198)}
   cell.verdict:         {of: ledger-cell, type: enum, values: [none, satisfied, partial, not-satisfied, not-applicable]}
   cell.verdict_claim_version: {of: ledger-cell, type: int}
   cell.claim_version:   {of: ledger-cell, type: int}
   cell.evidence_present: {of: ledger-cell, type: bool, doc: the evidence the verdict cites still exists at the repository's shared head}
-  cell.in_scope:        {of: ledger-cell, type: bool, doc: the cell's repository is in its claim's scope now — all, a kind or a capability the manifest gives the repository, or its name (105, 195)}
+  cell.in_scope:        {of: ledger-cell, type: bool, doc: the cell's repository's node is in its claim's scope now — all, a kind or a capability the node carries, or its id — read through the context map (105, 195, 198)}
   cell.challenged:      {of: ledger-cell, type: bool, doc: a signal with a standing challenge move against this cell's claim was recorded after the verdict's judged_at, so the verdict is stale in every repository that has one (101, 116)}
   # ---- planning and curation
-  planning.fingerprint:  {of: planning, type: hash, doc: hash of the repository's backlog inputs — the repository's kinds and capabilities from the manifest (195), standing claims in scope with versions, the ledger's cells with their freshness, the challenge moves standing against claims in scope (101), the open bolts and their citations, the asks naming it}
+  planning.fingerprint:  {of: planning, type: hash, doc: hash of the repository's backlog inputs — the repository's node in the context map with its kinds and capabilities (195, 198), standing claims in scope with versions, the ledger's cells with their freshness, the challenge moves standing against claims in scope (101), the open bolts and their citations, the asks naming it}
   planning.planned_fingerprint: {of: planning, type: hash}
   planning.redo_pending: {of: planning, type: bool, doc: a unit was sent back with notes}
   planning.ledger_empty: {of: planning, type: bool}
@@ -222,7 +222,7 @@ effects:
   record_per_intent: {of: elaboration, args: [], proof: elaboration.records_fanned_out, satisfies: [187, 188, 189], doc: for each covered intent beyond the parent, commit the records the session left for it in its place into that intent's change directory on that intent's line; the parent's records and the book reach the parent's line by the place's merge}
   # ---- claims and ledger
   record_verdict:  {of: ledger-cell, args: [verdict, claim_version, revision, evidence], proof: cell.verdict_recorded, satisfies: [100, 101, 104, 181], doc: the ledger is a file in the books repository, readable from git by any system}
-  set_claim_scope: {of: claim, args: [scope], proof: claim.scope_set, satisfies: [105, 193, 195], doc: rewrite the scope line of the claim's block on the books' shared line — all, kinds, capabilities or repositories — without moving the text or the version; cells appear or leave scope on the next read, and every affected repository's fingerprint moves}
+  set_claim_scope: {of: claim, args: [scope], proof: claim.scope_set, satisfies: [105, 193, 195, 198], doc: rewrite the claim's attachment in the context map — all, kinds, capabilities or repositories — and re-render the block's scope line, without moving the text or the version; cells appear or leave scope on the next read, and every affected repository's fingerprint moves; the map view's gesture on nodes sends this}
   # ---- planning and curation
   record_moves:    {of: curation, args: [moves], proof: curation.moves_recorded, satisfies: [107, 116], doc: one move per judged signal — attach, challenge, join, answered, route or drop — with its reason; a route move names the offer record the session's exit produced for the signal (58–60)}
   propose_intents: {of: curation, args: [intents], proof: curation.intents_proposed, satisfies: [109]}
@@ -241,6 +241,6 @@ effects:
   # ---- plan, sinks, status, reports
   number_decisions: {of: plan, args: [], proof: plan.numbered, satisfies: [15], doc: give every standing decision without a number the next number from the organization's counter; a number is given once and never reused}
   deliver_plan:    {of: sink, args: [], proof: sink.delivered, satisfies: [2, 14, 18, 82, 152, 155, 193, 194], doc: deliver the standing decisions and the tail since this sink's mark to the sink (a chat message, the page, a bell on a named surface), then advance the mark; no rendering is stored; every control the delivery carries calls one of the control plane's tools, and free text on the page or in chat goes to the interpreter, never to a parser}
-  render_status:   {of: plan, args: [], proof: plan.status_current, satisfies: [77, 118, 146, 195], doc: write the status projection from list and read; for each repository its kinds and capabilities, the claims in scope with their verdicts, and each claim's scope beside the scope control}
+  render_status:   {of: plan, args: [], proof: plan.status_current, satisfies: [77, 118, 146, 195, 198], doc: write the status projection from list and read; for each repository its kinds and capabilities, the claims in scope with their verdicts, and each claim's scope beside the scope control; and the map view — the context map's nodes and edges with decisions as markers on nodes, claims and verdicts per node, what changed since the last review, and scope correction as a gesture on nodes}
   report:          {of: any, args: [text], proof: report.recorded, satisfies: [79, 81], doc: a machinery problem or a refusal, to the run record and the attention lines; never work}
   ensure_signal:   {of: capture, args: [], proof: capture.signals_present, satisfies: [19, 112], doc: a one-message capture is its own signal; no judgment is involved}

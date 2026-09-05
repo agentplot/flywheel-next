@@ -19,26 +19,57 @@ name: books
 complete: false
 manifest:
   doc: |
-    `flywheel.yaml` at the books' root. Beside each repository it states the
-    kinds the repository is and the capabilities it declares, which is what a
-    claim's scope resolves against (105, 195):
+    `flywheel.yaml` at the books' root lists the repositories the flywheel
+    tracks with their git details; a repository's kinds and capabilities are
+    not here but on its node in the context map (195, 198), and the entry's
+    name is the node's id:
 
       repositories:
-        <name>:
+        <name>:                                    # the context-map node of the same id carries kinds and capabilities
           repo: <org>/<name>
-          kinds: [service, data-product]         # a claim scoped `kinds:` matches any of them
-          capabilities: [provider-client]         # a claim scoped `capabilities:` matches any of them
           landing: pull-request | direct           # 175
           take_cadence: "0 6 * * *"                # 50
           item_merge: squash | merge               # 179
           commit_types: {default: feat, fast: fix, chore: chore}   # 185
           personas: "personas/*.md"                # 56
 
-    Adding a kind or a capability is a commit on the books' shared line; every
-    host reads it at its next fetch, the cells of the claims now in scope
-    appear unjudged, and the repository's fingerprint moves (195). Removing
-    one takes the cells out of scope, where their verdicts read as
-    not-applicable (101).
+    `flywheel map check` (the books' pre-commit hook, with `flywheel claims
+    check`) fails a commit in which a manifest repository has no node or a
+    repository node has no manifest entry, so the two lists are one.
+context_map:
+  doc: |
+    The system context map is the scope surface (198): `context-map.json` at
+    the books' root, validated against `flywheel/schemas/context-map.md`
+    (the deliverables binding's `context-map` schema) by the pre-commit hook,
+    versioned with the book (121), and rendered into `src/context-map.md`
+    for the book by the mdBook preprocessor. Placing a repository's node with
+    its kinds and capabilities, beside its manifest entry, is how a
+    repository joins the fleet (104): its cells appear unjudged and its first
+    planning is due.
+
+      format: flywheel-context-map/1
+      nodes:
+        - {id: atlas, kind: repository, kinds: [service], capabilities: [provider-client], label: Atlas}
+        - {id: switchboard, kind: repository, kinds: [service]}
+        - {id: provider-api, kind: system, label: "the provider's API", external: true}
+      edges:
+        - {from: atlas, to: provider-api, relation: calls, claims: [providers/one-writer]}
+      attachments:
+        - {claim: providers/one-writer, scope: {capabilities: [provider-client]}}   # all | {kinds: [...]} | {capabilities: [...]} | {repos: [...]}
+        - {claim: boundaries/one-store, scope: all}
+
+    Authority: the map is the one record of scope and of a repository's kinds
+    and capabilities. The claim block's `scope:` line in the chapter is
+    rendered from the map's attachment by the preprocessor and is outside
+    the block's lock hash, so a scope change moves neither the claim's text
+    nor its version (105, 195); `flywheel claims check` fails a commit whose
+    block scope line disagrees with the map. Planning and the ledger read
+    scope only through the map: `claim.scope_repos` is the attachment's rule
+    matched against the repository nodes' kinds, capabilities and ids, and
+    `cell.in_scope` follows (198). `set_claim_scope` writes the attachment
+    and re-renders the line. Nodes of kind `system` never carry scope; they
+    are what the repositories meet, and edges may cite the claims that hold
+    across them.
 evidence:
   capture.signals_present: {read: "at least one `signals/<capture key>/*.rec` exists on the books' shared line"}
   signal.move:             {read: "`signals/moves/<signal id>.rec` target's first word (attach | challenge | join | answered | route | drop); none when the file is absent; a route target is `route <offer entry id>`"}
@@ -50,7 +81,7 @@ evidence:
   curation.threshold:      {read: "`flywheel.yaml` curation.threshold (default 12)"}
   curation.cadence_due:    {read: "`flywheel.yaml` curation.cadence (cron, default `0 6 * * 1-5`) has fired since the curation record's last run"}
   curation.moves_recorded: {read: "every move the session delivered exists as a move record"}
-  planning.fingerprint:    {read: "sha256 over: the repository's kinds and capabilities from `flywheel.yaml` (195); standing claims in scope for the repository with versions; every ledger cell of the repository with its freshness; the ids of signals whose standing move challenges a claim in scope (101); open bolts of the repository with their units' cited claim versions and citation choices; unconsumed asks naming the repository; pending redo notes"}
+  planning.fingerprint:    {read: "sha256 over: the repository's kinds and capabilities from its context-map node (195, 198); standing claims in scope for the repository with versions; every ledger cell of the repository with its freshness; the ids of signals whose standing move challenges a claim in scope (101); open bolts of the repository with their units' cited claim versions and citation choices; unconsumed asks naming the repository; pending redo notes"}
   planning.ledger_empty:   {read: "`ledger/<repository>.rec` is absent or holds no record"}
   intent.signals_dropped:  {read: "every signal the intent cites has a move record whose target is `drop <intent id>`"}
 effects:

@@ -3,18 +3,18 @@
 # on the books' shared line it is standing. The machine writes nothing but a
 # scope correction; it is the index planning, curation and the ledger read.
 # The scope names kinds, capabilities, repositories, or all; which
-# repositories that resolves to is the manifest's, where each repository
-# states its kinds and capabilities (105, 195).
+# repositories that resolves to is the context map's, where each repository
+# node carries its kinds and capabilities (105, 195, 198).
 machine: claim
 version: 2
 kind: object
-satisfies: [23, 97, 98, 105, 121, 195]
+satisfies: [23, 97, 98, 105, 121, 195, 198]
 object: claim
 parent: null
 record:
   name: string
   version: int           # moves only when the text moves; a lock hash proves it
-  scope: scope           # all | kinds:[...] | capabilities:[...] | repos:[...]; corrected by the scope tool, which does not move the version (105, 195)
+  scope: scope           # all | kinds:[...] | capabilities:[...] | repos:[...]; the claim's attachment in the context map, rendered into the block; corrected by the scope tool, which does not move the version (105, 195, 198)
   scenarios: list
 regions:
   standing:

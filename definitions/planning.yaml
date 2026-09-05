@@ -2,7 +2,8 @@
 # repository's backlog fingerprint differs from the one last planned against:
 # a claim in scope became standing, a verdict was recorded or fell stale, an
 # ask named the repository, a challenge move staled a verdict of a claim in
-# scope (101, 116), or a unit came back with notes (28). It sees
+# scope (101, 116), a repository node in the context map gained or lost a
+# kind or capability (195, 198), or a unit came back with notes (28). It sees
 # every open bolt of the repository because the fingerprint and the work order
 # both include them. A run delivers one proposal: the bolts it proposes and
 # the units in each, one decision on the plan (172); the session is charged by
@@ -10,7 +11,7 @@
 machine: planning
 version: 2
 kind: object
-satisfies: [4, 28, 29, 60, 64, 98, 101, 102, 104, 171, 172, 182]
+satisfies: [4, 28, 29, 60, 64, 98, 101, 102, 104, 171, 172, 182, 198]
 object: planning
 singleton: repository
 owns: [proposal]
