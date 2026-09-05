@@ -52,7 +52,20 @@ tools:
     takeover:      {args: [host], doc: "a stale host before the 30m bound (150)"}
     revive:        {args: [signal], doc: "clears the move (107)"}
     take:          {args: [line], doc: "order a take now (50)"}
-    attach:        {args: [claim, element], doc: "re-attach a claim to a map element — a context, a node or a relation id; scope is derived from the homes of what it attaches to, never chosen (200); the page's map view sends this from a gesture on an element, and its repository view shows each claim's attachments beside this control (195); no separate map tool exists"}
+    attach:        {args: [claim, id], doc: "attach a claim to a map id — a context, an element, a relationship or a link; the attachment lives with the claim in its chapter block (97) and scope is computed from the homes of what it attaches to, never chosen (200); the map view sends this from a gesture on an element; for a claim about every element of a kind the tool offers 'all elements of kind K' and sends one attach per element (211)"}
+    detach:        {args: [claim, id], doc: "remove one attachment; cells leaving scope read as not-applicable (101, 200, 211)"}
+    set-home:      {args: [id, repository], doc: "set an element's or a context's home in the target map; refused when the repository has no manifest entry (199, 211)"}
+    map-edit:      {args: [type, id, ref, fields], doc: "add or amend a context, element, relationship or link in the target map; refused without a chapter ref (120) and when the map check fails; a session reaches it only inside a writeback that also writes the chapter (198, 211)"}
+    set-status:    {args: [id, status, question], doc: "settled, candidate or open with its question; refused for settled or candidate without a ref (198, 201, 211)"}
+    mark-reviewed: {args: [], doc: "record the operator's review mark at the current books revision; the since-last-review overlay diffs from it (122, 211)"}
+    add-repository: {args: [name, repo, elements], doc: "the create-repository or adopt-repository proposal by another name: a repository joins when the target map first homes something in it (202, 206, 211)"}
+  queries:
+    doc: "read-only tools over the rendered maps and the claims index; they write nothing and need no confirmation (193)"
+    in-scope-for:  {args: [repository], doc: "the claims whose computed scope reaches the repository, with each one's attachments and the repository's verdict (200)"}
+    changed-since: {args: [revision], doc: "the id-keyed difference of the target map from the revision (or the operator's last review mark) to now: added, removed, changed with fields, moved (121, 122)"}
+    attachments-of: {args: [id], doc: "the claims attached to a map id, and for a repository the elements and contexts it homes (200)"}
+    unhomed:       {args: [], doc: "elements with no effective home in a non-external context, and manifest entries nothing homes (199)"}
+    map-check:     {args: [map], doc: "run the schema and vocabulary check on current or target at the books head and report every failure (121, 198)"}
   guard: "a tool that would assert work was done (done, pass, yes on nothing) does not exist; the response machine reports one that arrives anyway as unapplicable (4)"
   identity: "a call from a session's pane carries the identity token start_session issued to that session (sessions.yaml identity:); the tool server matches it against the pane the call came from and refuses a mismatch with a refusal entry on the calling session's thread, so a session can act only in its own job and never on another session (43, 89, 197); a call from the page, the chat or dispatch carries the operator's or dispatch's identity instead"
 interpreter:

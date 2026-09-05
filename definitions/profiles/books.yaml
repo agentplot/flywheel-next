@@ -21,11 +21,11 @@ manifest:
   doc: |
     `flywheel.yaml` at the books' root lists the repositories the flywheel
     tracks with their git details only (199, 203); a repository's kinds and
-    capabilities are derived from the context-map nodes that name it as
+    capabilities are derived from the map elements and contexts that name it as
     home, and the entry's name is what a node's `home` names:
 
       repositories:
-        <name>:                                    # nodes with home: <name> give it its kinds and capabilities (199)
+        <name>:                                    # elements and contexts with home: <name> give it its kinds and capabilities (199)
           repo: <org>/<name>
           landing: pull-request | direct           # 175
           take_cadence: "0 6 * * *"                # 50
@@ -39,69 +39,106 @@ manifest:
     repository (185, 203).
 context_map:
   doc: |
-    The system context map is the scope surface (198). It is the v1 map of
-    bounded contexts — `context-map/maps/current.js` and
-    `context-map/maps/target.js` in the books, two independent and complete
-    maps the page diffs, each element citing the chapter that states it —
-    under the v1 schema shipped with the flywheel binary
-    (`flywheel context-map schema`, applied by the pre-commit hook on every
-    commit, 121; not a file in the books), with these changes to v1:
-      - the `repository` layer is renamed `seam`: the four layers are
-        contract, service (plane control | data), seam, store; the relation
-        kinds and the layer-pair table are v1's unchanged (198)
-      - every node carries `home: <manifest repository name>` (199); a
-        context may carry one as its default for nodes that omit it
-      - `attachments: [{claim: <claim name>, to: <context | node | relation id>}]`,
-        the claims and what they attach to (200)
-      - `questions[].touches` may name relation ids as well as nodes and
-        contexts (201)
-    Written by people and by the sessions that write or amend a claim (120),
-    under the book's own layout (203). Ids are the diff key between current
-    and target; status settled | candidate | open, an open element paired
-    with a question; no ref, no map.
+    The system context map is the scope surface (198), bound to the
+    first-principles model in `models/context-map/` (model.md, schema.yaml):
+    the bounded contexts the books describe, in the terms of domain-driven
+    design. Format `flywheel-context-map/2`; two complete YAML maps under the
+    book's own layout, `context-map/current.yaml` (what is built) and
+    `context-map/target.yaml` (what the books say), each declaring
+    `schema: flywheel-map/N` and the same id naming the same thing in both.
+    Four element types, each with the common fields id, name, ref
+    (book/chapter, 120), status (settled | candidate | open, open paired with
+    a question), tags:
+      - context: home (optional default for its elements), external,
+        big_ball_of_mud, language
+      - element: context, kind (from the vocabulary), home (optional; the
+        context's applies)
+      - relationship: pattern — partnership | shared-kernel |
+        customer-supplier | conformist | separate-ways, fixed and never
+        extended — with contexts or upstream/downstream, upstream_offers
+        (open-host-service, published-language), downstream_guards
+        (anticorruption-layer), kernel
+      - link: kind (from the vocabulary), from, to; a link across contexts
+        must cross a relationship that is not separate-ways
+    Lanes, tiers, runtimes and stores are tags or organization kinds, never
+    structure; there is no seam layer, no lane, no runtime on an edge, no
+    seamRow, no configurations companion and no verifiedFiles (model.md 2.5).
 
-    Derived, never declared (199): a repository's `kinds` and `capabilities`
-    are computed from the nodes homed in it by the derivation table the
-    schema fixes — the sketch: kinds = {service} when it homes a service-layer
-    node of kind api | ui | cli | mcp-tool | agent, {worker} for worker |
-    job-runner, {model} for model, {store} when it homes only store-layer
-    nodes; capabilities = the ids of the contract-layer nodes it homes and
-    publishes, and of the seam nodes it homes that `fronts` another
-    context's service. The table's contents are open (gaps.md); its shape is
-    not: a function of the homed nodes' layers and kinds, the same on every
-    host. The table is shipped data, versioned with the template set (208),
-    not a file in the books. Changing it re-derives kinds and capabilities
-    only: ledger cells key on claim version and repository, and scope comes
-    from attachments, so a table change never moves a verdict and never
-    stales one; what it can change is which node kinds a repository is said
-    to be, which the page shows and planning's work order carries.
+    Vocabulary and versioning (208): the flywheel ships the schema, the
+    default vocabulary (element kinds aggregate, domain-event, contract with
+    capability true, service; link kinds uses, implements, emits, handles; no
+    facets) and the derivation table as one thing, `schema: flywheel-map/N`,
+    with the release. The organization extends it in
+    `flywheel/map-vocabulary.yaml` (`extends: flywheel-map/N`): element kinds
+    that may extend a shipped kind (`store extends service`), link kinds with
+    end constraints, facets with closed or open values, capability flags; a
+    file that redeclares a shipped kind fails. `flywheel map check` validates
+    both maps against the union on every commit (the books' pre-commit hook,
+    121) and fails a map or vocabulary whose N the installed flywheel does
+    not read; upgrading N is a chore (123).
 
-    Scope, derived (200): `claim.scope_repos` = the homes of the nodes the
-    claim attaches to; of every node in an attached context; and of both
-    ends of an attached relation, so a claim on a relation between two
-    contexts is in scope for both (105). A claim with no attachment has an
-    empty scope and is not planned against (98). `cell.in_scope` follows.
+    Attachments live with the claim (97, 200): the claim's fenced block in
+    its chapter carries `attaches: [<ids>]`, outside the lock hash, and the
+    map carries no claims; `flywheel/claims.json` (rendered) joins claim to
+    map by id. Scope is computed from the target map through homes by the
+    schema's scope table — a context: its home ∪ its elements' effective
+    homes; an element: its effective home; a relationship: both contexts'
+    scope ∪ the kernel's homes; a link: both elements' scope; nothing: empty,
+    not planned against (98). Scope reads home, context and attachment only.
 
-    Rendered by the machinery under its prefix (203): `flywheel/map/current.json`
-    and `flywheel/map/target.json`, the evaluated maps with each node's home
-    resolved, each repository's derived kinds and capabilities, each claim's
-    derived scope and each claim's attachments — what every host and the
-    page read; the chapter's claim block carries a `scope:` line rendered
-    from the attachments by the mdBook preprocessor, outside the block's
-    lock hash, so an attachment change moves neither the claim's text nor
-    its version (105, 195). `flywheel claims check` fails a block line that
-    disagrees with the map. `attach_claim` writes the attachment in the
-    target map and re-renders.
+    Derivation (199): a repository's kinds are the set of kinds, with what
+    each extends, of the elements it homes; its capabilities the ids of the
+    homed elements whose kind has capability true — in the shipped
+    vocabulary the contracts; its contexts the contexts of what it homes. The
+    table reads kind and effective home only, never tags, facets or links,
+    and its outputs are shown on the repository page and read by skills when
+    they choose a template or deliverable (190); scope never reads them.
+    Changing the table or either vocabulary re-derives kinds and
+    capabilities only.
 
-    Joining (202): a repository joins the fleet when a node names it as
-    home and the manifest entry exists; its cells are the claims attached to
-    what it homes, all unjudged, and its first planning's baseline is that
-    set (104).
+    The ledger invariant (model.md 4.8): a verdict is keyed by claim, claim
+    version and repository; the verdicts a repository is due for are the
+    claims attached to what it homes. Only a home moved, an element added to
+    or removed from a home, a re-attachment, or a claim version moves a
+    verdict; a tag, a kind, a facet, a derivation row or a vocabulary change
+    moves none. The check enforces the shape: derivation may not read tags,
+    scope may not read derivation.
+
+    Difference (121, 122, 201): one engine keyed on id over two maps —
+    added, removed, changed with the fields listed, moved when the only
+    differing field is home — used twice: current → target, the design
+    difference; and target at the operator's last review (the plan's
+    reviewed_at revision, the since-review map rebuilt from git history
+    between the mark and head) → target now. Never stored.
+
+    Home checks (199): a home naming no manifest entry fails; a manifest
+    entry no element or context homes, in target or current, fails; an
+    element with no effective home in a non-external context fails; an
+    element with a home in an external context fails. The manifest entry
+    carries git details only.
+
+    Rendered by the machinery under its prefix (203): `flywheel/map/target.json`
+    and `flywheel/map/current.json`, the evaluated maps with every effective
+    home resolved, each repository's derived kinds, capabilities and
+    contexts, and each claim's computed scope — what every host and the page
+    read. Joining (202): a repository joins the fleet when the target map
+    first homes something in it; its ledger is empty and its first planning's
+    baseline is the claims attached to what it homes. A repository homed only
+    in current is retiring; its verdicts stand until current drops it.
+
+    Moving the map (211): only through the tools — attach and detach, set a
+    home, add or amend an entry (refused without a ref), set a status with
+    its question, capture a question, mark reviewed, add a repository. A
+    session moves the map only in a writeback that also writes the chapter
+    (120); the landing construction session's writeback moves the current
+    map for what it built; no session changes an attachment or a home for
+    work it is doing itself.
 layout:
   doc: |
     The books repository is the organization's (203). People and sessions
     write the book (`src/`), the claim blocks in it, the context map
-    (`context-map/`), the manifest (`flywheel.yaml`), the OpenSpec changes
+    (`context-map/current.yaml`, `context-map/target.yaml`) and the
+    organization's map vocabulary (`flywheel/map-vocabulary.yaml`), the manifest (`flywheel.yaml`), the OpenSpec changes
     for intents (`openspec/changes/<intent id>/`) and the elaboration records
     inside them, under the book's own layout. The machinery writes only
     under `flywheel/` — `flywheel/signals/` (captures, signals, moves),
@@ -122,7 +159,7 @@ evidence:
   curation.threshold:      {read: "`flywheel.yaml` curation.threshold (default 12)"}
   curation.cadence_due:    {read: "`flywheel.yaml` curation.cadence (cron, default `0 6 * * 1-5`) has fired since the curation record's last run"}
   curation.moves_recorded: {read: "every move the session delivered exists as a move record"}
-  planning.fingerprint:    {read: "sha256 over: the nodes homed in the repository with their layers and kinds, and the derived kinds and capabilities (199); the attachments whose derived scope reaches the repository (200); standing claims in scope for the repository with versions; every ledger cell of the repository with its freshness; the ids of signals whose standing move challenges a claim in scope (101); open bolts of the repository with their units' cited claim versions and citation choices; unconsumed asks naming the repository; pending redo notes"}
+  planning.fingerprint:    {read: "sha256 over: the elements and contexts homed in the repository from `flywheel/map/target.json` with their ids, kinds and effective homes, and the derived kinds and capabilities (199); the attachments whose computed scope reaches the repository (200); standing claims in scope for the repository with versions; every ledger cell of the repository with its freshness; the ids of signals whose standing move challenges a claim in scope (101); open bolts of the repository with their units' cited claim versions and citation choices; unconsumed asks naming the repository; pending redo notes"}
   planning.ledger_empty:   {read: "`flywheel/ledger/<repository>.rec` is absent or holds no record; a repository joins when a node names it as home (202)"}
   intent.signals_dropped:  {read: "every signal the intent cites has a move record whose target is `drop <intent id>`"}
 effects:

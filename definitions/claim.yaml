@@ -1,21 +1,25 @@
 # One statement in the design book of what is true at the destination (A.14).
 # The claim's state is where its text is: on an intent's line it is proposed,
-# on the books' shared line it is standing. The machine writes nothing but a
-# re-attachment; it is the index planning, curation and the ledger read. A
-# claim attaches to map elements — a context, a node or a relation — and its
-# scope is the set of repositories homing what it attaches to, derived and
-# never chosen; a claim attached to nothing is not planned against (105,
-# 198, 200).
+# on the books' shared line it is standing. The machine writes nothing but an
+# attachment or a detachment; it is the index planning, curation and the
+# ledger read. A claim attaches to any id on the context map — a context, an
+# element, a relationship or a link — and the attachment lives with the claim
+# in its chapter block (97); its scope is the set of repositories homing what
+# it attaches to, both ends of a relationship or a link, computed from the
+# target map and never chosen; a claim attached to nothing is not planned
+# against (105, 198, 200). Only the attach and detach tools move an
+# attachment; a session moves one only in a writeback that also writes the
+# chapter, never for its own work (211).
 machine: claim
-version: 3
+version: 4
 kind: object
-satisfies: [23, 97, 98, 105, 121, 195, 198, 200]
+satisfies: [23, 97, 98, 105, 121, 195, 198, 200, 211]
 object: claim
 parent: null
 record:
   name: string
   version: int           # moves only when the text moves; a lock hash proves it
-  attachments: list      # the map elements it attaches to — context, node or relation ids — in the target map; the block's scope line is rendered from them; re-attached by the attach tool, which does not move the version (105, 195, 200)
+  attachments: list      # the map ids it attaches to — context, element, relationship or link — kept in the claim's block (97); the block's scope line is rendered from them; moved by the attach and detach tools, which do not move the version (105, 195, 200, 211)
   scenarios: list
 regions:
   standing:
@@ -33,6 +37,9 @@ regions:
             to: retired
           - when: {response: "attach <element>"}
             to: standing
-            effects: [{do: attach_claim, args: {element: $response}, note: "the attach tool (193); the attachment and the rendered scope line move, the text and the version do not (105, 200)"}]
+            effects: [{do: attach_claim, args: {element: $response}, note: "the attach tool (193, 211); the attachment in the block and the rendered scope line move, the text and the version do not (97, 105, 200)"}]
+          - when: {response: "detach <element>"}
+            to: standing
+            effects: [{do: detach_claim, args: {element: $response}, note: "the detach tool (211); cells leaving scope read as not-applicable (101)"}]
       retired:
         final: true
