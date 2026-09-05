@@ -26,7 +26,7 @@ tools:
     is recorded once as an op-response with `tool` and `proposed_by` (153).
   catalogue:
     answer:        {args: [decision, answer, text], doc: "answer a numbered decision; the deterministic path, `yes 412` or `421: <text>` in chat is this tool (194)"}
-    capture:       {args: [text, source], doc: "a capture with one signal of kind ask (19)"}
+    capture:       {args: [text, source], doc: "a capture with one signal of kind ask (19); the map view's one-gesture capture of an open element's question sends this with the question's text and the element as source (201)"}
     mark-intent:   {args: [capture], doc: "the operator's judgment that a capture is an intent: an intent in open with its first elaboration in approved (12, 19)"}
     propose-unit:  {args: [bolt, text], doc: "a unit in approved on the bolt (34)"}
     propose-chore: {args: [repository, text], doc: "a chore unit in approved on the repository's shared line (60)"}
@@ -48,7 +48,7 @@ tools:
     takeover:      {args: [host], doc: "a stale host before the 30m bound (150)"}
     revive:        {args: [signal], doc: "clears the move (107)"}
     take:          {args: [line], doc: "order a take now (50)"}
-    scope:         {args: [claim, scope], doc: "correct a claim's scope — all, kinds, capabilities or repositories — as the claim's attachment in the context map; the page's repository view shows each claim's scope beside this control, and the map view's gesture on nodes (select nodes, attach the claim) sends this one tool with the rule the selection matches, so no separate map tool exists (105, 195, 198)"}
+    attach:        {args: [claim, element], doc: "re-attach a claim to a map element — a context, a node or a relation id; scope is derived from the homes of what it attaches to, never chosen (200); the page's map view sends this from a gesture on an element, and its repository view shows each claim's attachments beside this control (195); no separate map tool exists"}
   guard: "a tool that would assert work was done (done, pass, yes on nothing) does not exist; the response machine reports one that arrives anyway as unapplicable (4)"
   identity: "a call from a session's pane carries the identity token start_session issued to that session (sessions.yaml identity:); the tool server matches it against the pane the call came from and refuses a mismatch with a refusal entry on the calling session's thread, so a session can act only in its own job and never on another session (43, 89, 197); a call from the page, the chat or dispatch carries the operator's or dispatch's identity instead"
 interpreter:

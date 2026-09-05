@@ -5,14 +5,17 @@
 # stands against the claim since the verdict was judged (101, 116). The
 # backlog is derived: every cell not in judged.satisfied or
 # judged.not-applicable (102). A cell exists for every standing claim and
-# repository in its scope, and scope is read through the context map, whose
-# repository nodes carry kinds and capabilities (198): adding one makes cells appear unjudged
-# and planning due; removing one takes the cell out of scope, where its
-# verdict reads as not-applicable (195).
+# repository in its scope, and scope is read through the context map: the
+# repositories homing what the claim attaches to (198, 200). A node newly
+# homed or an attachment newly reaching a repository makes cells appear
+# unjudged and planning due; one removed takes the cell out of scope, where
+# its verdict reads as not-applicable (195). A repository joins when a node
+# names it as home; its baseline is the claims attached to what it homes
+# (202).
 machine: ledger-cell
-version: 3
+version: 4
 kind: object
-satisfies: [100, 101, 102, 104, 116, 195, 198]
+satisfies: [100, 101, 102, 104, 116, 195, 198, 200, 202]
 object: ledger-cell
 parent: null
 record:
@@ -28,7 +31,7 @@ regions:
     initial: unjudged
     states:
       unjudged:
-        doc: a repository joining the fleet has every cell here (104)
+        doc: a repository joining the fleet — a node naming it as home (202) — has every cell here, one per claim attached to what it homes (104)
         transitions:
           - when: {ev: cell.verdict, in: [satisfied, partial, not-satisfied, not-applicable]}
             to: judged
@@ -62,7 +65,7 @@ regions:
             to: judged
             note: a new verdict was recorded against the current version, and after any challenge that stands
       out-of-scope:
-        doc: the repository lost the kind or capability, or the claim's scope was corrected away from it; the recorded verdict reads as not-applicable and the cell is out of the backlog (101, 195); the record is kept, and if scope returns the verdict is judged again by the freshness rules
+        doc: the node moved home or was removed, or the claim was re-attached away from what the repository homes; the recorded verdict reads as not-applicable and the cell is out of the backlog (101, 195, 200); the record is kept, and if scope returns the verdict is judged again by the freshness rules
         transitions:
           - when: {ev: cell.in_scope, is: true}
             to: judged

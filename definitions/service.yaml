@@ -1,6 +1,7 @@
 # One declared service in a bolt's place: a dev server, a worker, anything
 # the repository says listens (47). The repository declares its services as
-# data (`.flywheel/services.yaml` in the host binding); the bolt's `services`
+# data (`flywheel/services.yaml`, tracked, the repository's own declaration,
+# 203, in the host binding); the bolt's `services`
 # region makes one service object per declaration when the operator's place
 # is first ready (`declare_services`), and the object goes when the place is
 # removed or its declaration leaves the file. The record is the intended
@@ -22,7 +23,7 @@ version: 2
 kind: object
 object: service
 parent: bolt
-satisfies: [4, 12, 45, 46, 47, 48, 55, 191]
+satisfies: [4, 12, 45, 46, 47, 48, 55, 191, 203]
 record:
   name: string           # from the declaration; the id is <bolt>/<name>
   command: string        # how it starts in a place, from the declaration

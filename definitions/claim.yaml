@@ -1,20 +1,21 @@
 # One statement in the design book of what is true at the destination (A.14).
 # The claim's state is where its text is: on an intent's line it is proposed,
 # on the books' shared line it is standing. The machine writes nothing but a
-# scope correction; it is the index planning, curation and the ledger read.
-# The scope names kinds, capabilities, repositories, or all; which
-# repositories that resolves to is the context map's, where each repository
-# node carries its kinds and capabilities (105, 195, 198).
+# re-attachment; it is the index planning, curation and the ledger read. A
+# claim attaches to map elements — a context, a node or a relation — and its
+# scope is the set of repositories homing what it attaches to, derived and
+# never chosen; a claim attached to nothing is not planned against (105,
+# 198, 200).
 machine: claim
-version: 2
+version: 3
 kind: object
-satisfies: [23, 97, 98, 105, 121, 195, 198]
+satisfies: [23, 97, 98, 105, 121, 195, 198, 200]
 object: claim
 parent: null
 record:
   name: string
   version: int           # moves only when the text moves; a lock hash proves it
-  scope: scope           # all | kinds:[...] | capabilities:[...] | repos:[...]; the claim's attachment in the context map, rendered into the block; corrected by the scope tool, which does not move the version (105, 195, 198)
+  attachments: list      # the map elements it attaches to — context, node or relation ids — in the target map; the block's scope line is rendered from them; re-attached by the attach tool, which does not move the version (105, 195, 200)
   scenarios: list
 regions:
   standing:
@@ -26,12 +27,12 @@ regions:
           - when: {ev: claim.on_shared_line, is: true}
             to: standing
       standing:
-        doc: planned against; every ledger cell in scope compares its verdict's version with this one; the page shows the scope with a control to correct it (195)
+        doc: planned against where it attaches; every ledger cell in scope compares its verdict's version with this one; the page shows the attachments with a control to re-attach it (195, 200)
         transitions:
           - when: {not: {ev: claim.on_shared_line, is: true}}
             to: retired
-          - when: {response: "scope <scope>"}
+          - when: {response: "attach <element>"}
             to: standing
-            effects: [{do: set_claim_scope, args: {scope: $response}, note: "the scope tool (193); the block's scope line moves, the text and the version do not (105, 195)"}]
+            effects: [{do: attach_claim, args: {element: $response}, note: "the attach tool (193); the attachment and the rendered scope line move, the text and the version do not (105, 200)"}]
       retired:
         final: true
