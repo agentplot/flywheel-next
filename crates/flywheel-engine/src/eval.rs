@@ -264,20 +264,15 @@ pub fn match_answer(pattern: &str, answer: &str) -> Option<String> {
         // `bolt <name>` → head "bolt"; `redo: <notes>` → head "redo:"
         let head_word = head.trim_end_matches(':').trim();
         let colon = head.ends_with(':');
+        // The head may be several words (`new bolt <name>`) or none (`<text>`).
+        let rest = a.strip_prefix(head_word)?;
         if colon {
-            let mut it = a.splitn(2, ':');
-            let w = it.next()?.trim();
-            if w == head_word {
-                return Some(it.next().unwrap_or("").trim().to_string());
-            }
+            return Some(rest.trim_start().strip_prefix(':')?.trim().to_string());
+        }
+        if !head_word.is_empty() && !rest.is_empty() && !rest.starts_with(char::is_whitespace) {
             return None;
         }
-        let mut it = a.splitn(2, char::is_whitespace);
-        let w = it.next()?.trim();
-        if w == head_word {
-            return Some(it.next().unwrap_or("").trim().to_string());
-        }
-        return None;
+        return Some(rest.trim().to_string());
     }
     if a == p {
         return Some(String::new());

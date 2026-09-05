@@ -266,19 +266,20 @@ pub fn commands(defs: &Definitions, obj: &Object, f: &Fired) -> Vec<Command> {
     out
 }
 
-/// The entry effects of commanded states, planned before `apply` moves them.
-pub fn commanded_effects(defs: &Definitions, obj: &Object, f: &Fired) -> Vec<PlannedEffect> {
+/// The entry effects of commanded states, planned before `apply` moves them. Each is paired
+/// with the region path of the state it enters, which is where it is performed.
+pub fn commanded_effects(defs: &Definitions, obj: &Object, f: &Fired) -> Vec<(String, PlannedEffect)> {
     let mut out = Vec::new();
     for c in commands(defs, obj, f) {
         let Some((reg, _)) = state_def(defs, obj, &c.path) else { continue };
         if let Some(ts) = reg.states.get(&c.target) {
             for (i, e) in ts.entry.iter().enumerate() {
-                out.push(PlannedEffect {
+                out.push((c.path.clone(), PlannedEffect {
                     id: format!("{}/{}/enter/{}/{}{}", obj.id, c.path, c.target, e.name, i),
                     name: e.name.clone(),
                     args: e.args.clone().unwrap_or_default(),
                     note: e.note.clone(),
-                });
+                }));
             }
         }
     }

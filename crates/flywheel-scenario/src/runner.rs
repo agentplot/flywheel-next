@@ -44,8 +44,8 @@ impl Runtime {
                 tail = tick::apply(&self.defs, o, f, self.store.now);
             }
             self.store.log("transition", &f.object, format!("{}: {} → {}{}", f.region, f.from, f.to, f.note.as_ref().map(|n| format!(" — {n}")).unwrap_or_default()));
-            for e in commanded.iter().chain(f.effects.iter()) {
-                world::perform(&self.defs, &mut self.store, &f.object, &f.region, e);
+            for (region, e) in commanded.iter().map(|(r, e)| (r.as_str(), e)).chain(f.effects.iter().map(|e| (f.region.as_str(), e))) {
+                world::perform(&self.defs, &mut self.store, &f.object, region, e);
             }
             self.store.tail.extend(tail);
         }

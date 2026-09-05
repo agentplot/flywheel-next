@@ -95,4 +95,41 @@ mod tests {
         let again = parse(&write(&recs));
         assert_eq!(recs, again);
     }
+
+    #[test]
+    fn repeated_field_appends() {
+        let text = "%rec: object\n\nid: a\nclaim: one\nstate: x\nclaim: two\nclaim: three\n";
+        let recs = parse(text);
+        assert_eq!(recs.len(), 1);
+        let r = &recs[0];
+        assert_eq!(r.get("claim"), Some("one"), "get reads the first");
+        assert_eq!(r.all("claim"), vec!["one", "two", "three"]);
+        assert_eq!(r.fields.len(), 5, "order and repeats are kept");
+        assert_eq!(r.fields[2].0, "state");
+        // set changes the first occurrence and leaves the rest.
+        let mut r2 = r.clone();
+        r2.set("claim", "uno");
+        assert_eq!(r2.all("claim"), vec!["uno", "two", "three"]);
+        // as_map keeps the last repeat; the round trip keeps them all.
+        assert_eq!(r.as_map().get("claim").map(String::as_str), Some("three"));
+        let again = parse(&write(&recs));
+        assert_eq!(recs, again);
+    }
+
+    #[test]
+    fn rec_kind_changes_mid_file() {
+        let text = "# two kinds in one file\n%rec: object\n\nid: a\n\nid: b\n%rec: response\n\nid: r1\nanswer: yes\n\n%rec: tail\nat: now\n";
+        let recs = parse(text);
+        assert_eq!(recs.len(), 4);
+        assert_eq!(recs.iter().map(|r| r.kind.as_deref()).collect::<Vec<_>>(), vec![Some("object"), Some("object"), Some("response"), Some("tail")]);
+        assert_eq!(recs[1].get("id"), Some("b"));
+        assert_eq!(recs[2].get("answer"), Some("yes"));
+        assert_eq!(recs[3].get("at"), Some("now"));
+        // A `%rec` line closes the record before it, even without a blank line.
+        assert_eq!(recs[1].fields.len(), 1);
+        // The writer emits one `%rec` header per run of a kind, and the round trip holds.
+        let out = write(&recs);
+        assert_eq!(out.matches("%rec:").count(), 3);
+        assert_eq!(parse(&out), recs);
+    }
 }
