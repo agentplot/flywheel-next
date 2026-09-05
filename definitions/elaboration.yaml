@@ -8,11 +8,16 @@
 # The `explore` tool, arguments {intents, type}, creates one directly in
 # approved covering the selected intents, as a with-operator or standing
 # session (189, 193); the operator selects the intents and invokes it, and
-# no typed word is parsed.
+# no typed word is parsed. Its work order carries the covered intents'
+# chapters, claims and the records of their earlier elaborations, which it
+# leaves unchanged (89, 189). Every elaboration is a surface of its own on
+# the status view, reached from its intent: type and state, the pending
+# decision, the document and the records in the change directory, the
+# session with its last activity, and the gathering it is in (210).
 machine: elaboration
 version: 2
 kind: object
-satisfies: [4, 5, 24, 27, 54, 187, 188, 189, 193]
+satisfies: [4, 5, 24, 27, 54, 89, 187, 188, 189, 193, 210]
 object: elaboration
 parent: intent
 record:
