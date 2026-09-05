@@ -1,0 +1,324 @@
+//! The stand-in control plane: every object, response and fact in one JSON
+//! file. Sessions are played from a script; everything the machinery owns
+//! (the engine, the register, the tail, the effects) runs for real.
+
+use chrono::{DateTime, Duration, Utc};
+use flywheel_engine::runtime::{EvidenceSource, Object, Register, Response, TailEntry};
+use serde::{Deserialize, Serialize};
+use serde_json::{json, Value};
+use std::collections::BTreeMap;
+
+#[derive(Debug, Clone, Serialize, Deserialize, Default)]
+#[serde(default)]
+pub struct PlaceFact {
+    pub exists: bool,
+    pub merged: bool,
+    pub absent: bool,
+    pub conflicted: bool,
+    pub endpoints_recorded: bool,
+    pub endpoints: Vec<String>,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize, Default)]
+#[serde(default)]
+pub struct LineFact {
+    pub exists: bool,
+    pub landed: bool,
+    pub absent: bool,
+    pub landing: String,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize, Default)]
+#[serde(default)]
+pub struct SessionFact {
+    pub pane: bool,
+    pub activity: String,
+    pub exit: Option<String>,
+    pub question: Option<String>,
+    pub verdict: Option<String>,
+    pub deliverables: Vec<String>,
+    pub ticks_alive: u64,
+    pub idle_since: Option<DateTime<Utc>>,
+    pub inbox: Vec<String>,
+    pub played: Vec<usize>,
+}
+
+/// One thing a scripted session does, at an offset from its start.
+#[derive(Debug, Clone, Serialize, Deserialize, Default)]
+pub struct ScriptEntry {
+    #[serde(default)]
+    pub after: Option<String>,
+    #[serde(default)]
+    pub pane: Option<String>,
+    #[serde(default)]
+    pub activity: Option<String>,
+    #[serde(default)]
+    pub exit: Option<String>,
+    #[serde(default)]
+    pub question: Option<String>,
+    #[serde(default)]
+    pub verdict: Option<String>,
+    #[serde(default)]
+    pub deliverables: Vec<String>,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize, Default)]
+pub struct World {
+    pub places: BTreeMap<String, PlaceFact>,
+    pub lines: BTreeMap<String, LineFact>,
+    pub sessions: BTreeMap<String, SessionFact>,
+    pub script: BTreeMap<String, Vec<ScriptEntry>>,
+    pub archived: BTreeMap<String, bool>,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct LogEntry {
+    pub at: DateTime<Utc>,
+    pub tick: u64,
+    pub kind: String,
+    pub object: String,
+    pub text: String,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct Store {
+    pub objects: BTreeMap<String, Object>,
+    pub responses: Vec<Response>,
+    pub register: Register,
+    pub tail: Vec<TailEntry>,
+    /// Scenario-given evidence: object id (or `*`) → name → value.
+    pub given: BTreeMap<String, BTreeMap<String, Value>>,
+    pub world: World,
+    pub log: Vec<LogEntry>,
+    pub now: DateTime<Utc>,
+    pub tick: u64,
+    pub tick_seconds: i64,
+    pub next_created: u64,
+    pub next_response: u64,
+    pub host_bound: usize,
+    pub marks: BTreeMap<String, DateTime<Utc>>,
+    /// Decision ids standing after the last derive; used for response.decision_present.
+    pub standing: Vec<String>,
+    pub scenario: Option<String>,
+}
+
+impl Default for Store {
+    fn default() -> Self {
+        Store {
+            objects: BTreeMap::new(),
+            responses: vec![],
+            register: Register::default(),
+            tail: vec![],
+            given: BTreeMap::new(),
+            world: World::default(),
+            log: vec![],
+            now: Utc::now(),
+            tick: 0,
+            tick_seconds: 60,
+            next_created: 1,
+            next_response: 1,
+            host_bound: 4,
+            marks: BTreeMap::new(),
+            standing: vec![],
+            scenario: None,
+        }
+    }
+}
+
+/// The stage or type a nested region path belongs to, for session and stage facts.
+pub fn session_key(object: &str, region: &str) -> String {
+    let parts: Vec<&str> = region.split('.').collect();
+    if let Some(i) = parts.iter().position(|p| *p == "stages") {
+        if let Some(stage) = parts.get(i + 1) {
+            return format!("{object}/{stage}");
+        }
+    }
+    if parts.iter().any(|p| *p == "working") {
+        return format!("{object}/work");
+    }
+    format!("{object}/main")
+}
+
+/// The place a region path refers to: a bolt's own place is `<id>#own`; every other object has one.
+pub fn place_key(object: &str, region: &str) -> String {
+    if region.starts_with("place") {
+        format!("{object}#own")
+    } else {
+        object.to_string()
+    }
+}
+
+impl Store {
+    pub fn log(&mut self, kind: &str, object: &str, text: impl Into<String>) {
+        self.log.push(LogEntry { at: self.now, tick: self.tick, kind: kind.to_string(), object: object.to_string(), text: text.into() });
+    }
+
+    pub fn given_value(&self, object: &str, name: &str) -> Option<Value> {
+        self.given.get(object).and_then(|m| m.get(name)).cloned().or_else(|| self.given.get("*").and_then(|m| m.get(name)).cloned())
+    }
+
+    pub fn set_given(&mut self, object: &str, name: &str, v: Value) {
+        self.given.entry(object.to_string()).or_default().insert(name.to_string(), v);
+    }
+
+    fn state_of(&self, id: &str) -> Option<&str> {
+        self.objects.get(id).and_then(|o| o.top_state())
+    }
+
+    fn running_sessions(&self) -> usize {
+        self.world.sessions.values().filter(|s| s.pane).count()
+    }
+
+    fn deps_merged(&self, obj: &Object) -> bool {
+        let Some(Value::Array(deps)) = obj.record.get("depends_on") else { return true };
+        deps.iter().all(|d| d.as_str().map(|id| self.state_of(id) == Some("merged") || self.state_of(id) == Some("landed")).unwrap_or(true))
+    }
+
+    fn derived(&self, object: &str, region: &str, name: &str) -> Option<Value> {
+        let obj = self.objects.get(object);
+        let skey = session_key(object, region);
+        let pkey = place_key(object, region);
+        let sess = self.world.sessions.get(&skey);
+        let place = self.world.places.get(&pkey);
+        let line = self.world.lines.get(object);
+        let v = match name {
+            // ---- place
+            "place.exists" => json!(place.map(|p| p.exists && !p.absent).unwrap_or(false)),
+            "place.absent" => json!(place.map(|p| p.absent || !p.exists).unwrap_or(true)),
+            "place.merged" => json!(place.map(|p| p.merged).unwrap_or(false)),
+            "place.conflicted" => json!(place.map(|p| p.conflicted).unwrap_or(false)),
+            "place.contains_line" => json!(true),
+            "place.ahead_of_line" => json!(false),
+            "place.merge_slot" => json!(true),
+            "place.endpoints_recorded" => json!(place.map(|p| p.endpoints_recorded).unwrap_or(true)),
+            "place.endpoints_served" => json!(place.map(|p| p.endpoints.clone()).unwrap_or_default()),
+            "place.held" => json!(obj.map(|o| o.record.get("held_at").map(|v| !v.is_null()).unwrap_or(false)).unwrap_or(false)),
+            "place.conflict_retries" => json!(obj.and_then(|o| o.counters.get("conflict_retries").copied()).unwrap_or(0)),
+            "place.ready" => json!(place.map(|p| p.exists && !p.absent).unwrap_or(false)),
+            "place.job_seeded" | "place.line_moved_told" => json!(true),
+            "session.pane_absent" => json!(!sess.map(|s| s.pane).unwrap_or(false)),
+            "unit.bolt_exists" => json!(obj.and_then(|o| o.record.get("target")).map(|t| t.get("bolt").and_then(|b| b.as_str()).map(|b| !b.is_empty()).unwrap_or(false) || t.get("new_name").is_none()).unwrap_or(true)),
+            // ---- line
+            "line.exists" => json!(line.map(|l| l.exists && !l.absent).unwrap_or(false)),
+            "line.absent" => json!(line.map(|l| l.absent || !l.exists).unwrap_or(true)),
+            "line.contains_parent" => json!(true),
+            "line.take_due" | "line.take_conflicts" | "line.conflict_job_done" => json!(false),
+            "line.landed" => json!(line.map(|l| l.landed).unwrap_or(false)),
+            "line.landing" => json!(line.map(|l| if l.landing.is_empty() { "none".to_string() } else { l.landing.clone() }).unwrap_or_else(|| "none".into())),
+            "line.retries" => json!(obj.and_then(|o| o.counters.get("retries").copied()).unwrap_or(0)),
+            // ---- session
+            "session.pane" => json!(sess.map(|s| if s.pane { "present" } else { "absent" }).unwrap_or("absent")),
+            "session.activity" => json!(sess.map(|s| if s.pane { s.activity.clone() } else { "none".into() }).unwrap_or_else(|| "none".into())),
+            "session.exit" => json!(sess.and_then(|s| s.exit.clone()).unwrap_or_else(|| "none".into())),
+            "session.idle_since" => sess.and_then(|s| s.idle_since).map(|t| json!(t.to_rfc3339()))?,
+            "session.operator_present" | "session.offers_pending" | "session.refusals_pending" => json!(false),
+            "session.exit_recorded" | "session.host_alive" | "session.answer_delivered" | "session.message_delivered" => json!(true),
+            "session.question" => json!(sess.and_then(|s| s.question.clone())),
+            "session.expected" | "session.delivered" => json!(sess.map(|s| s.deliverables.clone()).unwrap_or_default()),
+            // ---- stage
+            "stage.agents" => json!(["agent"]),
+            "stage.join_met" => json!(sess.map(|s| matches!(s.exit.as_deref(), Some("done") | Some("stalled") | Some("invalid"))).unwrap_or(false)),
+            "stage.verdict" => json!(sess.and_then(|s| s.verdict.clone().or_else(|| match s.exit.as_deref() {
+                Some("done") => Some("pass".into()),
+                Some("blocked") => Some("blocked".into()),
+                Some("stalled") | Some("invalid") => Some("stalled".into()),
+                _ => None,
+            })).unwrap_or_else(|| "none".into())),
+            "item.send_backs" => json!(obj.and_then(|o| o.counters.get("send_backs").copied()).unwrap_or(0)),
+            "item.retry_max" => json!(3),
+            "item.deps_merged" | "unit.deps_merged" => json!(obj.map(|o| self.deps_merged(o)).unwrap_or(true)),
+            "item.slot_free" => json!(self.running_sessions() < self.host_bound),
+            "unit.claim_moved" | "bolt.citations_moved" | "bolt.chores_outstanding" | "bolt.hold_since_last_merge" => json!(false),
+            "unit.items_exist" => json!(self.objects.values().any(|o| o.parent.as_deref() == Some(object) && o.machine == "work-item")),
+            // ---- design side
+            "intent.material_pending" => json!(false),
+            "intent.close_declined_since_last_final" => json!(obj.map(|o| o.record.get("close_declined_at").map(|v| !v.is_null()).unwrap_or(false)).unwrap_or(false)),
+            "intent.archived" => json!(self.world.archived.get(object).copied().unwrap_or(false)),
+            "elaboration.shown_with_parent" => json!(obj.and_then(|o| o.parent.as_deref()).and_then(|p| self.state_of(p)) == Some("proposed")),
+            "elaboration.kept_since" => obj.and_then(|o| o.record.get("kept_at").cloned()).filter(|v| !v.is_null())?,
+            "elaboration.type" => obj.and_then(|o| o.record.get("type").cloned())?,
+            // ---- engine machines
+            "plan.unnumbered" | "plan.status_current" | "sink.due" | "host.stray_places" => json!(name == "plan.status_current"),
+            "host.last_seen" => obj.and_then(|o| o.record.get("last_seen").cloned())?,
+            "lease.holder" => return None,
+            "lease.coverable" => json!(true),
+            "response.applied" => {
+                let rid = object.strip_prefix("response/").unwrap_or(object);
+                json!(self.objects.values().any(|o| o.applied_responses.iter().any(|a| a == rid)))
+            }
+            "response.decision_present" => {
+                let rid = object.strip_prefix("response/").unwrap_or(object);
+                let Some(r) = self.responses.iter().find(|r| r.id == rid) else { return Some(json!(false)) };
+                match r.decision {
+                    None => json!(true),
+                    Some(n) => json!(self.register.decision_of(n).map(|d| self.standing.iter().any(|s| s == d)).unwrap_or(false)),
+                }
+            }
+            "response.reported" => json!(false),
+            "response.answer" => {
+                let rid = object.strip_prefix("response/").unwrap_or(object);
+                json!(self.responses.iter().find(|r| r.id == rid).map(|r| r.answer.clone()))
+            }
+            _ => return None,
+        };
+        Some(v)
+    }
+
+    /// Advance every started session's script by one tick.
+    pub fn play_scripts(&mut self) {
+        let now = self.now;
+        let keys: Vec<String> = self.world.sessions.keys().cloned().collect();
+        for k in keys {
+            let script = self.world.script.get(&k).cloned().unwrap_or_default();
+            let Some(s) = self.world.sessions.get_mut(&k) else { continue };
+            if !s.pane { continue; }
+            s.ticks_alive += 1;
+            for (i, e) in script.iter().enumerate() {
+                if s.played.contains(&i) { continue; }
+                let due = match e.after.as_deref() {
+                    None | Some("") | Some("0") | Some("0t") => true,
+                    Some("answer") => false,
+                    Some(a) if a.ends_with('t') => a.trim_end_matches('t').parse::<u64>().map(|n| s.ticks_alive >= n).unwrap_or(true),
+                    Some(a) => flywheel_engine::eval::parse_duration(a).map(|d| Duration::seconds(s.ticks_alive as i64 * self.tick_seconds) >= d).unwrap_or(true),
+                };
+                if !due { continue; }
+                apply_entry(s, e, now);
+                s.played.push(i);
+            }
+        }
+    }
+
+    pub fn play_after_answer(&mut self, key: &str) {
+        let now = self.now;
+        let script = self.world.script.get(key).cloned().unwrap_or_default();
+        let Some(s) = self.world.sessions.get_mut(key) else { return };
+        for (i, e) in script.iter().enumerate() {
+            if s.played.contains(&i) || e.after.as_deref() != Some("answer") { continue; }
+            apply_entry(s, e, now);
+            s.played.push(i);
+        }
+    }
+}
+
+pub fn apply_entry_pub(s: &mut SessionFact, e: &ScriptEntry, now: DateTime<Utc>) { apply_entry(s, e, now) }
+
+fn apply_entry(s: &mut SessionFact, e: &ScriptEntry, now: DateTime<Utc>) {
+    if let Some(p) = &e.pane { s.pane = p == "present"; }
+    if let Some(a) = &e.activity {
+        if a == "idle" && s.activity != "idle" { s.idle_since = Some(now); }
+        s.activity = a.clone();
+    }
+    if let Some(x) = &e.exit { s.exit = Some(x.clone()); }
+    if let Some(q) = &e.question { s.question = Some(q.clone()); }
+    if let Some(v) = &e.verdict { s.verdict = Some(v.clone()); }
+    if !e.deliverables.is_empty() { s.deliverables = e.deliverables.clone(); }
+}
+
+impl EvidenceSource for Store {
+    fn evidence(&self, object: &str, region: &str, name: &str) -> Option<Value> {
+        if let Some(v) = self.given_value(object, name) {
+            return Some(v);
+        }
+        self.derived(object, region, name)
+    }
+}

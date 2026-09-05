@@ -1,0 +1,79 @@
+# One unit of design work on an intent: one session, one conversation, one
+# place (A.4). Its type is a machine the operator can add; the type decides how
+# it ends.
+machine: elaboration
+version: 1
+kind: object
+satisfies: [4, 5, 23, 26, 51]
+object: elaboration
+parent: intent
+record:
+  type: string
+  type_version: int
+  sources: list          # the findings, signals or dictation that proposed it
+  document: ref          # the proposal the operator reads
+regions:
+  life:
+    initial: proposed
+    states:
+      proposed:
+        doc: a decision of its own when the intent is open; folded into the intent's decision when the intent is itself proposed
+        decision: {kind: elaboration-proposed, group: approve, document: document, answers: ["yes", drop, "type <name>"], shows: [elaboration.type, sources], satisfies: [10, 26, 55]}
+        transitions:
+          - when: {ev: elaboration.shown_with_parent, is: true}
+            to: proposed
+            note: no decision of its own; the intent's response carries it
+          - when: {response: "type <name>"}
+            to: proposed
+            effects: [{do: set_type, args: {type: $word}}]
+          - when: {response: "yes"}
+            to: approved
+          - when: {response: drop}
+            to: dropped
+      approved:
+        doc: approval given once is never re-asked (6); the record holds the type version in force
+        transitions:
+          - when: {response: drop}
+            to: dropped
+            note: dictation (4)
+          - when: {parent: {in: [open]}}
+            to: placing
+      placing:
+        doc: the intent's line takes the shared line first if due; then the place is made and proven current
+        transitions:
+          - when: {region: {name: place.place.life, in: [ready]}}
+            to: working
+      working:
+        doc: the type machine runs here with the session inside it
+        machine: $type
+        params: {place: own-place, agent: by-type}
+        transitions:
+          - when: {response: drop}
+            to: dropped
+            enter: {session: ended, place: removing}
+            note: dictation undoes the work (4); the session is retired and the place released unless held
+          - when: {final: done}
+            to: finishing
+      finishing:
+        doc: a self-closing place merges into the intent's line and is removed; a standing place is kept until the operator finishes it, then merged the same way (51)
+        enter: {place: merging}
+        transitions:
+          - when: {region: {name: place.place.life, in: [removed]}}
+            to: done
+      done:
+        tail: done
+        final: true
+      dropped:
+        tail: dropped
+        final: true
+  place:
+    doc: the elaboration's own place, a region beside its life so the owner can command it after leaving placing
+    initial: none
+    states:
+      none:
+        transitions:
+          - when: {region: {name: life, in: [placing]}}
+            to: place
+      place:
+        machine: place
+        params: {line: parent-line, inputs: work-order, keep: by-type}

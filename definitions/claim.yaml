@@ -1,0 +1,31 @@
+# One statement in the design book of what is true at the destination (A.14).
+# The claim's state is where its text is: on an intent's line it is proposed,
+# on the books' shared line it is standing. The machine writes nothing; it is
+# the index planning, curation and the ledger read.
+machine: claim
+version: 1
+kind: object
+satisfies: [22, 94, 95, 102, 118]
+object: claim
+parent: null
+record:
+  name: string
+  version: int           # moves only when the text moves; a lock hash proves it
+  scope: scope           # all | kind:<k> | capability:<c> | repos:[...]
+  scenarios: list
+regions:
+  standing:
+    initial: proposed
+    states:
+      proposed:
+        doc: visible, never built (95)
+        transitions:
+          - when: {ev: claim.on_shared_line, is: true}
+            to: standing
+      standing:
+        doc: planned against; every ledger cell in scope compares its verdict's version with this one
+        transitions:
+          - when: {not: {ev: claim.on_shared_line, is: true}}
+            to: retired
+      retired:
+        final: true

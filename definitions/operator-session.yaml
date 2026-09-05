@@ -1,0 +1,40 @@
+# The operator's own session (66): opened by dictation at any time, with the
+# machinery's read tools and dictation, and no intent behind it. A
+# with-operator session on no thread; it ends by dictation and its place goes
+# with it unless held. The operator need never open a pane (65); this is the
+# one they may open when they want to.
+machine: operator-session
+version: 1
+kind: object
+object: operator-session
+parent: null
+satisfies: [65, 66]
+record:
+  opened_by: string
+  opened_at: time
+  repository: string     # the repository whose shared line the place is off; the books by default
+regions:
+  life:
+    initial: placing
+    states:
+      placing:
+        regions:
+          place:
+            initial: place
+            states:
+              place:
+                machine: place
+                params: {line: shared-line, inputs: operator-order, keep: true}
+        transitions:
+          - when: {final: ready}
+            to: open
+      open:
+        doc: the with-operator type runs here; no decision is ever raised about it
+        machine: with-operator
+        params: {place: own-place, agent: operator-console}
+        transitions:
+          - when: {final: done}
+            to: ended
+            enter: {place: removing}
+      ended:
+        final: true

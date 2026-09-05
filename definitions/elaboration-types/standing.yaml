@@ -1,0 +1,52 @@
+# An exploration, a running prototype, an interactive page. The session stays
+# alive after it goes idle; idle is offered as finish or keep; only the
+# operator's response ends it (23-23, I6). A process that vanished is brought
+# back: a restart never forgets a standing session.
+machine: standing
+version: 1
+kind: template
+satisfies: [4, 24, 25, 51]
+params:
+  place: the elaboration's place
+  agent: the agent for the session
+record:
+  kept_at: time
+regions:
+  work:
+    initial: session
+    states:
+      session:
+        machine: session
+        params: {agent: $agent, place: $place, work_order: rendered, keep_alive: true}
+        transitions:
+          - when: {all: [{region: {name: activity, in: [idle]}}, {ev: session.idle_since, older: 30m}, {not: {ev: elaboration.kept_since, exists: true}}]}
+            to: idle-offered
+          - when: {all: [{region: {name: activity, in: [idle]}}, {ev: elaboration.kept_since, older: 7d}]}
+            to: idle-offered
+            note: a kept session is offered again after the keep interval
+          - when: {final: lost}
+            to: session
+            note: the process vanished without the operator's response; start it again in the kept place
+          - when: {all: [{final: exited}, {ev: session.exit, is: done}]}
+            to: session
+            note: a standing session that declares done still stands; only the operator finishes it
+      idle-offered:
+        doc: the decision; the prototype keeps running the whole time (S2)
+        decision: {kind: idle, group: decide, answers: [finish, keep], shows: [session.idle_since], satisfies: [10, 24, 25]}
+        transitions:
+          - when: {response: finish}
+            to: finished
+          - when: {response: keep}
+            to: session
+            effects: [{do: record_exit, note: kept_at set; the decision returns only after the keep interval}]
+          - when: {ev: session.activity, is: working}
+            to: session
+            note: the operator or a message woke it; the decision no longer stands as posed
+      finished:
+        doc: the one place the machinery ends a standing session, on the operator's response
+        enter: {session: ended}
+        transitions:
+          - when: {final: ended}
+            to: done
+      done:
+        final: true

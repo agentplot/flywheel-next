@@ -1,0 +1,36 @@
+# Research, writing, a throwaway prototype whose answer is a note. The session
+# ends itself when its deliverable is written; the machinery finishes the
+# elaboration (24).
+machine: self-closing
+version: 1
+kind: template
+satisfies: [23, 24, 51]
+params:
+  place: the elaboration's place
+  agent: the agent for the session
+regions:
+  work:
+    initial: session
+    states:
+      session:
+        machine: session
+        params: {agent: $agent, place: $place, work_order: rendered, keep_alive: false}
+        transitions:
+          - when: {all: [{final: exited}, {ev: session.exit, is: done}]}
+            to: done
+          - when: {all: [{final: exited}, {ev: session.exit, in: [stalled, invalid]}]}
+            to: stalled
+          - when: {final: lost}
+            to: stalled
+          - when: {all: [{region: {name: activity, in: [idle]}}, {ev: session.idle_since, older: 2h}]}
+            to: stalled
+            note: idle with no exit written is a stall for a self-closing type
+      stalled:
+        decision: {kind: stalled, group: decide, answers: [retry, drop], satisfies: [24]}
+        transitions:
+          - when: {response: retry}
+            to: session
+          - when: {response: drop}
+            to: done
+      done:
+        final: true

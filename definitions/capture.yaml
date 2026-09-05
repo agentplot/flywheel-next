@@ -1,0 +1,52 @@
+# One source event as recorded (108). Captured by an adapter unattended;
+# read into signals by a session's judgment (112), except a forwarded
+# single message, which is its own excerpt and needs no judgment (S21).
+machine: capture
+version: 1
+kind: object
+satisfies: [103, 108, 109, 111, 112]
+object: capture
+parent: null
+owns: [signal]
+record:
+  source: string
+  event_key: string      # the identity: capturing the same event twice yields one capture (S22)
+  event_at: time
+  captured_by: string
+  raw: ref               # pointer to the raw material, outside version control
+regions:
+  reading:
+    initial: captured
+    states:
+      captured:
+        transitions:
+          - when: {ev: capture.signals_present, is: true}
+            to: read
+          - when: {ev: capture.source, is: forwarded-message}
+            to: captured
+            effects: [{do: ensure_signal, note: "one message, one signal, the kind the operator's response gave or ask"}]
+          - when: {always: true}
+            to: reading
+      reading:
+        regions:
+          place:
+            initial: place
+            states:
+              place:
+                machine: place
+                params: {line: books-shared-line, inputs: work-order, keep: false}
+          session:
+            initial: session
+            states:
+              session:
+                machine: session
+                params: {agent: capture-reader, place: own-place, work_order: rendered, keep_alive: false}
+        transitions:
+          - when: {all: [{final: exited}, {ev: session.exit, is: done}]}
+            to: read
+            effects: [{do: record_offers, note: "the signals the session read are written once, immutable"}]
+          - when: {any: [{final: lost}, {all: [{final: exited}, {ev: session.exit, in: [stalled, invalid]}]}]}
+            to: captured
+            effects: [{do: report, args: {text: capture reader did not deliver}}]
+      read:
+        final: true

@@ -1,0 +1,70 @@
+# The part of every profile's binding that is the same everywhere: the world
+# the machinery acts on — git repositories, worktrees, the books' claim blocks,
+# the manifest. Both profiles inherit it. Not a profile on its own
+# (complete: false). The session binding is a partial of its own
+# (sessions.yaml) because it is the one a stand-in replaces (90).
+#
+# Tools: git (libgit2 through the `gix` crate for reads, the `git` binary for
+# merges, rebases and pushes so hooks and credentials behave as the operator's
+# do); worktrunk `wt` for places (`wt worktree add/remove`, `wt tether`,
+# portless for ports and endpoints); mdBook books; OpenSpec change directories;
+# `gh` is not used anywhere in this binding. Nothing a session leaves on the
+# place's disk is read as state (64): the place holds the session's work and
+# the inputs handed in; every report from a session goes through the
+# `flywheel` command, which writes to the control plane.
+format: flywheel-profile/1
+name: host
+complete: false
+evidence:
+  now:                 {read: the host clock, synchronized by the operating system's time service; every duration guard tolerates 60s of skew}
+  session.host_alive:  {read: the host record's heartbeat, as the state profile binds host.last_seen}
+  session.expected:    {read: the work order's deliverables line, rendered by the engine and kept on the session record}
+  place.exists:        {read: "`wt worktree list` names the worktree at the derived path"}
+  place.contains_line: {read: "`git merge-base --is-ancestor <line head> <place head>`"}
+  place.ahead_of_line: {read: "`git rev-list --count <line head>..<place head>` > 0"}
+  place.conflicted:    {read: "`git status --porcelain` in the place shows unmerged paths"}
+  place.merge_slot:    {read: no sibling place of the same line with a lower ordinal is in state merging, from the state profile's list}
+  place.merged:        {read: "`git merge-base --is-ancestor <place head> <line head>`"}
+  place.job_seeded:    {read: "the place's tree holds the conflicted rebase and the session's thread holds the job entry with that rebase's heads"}
+  place.line_moved_told: {read: "the session's thread holds a `moved` entry naming the line's current head with delivered = true"}
+  place.ready:         {read: "exists, contains its line, the work order file and the hooks are present"}
+  place.absent:        {read: "`wt worktree list` does not name it and the directory is gone"}
+  place.endpoints_served: {read: "`portless list` filtered to the place's hash: every service the tethered processes of this worktree serve, as URLs on the operator's private network"}
+  host.stray_places:   {read: "`wt worktree list` under the places root names a worktree whose derived owner id is no listed object in a live state, or is a listed object whose place region is removed, and whose owner record is not held"}
+  host.no_stray_places: {read: the same list finds none}
+  line.exists:         {read: "`git ls-remote <repo> refs/heads/<line>` returns the ref"}
+  line.contains_parent: {read: "`git merge-base --is-ancestor <parent head> <line head>` after `git fetch`"}
+  line.take_due:       {read: "the line has no place yet and one is about to be made; or the line is landing; or the manifest's `take_cadence` for the repository (a cron expression) has fired since `last_take`; or a dictation `take <line>` stands unapplied"}
+  line.take_conflicts: {read: "`git merge-tree --write-tree <line head> <parent head>` reports conflicts (no worktree touched)"}
+  line.landed:         {read: "`git merge-base --is-ancestor <line head> <parent head>`"}
+  line.landing:        {read: "policy pull-request: the pull request's mergeable and check state through the git host's API (none | pending | passed | failed); policy direct: none until the push, then passed or failed by the push's result"}
+  line.retries:        {read: the owner's record counter}
+  line.conflict_job_done: {read: "the chore unit recorded for this line and this take (record field `conflict_chore`) is in state merged"}
+  line.conflict_job_seeded: {read: "a unit record of type chore exists with `line` = this line, `take` = the parent head the take tried, state approved or later"}
+  line.absent:         {read: "`git ls-remote` returns nothing for the ref"}
+  claim.on_shared_line: {read: "the books repository's shared line holds a fenced claim block with this name (in `src/**/*.md`)"}
+  claim.on_intent_line: {read: "the intent's line holds the block and the shared line does not"}
+  claim.version:       {read: "the block's `version:` line; the lock hash beside it must match the block's text, checked by `flywheel claims check` in the books' pre-commit hook"}
+  claim.scope_repos:   {read: "the block's `scope:` resolved against the manifest `flywheel.yaml` (all | kind | capability | repos)"}
+  cell.evidence_present: {read: "every path or spec id the verdict cites exists at the repository's shared head"}
+  cell.claim_version:  {read: as claim.version}
+  stage.agents:        {read: "a fixed list from the type; or the rule's pattern globbed in the place (`personas/*.md`), each match one agent"}
+  capture.source:      {read: the capture record's source field}
+  intent.archived:     {read: "the intent's line holds the OpenSpec archive of its change (`openspec/changes/archive/<date>-<id>/`) and no open change of that id"}
+  intent.change_open:  {read: "`openspec/changes/<intent-id>/` exists on the intent's line"}
+  lease.coverable:     {read: "some host in `flywheel.yaml` hosts declares this object's kind, its repository (for a bolt, unit or item) and its unit type (for a unit or item); a sink is coverable when some host or the dispatcher declares it in `presents`"}
+effects:
+  create_line:     {do: "`git push <repo> <parent head>:refs/heads/<line>` with expected-old = zero; the ref exists afterwards"}
+  take_parent:     {do: "in the owner's place (a bolt's operator place, an intent's own place): `git merge --no-ff <parent>`; on conflict `git merge --abort`; then push the line with expected-old = the head read"}
+  seed_take_conflict: {do: "put(new unit): type chore, parent = the line's owner, line = this line, take = the parent head, scope = bolt-line or intent-line, approval = `cadence <cron>` when the cadence fired the take or `response <id>` when a dictation ordered it, state approved; its item's place is prepared off the line with `git merge <parent>` left conflicted in that place only, and its work order names the conflict as the job"}
+  land_line:       {do: "policy pull-request: open or reuse the pull request titled by the line, enable auto-merge, wait for the gates; policy direct: `git push <repo> <line head>:<parent>` with expected-old = the parent head read"}
+  remove_line:     {do: "`git push <repo> :refs/heads/<line>`; recorded as an effect with the head it removed"}
+  prepare_place:   {do: "`wt worktree add <path> <line>` (ports hashed from the path, portless routes); `.git/info/exclude` gets `.flywheel/`; hooks `pre-push`, `reference-transaction`, `pre-merge-commit` that refuse and run `flywheel refuse <what>` (S15); Claude Code settings deny `git branch|merge|push|worktree`, `wt`; `.flywheel/work-order.md` rendered from the closed inputs — handed in, never read back as state"}
+  rebase_place:    {do: "`git rebase <line head>` in the place; on conflict `git rebase --abort`"}
+  seed_conflict_job: {do: "`git rebase <line head>` left conflicted in the place; append(session thread) the job entry naming the heads and the paths; the session is told through the session binding"}
+  merge_place:     {do: "in the line's own checkout: `git merge --no-ff <place head>`, push with expected-old = the line head read; the bolt's operator place is then reset to the new head"}
+  remove_place:    {do: "`wt worktree remove <path>`; tethered processes end with it (`wt tether`); refused and reported while the owner record is held; recorded with the path and the head it had"}
+  record_endpoints: {do: "put(owner): endpoints = place.endpoints_served; the page renders them as links beside the bolt"}
+  remove_stray_places: {do: "for each stray worktree under the places root: `wt worktree remove <path>`; one effect per removal, each recorded with the path and why it was stray"}
+  archive_intent:  {do: "`openspec archive <intent-id>` in the intent's place, committed on the intent's line"}
+  open_intent:     {do: "`openspec new <intent-id>` from the schema instruction in force, committed on the intent's line"}

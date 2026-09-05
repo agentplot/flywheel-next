@@ -1,0 +1,64 @@
+# A host's bounded ownership of one object. Engine machine: one instance per
+# object the engine acts on. Taking is a compare-and-swap on the control plane
+# (125); the loser reads again. A host takes only what its manifest declaration
+# covers (146). Nothing in the domain names a lease.
+machine: lease
+version: 2
+kind: engine
+object: lease
+parent: null
+satisfies: [125, 131, 144, 146, 147]
+record:
+  holder: host-id
+  taken_at: time
+  renewed_at: time
+regions:
+  hold:
+    initial: free
+    states:
+      free:
+        doc: no holder; any host whose declaration covers the object and has a transition to run on it may take it
+        transitions:
+          - when: {ev: lease.holder, exists: true}
+            to: held
+          - when: {ev: lease.coverable, is: false}
+            to: uncovered
+      uncovered:
+        doc: no host's declaration covers this object; a decision under attention, not a silent wait (146)
+        decision: {kind: uncovered, group: attention, answers: [ok], satisfies: [146]}
+        transitions:
+          - when: {ev: lease.coverable, is: true}
+            to: free
+          - when: {response: ok}
+            to: acknowledged
+      acknowledged:
+        doc: the operator has seen it; the object waits until a declaration covers it
+        transitions:
+          - when: {ev: lease.coverable, is: true}
+            to: free
+      held:
+        doc: renewed on every tick the holder acts on the object; released when the object is quiescent on that host
+        transitions:
+          - when: {ev: lease.holder, exists: false}
+            to: free
+          - when: {ev: lease.renewed_at, older: 5m}
+            to: stale
+      stale:
+        doc: shown stale; the holder may still renew and continue (S13); no other host touches the object
+        transitions:
+          - when: {ev: lease.holder, exists: false}
+            to: free
+          - when: {not: {ev: lease.renewed_at, older: 5m}}
+            to: held
+            note: the holder returned
+          - when: {any: [{ev: lease.renewed_at, older: 24h}, {ev: host.last_seen, older: 24h}]}
+            to: expired
+            note: the stated rule; also reached at once when the holder host's gone decision is answered takeover, which is the operator's response the rule names for session-backed work (147)
+      expired:
+        doc: another host may replace the holder by compare-and-swap; the old holder, on return, reads that it lost and stops
+        transitions:
+          - when: {ev: lease.holder, exists: false}
+            to: free
+          - when: {not: {ev: lease.renewed_at, older: 5m}}
+            to: held
+            note: a new holder took it

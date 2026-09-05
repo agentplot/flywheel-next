@@ -1,0 +1,47 @@
+# A host that runs the machinery. Engine machine: it names no domain object.
+# The manifest says what the host takes — kinds, repositories, unit types,
+# whether it presents — and it takes leases only within that (146). Its
+# reconciliation finds stray places on its own disk and removes them (52).
+machine: host
+version: 2
+kind: engine
+object: host
+parent: null
+satisfies: [4, 31, 52, 93, 144, 146, 147, 148]
+record:
+  bound: int            # sessions this host may run at once (a setting of the host)
+  last_seen: time       # its heartbeat
+  declares: string      # the manifest declaration: kinds, repositories, unit types, sinks it presents
+regions:
+  life:
+    initial: alive
+    states:
+      alive:
+        doc: heartbeat within the stale window; every tick also reconciles the host's own disk against the live objects
+        transitions:
+          - when: {ev: host.stray_places, is: true}
+            to: alive
+            effects: [{do: remove_stray_places, note: "a place that belongs to no live object and is not held is removed; every removal is recorded (52)"}]
+          - when: {ev: host.last_seen, older: 5m}
+            to: stale
+      stale:
+        doc: visible as stale on the status view; its objects are untouched (147)
+        transitions:
+          - when: {not: {ev: host.last_seen, older: 5m}}
+            to: alive
+          - when: {ev: host.last_seen, older: 30m}
+            to: gone
+      gone:
+        doc: an attention line offers takeover; the leases expire only by the operator's response or the long bound
+        decision: {kind: host-gone, group: attention, answers: [takeover, wait], shows: [host.last_seen], satisfies: [79, 147]}
+        transitions:
+          - when: {not: {ev: host.last_seen, older: 5m}}
+            to: alive
+            note: the host came back; its leases were never expired, its work resumes on it
+          - when: {any: [{response: takeover}, {ev: host.last_seen, older: 24h}]}
+            to: released
+            effects: [{do: expire_leases, note: "operator's response or the 24h bound; other hosts may now take over"}]
+      released:
+        transitions:
+          - when: {not: {ev: host.last_seen, older: 5m}}
+            to: alive

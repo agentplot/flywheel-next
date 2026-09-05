@@ -1,0 +1,190 @@
+# The plan mockup's state, seeded: every decision kind once, plus running work
+# and a SINCE tail. Sessions are played by the stand-in from `script`.
+scenario: plan-mockup
+title: The plan at one moment, every decision kind shown once
+given:
+  now: "2026-09-04T14:40:00Z"
+  register_start: 412
+  hosts:
+    - {id: studio, bound: 4, last_seen: "2026-09-04T14:39:00Z"}
+    - {id: mac-mini, bound: 2, last_seen: "2026-09-04T13:59:00Z", alive: false}
+  tail:
+    - {at: "2026-09-04T13:52:00Z", object: bolt/switchboard/idle-timeout, kind: landed, state: landed, by: null}
+    - {at: "2026-09-04T06:10:00Z", object: intent/host-liveness, kind: closed, state: closed, by: page-0}
+    - {at: "2026-09-04T06:10:00Z", object: unit/atlas/chore-2b, kind: dropped, state: dropped, by: page-0}
+  evidence:
+    bolt.citations_moved: {bolt/atlas/plan-rows: true}
+    bolt.moved_claim: {bolt/atlas/plan-rows: "sessions/one-writer v3→v4 · 2 items in flight"}
+    host.last_seen:
+      host/studio: "2026-09-04T14:39:00Z"
+      host/mac-mini: "2026-09-04T13:59:00Z"
+  sessions:
+    unit/atlas/plan-tail/wi-1/build:
+      pane: true
+      activity: working
+      exit: blocked
+      question: "should Ready imply Backlog cleared?"
+      ticks_alive: 40
+    unit/atlas/plan-tail/wi-2/build:
+      pane: true
+      activity: working
+      ticks_alive: 2
+    elaboration/plan-derivation/prototype/work:
+      pane: true
+      activity: idle
+      idle_since: "2026-09-04T00:40:00Z"
+      ticks_alive: 900
+  script:
+    # what sessions will do once started by an approval on the page
+    unit/atlas/status-writer/wi-1/spec:   [{after: 2t, exit: done, deliverables: [change-directory, spec]}]
+    unit/atlas/status-writer/wi-1/build:  [{after: 3t, exit: done, deliverables: [commits]}]
+    unit/atlas/status-writer/wi-1/review: [{after: 2t, exit: done, verdict: pass}]
+    unit/atlas/status-writer/wi-2/spec:   [{after: 2t, exit: done}]
+    unit/atlas/status-writer/wi-2/build:  [{after: 4t, exit: blocked, question: "two readings of one-writer sc.2 — which?"}, {after: answer, exit: done}]
+    unit/atlas/status-writer/wi-2/review: [{after: 1t, exit: done, verdict: pass}]
+    unit/atlas/retry-jitter/wi-1/spec:    [{after: 1t, exit: done}]
+    unit/atlas/retry-jitter/wi-1/build:   [{after: 2t, exit: done}]
+    unit/atlas/retry-jitter/wi-1/review:  [{after: 1t, exit: done}]
+    unit/atlas/chores-1/wi-1/fix:         [{after: 2t, exit: done}]
+    unit/new-repo/baseline-1/wi-1/spec:   [{after: 2t, exit: done}]
+    unit/new-repo/baseline-1/wi-1/build:  [{after: 3t, exit: done}]
+    unit/new-repo/baseline-1/wi-1/review: [{after: 1t, exit: done}]
+    unit/atlas/plan-tail/wi-1/build:      [{after: answer, exit: done}]
+    unit/atlas/plan-tail/wi-1/review:     [{after: 1t, exit: done}]
+    unit/atlas/plan-tail/wi-2/build:      [{after: 6t, exit: done}]
+    unit/atlas/plan-tail/wi-2/review:     [{after: 1t, exit: done}]
+    intent/atlas-provider-limits/research/work: [{after: 3t, exit: done}]
+  objects:
+    # ---- APPROVE
+    - id: intent/atlas-provider-limits
+      machine: intent
+      entered: 12d
+      record: {subject: provider limits on atlas, signals: [s-101, s-102, s-103, s-104, s-105, s-106, s-107], sources: 3, challenges: ["providers/one-writer @v3"]}
+    - id: elaboration/atlas-provider-limits/research
+      machine: elaboration
+      parent: intent/atlas-provider-limits
+      record: {type: self-closing, document: openspec/changes/intent-atlas-provider-limits/research.md}
+    - id: elaboration/atlas-provider-limits/prototype
+      machine: elaboration
+      parent: intent/atlas-provider-limits
+      record: {type: standing, document: openspec/changes/intent-atlas-provider-limits/prototype.md}
+
+    - id: bolt/atlas/plan-rows
+      machine: bolt
+      entered: 21d
+      state: {life: open, "life.open.citations": moved, line: line, "line.line.life": current, place: place, "place.place.life": ready}
+      record: {repository: atlas, name: plan-rows}
+    - id: unit/atlas/row-grouping
+      machine: unit
+      parent: bolt/atlas/plan-rows
+      state: {life: merged}
+      record: {type: default, claims: ["plan/grouping@2"]}
+    - id: unit/atlas/status-writer
+      machine: unit
+      parent: bolt/atlas/plan-rows
+      entered: 3h
+      record: {type: default, repository: atlas, items: 2, target: {bolt: bolt/atlas/plan-rows}, depends_on: [], claims: ["providers/one-writer@3 sc.1", "providers/one-writer@3 sc.2"], document: openspec/changes/status-writer/proposal.md, covers: "one-writer sc.1,2 · completes it"}
+    - id: unit/atlas/plan-tail
+      machine: unit
+      parent: bolt/atlas/plan-rows
+      state: {life: in-flight}
+      record: {type: default, repository: atlas, items: 2, target: {bolt: bolt/atlas/plan-rows}}
+    - id: unit/atlas/plan-tail/wi-1
+      machine: work-item
+      parent: unit/atlas/plan-tail
+      entered: 40m
+      state: {life: in-type, "life.in-type.stages": build, "life.in-type.stages.build.run": sessions, "life.in-type.stages.build.run.sessions.life": alive, "life.in-type.stages.build.run.sessions.life.alive.activity": blocked, "life.in-type.stages.build.run.sessions.life.alive.presence": unknown, place: place, "place.place.life": ready}
+      record: {ordinal: 1, type: default, question: "should Ready imply Backlog cleared?", host: mac-mini}
+    - id: unit/atlas/plan-tail/wi-2
+      machine: work-item
+      parent: unit/atlas/plan-tail
+      entered: 12m
+      state: {life: in-type, "life.in-type.stages": build, "life.in-type.stages.build.run": sessions, "life.in-type.stages.build.run.sessions.life": alive, "life.in-type.stages.build.run.sessions.life.alive.activity": working, "life.in-type.stages.build.run.sessions.life.alive.presence": unknown, place: place, "place.place.life": ready}
+      record: {ordinal: 2, type: default, host: studio}
+
+    - id: unit/atlas/retry-jitter
+      machine: unit
+      entered: 50m
+      record: {type: fast, repository: atlas, items: 1, target: {new_name: atlas-retry-behaviour-and-jitter-limits}, source: "ask: retries hammer the provider", document: openspec/changes/retry-jitter/proposal.md}
+    - id: unit/atlas/chores-1
+      machine: unit
+      parent: bolt/atlas/plan-rows
+      entered: 2h
+      record: {type: chore, repository: atlas, items: 1, target: {bolt: bolt/atlas/plan-rows}, chores: {a: stale AGENTS.md, b: citation fix, c: rename ref}}
+
+    - id: bolt/switchboard/plan-rows
+      machine: bolt
+      entered: 9d
+      state: {life: open, line: line, "line.line.life": current, place: place, "place.place.life": ready}
+      record: {repository: switchboard, name: plan-rows, gates: green}
+    - id: unit/switchboard/u1
+      machine: unit
+      parent: bolt/switchboard/plan-rows
+      state: {life: merged}
+      record: {type: default}
+    - id: unit/switchboard/u2
+      machine: unit
+      parent: bolt/switchboard/plan-rows
+      state: {life: merged}
+      record: {type: default}
+    - id: unit/switchboard/u3
+      machine: unit
+      parent: bolt/switchboard/plan-rows
+      state: {life: merged}
+      record: {type: default}
+    - id: unit/switchboard/u4
+      machine: unit
+      parent: bolt/switchboard/plan-rows
+      state: {life: merged}
+      record: {type: default}
+
+    - id: unit/new-repo/baseline-1
+      machine: unit
+      entered: 1d
+      record: {type: default, repository: new-repo, items: 1, target: {new_name: baseline}, batch: baseline, summary: "11 claims unmet · 8 chores · 3 units"}
+
+    # ---- DECIDE
+    - id: intent/loop-granularity
+      machine: intent
+      entered: 30d
+      state: {life: open, line: line, "line.line.life": current}
+      record: {subject: loop granularity}
+    - id: elaboration/loop-granularity/e1
+      machine: elaboration
+      parent: intent/loop-granularity
+      state: {life: done}
+      record: {type: self-closing}
+    - id: elaboration/loop-granularity/e2
+      machine: elaboration
+      parent: intent/loop-granularity
+      state: {life: done}
+      record: {type: self-closing}
+    - id: elaboration/loop-granularity/e3
+      machine: elaboration
+      parent: intent/loop-granularity
+      state: {life: done}
+      record: {type: self-closing}
+    - id: elaboration/loop-granularity/e4
+      machine: elaboration
+      parent: intent/loop-granularity
+      state: {life: done}
+      record: {type: standing}
+
+    - id: intent/plan-derivation
+      machine: intent
+      entered: 6d
+      state: {life: open, line: line, "line.line.life": current}
+      record: {subject: plan derivation}
+    - id: elaboration/plan-derivation/prototype
+      machine: elaboration
+      parent: intent/plan-derivation
+      entered: 14h
+      state: {life: working, "life.working.work": session, "life.working.work.session.life": alive, "life.working.work.session.life.alive.activity": idle, "life.working.work.session.life.alive.presence": unknown, place: place, "place.place.life": ready}
+      record: {type: standing, host: studio}
+
+    # ---- ATTENTION
+    - id: response/lost-1
+      machine: response
+      entered: 8h
+      record: {decision: 405, answer: "yes", given_by: chuck, note: "unit already dropped by 05:58 edit"}
+when: []

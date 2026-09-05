@@ -1,0 +1,505 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "flywheel-next/statechart/machine.schema.json",
+  "title": "Flywheel machine definition",
+  "description": "One hierarchical state machine defined as data. States, transitions, guards over named evidence, effects by abstract name. No store, service, path, label or field is named here (I13); every `ev` and `do` name must appear in atoms.yaml and be bound by a profile. Every machine and every decision kind states the requirements it satisfies by number (section 12 of the requirements).",
+  "type": "object",
+  "required": [
+    "machine",
+    "version",
+    "kind",
+    "regions",
+    "satisfies"
+  ],
+  "additionalProperties": false,
+  "properties": {
+    "machine": {
+      "type": "string",
+      "pattern": "^[a-z][a-z0-9-]*$"
+    },
+    "version": {
+      "type": "integer",
+      "minimum": 1
+    },
+    "kind": {
+      "enum": [
+        "object",
+        "template",
+        "engine"
+      ],
+      "description": "object: governs one object kind the control plane lists. template: instantiated inside another machine's state with params. engine: shipped with the engine, knows no domain name."
+    },
+    "object": {
+      "type": "string",
+      "description": "the object kind this machine governs (kind: object)"
+    },
+    "parent": {
+      "type": [
+        "string",
+        "array",
+        "null"
+      ],
+      "description": "the owning object kind (or kinds); owned objects are listed through their parent"
+    },
+    "owns": {
+      "type": "array",
+      "items": {
+        "type": "string"
+      }
+    },
+    "singleton": {
+      "type": [
+        "string",
+        "null"
+      ],
+      "description": "one instance per <scope>: organization | repository"
+    },
+    "params": {
+      "type": "object",
+      "additionalProperties": {
+        "type": "string"
+      },
+      "description": "template only: parameter name -> one-line meaning; supplied by the referencing state"
+    },
+    "record": {
+      "type": "object",
+      "additionalProperties": {
+        "type": [
+          "string",
+          "object"
+        ]
+      },
+      "description": "attributes the object's record carries beside its state, with a type word. Counters and versions live here, not as states."
+    },
+    "doc": {
+      "type": "string"
+    },
+    "regions": {
+      "type": "object",
+      "minProperties": 1,
+      "additionalProperties": {
+        "$ref": "#/$defs/region"
+      }
+    },
+    "satisfies": {
+      "type": "array",
+      "items": {
+        "type": "integer",
+        "minimum": 1
+      },
+      "minItems": 1,
+      "description": "requirement numbers this machine satisfies; check.py fails when a number does not exist or a requirement is cited nowhere"
+    }
+  },
+  "$defs": {
+    "region": {
+      "type": "object",
+      "required": [
+        "initial",
+        "states"
+      ],
+      "additionalProperties": false,
+      "properties": {
+        "doc": {
+          "type": "string"
+        },
+        "initial": {
+          "type": "string"
+        },
+        "states": {
+          "type": "object",
+          "minProperties": 1,
+          "additionalProperties": {
+            "$ref": "#/$defs/state"
+          }
+        }
+      }
+    },
+    "state": {
+      "type": "object",
+      "additionalProperties": false,
+      "properties": {
+        "doc": {
+          "type": "string"
+        },
+        "final": {
+          "type": "boolean",
+          "description": "a terminal state of this region; a submachine's finals are seen by the parent as {final: <name>}"
+        },
+        "decision": {
+          "$ref": "#/$defs/decision"
+        },
+        "tail": {
+          "enum": [
+            "done",
+            "landed",
+            "closed",
+            "dropped",
+            "merged",
+            "finished"
+          ],
+          "description": "entering this state is reported in the plan's tail, once per sink, after that sink's delivery mark (14)"
+        },
+        "entry": {
+          "type": "array",
+          "items": {
+            "$ref": "#/$defs/effect"
+          }
+        },
+        "exit": {
+          "type": "array",
+          "items": {
+            "$ref": "#/$defs/effect"
+          }
+        },
+        "machine": {
+          "type": "string",
+          "description": "a template or object machine run inside this state"
+        },
+        "params": {
+          "type": "object"
+        },
+        "regions": {
+          "type": "object",
+          "additionalProperties": {
+            "$ref": "#/$defs/region"
+          },
+          "description": "orthogonal regions nested in this state"
+        },
+        "enter": {
+          "type": "object",
+          "additionalProperties": {
+            "type": "string"
+          },
+          "description": "same as a transition's enter, applied when the state is entered"
+        },
+        "transitions": {
+          "type": "array",
+          "items": {
+            "$ref": "#/$defs/transition"
+          },
+          "description": "transitions in priority order; the first whose guard holds is taken; at most one per tick. (Named `transitions`, not `on`, because YAML 1.1 reads a bare `on` as a boolean.)"
+        }
+      }
+    },
+    "effect": {
+      "type": "object",
+      "required": [
+        "do"
+      ],
+      "additionalProperties": false,
+      "properties": {
+        "do": {
+          "type": "string"
+        },
+        "args": {
+          "type": "object"
+        },
+        "note": {
+          "type": "string",
+          "description": "the reason recorded with the write (A.9.68)"
+        }
+      }
+    },
+    "transition": {
+      "type": "object",
+      "required": [
+        "when",
+        "to"
+      ],
+      "additionalProperties": false,
+      "properties": {
+        "when": {
+          "$ref": "#/$defs/guard"
+        },
+        "to": {
+          "type": "string"
+        },
+        "effects": {
+          "type": "array",
+          "items": {
+            "$ref": "#/$defs/effect"
+          }
+        },
+        "note": {
+          "type": "string"
+        },
+        "bump": {
+          "type": "string",
+          "description": "a record counter incremented by this transition"
+        },
+        "enter": {
+          "type": "object",
+          "additionalProperties": {
+            "type": "string"
+          },
+          "description": "child region or submachine state -> the state it is put in when this transition fires; the owner's one way to command a submachine (place: merging, place: removing, line: landing, session: ended)"
+        }
+      }
+    },
+    "guard": {
+      "oneOf": [
+        {
+          "type": "object",
+          "required": [
+            "all"
+          ],
+          "additionalProperties": false,
+          "properties": {
+            "all": {
+              "type": "array",
+              "items": {
+                "$ref": "#/$defs/guard"
+              }
+            }
+          }
+        },
+        {
+          "type": "object",
+          "required": [
+            "any"
+          ],
+          "additionalProperties": false,
+          "properties": {
+            "any": {
+              "type": "array",
+              "items": {
+                "$ref": "#/$defs/guard"
+              }
+            }
+          }
+        },
+        {
+          "type": "object",
+          "required": [
+            "not"
+          ],
+          "additionalProperties": false,
+          "properties": {
+            "not": {
+              "$ref": "#/$defs/guard"
+            }
+          }
+        },
+        {
+          "type": "object",
+          "required": [
+            "ev"
+          ],
+          "additionalProperties": false,
+          "properties": {
+            "ev": {
+              "type": "string",
+              "description": "an evidence name from atoms.yaml"
+            },
+            "is": {},
+            "in": {
+              "type": "array"
+            },
+            "exists": {
+              "type": "boolean"
+            },
+            "gt": {},
+            "gte": {},
+            "lt": {},
+            "lte": {},
+            "older": {
+              "type": "string",
+              "description": "the timestamp evidence is older than this duration (5m, 14h, 7d)"
+            },
+            "eq_ev": {
+              "type": "string",
+              "description": "equal to another evidence value"
+            },
+            "ne_ev": {
+              "type": "string"
+            },
+            "gte_ev": {
+              "type": "string"
+            },
+            "lt_ev": {
+              "type": "string"
+            },
+            "gt_ev": {
+              "type": "string"
+            }
+          }
+        },
+        {
+          "type": "object",
+          "required": [
+            "response"
+          ],
+          "additionalProperties": false,
+          "properties": {
+            "response": {
+              "type": "string",
+              "description": "an unapplied operator response on this object with this answer: an answer to the object's active decision, or a dictation naming the object (12)"
+            }
+          }
+        },
+        {
+          "type": "object",
+          "required": [
+            "final"
+          ],
+          "additionalProperties": false,
+          "properties": {
+            "final": {
+              "type": "string",
+              "description": "the state's submachine reached this final state"
+            }
+          }
+        },
+        {
+          "type": "object",
+          "required": [
+            "children"
+          ],
+          "additionalProperties": false,
+          "properties": {
+            "children": {
+              "type": "object",
+              "required": [
+                "kind"
+              ],
+              "additionalProperties": false,
+              "properties": {
+                "kind": {
+                  "type": "string"
+                },
+                "all": {
+                  "type": "array"
+                },
+                "any": {
+                  "type": "array"
+                },
+                "none": {
+                  "type": "array"
+                },
+                "count_gte": {
+                  "type": "integer"
+                }
+              }
+            }
+          }
+        },
+        {
+          "type": "object",
+          "required": [
+            "parent"
+          ],
+          "additionalProperties": false,
+          "properties": {
+            "parent": {
+              "type": "object",
+              "required": [
+                "in"
+              ],
+              "properties": {
+                "in": {
+                  "type": "array"
+                }
+              }
+            }
+          }
+        },
+        {
+          "type": "object",
+          "required": [
+            "region"
+          ],
+          "additionalProperties": false,
+          "properties": {
+            "region": {
+              "type": "object",
+              "required": [
+                "name",
+                "in"
+              ],
+              "properties": {
+                "name": {
+                  "type": "string"
+                },
+                "in": {
+                  "type": "array"
+                }
+              }
+            }
+          }
+        },
+        {
+          "type": "object",
+          "required": [
+            "always"
+          ],
+          "additionalProperties": false,
+          "properties": {
+            "always": {
+              "const": true
+            }
+          }
+        }
+      ]
+    },
+    "decision": {
+      "type": "object",
+      "required": [
+        "kind",
+        "group",
+        "answers",
+        "satisfies"
+      ],
+      "additionalProperties": false,
+      "description": "This state is a plan decision. Created by entering the state; retracted by leaving it (I3, 9). Numbered once for the organization when first seen by the plan machine (15).",
+      "properties": {
+        "kind": {
+          "type": "string"
+        },
+        "group": {
+          "enum": [
+            "approve",
+            "decide",
+            "answer",
+            "attention"
+          ]
+        },
+        "answers": {
+          "type": "array",
+          "items": {
+            "type": "string"
+          },
+          "minItems": 1,
+          "description": "the reply grammar: a bare word, or `word <arg>` / `word: <text>`; the same grammar on the page and in chat (2, 18)"
+        },
+        "batch": {
+          "type": "string",
+          "description": "record field whose equal values fold decisions into one numbered decision (chores of a bolt, a baseline) (11)"
+        },
+        "shows": {
+          "type": "array",
+          "items": {
+            "type": "string"
+          },
+          "description": "evidence names rendered under the decision"
+        },
+        "page_only": {
+          "type": "boolean"
+        },
+        "document": {
+          "type": "string",
+          "description": "record field naming a document presented for review on the surface the profile binds (plannotator); the operator's annotations return as the response (17, 126)"
+        },
+        "satisfies": {
+          "type": "array",
+          "items": {
+            "type": "integer",
+            "minimum": 1
+          },
+          "minItems": 1,
+          "description": "requirement numbers this decision kind satisfies"
+        }
+      }
+    }
+  }
+}

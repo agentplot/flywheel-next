@@ -1,0 +1,53 @@
+# One verdict slot: a standing claim × a repository in its scope (A.14). The
+# verdict is a session's judgment, recorded by the machinery from a planning
+# or test exit; the machine only says when it is fresh and when it is stale.
+# The backlog is derived: every cell not in judged.satisfied or
+# judged.not-applicable (99).
+machine: ledger-cell
+version: 1
+kind: object
+satisfies: [97, 98, 99, 101]
+object: ledger-cell
+parent: null
+record:
+  claim: string
+  repository: string
+  verdict: enum
+  claim_version: int
+  revision: revision
+  evidence: list
+  judged_at: time
+regions:
+  freshness:
+    initial: unjudged
+    states:
+      unjudged:
+        doc: a repository joining the fleet has every cell here (101)
+        transitions:
+          - when: {ev: cell.verdict, in: [satisfied, partial, not-satisfied, not-applicable]}
+            to: judged
+      judged:
+        doc: reused until the claim's version moves or the evidence is gone; a repository changing does not stale it (98, I10)
+        regions:
+          value:
+            initial: unknown
+            states:
+              unknown:
+                transitions:
+                  - {when: {ev: cell.verdict, is: satisfied}, to: satisfied}
+                  - {when: {ev: cell.verdict, is: partial}, to: partial}
+                  - {when: {ev: cell.verdict, is: not-satisfied}, to: not-satisfied}
+                  - {when: {ev: cell.verdict, is: not-applicable}, to: not-applicable}
+              satisfied: {doc: out of the backlog}
+              partial: {doc: in the backlog}
+              not-satisfied: {doc: in the backlog}
+              not-applicable: {doc: out of the backlog; the scope judgment was made once}
+        transitions:
+          - when: {any: [{ev: cell.verdict_claim_version, ne_ev: cell.claim_version}, {ev: cell.evidence_present, is: false}]}
+            to: stale
+      stale:
+        doc: back in the backlog; planning's fingerprint moves, so a planning run is due and a decision cannot be missed
+        transitions:
+          - when: {ev: cell.verdict_claim_version, eq_ev: cell.claim_version}
+            to: judged
+            note: a new verdict was recorded against the current version

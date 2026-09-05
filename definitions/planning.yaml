@@ -1,0 +1,65 @@
+# Planning: one machine per built repository (section 10). Due when the
+# repository's backlog fingerprint differs from the one last planned against:
+# a claim in scope became standing, a verdict was recorded or fell stale, an
+# ask named the repository, or a unit came back with notes (27). It sees
+# every open bolt of the repository because the fingerprint and the work order
+# both include them.
+machine: planning
+version: 1
+kind: object
+satisfies: [27, 28, 61, 95, 99, 101]
+object: planning
+singleton: repository
+record:
+  repository: string
+  planned_fingerprint: hash
+  redo_notes: list
+regions:
+  run:
+    initial: current
+    states:
+      current:
+        transitions:
+          - when: {any: [{ev: planning.fingerprint, ne_ev: planning.planned_fingerprint}, {ev: planning.redo_pending, is: true}]}
+            to: due
+      due:
+        transitions:
+          - when: {always: true}
+            to: running
+      running:
+        doc: one session reads the backlog, the as-built and the open bolts and proposes units, each with a target bolt
+        regions:
+          place:
+            initial: place
+            states:
+              place:
+                machine: place
+                params: {line: built-shared-line, inputs: work-order, keep: false}
+          session:
+            initial: session
+            states:
+              session:
+                machine: session
+                params: {agent: planner, place: own-place, work_order: rendered, keep_alive: false}
+        transitions:
+          - when: {all: [{final: exited}, {ev: session.exit, is: done}]}
+            to: applying
+          - when: {all: [{final: exited}, {ev: session.exit, in: [stalled, invalid]}]}
+            to: failed
+          - when: {final: lost}
+            to: failed
+      applying:
+        doc: verdicts to the ledger, units to the plan, the fingerprint recorded, all in one write
+        entry:
+          - {do: record_verdict, args: {verdict: each, claim_version: each, revision: each, evidence: each}, note: "every verdict the session delivered, including not-applicable"}
+          - {do: propose_units, args: {units: delivered}, note: a first planning delivers its units as one baseline batch}
+          - {do: record_fingerprint}
+        transitions:
+          - when: {always: true}
+            to: current
+      failed:
+        entry: [{do: report, args: {text: planning session did not deliver}}]
+        transitions:
+          - when: {always: true}
+            to: current
+            note: the fingerprint still differs, so planning is due again on the next tick; a repeated failure is visible in the run record, never filed as work

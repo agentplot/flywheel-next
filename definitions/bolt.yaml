@@ -1,0 +1,111 @@
+# One delivery of construction work to a built repository (29). Created by the
+# operator's yes on a unit that names a new bolt, or by dictation. Lives as
+# long as its work; nothing ages it out (32). Its close is proposed when every
+# unit is merged and no chore is outstanding; the landing is the machinery's
+# effect. Its line and the operator's own place are regions of their own, so
+# they outlive the open state and are landed, removed or held under the
+# bolt's command (43, 52).
+machine: bolt
+version: 2
+kind: object
+object: bolt
+parent: null
+owns: [unit]
+satisfies: [4, 29, 32, 38, 39, 43, 45, 52, 60, 71, 100]
+record:
+  repository: string
+  name: string           # the operator's to change at any time; never the identity
+  held_at: time
+  landing_failure: string
+  citation_choices: list
+regions:
+  life:
+    initial: open
+    states:
+      open:
+        regions:
+          citations:
+            initial: current
+            states:
+              current:
+                transitions:
+                  - when: {ev: bolt.citations_moved, is: true}
+                    to: moved
+              moved:
+                doc: a started unit cites a claim whose standing version moved; amend the open work, or land it and follow (100)
+                decision: {kind: claim-moved, group: decide, answers: [amend bolt, land and follow], shows: [bolt.moved_claim], satisfies: [100]}
+                transitions:
+                  - when: {response: "amend bolt"}
+                    to: current
+                    effects: [{do: record_citation_choice, args: {choice: amend, claim: moved}, note: "the units citing the old version are marked; planning's fingerprint includes the choice, so it proposes the amendment"}]
+                  - when: {response: "land and follow"}
+                    to: current
+                    effects: [{do: record_citation_choice, args: {choice: follow, claim: moved}, note: "the bolt proceeds on the version it cites; the ledger cell is stale, so planning follows"}]
+          close:
+            initial: not-offered
+            states:
+              not-offered:
+                transitions:
+                  - when: {all: [{children: {kind: unit, count_gte: 1}},
+                                 {children: {kind: unit, none: [proposed, approved, waiting, claim-moved, in-flight]}},
+                                 {children: {kind: unit, any: [merged]}},
+                                 {not: {ev: bolt.chores_outstanding, is: true}},
+                                 {not: {ev: bolt.hold_since_last_merge, is: true}}]}
+                    to: offered
+              offered:
+                decision: {kind: bolt-close, group: approve, answers: ["yes", hold], shows: [children.unit.count, line.landing], satisfies: [10, 38]}
+                transitions:
+                  - when: {response: hold}
+                    to: held
+                  - when: {children: {kind: unit, any: [proposed, approved, waiting, claim-moved, in-flight]}}
+                    to: not-offered
+                    note: new work arrived on the bolt; the close can no longer be decided as posed
+              held:
+                doc: offered again only after another unit merges
+                transitions:
+                  - when: {not: {ev: bolt.hold_since_last_merge, is: true}}
+                    to: not-offered
+        transitions:
+          - when: {all: [{region: {name: close, in: [offered]}}, {response: "yes"}]}
+            to: landing
+            enter: {line: landing}
+          - when: {response: drop}
+            to: dropped
+            enter: {line: removing, place: removing}
+            note: dictation; units still open are retired and their sessions ended (71); the operator's place goes unless held (52)
+      landing:
+        doc: the final take, then the repository's policy; only a landing that passes the gates moves the shared line (50)
+        transitions:
+          - when: {final: line.removed}
+            to: landed
+            enter: {place: removing}
+          - when: {final: line.land-failed}
+            to: land-failed
+      land-failed:
+        doc: reported, the bolt stays open with the failure on it; no session is asked anything until the response (39, S33)
+        decision: {kind: land-failed, group: decide, answers: [retry, hold], shows: [landing_failure], satisfies: [39, 79]}
+        transitions:
+          - when: {response: retry}
+            to: landing
+            enter: {line: landing}
+          - when: {response: hold}
+            to: open
+      landed:
+        tail: landed
+        final: true
+      dropped:
+        tail: dropped
+        final: true
+  line:
+    initial: line
+    states:
+      line:
+        machine: line
+        params: {parent: built-shared-line, landing_policy: from-manifest}
+  place:
+    doc: the operator's own place at the head of the line, refreshed after each merge (43); no session works here; its served endpoints are shown beside the bolt (45); removed when the bolt lands or is dropped, unless held (52)
+    initial: place
+    states:
+      place:
+        machine: place
+        params: {line: own-line, inputs: none, keep: true}

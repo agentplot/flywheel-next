@@ -1,0 +1,49 @@
+# One stage of a unit type (53). Runs the stage's session set over the
+# item's place, collects their exits as one set, and judges pass, not-done,
+# blocked or stalled by the join rule. The session set is a fixed list or a
+# rule read against the repository worked.
+machine: stage
+version: 1
+kind: template
+satisfies: [4, 40, 53, 67]
+params:
+  agents: a fixed list of agent names, or a rule such as every persona definition matching a pattern
+  join: all | any | count:<n>
+  on_fail: the stage an item returns to when this stage judges it not done
+  max_send_backs: how many times before the item stops and waits on the operator
+  deliverables: what the work order asks for; recorded as expected
+regions:
+  run:
+    initial: resolving
+    states:
+      resolving:
+        doc: the session set is found now, against the repository being worked, and recorded with the item
+        transitions:
+          - when: {ev: stage.agents, exists: true}
+            to: sessions
+      sessions:
+        doc: one session submachine per agent in the set, side by side, each with its own instruction and persona
+        machine: session
+        params: {agent: $each, place: $place, work_order: rendered, keep_alive: false}
+        transitions:
+          - when: {ev: stage.verdict, is: blocked}
+            to: sessions
+            note: the blocked session's own decision stands; the other sessions of the set continue
+          - when: {response: "send back"}
+            to: sent-back
+            note: dictation sends the item back to the stage the type names (4); never forward
+          - when: {all: [{ev: stage.join_met, is: true}, {ev: stage.verdict, is: pass}]}
+            to: passed
+          - when: {all: [{ev: stage.join_met, is: true}, {ev: stage.verdict, is: not-done}, {ev: item.send_backs, lt_ev: item.retry_max}]}
+            to: sent-back
+          - when: {all: [{ev: stage.join_met, is: true}, {ev: stage.verdict, is: not-done}, {ev: item.send_backs, gte_ev: item.retry_max}]}
+            to: stopped
+          - when: {all: [{ev: stage.join_met, is: true}, {ev: stage.verdict, is: stalled}]}
+            to: stopped
+      sent-back:
+        doc: the item returns to the type's named earlier stage with the count bumped; both send-backs stay in its history (S14)
+        final: true
+      passed:
+        final: true
+      stopped:
+        final: true

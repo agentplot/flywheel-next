@@ -1,0 +1,22 @@
+# The operator's surfaces, the same in every profile: the sinks decisions and
+# the tail are delivered to (the chat, the page, the multiplexer's bell on a
+# named surface), and the review surfaces a decision's document is presented
+# on. Not a profile on its own. The response comes back through the state
+# profile's `receive` (tracker.yaml, git-only.yaml), which is where the two
+# profiles differ.
+#
+# Tools: the Discord bot through `serenity`; the plan page through `axum` over
+# Tailscale, on the operator's private network, phone-sized; the bell through
+# `herdr` on the surface the manifest names; plannotator for a document under
+# review (`plannotator review <path> --decision <n>`), lavish for a rich page
+# (`npx -y lavish-axi`); both are bindings of the review surface, not parts of
+# the machinery. Which host (or the dispatcher) presents a sink is the sink's
+# lease, or the manifest's `presenters:` pin (145).
+format: flywheel-profile/1
+name: surfaces
+complete: false
+evidence:
+  sink.due:        {read: "the sink record's routes name the kind or group of a decision whose register entry is newer than the sink's mark; or the sink's cadence (`flywheel.yaml` sinks.<name>.cadence) fired since the mark; or the operator asked (`plan` in chat, a page reload with refresh); a bell sink is due only for the kinds it routes"}
+  sink.delivered:  {read: "the sink's mark is newer than every register entry of a decision routed to it, and the sink's last delivery id (a chat message id, the page's build id, the bell's event id) is recorded on the sink"}
+effects:
+  deliver_plan:    {do: "chat: post one message — one line per numbered decision routed here (`#n kind · object · answers`), the tail since the mark, a link to the page — then put(sink): delivered_at = now, delivery = the message id. page: rebuild the plan page from the register and the objects; every decision shows its number and its answers as controls; a decision with a document shows the plannotator link that opens it for review, and a rich page opens in lavish; put(sink) the same way. bell: `herdr surface bell <surface> <text>` with the numbers, then put(sink). No rendering is stored anywhere (15): the page and the chat read the register and the objects"}

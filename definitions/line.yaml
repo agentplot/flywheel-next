@@ -1,0 +1,90 @@
+# A branch the machinery owns (46). Template run inside a bolt (off the
+# built repository's shared line) and inside an intent (off the books' shared
+# line). Every operation here is an effect the machinery performs; a session
+# never touches a line (I12). A take that conflicts becomes a chore on the
+# line whose approval is the cadence the operator set or the response that
+# ordered the take (49).
+machine: line
+version: 2
+kind: template
+satisfies: [41, 46, 47, 49, 50, 51]
+params:
+  parent: the shared line this line is off
+  landing_policy: pull-request or direct, from the manifest
+record:
+  head: revision
+  merge_base: revision
+  retries: int
+  last_take: time
+regions:
+  life:
+    initial: absent
+    states:
+      absent:
+        transitions:
+          - when: {always: true}
+            to: current
+            effects: [{do: create_line, args: {parent: $parent}}]
+      current:
+        doc: contains its parent as of the last take
+        transitions:
+          - when: {all: [{ev: line.take_due, is: true}, {not: {ev: line.contains_parent, is: true}}]}
+            to: taking
+      taking:
+        doc: the take is a merge by the machinery; a conflicting take is aborted whole (49)
+        transitions:
+          - when: {ev: line.contains_parent, is: true}
+            to: current
+          - when: {ev: line.take_conflicts, is: true}
+            to: conflict
+            effects: [{do: seed_take_conflict, note: "a chore unit in approved on this line; its approval is the cadence or the response that ordered the take; its session works a place off the line with the take applied and conflicted"}]
+          - when: {always: true}
+            to: taking
+            effects: [{do: take_parent}]
+      conflict:
+        doc: the chore's session resolves it in its place; the take is retried when the chore merges
+        transitions:
+          - when: {ev: line.contains_parent, is: true}
+            to: current
+          - when: {all: [{ev: line.conflict_job_done, is: true}, {ev: line.retries, lt: 3}]}
+            to: taking
+            bump: retries
+          - when: {ev: line.retries, gte: 3}
+            to: conflict-stalled
+      conflict-stalled:
+        decision: {kind: stalled, group: decide, answers: [retry, hold], shows: [line.retries], satisfies: [49]}
+        transitions:
+          - when: {response: retry}
+            to: taking
+          - when: {response: hold}
+            to: conflict-stalled
+      landing:
+        doc: entered by the owner's response (bolt close, intent archive); one final take, then the policy's landing
+        transitions:
+          - when: {ev: line.landed, is: true}
+            to: landed
+          - when: {ev: line.landing, is: failed}
+            to: land-failed
+          - when: {not: {ev: line.contains_parent, is: true}}
+            to: landing
+            effects: [{do: take_parent, note: the take before landing (47)}]
+          - when: {ev: line.landing, in: [none]}
+            to: landing
+            effects: [{do: land_line, args: {policy: $landing_policy}}]
+      land-failed:
+        doc: the gates failed; the line stays; nothing is asked of any session until the operator's response (39, S33)
+        final: true
+      landed:
+        transitions:
+          - when: {always: true}
+            to: removing
+      removing:
+        doc: entered from landed, or by the owner when the bolt is dropped; nothing of the work lives on a branch afterwards (51)
+        transitions:
+          - when: {ev: line.absent, is: true}
+            to: removed
+          - when: {always: true}
+            to: removing
+            effects: [{do: remove_line}]
+      removed:
+        final: true

@@ -1,0 +1,92 @@
+# One task of a unit, worked through the type's stages by sessions and merged
+# into the bolt when complete (40, 37). The stage list comes from the
+# unit's type at the version the unit recorded; a type change never moves an
+# item in flight (54).
+machine: work-item
+version: 1
+kind: object
+satisfies: [4, 31, 37, 40, 42, 54, 71]
+object: work-item
+parent: unit
+record:
+  ordinal: int           # the fixed order: unit approval time, then this
+  depends_on: list       # items of the same unit
+  stage: string
+  send_backs: int
+  sessions: list         # which sessions ran, per stage
+  answers: list          # blocks and their answers, in order
+regions:
+  life:
+    initial: waiting
+    states:
+      waiting:
+        transitions:
+          - when: {parent: {in: [retired, dropped]}}
+            to: dropped
+          - when: {ev: item.deps_merged, is: true}
+            to: ready
+      ready:
+        doc: waits for a slot in the stated order; nothing is started twice after a restart because the place and the session are named by the item
+        transitions:
+          - when: {ev: item.slot_free, is: true}
+            to: placing
+      placing:
+        doc: the place region prepares the item's place; the item proceeds when it is proven current
+        transitions:
+          - when: {region: {name: place.place.life, in: [ready]}}
+            to: in-type
+      in-type:
+        doc: the unit type's machine at the recorded version; its states are the stages
+        machine: $unit.type@$unit.type_version
+        params: {place: own-place}
+        transitions:
+          - when: {parent: {in: [retired, dropped]}}
+            to: dropped
+            enter: {session: ended, place: removing}
+            note: the unit was dropped or the bolt retired; the session is retired with the work and its place released (71)
+          - when: {response: retire}
+            to: ready
+            enter: {session: ended, place: removing}
+            note: dictation retires the session (4); the item starts a fresh attempt in a fresh place; a pane killed by hand is read as a session gone, never as a response
+          - when: {final: passed}
+            to: merging
+            enter: {place: merging}
+          - when: {final: stopped}
+            to: stopped
+      stopped:
+        doc: the retry bound was reached; the item waits on the operator (40)
+        decision: {kind: stalled, group: decide, answers: [retry, drop], shows: [item.send_backs, stage], satisfies: [40]}
+        transitions:
+          - when: {response: retry}
+            to: in-type
+          - when: {response: drop}
+            to: dropped
+            enter: {session: ended, place: removing}
+          - when: {parent: {in: [retired, dropped]}}
+            to: dropped
+            enter: {session: ended, place: removing}
+      merging:
+        doc: one merge at a time in the fixed order; a rebase that conflicts is the session's job in its place (S32)
+        transitions:
+          - when: {region: {name: place.place.life, in: [removed]}}
+            to: merged
+          - when: {region: {name: place.place.life, in: [conflict]}}
+            to: merging
+            note: the place machine seeds the job and waits for the session; the merge retries when it exits done
+      merged:
+        tail: merged
+        final: true
+      dropped:
+        tail: dropped
+        final: true
+  place:
+    doc: the item's own place, a region beside its life so the owner can command it (merging, removing) after leaving placing
+    initial: none
+    states:
+      none:
+        transitions:
+          - when: {region: {name: life, in: [placing]}}
+            to: place
+      place:
+        machine: place
+        params: {line: bolt-line, inputs: work-order, keep: false}

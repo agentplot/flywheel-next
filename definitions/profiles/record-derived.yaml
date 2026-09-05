@@ -1,0 +1,104 @@
+# The part of every profile's binding that is derived from the object record
+# and the thread on the object, whatever holds them. A state profile binds the
+# six record operations below; every evidence and effect here is stated in
+# terms of them and is therefore the same in every profile. Not a profile on
+# its own.
+#
+#   get(id)                      -> the record (state, entered_at, seq, fields, applied_responses)
+#   put(id, record, base_seq)    -> the record replaced, or REJECTED when seq moved
+#   append(id, thread entry)     -> an entry added to the object's thread
+#   list(scope)                  -> ids and records of the objects in scope
+#   responses(id)                -> op-response records that name this object, or a number in its register entries
+#   leases(id) / hosts()         -> lease and heartbeat records
+#
+# The plan's register (decision id -> number, and the counter) is the plan
+# record; a sink's mark is the sink record: both reachable through get.
+format: flywheel-profile/1
+name: record-derived
+complete: false
+evidence:
+  state:          {read: "get(id).state"}
+  entered_at:     {read: "get(id).entered_at"}
+  seq:            {read: "get(id).seq"}
+  applied_responses: {read: "get(id).applied_responses"}
+  host.bound:     {read: "hosts()[me].bound, from `flywheel.yaml` hosts at startup"}
+  host.running:   {read: "count of session records with host = me and state alive"}
+  host.last_seen: {read: "hosts()[host].last_seen"}
+  host.leases_expired: {read: "no lease record names the host"}
+  lease.holder:   {read: "leases(id).holder"}
+  lease.renewed_at: {read: "leases(id).renewed_at"}
+  lease.holder_is_me: {read: "leases(id).holder == me"}
+  response.decision_present: {read: "for an answer: the register entry for the response's number names an object whose active states include that decision state; for a dictation: always true"}
+  response.applied: {read: "the response's id is in get(object).applied_responses"}
+  response.reported: {read: "a sink's delivery newer than the response carried the response's id under attention"}
+  response.answer: {read: "the op-response record's answer and args"}
+  plan.unnumbered: {read: "a decision derived this tick (object, kind, entered_at) has no register entry"}
+  plan.numbered:  {read: "every decision derived this tick has a register entry"}
+  plan.status_current: {read: "the status projection's as-of equals the newest seq across list(all)"}
+  report.recorded: {read: "the run record holds an entry with this effect id"}
+  session.exit_recorded: {read: "get(session).exit is set and equals the newest exit entry's kind, with expected and delivered beside it"}
+  session.offers_recorded: {read: "every offer entry on the session's thread is cited by a unit, elaboration or signal record"}
+  session.refusals_recorded: {read: "every refusal entry on the session's thread is in the run record"}
+  session.answer_delivered: {read: "the thread's latest answer entry carries delivered = true"}
+  session.message_delivered: {read: "the thread's latest message entry carries delivered = true"}
+  intent.material_pending: {read: "signals moved attach to the intent, or finding records on it, that no elaboration record in state proposed or later cites"}
+  intent.material_held: {read: "the intent has exactly one elaboration in proposed and it cites all pending material"}
+  intent.close_declined_since_last_final: {read: "get(intent).close_declined_at is newer than every child elaboration's entered_at of done"}
+  intent.split_done: {read: "two intent records name this one as split_from"}
+  elaboration.type: {read: "get(id).type"}
+  elaboration.type_version: {read: "get(id).type_version"}
+  elaboration.type_set: {read: "get(id).type equals the response's argument"}
+  elaboration.shown_with_parent: {read: "get(parent).state is proposed"}
+  elaboration.kept_since: {read: "get(id).kept_at"}
+  unit.type:      {read: "get(id).type"}
+  unit.type_version: {read: "get(id).type_version"}
+  unit.batch:     {read: "get(id).batch"}
+  unit.target_is_new_bolt: {read: "get(id).target.new_name is set and target.bolt is not"}
+  unit.deps_merged: {read: "every id in get(id).depends_on has state merged or landed"}
+  unit.claim_moved: {read: "get(id).claims names claim@v and the books' shared line holds that claim at a version > v, and get(id).citation_choices holds no choice for that claim and version"}
+  unit.bolt_exists: {read: "a bolt record exists with id derived from (repository, new_name) or the unit's target.bolt names an existing bolt"}
+  unit.routed:    {read: "get(id).target.bolt equals the response's argument"}
+  unit.items_exist: {read: "work-item records with parent = id exist, one per task of the document"}
+  chore.scope:    {read: "get(id).scope: bolt-line when the offer was made inside a bolt's place, intent-line inside an intent's, shared-line otherwise"}
+  bolt.named:     {read: "get(bolt).name equals the response's argument"}
+  bolt.chores_outstanding: {read: "a unit with parent = bolt, type chore, in a state before merged"}
+  bolt.citations_moved: {read: "a unit of the bolt in state in-flight or merged cites claim@v and the books' shared line holds that claim at a version > v, and get(bolt).citation_choices holds no choice for that claim and version"}
+  bolt.moved_claim: {read: "the claim and versions of the first such citation"}
+  citation_choice_recorded: {read: "get(id).citation_choices holds the claim and version"}
+  bolt.hold_since_last_merge: {read: "get(bolt).held_at is newer than every child unit's entered_at of merged"}
+  bolt.land_policy: {read: "`flywheel.yaml` repositories[bolt.repository].landing"}
+  place.held:     {read: "get(owner).held_at is set (by the dictation `hold place <owner>`; `release place <owner>` clears it)"}
+  place.endpoints_recorded: {read: "get(owner).endpoints equals place.endpoints_served"}
+  item.deps_merged: {read: "every id in get(item).depends_on has state merged"}
+  item.slot_free: {read: "host.running < host.bound and no ready item of an earlier ordinal on this host is unplaced"}
+  item.send_backs: {read: "get(item).send_backs"}
+  item.retry_max: {read: "the unit type file at get(unit).type_version: the current stage's max_send_backs"}
+  item.stage_is_last: {read: "the current stage is the type's last stage"}
+  stage.join_met: {read: "by the stage's join rule over the session records of this stage attempt: all exited; any exited done; count exited"}
+  stage.verdict:  {read: "pass when the join is met and every counted exit is done with the deliverables; not-done when a counted exit's deliverables include a not-done verdict; blocked while any session is blocked; stalled when a counted exit is stalled or invalid"}
+  planning.planned_fingerprint: {read: "get(planning).planned_fingerprint"}
+  planning.redo_pending: {read: "get(planning).redo_notes is non-empty"}
+  planning.units_proposed: {read: "every unit the session delivered exists as a unit record in proposed"}
+  planning.fingerprint_recorded: {read: "get(planning).planned_fingerprint equals planning.fingerprint"}
+  curation.intents_proposed: {read: "every join the session delivered exists as an intent record in proposed with its elaborations"}
+  place.conflict_retries: {read: "get(owner).conflict_retries"}
+effects:
+  record_exit:     {do: "put(session): exit, expected, delivered, blocks, from the newest exit entry on its thread; append(item or elaboration) the exit as a thread entry with the expected/delivered difference first (77)"}
+  record_offers:   {do: "for each uncited offer entry on the session's thread: a finding about the session's own intent -> put(new elaboration, proposed, document = the entry's document path, sources = entry id); a finding about its own bolt -> put(new unit, proposed, type = fast, target = the bolt, document = the path); a chore -> put(new unit, proposed, type = chore, batch = bolt id, scope from the place, document = the path); anything else -> a signal record citing the path (books.yaml). The record holds the path and the entry id, never the text (59)"}
+  record_refusals: {do: "each refusal entry copied to the run record; the report effect carries them to attention"}
+  set_type:        {do: "put(id): type and type_version = the type file's version in force"}
+  propose_elaboration: {do: "put(new elaboration, proposed, type from the material's kind, sources = the pending material) or put(existing proposed elaboration, sources += pending)"}
+  split_intent:    {do: "put(two new intents, proposed, split_from = id) with the signals partitioned by the response; the signals get join moves naming each"}
+  propose_intents: {do: "put(one intent, proposed) per join with its signals, challenges and proposed elaborations"}
+  propose_units:   {do: "put(one unit, proposed) per delivered unit: type, document, target, depends_on, claims, batch = baseline id on a first planning; asks consumed get consumed_by"}
+  record_fingerprint: {do: "put(planning): planned_fingerprint = planning.fingerprint, redo_notes cleared"}
+  request_replan:  {do: "put(planning of the unit's repository): redo_notes += the response's text, or the moved claim"}
+  create_bolt:     {do: "put(new bolt, open, repository, name = target.new_name); put(unit): target.bolt = the new id, approval = the response id; never for a chore"}
+  rename_bolt:     {do: "put(bolt): name"}
+  route_unit:      {do: "put(unit): target.bolt = the named open bolt, or target.new_name for `new bolt`"}
+  create_items:    {do: "put(one work-item, waiting) per task in the document, ordinal by unit approval then position, depends_on from the document; put(unit): type_version = the type file's version now, approval = the response or dictation id"}
+  record_citation_choice: {do: "put(bolt or unit): citation_choices += {claim, version, choice}; choice amend also sets needs_amend on the citing units; choice keep pins the unit's cited version"}
+  number_decisions: {do: "put(plan): for each unnumbered decision, register += {decision id, number = next_number, since = now}, next_number += 1; entries whose decision is retracted are pruned 30 days after retraction; the counter never goes back"}
+  render_status:   {do: "write the status projection (section 4 of model.md) from list and get, with the as-of point"}
+  report:          {do: "an entry in the run record with the effect id, the text, the evidence; attention lines read it"}
+  expire_leases:   {do: "remove every lease record naming the host"}

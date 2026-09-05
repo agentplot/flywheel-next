@@ -1,0 +1,35 @@
+# A back-and-forth the operator is in (24). The machinery never asks about it
+# and ends it only by the operator's dictation. Present means a keystroke in
+# the pane within the window the profile states; the machinery infers nothing
+# more from it. Also the type of the operator's own session (66).
+machine: with-operator
+version: 2
+kind: template
+satisfies: [4, 24, 25, 66]
+params:
+  place: the elaboration's place
+  agent: the agent for the session
+regions:
+  work:
+    initial: session
+    states:
+      session:
+        machine: session
+        params: {agent: $agent, place: $place, work_order: rendered, keep_alive: true}
+        transitions:
+          - when: {final: lost}
+            to: session
+            note: the process vanished without the operator's dictation; start it again in the kept place
+          - when: {all: [{final: exited}, {ev: session.exit, is: done}]}
+            to: session
+            note: a done the session declares does not end a with-operator session; only dictation does
+          - when: {response: end}
+            to: finished
+            note: the dictation `end <session>`; there is no decision on the plan for this type
+      finished:
+        enter: {session: ended}
+        transitions:
+          - when: {final: ended}
+            to: done
+      done:
+        final: true

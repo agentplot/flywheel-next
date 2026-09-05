@@ -1,0 +1,56 @@
+# One raw piece of input (110). Immutable once written; exactly one
+# standing move, replaced only by the operator's response (104).
+machine: signal
+version: 1
+kind: object
+satisfies: [103, 104, 110, 111, 113, 115]
+object: signal
+parent: capture
+record:
+  kind: enum             # constraint | ask | question | commitment | reaction
+  asserted_by: string
+  subject_tags: list
+  assertion: string
+  excerpt: string
+  position: string
+  argues_with: list      # claim names
+  move: {target: string, reason: string, at: time}
+regions:
+  move:
+    initial: unmoved
+    states:
+      unmoved:
+        doc: counted and aged by source on the status view; never discarded (115)
+        transitions:
+          - {when: {ev: signal.move, is: attach}, to: attached}
+          - {when: {ev: signal.move, is: challenge}, to: challenging}
+          - {when: {ev: signal.move, is: join}, to: joined}
+          - {when: {ev: signal.move, is: answered}, to: answered}
+          - {when: {ev: signal.move, is: drop}, to: dropped}
+      attached:
+        doc: evidence on an open intent; the intent's material region proposes or grows an elaboration
+        transitions:
+          - when: {ev: signal.move, is: none}
+            to: unmoved
+      challenging:
+        doc: accumulates against a standing claim; a proposed intent cites it
+        transitions:
+          - when: {ev: signal.move, is: none}
+            to: unmoved
+      joined:
+        doc: part of a proposed intent; dropping the intent moves it to dropped naming the drop
+        transitions:
+          - when: {ev: signal.move, is: drop}
+            to: dropped
+          - when: {ev: signal.move, is: none}
+            to: unmoved
+      answered:
+        doc: names the claim or record that settled it
+        transitions:
+          - when: {ev: signal.move, is: none}
+            to: unmoved
+      dropped:
+        doc: with a reason; revived only by the operator's dictation, which clears the move (S24)
+        transitions:
+          - when: {ev: signal.move, is: none}
+            to: unmoved

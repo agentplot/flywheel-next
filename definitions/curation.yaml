@@ -1,0 +1,58 @@
+# Curation: one machine per organization (A.15). It never opens an intent. It
+# runs a session over the signals with no move when the count crosses the
+# threshold or the cadence says so; the session's exit delivers one move per
+# signal and the proposed intents the joins produce. A person writing the same
+# records by hand is curation too, and this machine then finds nothing to do.
+machine: curation
+version: 1
+kind: object
+satisfies: [19, 105, 107, 115]
+object: curation
+singleton: organization
+record:
+  threshold: int
+  cadence: string
+regions:
+  run:
+    initial: idle
+    states:
+      idle:
+        transitions:
+          - when: {any: [{ev: curation.unmoved_count, gte_ev: curation.threshold},
+                         {all: [{ev: curation.unmoved_count, gte: 1}, {ev: curation.cadence_due, is: true}]}]}
+            to: running
+      running:
+        doc: one session, bounded job, fixed exits; it reads the unmoved signals against the claims index and the open intents
+        regions:
+          place:
+            initial: place
+            states:
+              place:
+                machine: place
+                params: {line: books-shared-line, inputs: work-order, keep: false}
+          session:
+            initial: session
+            states:
+              session:
+                machine: session
+                params: {agent: curator, place: own-place, work_order: rendered, keep_alive: false}
+        transitions:
+          - when: {all: [{final: exited}, {ev: session.exit, is: done}]}
+            to: applying
+          - when: {all: [{final: exited}, {ev: session.exit, in: [stalled, invalid]}]}
+            to: failed
+          - when: {final: lost}
+            to: failed
+      applying:
+        doc: every judged signal gets its one standing move; each join becomes or grows a proposed intent with its elaborations
+        entry:
+          - {do: record_moves, args: {moves: delivered}}
+          - {do: propose_intents, args: {intents: delivered}}
+        transitions:
+          - when: {always: true}
+            to: idle
+      failed:
+        entry: [{do: report, args: {text: curation session did not deliver}}]
+        transitions:
+          - when: {always: true}
+            to: idle

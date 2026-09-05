@@ -1,0 +1,34 @@
+# One sink the operator reads: the chat, the page, or the multiplexer's bell
+# on a named surface. Engine machine, one instance per sink the manifest
+# names. Its presenter is the holder of its lease, or the host the manifest
+# pins (145); a dispatcher running outside every host may be that presenter.
+# The delivery mark is the one recorded piece of state behind the tail (14).
+# Notifications are deliveries: the manifest routes decision kinds to sinks,
+# and a construction host is no sink unless the manifest names it (79).
+machine: sink
+version: 1
+kind: engine
+object: sink
+parent: null
+satisfies: [2, 8, 14, 18, 65, 79, 145, 149, 152]
+record:
+  kind: enum                    # chat | page | bell
+  surface: string               # the chat channel, the page route, or the named multiplexer surface
+  routes: list                  # the decision kinds delivered here, from the manifest
+  cadence: string
+  delivered_at: time            # the mark; the tail is everything that entered a tail state after it
+  pinned_to: host-id            # from the manifest, or none: then the lease decides the presenter
+regions:
+  delivery:
+    initial: idle
+    states:
+      idle:
+        transitions:
+          - when: {ev: sink.due, is: true}
+            to: delivering
+      delivering:
+        entry:
+          - {do: deliver_plan, note: "the numbered decisions routed to this sink and the tail since its mark; the mark advances in the same write; the chat carries one line per decision and a link to the page (18)"}
+        transitions:
+          - when: {always: true}
+            to: idle

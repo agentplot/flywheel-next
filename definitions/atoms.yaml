@@ -1,0 +1,202 @@
+# The domain's atoms: one evidence name per question asked of the world, one
+# effect name per act on it (84). Machine definitions may use only these
+# names; a profile binds every one of them (B.3). Names are abstract: nothing
+# here is a label, column, path, service or interface (I13, 135).
+#
+# Every effect names its proof: the evidence that shows it has already been
+# done. The engine performs an effect only when its proof is absent, so a
+# repeat of a completed effect changes nothing (70, 124). Every effect states
+# the requirements it satisfies by number; check.py fails when a number does
+# not exist or a requirement is cited nowhere.
+format: flywheel-atoms/1
+satisfies: [84, 135, 136]
+
+evidence:
+  # ---- engine-provided for every object (read through the profile's `read`)
+  state:            {of: any, type: state, doc: the object's current state path per region}
+  entered_at:       {of: any, type: time, doc: when the current state was entered}
+  seq:              {of: any, type: int, doc: the object's write sequence; the compare-and-swap base}
+  applied_responses: {of: any, type: list, doc: ids of the responses this object has applied}
+  now:              {of: any, type: time, doc: the point the read is as of}
+  # ---- host and lease (engine machines)
+  host.last_seen:   {of: host, type: time}
+  host.bound:       {of: host, type: int, doc: sessions this host may run at once}
+  host.running:     {of: host, type: int, doc: sessions this host runs now}
+  host.stray_places: {of: host, type: bool, doc: a place exists on this host that belongs to no live object and is not held (52)}
+  lease.holder:     {of: any, type: host-id, doc: the host recorded as holding the object, or none}
+  lease.renewed_at: {of: any, type: time}
+  lease.holder_is_me: {of: any, type: bool}
+  lease.coverable:  {of: any, type: bool, doc: some host's manifest declaration covers this object's kind, repository and unit type (146)}
+  # ---- response, plan and sinks
+  response.decision_present: {of: response, type: bool, doc: the decision this response answers still stands; a dictation is always present}
+  response.applied: {of: response, type: bool, doc: the object it concerns lists the response as applied}
+  response.reported: {of: response, type: bool, doc: a delivery after the failure carried the attention line}
+  response.answer:  {of: response, type: string}
+  plan.unnumbered:  {of: plan, type: bool, doc: a standing decision has no number in the plan's register}
+  sink.due:         {of: sink, type: bool, doc: a decision of a kind routed to this sink was created since the sink's mark, the sink's cadence fired, or the operator asked (79)}
+  # ---- session (bound to the multiplexer and the exit command; the one binding a stand-in replaces, 89)
+  session.pane:       {of: session, type: enum, values: [absent, present]}
+  session.activity:   {of: session, type: enum, values: [working, idle, none]}
+  session.idle_since: {of: session, type: time}
+  session.exit:       {of: session, type: enum, values: [none, done, blocked, stalled, invalid], doc: the exit the session reported through the machinery's command (64); invalid when the report fails the schema}
+  session.exit_recorded: {of: session, type: bool, doc: the session record carries the exit, with expected and delivered compared (77)}
+  session.offers_pending: {of: session, type: bool, doc: findings, chores or signals the session offered through the command and no proposal or signal record yet points at (59)}
+  session.refusals_pending: {of: session, type: bool, doc: refusals the place's hooks reported and no thread entry yet holds}
+  session.answer_delivered: {of: session, type: bool}
+  session.message_delivered: {of: session, type: bool, doc: the last message the machinery queued for the session reached it}
+  session.operator_present: {of: session, type: bool, doc: a person typed in the pane within the window the profile states (24)}
+  session.host_alive: {of: session, type: bool}
+  session.expected:   {of: session, type: list, doc: deliverables the work order named}
+  session.delivered:  {of: session, type: list}
+  # ---- place and line (bound to git and the worktree tool, the same in every profile)
+  place.exists:        {of: place, type: bool}
+  place.contains_line: {of: place, type: bool, doc: the line's head is an ancestor of the place's head}
+  place.ahead_of_line: {of: place, type: bool, doc: the place has commits the line lacks}
+  place.conflicted:    {of: place, type: bool}
+  place.merge_slot:    {of: place, type: bool, doc: no sibling place earlier in the fixed order is merging}
+  place.merged:        {of: place, type: bool, doc: the line's head contains the place's head}
+  place.job_seeded:    {of: place, type: bool, doc: the conflict job is in the place and on the session's thread}
+  place.conflict_retries: {of: place, type: int, doc: the owner record counter}
+  place.line_moved_told: {of: place, type: bool}
+  place.held:          {of: place, type: bool, doc: the operator holds this place by dictation; it is not removed while held (52)}
+  place.endpoints_served: {of: place, type: list, doc: the endpoints the processes tethered to the place serve now (45)}
+  line.exists:           {of: line, type: bool}
+  line.contains_parent:  {of: line, type: bool, doc: the parent line's head is an ancestor of this line's head}
+  line.take_due:         {of: line, type: bool, doc: first place, pre-landing, or the repository's cadence says take now}
+  line.take_conflicts:   {of: line, type: bool, doc: a dry take of the parent reports conflicts}
+  line.landed:           {of: line, type: bool, doc: the parent line's head contains this line's head}
+  line.landing:          {of: line, type: enum, values: [none, pending, passed, failed], doc: the repository's own gates on the landing}
+  line.retries:          {of: line, type: int}
+  line.conflict_job_done: {of: line, type: bool, doc: the conflict chore unit on this line is merged}
+  # ---- design side
+  intent.material_pending: {of: intent, type: bool, doc: attached signals or findings no proposal yet holds}
+  intent.close_declined_since_last_final: {of: intent, type: bool}
+  intent.archived:   {of: intent, type: bool, doc: the change directory is archived and its claims are on the shared line}
+  elaboration.type:  {of: elaboration, type: string}
+  elaboration.type_version: {of: elaboration, type: int}
+  elaboration.shown_with_parent: {of: elaboration, type: bool, doc: the parent intent is itself proposed; the decision folds into the intent's}
+  elaboration.kept_since: {of: elaboration, type: time}
+  # ---- claims and ledger (bound to the books repository and the ledger store)
+  claim.on_shared_line: {of: claim, type: bool}
+  claim.on_intent_line: {of: claim, type: bool}
+  claim.version:        {of: claim, type: int}
+  claim.scope_repos:    {of: claim, type: list}
+  cell.verdict:         {of: ledger-cell, type: enum, values: [none, satisfied, partial, not-satisfied, not-applicable]}
+  cell.verdict_claim_version: {of: ledger-cell, type: int}
+  cell.claim_version:   {of: ledger-cell, type: int}
+  cell.evidence_present: {of: ledger-cell, type: bool, doc: the evidence the verdict cites still exists at the repository's shared head}
+  # ---- planning and curation
+  planning.fingerprint:  {of: planning, type: hash, doc: hash of the repository's backlog inputs — standing claims in scope with versions, the ledger's cells, the open bolts and their citations, the asks naming it}
+  planning.planned_fingerprint: {of: planning, type: hash}
+  planning.redo_pending: {of: planning, type: bool, doc: a unit was sent back with notes}
+  planning.ledger_empty: {of: planning, type: bool}
+  curation.unmoved_count: {of: curation, type: int}
+  curation.threshold:     {of: curation, type: int}
+  curation.cadence_due:   {of: curation, type: bool}
+  capture.signals_present: {of: capture, type: bool}
+  signal.move: {of: signal, type: enum, values: [none, attach, challenge, join, answered, drop]}
+  # ---- construction side
+  bolt.chores_outstanding: {of: bolt, type: bool, doc: accepted chore units not yet merged}
+  bolt.citations_moved:    {of: bolt, type: bool, doc: a started unit of this bolt cites a claim whose standing version is newer, and no citation choice is recorded (100)}
+  bolt.moved_claim:        {of: bolt, type: string}
+  bolt.hold_since_last_merge: {of: bolt, type: bool}
+  bolt.land_policy:        {of: bolt, type: enum, values: [pull-request, direct]}
+  unit.claim_moved:        {of: unit, type: bool, doc: this unit cites a claim whose standing version is newer than the one cited, and no choice is recorded for it (34)}
+  unit.target_is_new_bolt: {of: unit, type: bool}
+  unit.deps_merged:        {of: unit, type: bool}
+  unit.type:               {of: unit, type: string}
+  unit.type_version:       {of: unit, type: int}
+  unit.batch:              {of: unit, type: string, doc: baseline id or none; equal values fold into one decision}
+  item.deps_merged:        {of: work-item, type: bool}
+  item.slot_free:          {of: work-item, type: bool, doc: this host has a free slot and no earlier ready item is waiting for it}
+  item.send_backs:         {of: work-item, type: int}
+  item.retry_max:          {of: work-item, type: int, doc: from the type, for the current stage}
+  item.stage_is_last:      {of: work-item, type: bool}
+  stage.agents:            {of: stage, type: list, doc: the session set the type's rule resolves against the repository worked}
+  stage.join_met:          {of: stage, type: bool}
+  stage.verdict:           {of: stage, type: enum, values: [pending, pass, not-done, blocked, stalled]}
+  chore.scope:             {of: unit, type: enum, values: [bolt-line, intent-line, shared-line]}
+
+  # ---- proofs: the evidence each effect leaves behind (read like any other evidence)
+  session.pane_absent:      {of: session, type: bool, proof_of: end_session}
+  session.offers_recorded:  {of: session, type: bool, proof_of: record_offers, doc: every offer the session made has a proposal or signal record pointing at its document}
+  session.refusals_recorded: {of: session, type: bool, proof_of: record_refusals}
+  line.conflict_job_seeded: {of: line, type: bool, proof_of: seed_take_conflict, doc: a chore unit in approved exists for this line and this take}
+  line.absent:              {of: line, type: bool, proof_of: remove_line}
+  place.ready:              {of: place, type: bool, proof_of: prepare_place, doc: exists, contains its line, holds the closed inputs and the refusing hooks}
+  place.absent:             {of: place, type: bool, proof_of: remove_place}
+  place.endpoints_recorded: {of: place, type: bool, proof_of: record_endpoints, doc: the owner record's endpoints equal the endpoints served}
+  host.no_stray_places:     {of: host, type: bool, proof_of: remove_stray_places}
+  intent.change_open:       {of: intent, type: bool, proof_of: open_intent}
+  intent.signals_dropped:   {of: intent, type: bool, proof_of: drop_signals}
+  intent.split_done:        {of: intent, type: bool, proof_of: split_intent}
+  intent.material_held:     {of: intent, type: bool, proof_of: propose_elaboration}
+  elaboration.type_set:     {of: elaboration, type: bool, proof_of: set_type}
+  cell.verdict_recorded:    {of: ledger-cell, type: bool, proof_of: record_verdict, doc: a verdict with this claim version, revision and judged_at exists}
+  curation.moves_recorded:  {of: curation, type: bool, proof_of: record_moves}
+  curation.intents_proposed: {of: curation, type: bool, proof_of: propose_intents}
+  planning.units_proposed:  {of: planning, type: bool, proof_of: propose_units}
+  planning.fingerprint_recorded: {of: planning, type: bool, proof_of: record_fingerprint}
+  unit.bolt_exists:         {of: unit, type: bool, proof_of: create_bolt}
+  bolt.named:               {of: bolt, type: bool, proof_of: rename_bolt}
+  unit.routed:              {of: unit, type: bool, proof_of: route_unit}
+  unit.items_exist:         {of: unit, type: bool, proof_of: create_items}
+  citation_choice_recorded: {of: any, type: bool, proof_of: record_citation_choice, doc: the bolt or unit record holds a choice for the moved claim and version}
+  plan.numbered:            {of: plan, type: bool, proof_of: number_decisions, doc: every standing decision has a number in the plan's register}
+  sink.delivered:           {of: sink, type: bool, proof_of: deliver_plan, doc: the sink's mark is newer than every decision routed to it and its delivery carries the current numbers}
+  plan.status_current:      {of: plan, type: bool, proof_of: render_status, doc: the projection carries the read's as-of point}
+  report.recorded:          {of: any, type: bool, proof_of: report}
+  host.leases_expired:      {of: host, type: bool, proof_of: expire_leases}
+  capture.source:           {of: capture, type: string}
+
+effects:
+  # ---- session (the multiplexer and the exit command; faked whole by the stand-in, 89)
+  start_session:   {of: session, args: [agent, place, work_order], proof: session.pane, satisfies: [62, 69, 70, 86, 90], doc: start the named agent in the place; the name is the session id, so a second start of the same name is refused by the multiplexer}
+  end_session:     {of: session, args: [], proof: session.pane_absent, satisfies: [25, 66, 71], doc: end the pane; only ever run from a state the operator's response or the type reached}
+  record_exit:     {of: session, args: [], proof: session.exit_recorded, satisfies: [63, 64, 67, 77], doc: read the exit the session reported through the command, compare expected with delivered, and write both to the session record}
+  record_offers:   {of: session, args: [], proof: session.offers_recorded, satisfies: [55, 56, 59], doc: for each offer the session made, one record pointing at its document — a chore becomes a proposed chore unit, a finding on the session's own thread a proposal there, anything else a signal; the record never holds the text}
+  record_refusals: {of: session, args: [], proof: session.refusals_recorded, satisfies: [42]}
+  deliver_answer:  {of: session, args: [text], proof: session.answer_delivered, satisfies: [65, 67], doc: send the answer to the living session, or start a fresh one whose work order opens with it}
+  tell_moved:      {of: session, args: [], proof: place.line_moved_told, satisfies: [48, 68], doc: tell an idle session what moved under it}
+  # ---- line and place (git and worktree tool)
+  create_line:     {of: line, args: [parent], proof: line.exists, satisfies: [41, 46]}
+  take_parent:     {of: line, args: [], proof: line.contains_parent, satisfies: [41, 47], doc: merge the parent line into this line; aborted whole on conflict}
+  seed_take_conflict: {of: line, args: [], proof: line.conflict_job_seeded, satisfies: [49], doc: a chore unit in approved on this line, its approval the cadence the operator set or the response that ordered the take; its session resolves the conflict in a place off the line}
+  land_line:       {of: line, args: [policy], proof: line.landed, satisfies: [38, 41, 50], doc: pull request through the gates, or direct merge, as the manifest says}
+  remove_line:     {of: line, args: [], proof: line.absent, satisfies: [41, 51]}
+  prepare_place:   {of: place, args: [line, agent_inputs], proof: place.ready, satisfies: [41, 42, 44, 85, 86, 116], doc: worktree at the line's head, hooks that refuse line operations, the closed set of inputs written in, ports derived from the place}
+  rebase_place:    {of: place, args: [], proof: place.contains_line, satisfies: [41, 48], doc: rebase onto the line; aborted whole on conflict}
+  seed_conflict_job: {of: place, args: [], proof: place.job_seeded, satisfies: [49]}
+  merge_place:     {of: place, args: [], proof: place.merged, satisfies: [37, 41, 51], doc: merge the place into its line, one place at a time in the fixed order}
+  remove_place:    {of: place, args: [], proof: place.absent, satisfies: [41, 44, 52], doc: remove the worktree; the processes tethered to it end with it; never while the operator holds it}
+  record_endpoints: {of: place, args: [], proof: place.endpoints_recorded, satisfies: [45], doc: write the endpoints the place's processes serve into the owner record, so the page shows them beside the bolt}
+  # ---- host
+  remove_stray_places: {of: host, args: [], proof: host.no_stray_places, satisfies: [52], doc: reconciliation found a place on this host belonging to no live object; remove it and record the removal}
+  expire_leases:   {of: host, args: [], proof: host.leases_expired, satisfies: [147]}
+  # ---- design objects
+  open_intent:     {of: intent, args: [], proof: intent.change_open, satisfies: [22, 46], doc: create the intent's change directory on its line}
+  drop_signals:    {of: intent, args: [reason], proof: intent.signals_dropped, satisfies: [114], doc: give every cited signal a drop move naming this intent}
+  split_intent:    {of: intent, args: [partition], proof: intent.split_done, satisfies: [104]}
+  archive_intent:  {of: intent, args: [], proof: intent.archived, satisfies: [22, 46, 51], doc: archive the change directory so its claims stand}
+  propose_elaboration: {of: intent, args: [material, type], proof: intent.material_held, satisfies: [20], doc: create the intent's one proposed elaboration, or join the material to it}
+  set_type:        {of: elaboration, args: [type], proof: elaboration.type_set, satisfies: [26, 36]}
+  # ---- claims and ledger
+  record_verdict:  {of: ledger-cell, args: [verdict, claim_version, revision, evidence], proof: cell.verdict_recorded, satisfies: [97, 98, 101]}
+  # ---- planning and curation
+  record_moves:    {of: curation, args: [moves], proof: curation.moves_recorded, satisfies: [104, 113]}
+  propose_intents: {of: curation, args: [intents], proof: curation.intents_proposed, satisfies: [106]}
+  propose_units:   {of: planning, args: [units], proof: planning.units_proposed, satisfies: [28, 33, 35, 61]}
+  record_fingerprint: {of: planning, args: [], proof: planning.fingerprint_recorded, satisfies: [27]}
+  request_replan:  {of: planning, args: [notes], proof: planning.redo_pending, satisfies: [17, 34]}
+  # ---- construction objects
+  create_bolt:     {of: unit, args: [name, repository], proof: unit.bolt_exists, satisfies: [16, 28]}
+  rename_bolt:     {of: bolt, args: [name], proof: bolt.named, satisfies: [16, 28]}
+  route_unit:      {of: unit, args: [bolt], proof: unit.routed, satisfies: [16]}
+  create_items:    {of: unit, args: [], proof: unit.items_exist, satisfies: [13, 35, 54], doc: one work item per task in the approved document, with the type version in force}
+  record_citation_choice: {of: [bolt, unit], args: [choice, claim], proof: citation_choice_recorded, satisfies: [34, 100]}
+  # ---- plan, sinks, status, reports
+  number_decisions: {of: plan, args: [], proof: plan.numbered, satisfies: [15], doc: give every standing decision without a number the next number from the organization's counter; a number is given once and never reused}
+  deliver_plan:    {of: sink, args: [], proof: sink.delivered, satisfies: [2, 14, 18, 79, 149, 152], doc: deliver the standing decisions and the tail since this sink's mark to the sink (a chat message, the page, a bell on a named surface), then advance the mark; no rendering is stored}
+  render_status:   {of: plan, args: [], proof: plan.status_current, satisfies: [74, 115, 143], doc: write the status projection from list and read}
+  report:          {of: any, args: [text], proof: report.recorded, satisfies: [76, 78], doc: a machinery problem or a refusal, to the run record and the attention lines; never work}
+  ensure_signal:   {of: capture, args: [], proof: capture.signals_present, satisfies: [109], doc: a one-message capture is its own signal; no judgment is involved}
