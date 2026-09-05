@@ -217,3 +217,22 @@ fn the_capture_box_makes_captures_intents_chores_and_units() {
     assert!(rt.store.objects.values().filter(|o| o.machine == "response" && o.id.starts_with("response/page-")).all(|o| o.top_state() == Some("applied")));
     assert_eq!(rt.decisions().len(), before + 3);
 }
+
+
+#[test]
+fn a_bolt_close_yes_lands_the_bolt() {
+    let root = std::path::Path::new(env!("CARGO_MANIFEST_DIR")).join("../..");
+    let defs = flywheel_engine::load::load_dir(&root.join("definitions")).unwrap();
+    let sc = flywheel_scenario::scenario::load(&root.join("scenarios/plan-mockup.yaml")).unwrap();
+    let mut rt = flywheel_scenario::scenario::seed(defs, &sc);
+    rt.settle(50);
+    let d = rt.decisions().into_iter().find(|d| d.kind == "bolt-close" && d.object == "bolt/switchboard/plan-rows").expect("close offered");
+    rt.respond(d.number.unwrap(), "yes", "test");
+    let mut quiet = 0;
+    for _ in 0..200 { if rt.tick() == 0 { quiet += 1; if quiet >= 5 { break; } } else { quiet = 0; } }
+    let bolt = &rt.store.objects["bolt/switchboard/plan-rows"];
+    assert_eq!(bolt.top_state(), Some("landed"), "config: {:?}", bolt.config);
+    assert!(rt.store.tail.iter().any(|t| t.object == "bolt/switchboard/plan-rows" && t.kind == "landed"));
+    assert!(!rt.decisions().iter().any(|d| d.kind == "bolt-close"), "the close decision retracts");
+    assert!(rt.store.objects.values().filter(|o| o.machine == "response" && o.id.starts_with("response/page-")).all(|o| o.top_state() != Some("unapplicable")));
+}

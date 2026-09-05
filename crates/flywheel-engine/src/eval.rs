@@ -59,6 +59,10 @@ pub fn eval(g: &Guard, cx: &Ctx) -> Hold {
             let prefix = format!("{}.{}.", cx.region, cx.state_name);
             let (want_region, want_state) = match final_state.split_once('.') { Some((r, s)) => (Some(r), s), None => (None, final_state.as_str()) };
             let hit = cx.object.config.iter().any(|(path, st)| {
+                // `final: <region>.X` may also name a sibling region of the object (a bolt's `line`).
+                if let Some(r) = want_region {
+                    if st == want_state && path.split('.').step_by(2).any(|seg| seg == r) { return true; }
+                }
                 let Some(rest) = path.strip_prefix(&prefix) else { return false };
                 let parts: Vec<&str> = rest.split('.').collect();
                 let visible = match parts.len() {
@@ -227,7 +231,14 @@ pub fn parse_duration(s: &str) -> Option<Duration> {
 /// Holds when an unapplied response answers this object's active decision at this
 /// state, or is a dictation naming this object, and its answer matches the pattern.
 fn eval_response(pattern: &str, cx: &Ctx) -> Hold {
-    let decision_kind = cx.state.decision.as_ref().map(|d| d.kind.as_str());
+    // The decision a response answers may sit on this state or on any active nested state of the
+    // object (a bolt's close decision is on its `close` region; the transition is on `open`).
+    let mut kinds: Vec<String> = cx.state.decision.as_ref().map(|d| vec![d.kind.clone()]).unwrap_or_default();
+    for region in cx.object.config.keys() {
+        if let Some((_, st)) = crate::tick::state_def(cx.defs, cx.object, region) {
+            if let Some(d) = &st.decision { if !kinds.contains(&d.kind) { kinds.push(d.kind.clone()); } }
+        }
+    }
     for r in cx.snap.responses {
         if cx.object.applied_responses.iter().any(|a| a == &r.id) {
             continue;
@@ -241,7 +252,7 @@ fn eval_response(pattern: &str, cx: &Ctx) -> Hold {
                 let _since = parts.next();
                 let kind = parts.next();
                 let obj = parts.next();
-                obj == Some(cx.object.id.as_str()) && kind == decision_kind
+                obj == Some(cx.object.id.as_str()) && kind.map(|k| kinds.iter().any(|x| x == k)).unwrap_or(false)
             }
             ResponseKind::Dictation => r.object.as_deref() == Some(cx.object.id.as_str()),
         };
