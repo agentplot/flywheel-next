@@ -4,11 +4,14 @@
 # signal and the proposed intents the joins produce. A person writing the same
 # records by hand is curation too, and this machine then finds nothing to do.
 # When one run proposes elaborations of one type on several intents, it may
-# propose them gathered: one elaboration covering those intents (188).
+# propose them gathered: one elaboration covering those intents (188). The
+# session is a session like any other (58–60): for a signal that argues with
+# no claim it may offer a chore or an ask through the command, and the
+# signal's move is then route, naming that offer (116).
 machine: curation
-version: 2
+version: 3
 kind: object
-satisfies: [4, 20, 108, 110, 118, 171, 182, 188]
+satisfies: [4, 20, 58, 60, 108, 110, 116, 118, 171, 182, 188]
 object: curation
 singleton: organization
 record:
@@ -50,7 +53,7 @@ regions:
             enter: {session: ended, place: removing}
             note: dictation retires the session (4); the run is due again on the next tick
       applying:
-        doc: every judged signal gets its one standing move; each join becomes or grows a proposed intent with its elaborations
+        doc: every judged signal gets its one standing move; each join becomes or grows a proposed intent with its elaborations; a challenge stales the claim's verdicts wherever they stand (101, 116); a route names the chore or ask the session offered, which record_offers on the session already turned into a proposed chore unit on the shared line or an ask record (58–60)
         entry:
           - {do: record_moves, args: {moves: delivered}}
           - {do: propose_intents, args: {intents: delivered}}

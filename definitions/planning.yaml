@@ -1,7 +1,8 @@
 # Planning: one machine per built repository (section 10). Due when the
 # repository's backlog fingerprint differs from the one last planned against:
 # a claim in scope became standing, a verdict was recorded or fell stale, an
-# ask named the repository, or a unit came back with notes (28). It sees
+# ask named the repository, a challenge move staled a verdict of a claim in
+# scope (101, 116), or a unit came back with notes (28). It sees
 # every open bolt of the repository because the fingerprint and the work order
 # both include them. A run delivers one proposal: the bolts it proposes and
 # the units in each, one decision on the plan (172); the session is charged by
@@ -9,7 +10,7 @@
 machine: planning
 version: 2
 kind: object
-satisfies: [4, 28, 29, 64, 98, 102, 104, 171, 172, 182]
+satisfies: [4, 28, 29, 60, 64, 98, 101, 102, 104, 171, 172, 182]
 object: planning
 singleton: repository
 owns: [proposal]
@@ -30,7 +31,7 @@ regions:
           - when: {always: true}
             to: running
       running:
-        doc: one session reads the backlog, the as-built and the open bolts and delivers one proposal, the units in it each with a target bolt (172)
+        doc: one session reads the backlog, the as-built and the open bolts and delivers one proposal, the units in it each with a target bolt (172), or a chore on the shared line when no bolt is open (60, 182); a unit answering a verdict a challenge staled cites the signal (101)
         regions:
           place:
             initial: place

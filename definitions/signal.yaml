@@ -1,9 +1,12 @@
 # One raw piece of input (113). Immutable once written; exactly one
-# standing move, replaced only by the operator's response (107).
+# standing move — attach, challenge, join, answered, route or drop —
+# replaced only by the operator's response (107). A route move names the
+# chore or the ask the curation session, being a session, offered for a
+# signal that argues with no claim (58–60, 116).
 machine: signal
-version: 1
+version: 2
 kind: object
-satisfies: [106, 107, 113, 114, 116, 118]
+satisfies: [58, 60, 106, 107, 113, 114, 116, 118]
 object: signal
 parent: capture
 record:
@@ -26,6 +29,7 @@ regions:
           - {when: {ev: signal.move, is: challenge}, to: challenging}
           - {when: {ev: signal.move, is: join}, to: joined}
           - {when: {ev: signal.move, is: answered}, to: answered}
+          - {when: {ev: signal.move, is: route}, to: routed}
           - {when: {ev: signal.move, is: drop}, to: dropped}
       attached:
         doc: evidence on an open intent; the intent's material region proposes or grows an elaboration
@@ -33,7 +37,7 @@ regions:
           - when: {ev: signal.move, is: none}
             to: unmoved
       challenging:
-        doc: accumulates against a standing claim; a proposed intent cites it
+        doc: accumulates against a standing claim; a proposed intent cites it; every ledger cell of that claim falls stale, planning becomes due where one is, and its proposal cites this signal (101, 116)
         transitions:
           - when: {ev: signal.move, is: none}
             to: unmoved
@@ -46,6 +50,11 @@ regions:
             to: unmoved
       answered:
         doc: names the claim or record that settled it
+        transitions:
+          - when: {ev: signal.move, is: none}
+            to: unmoved
+      routed:
+        doc: the curation session offered a chore or an ask for it through the command, like any session (58–60), and the move names that offer's record; the chore is a proposed chore unit on the shared line, the ask a record for planning (116)
         transitions:
           - when: {ev: signal.move, is: none}
             to: unmoved

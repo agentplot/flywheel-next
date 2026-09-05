@@ -1,12 +1,14 @@
 # One verdict slot: a standing claim × a repository in its scope (A.14). The
 # verdict is a session's judgment, recorded by the machinery from a planning
-# or test exit; the machine only says when it is fresh and when it is stale.
-# The backlog is derived: every cell not in judged.satisfied or
+# or test exit; the machine only says when it is fresh and when it is stale:
+# the claim's version moved, the cited evidence is gone, or a challenge move
+# stands against the claim since the verdict was judged (101, 116). The
+# backlog is derived: every cell not in judged.satisfied or
 # judged.not-applicable (102).
 machine: ledger-cell
-version: 1
+version: 2
 kind: object
-satisfies: [100, 101, 102, 104]
+satisfies: [100, 101, 102, 104, 116]
 object: ledger-cell
 parent: null
 record:
@@ -27,7 +29,7 @@ regions:
           - when: {ev: cell.verdict, in: [satisfied, partial, not-satisfied, not-applicable]}
             to: judged
       judged:
-        doc: reused until the claim's version moves or the evidence is gone; a repository changing does not stale it (101, I10)
+        doc: reused until the claim's version moves, the evidence is gone, or a challenge is recorded against the claim; a repository changing does not stale it (101, 116, I10)
         regions:
           value:
             initial: unknown
@@ -43,11 +45,11 @@ regions:
               not-satisfied: {doc: in the backlog}
               not-applicable: {doc: out of the backlog; the scope judgment was made once}
         transitions:
-          - when: {any: [{ev: cell.verdict_claim_version, ne_ev: cell.claim_version}, {ev: cell.evidence_present, is: false}]}
+          - when: {any: [{ev: cell.verdict_claim_version, ne_ev: cell.claim_version}, {ev: cell.evidence_present, is: false}, {ev: cell.challenged, is: true}]}
             to: stale
       stale:
-        doc: back in the backlog; planning's fingerprint moves, so a planning run is due and a decision cannot be missed
+        doc: back in the backlog; planning's fingerprint moves, so a planning run is due and a decision cannot be missed; for a challenge the proposal cites the signal (101)
         transitions:
-          - when: {ev: cell.verdict_claim_version, eq_ev: cell.claim_version}
+          - when: {all: [{ev: cell.verdict_claim_version, eq_ev: cell.claim_version}, {not: {ev: cell.challenged, is: true}}]}
             to: judged
-            note: a new verdict was recorded against the current version
+            note: a new verdict was recorded against the current version, and after any challenge that stands

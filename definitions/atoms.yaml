@@ -97,8 +97,9 @@ evidence:
   cell.verdict_claim_version: {of: ledger-cell, type: int}
   cell.claim_version:   {of: ledger-cell, type: int}
   cell.evidence_present: {of: ledger-cell, type: bool, doc: the evidence the verdict cites still exists at the repository's shared head}
+  cell.challenged:      {of: ledger-cell, type: bool, doc: a signal with a standing challenge move against this cell's claim was recorded after the verdict's judged_at, so the verdict is stale in every repository that has one (101, 116)}
   # ---- planning and curation
-  planning.fingerprint:  {of: planning, type: hash, doc: hash of the repository's backlog inputs — standing claims in scope with versions, the ledger's cells, the open bolts and their citations, the asks naming it}
+  planning.fingerprint:  {of: planning, type: hash, doc: hash of the repository's backlog inputs — standing claims in scope with versions, the ledger's cells with their freshness, the challenge moves standing against claims in scope (101), the open bolts and their citations, the asks naming it}
   planning.planned_fingerprint: {of: planning, type: hash}
   planning.redo_pending: {of: planning, type: bool, doc: a unit was sent back with notes}
   planning.ledger_empty: {of: planning, type: bool}
@@ -106,7 +107,7 @@ evidence:
   curation.threshold:     {of: curation, type: int}
   curation.cadence_due:   {of: curation, type: bool}
   capture.signals_present: {of: capture, type: bool}
-  signal.move: {of: signal, type: enum, values: [none, attach, challenge, join, answered, drop]}
+  signal.move: {of: signal, type: enum, values: [none, attach, challenge, join, answered, route, drop], doc: the standing move's target word (107); route names the chore or ask curation offered (116)}
   # ---- construction side
   bolt.chores_outstanding: {of: bolt, type: bool, doc: accepted chore units not yet merged}
   bolt.citations_moved:    {of: bolt, type: bool, doc: a started unit of this bolt cites a claim whose standing version is newer, and no citation choice is recorded (103)}
@@ -215,10 +216,10 @@ effects:
   # ---- claims and ledger
   record_verdict:  {of: ledger-cell, args: [verdict, claim_version, revision, evidence], proof: cell.verdict_recorded, satisfies: [100, 101, 104, 181], doc: the ledger is a file in the books repository, readable from git by any system}
   # ---- planning and curation
-  record_moves:    {of: curation, args: [moves], proof: curation.moves_recorded, satisfies: [107, 116]}
+  record_moves:    {of: curation, args: [moves], proof: curation.moves_recorded, satisfies: [107, 116], doc: one move per judged signal — attach, challenge, join, answered, route or drop — with its reason; a route move names the offer record the session's exit produced for the signal (58–60)}
   propose_intents: {of: curation, args: [intents], proof: curation.intents_proposed, satisfies: [109]}
   gather_elaborations: {of: curation, args: [gatherings], proof: curation.gatherings_proposed, satisfies: [188], doc: for each gathering the session delivered — elaborations of one type proposed in this run on several intents — one proposed elaboration on the first intent named, covering all of them, in place of one per intent}
-  propose_units:   {of: planning, args: [units], proof: planning.units_proposed, satisfies: [29, 34, 36, 64, 172, 182], doc: one unit in in-proposal per unit the session delivered, each naming its proposal; a signal from operation routed to an open bolt arrives here like any other}
+  propose_units:   {of: planning, args: [units], proof: planning.units_proposed, satisfies: [29, 34, 36, 60, 64, 101, 172, 182], doc: one unit in in-proposal per unit the session delivered, each naming its proposal; a signal from operation routed to an open bolt arrives here like any other, and as a chore on the shared line when no bolt is open (60); a unit that answers a stale verdict cites the challenge signal (101)}
   record_proposal: {of: planning, args: [document, units], proof: planning.proposal_recorded, satisfies: [171, 172], doc: one proposal record in proposed for the run, naming the bolts it proposes and the units in each; the one decision the run raises}
   record_fingerprint: {of: planning, args: [], proof: planning.fingerprint_recorded, satisfies: [28]}
   request_replan:  {of: planning, args: [notes], proof: planning.redo_pending, satisfies: [17, 35, 172]}

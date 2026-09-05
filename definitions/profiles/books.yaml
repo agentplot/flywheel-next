@@ -19,7 +19,8 @@ name: books
 complete: false
 evidence:
   capture.signals_present: {read: "at least one `signals/<capture key>/*.rec` exists on the books' shared line"}
-  signal.move:             {read: "`signals/moves/<signal id>.rec` target's first word (attach | challenge | join | answered | drop); none when the file is absent"}
+  signal.move:             {read: "`signals/moves/<signal id>.rec` target's first word (attach | challenge | join | answered | route | drop); none when the file is absent; a route target is `route <offer entry id>`"}
+  cell.challenged:         {read: "some `signals/moves/*.rec` whose target is `challenge <this cell's claim>` has a date newer than the cell's judged_at"}
   cell.verdict:            {read: "`ledger/<repository>.rec` record with this claim: the verdict field; none when absent"}
   cell.verdict_claim_version: {read: "the same record's claim_version"}
   cell.verdict_recorded:   {read: "a record with this claim, claim_version, revision and judged_at exists"}
@@ -27,11 +28,11 @@ evidence:
   curation.threshold:      {read: "`flywheel.yaml` curation.threshold (default 12)"}
   curation.cadence_due:    {read: "`flywheel.yaml` curation.cadence (cron, default `0 6 * * 1-5`) has fired since the curation record's last run"}
   curation.moves_recorded: {read: "every move the session delivered exists as a move record"}
-  planning.fingerprint:    {read: "sha256 over: standing claims in scope for the repository with versions; every ledger cell of the repository; open bolts of the repository with their units' cited claim versions and citation choices; unconsumed asks naming the repository; pending redo notes"}
+  planning.fingerprint:    {read: "sha256 over: standing claims in scope for the repository with versions; every ledger cell of the repository with its freshness; the ids of signals whose standing move challenges a claim in scope (101); open bolts of the repository with their units' cited claim versions and citation choices; unconsumed asks naming the repository; pending redo notes"}
   planning.ledger_empty:   {read: "`ledger/<repository>.rec` is absent or holds no record"}
   intent.signals_dropped:  {read: "every signal the intent cites has a move record whose target is `drop <intent id>`"}
 effects:
   record_verdict:  {do: "recset/recins on `ledger/<repository>.rec`: replace the record for the claim with verdict, claim_version, revision, evidence, judged_at, judged_by; one commit on the books' shared line whose message carries the effect id; pushed with expected-old, rebased and retried on rejection (the cell's lease makes a content conflict impossible)"}
-  record_moves:    {do: "one `signals/moves/<signal id>.rec` per delivered move; one commit on the books' shared line"}
+  record_moves:    {do: "one `signals/moves/<signal id>.rec` per delivered move, target `attach <intent>` | `challenge <claim>` | `join <intent>` | `answered <claim or record>` | `route <offer entry id>` | `drop <reason>`; one commit on the books' shared line"}
   drop_signals:    {do: "for each signal the intent cites, write a move record `drop <intent id>` with the reason; one commit"}
   ensure_signal:   {do: "for a capture whose source is forwarded-message: write one signal record whose excerpt is the message and whose kind is the operator's response (default ask); one commit"}
