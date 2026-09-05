@@ -1,11 +1,13 @@
 # An exploration, a running prototype, an interactive page. The session stays
 # alive after it goes idle; idle is offered as finish or keep; only the
 # operator's response ends it (25, 26, I6). A process that vanished is brought
-# back: a restart never forgets a standing session.
+# back: a restart never forgets a standing session. The interactive page and
+# the exploration are standing sessions, and a surface specification is among
+# their deliverables: what the mockups settled, written for construction (212).
 machine: standing
 version: 2
 kind: template
-satisfies: [4, 25, 26, 54, 190]
+satisfies: [4, 25, 26, 54, 190, 212]
 params:
   place: the elaboration's place
   agent: the agent for the session
@@ -18,7 +20,7 @@ regions:
     states:
       session:
         machine: session
-        params: {agent: $agent, place: $place, work_order: rendered, keep_alive: true, deliverables: [{name: book-chapter, producer: default, schema: default, surface: default}, {name: claim, producer: default, schema: default, surface: default}, {name: context-map, producer: default, schema: default, surface: default}, {name: conceptual-diagram, producer: default, schema: default, surface: default}, {name: logical-diagram, producer: default, schema: default, surface: default}]}
+        params: {agent: $agent, place: $place, work_order: rendered, keep_alive: true, deliverables: [{name: book-chapter, producer: default, schema: default, surface: default}, {name: claim, producer: default, schema: default, surface: default}, {name: context-map, producer: default, schema: default, surface: default}, {name: conceptual-diagram, producer: default, schema: default, surface: default}, {name: logical-diagram, producer: default, schema: default, surface: default}, {name: surface-specification, producer: default, schema: default, surface: default}]}
         transitions:
           - when: {all: [{region: {name: activity, in: [idle]}}, {ev: session.idle_since, older: 30m}, {not: {ev: elaboration.kept_since, exists: true}}]}
             to: idle-offered
