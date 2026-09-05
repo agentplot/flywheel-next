@@ -4,11 +4,15 @@
 # the claim's version moved, the cited evidence is gone, or a challenge move
 # stands against the claim since the verdict was judged (101, 116). The
 # backlog is derived: every cell not in judged.satisfied or
-# judged.not-applicable (102).
+# judged.not-applicable (102). A cell exists for every standing claim and
+# repository in its scope, and scope is read from the manifest's kinds and
+# capabilities beside the repository: adding one makes cells appear unjudged
+# and planning due; removing one takes the cell out of scope, where its
+# verdict reads as not-applicable (195).
 machine: ledger-cell
-version: 2
+version: 3
 kind: object
-satisfies: [100, 101, 102, 104, 116]
+satisfies: [100, 101, 102, 104, 116, 195]
 object: ledger-cell
 parent: null
 record:
@@ -45,11 +49,20 @@ regions:
               not-satisfied: {doc: in the backlog}
               not-applicable: {doc: out of the backlog; the scope judgment was made once}
         transitions:
+          - when: {ev: cell.in_scope, is: false}
+            to: out-of-scope
           - when: {any: [{ev: cell.verdict_claim_version, ne_ev: cell.claim_version}, {ev: cell.evidence_present, is: false}, {ev: cell.challenged, is: true}]}
             to: stale
       stale:
         doc: back in the backlog; planning's fingerprint moves, so a planning run is due and a decision cannot be missed; for a challenge the proposal cites the signal (101)
         transitions:
+          - when: {ev: cell.in_scope, is: false}
+            to: out-of-scope
           - when: {all: [{ev: cell.verdict_claim_version, eq_ev: cell.claim_version}, {not: {ev: cell.challenged, is: true}}]}
             to: judged
             note: a new verdict was recorded against the current version, and after any challenge that stands
+      out-of-scope:
+        doc: the repository lost the kind or capability, or the claim's scope was corrected away from it; the recorded verdict reads as not-applicable and the cell is out of the backlog (101, 195); the record is kept, and if scope returns the verdict is judged again by the freshness rules
+        transitions:
+          - when: {ev: cell.in_scope, is: true}
+            to: judged

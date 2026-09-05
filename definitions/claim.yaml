@@ -1,17 +1,20 @@
 # One statement in the design book of what is true at the destination (A.14).
 # The claim's state is where its text is: on an intent's line it is proposed,
-# on the books' shared line it is standing. The machine writes nothing; it is
-# the index planning, curation and the ledger read.
+# on the books' shared line it is standing. The machine writes nothing but a
+# scope correction; it is the index planning, curation and the ledger read.
+# The scope names kinds, capabilities, repositories, or all; which
+# repositories that resolves to is the manifest's, where each repository
+# states its kinds and capabilities (105, 195).
 machine: claim
-version: 1
+version: 2
 kind: object
-satisfies: [23, 97, 98, 105, 121]
+satisfies: [23, 97, 98, 105, 121, 195]
 object: claim
 parent: null
 record:
   name: string
   version: int           # moves only when the text moves; a lock hash proves it
-  scope: scope           # all | kind:<k> | capability:<c> | repos:[...]
+  scope: scope           # all | kinds:[...] | capabilities:[...] | repos:[...]; corrected by the scope tool, which does not move the version (105, 195)
   scenarios: list
 regions:
   standing:
@@ -23,9 +26,12 @@ regions:
           - when: {ev: claim.on_shared_line, is: true}
             to: standing
       standing:
-        doc: planned against; every ledger cell in scope compares its verdict's version with this one
+        doc: planned against; every ledger cell in scope compares its verdict's version with this one; the page shows the scope with a control to correct it (195)
         transitions:
           - when: {not: {ev: claim.on_shared_line, is: true}}
             to: retired
+          - when: {response: "scope <scope>"}
+            to: standing
+            effects: [{do: set_claim_scope, args: {scope: $response}, note: "the scope tool (193); the block's scope line moves, the text and the version do not (105, 195)"}]
       retired:
         final: true

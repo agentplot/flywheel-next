@@ -114,7 +114,9 @@ evidence:
   claim.on_shared_line: {read: "the books repository's shared line holds a fenced claim block with this name (in `src/**/*.md`)"}
   claim.on_intent_line: {read: "the intent's line holds the block and the shared line does not"}
   claim.version:       {read: "the block's `version:` line; the lock hash beside it must match the block's text, checked by `flywheel claims check` in the books' pre-commit hook"}
-  claim.scope_repos:   {read: "the block's `scope:` resolved against the manifest `flywheel.yaml` (all | kind | capability | repos)"}
+  claim.scope_repos:   {read: "the block's `scope:` resolved against the manifest `flywheel.yaml`: all; `kinds:` against repositories.<name>.kinds; `capabilities:` against repositories.<name>.capabilities; `repos:` by name (105, 195)"}
+  cell.in_scope:       {read: "the cell's repository is in claim.scope_repos for the cell's claim, read at the books' shared head (195)"}
+  claim.scope_set:     {read: "the claim block's scope line on the books' shared line equals the response's scope"}
   cell.evidence_present: {read: "every path or spec id the verdict cites exists at the repository's shared head"}
   cell.claim_version:  {read: as claim.version}
   stage.agents:        {read: "a fixed list from the type; or the rule's pattern globbed in the place (`personas/*.md`), each match one agent"}
@@ -145,4 +147,5 @@ effects:
   remove_stray_places: {do: "for each stray worktree under the places root: `wt worktree remove <path>`; one effect per removal, each recorded with the path and why it was stray"}
   archive_intent:  {do: "`openspec archive <intent-id>` in the intent's place, committed on the intent's line"}
   open_intent:     {do: "`openspec new <intent-id>` from the schema instruction in force, committed on the intent's line"}
+  set_claim_scope: {do: "`flywheel claims scope <claim> <scope>` on the books' shared line: rewrite the block's scope line and its lock, leave the text and the version, one commit `chore(claims): scope <claim>` pushed with expected-old; the pre-commit hook verifies the lock as for any claim edit (105, 195)"}
   record_per_intent: {do: "for each intent in covers beyond the parent: the files the session left under `openspec/changes/<that intent id>/` in its place are committed onto that intent's line, into that intent's change directory, one commit naming the elaboration, and removed from the place in a commit of its own, so the place's merge carries only the parent's records and the book; absent files are nothing to do"}

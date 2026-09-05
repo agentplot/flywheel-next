@@ -48,6 +48,7 @@ tools:
     takeover:      {args: [host], doc: "a stale host before the 30m bound (150)"}
     revive:        {args: [signal], doc: "clears the move (107)"}
     take:          {args: [line], doc: "order a take now (50)"}
+    scope:         {args: [claim, scope], doc: "correct a claim's scope — all, kinds, capabilities or repositories; the page's repository view shows each claim's scope beside this control (105, 195)"}
   guard: "a tool that would assert work was done (done, pass, yes on nothing) does not exist; the response machine reports one that arrives anyway as unapplicable (4)"
 interpreter:
   doc: |

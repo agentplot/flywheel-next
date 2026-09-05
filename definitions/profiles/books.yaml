@@ -17,6 +17,28 @@
 format: flywheel-profile/1
 name: books
 complete: false
+manifest:
+  doc: |
+    `flywheel.yaml` at the books' root. Beside each repository it states the
+    kinds the repository is and the capabilities it declares, which is what a
+    claim's scope resolves against (105, 195):
+
+      repositories:
+        <name>:
+          repo: <org>/<name>
+          kinds: [service, data-product]         # a claim scoped `kinds:` matches any of them
+          capabilities: [provider-client]         # a claim scoped `capabilities:` matches any of them
+          landing: pull-request | direct           # 175
+          take_cadence: "0 6 * * *"                # 50
+          item_merge: squash | merge               # 179
+          commit_types: {default: feat, fast: fix, chore: chore}   # 185
+          personas: "personas/*.md"                # 56
+
+    Adding a kind or a capability is a commit on the books' shared line; every
+    host reads it at its next fetch, the cells of the claims now in scope
+    appear unjudged, and the repository's fingerprint moves (195). Removing
+    one takes the cells out of scope, where their verdicts read as
+    not-applicable (101).
 evidence:
   capture.signals_present: {read: "at least one `signals/<capture key>/*.rec` exists on the books' shared line"}
   signal.move:             {read: "`signals/moves/<signal id>.rec` target's first word (attach | challenge | join | answered | route | drop); none when the file is absent; a route target is `route <offer entry id>`"}
@@ -28,7 +50,7 @@ evidence:
   curation.threshold:      {read: "`flywheel.yaml` curation.threshold (default 12)"}
   curation.cadence_due:    {read: "`flywheel.yaml` curation.cadence (cron, default `0 6 * * 1-5`) has fired since the curation record's last run"}
   curation.moves_recorded: {read: "every move the session delivered exists as a move record"}
-  planning.fingerprint:    {read: "sha256 over: standing claims in scope for the repository with versions; every ledger cell of the repository with its freshness; the ids of signals whose standing move challenges a claim in scope (101); open bolts of the repository with their units' cited claim versions and citation choices; unconsumed asks naming the repository; pending redo notes"}
+  planning.fingerprint:    {read: "sha256 over: the repository's kinds and capabilities from `flywheel.yaml` (195); standing claims in scope for the repository with versions; every ledger cell of the repository with its freshness; the ids of signals whose standing move challenges a claim in scope (101); open bolts of the repository with their units' cited claim versions and citation choices; unconsumed asks naming the repository; pending redo notes"}
   planning.ledger_empty:   {read: "`ledger/<repository>.rec` is absent or holds no record"}
   intent.signals_dropped:  {read: "every signal the intent cites has a move record whose target is `drop <intent id>`"}
 effects:
