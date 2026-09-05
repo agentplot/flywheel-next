@@ -1,10 +1,16 @@
 # One unit of design work on an intent: one session, one conversation, one
 # place (A.4). Its type is a machine the operator can add; the type decides how
-# it ends.
+# it ends. Its records — research notes, session records, prototype notes, an
+# interactive page — go into its intent's change directory; what it concludes
+# goes to the book and its claims (187). It may cover several intents (188):
+# `covers` names them, the parent first, and its finish fans the records out
+# to every covered intent's change directory while the book is written once.
+# The dictation `explore <intents...>` creates one directly in approved,
+# covering the named intents, as a with-operator or standing session (189).
 machine: elaboration
-version: 1
+version: 2
 kind: object
-satisfies: [4, 5, 24, 27, 54]
+satisfies: [4, 5, 24, 27, 54, 187, 188, 189]
 object: elaboration
 parent: intent
 record:
@@ -12,13 +18,14 @@ record:
   type_version: int
   sources: list          # the findings, signals or dictation that proposed it
   document: ref          # the proposal the operator reads
+  covers: list           # the intent ids this elaboration covers, the parent first; more than one when gathered (188) or dictated over several (189)
 regions:
   life:
     initial: proposed
     states:
       proposed:
-        doc: a decision of its own when the intent is open; folded into the intent's decision when the intent is itself proposed
-        decision: {kind: elaboration-proposed, group: approve, document: document, answers: ["yes", drop, "type <name>"], shows: [elaboration.type, sources], satisfies: [10, 27, 58]}
+        doc: a decision of its own when the intent is open; folded into the intent's decision when the intent is itself proposed; a gathering shows every intent it covers, and the operator may pick which stay or answer per intent (188)
+        decision: {kind: elaboration-proposed, group: approve, document: document, answers: ["yes", drop, "type <name>", "pick <intents>", "<intent>: drop"], shows: [elaboration.type, sources, covers], satisfies: [10, 27, 58, 188]}
         transitions:
           - when: {ev: elaboration.shown_with_parent, is: true}
             to: proposed
@@ -26,12 +33,18 @@ regions:
           - when: {response: "type <name>"}
             to: proposed
             effects: [{do: set_type, args: {type: $response}}]
+          - when: {response: "pick <intents>"}
+            to: proposed
+            effects: [{do: set_covers, args: {keep: $response}, note: "the intents left out are uncovered; their material is pending again on each and proposed there on its own (188)"}]
+          - when: {response: "<intent>: drop"}
+            to: proposed
+            effects: [{do: set_covers, args: {without: $response}, note: "one intent answered on its own leaves the gathering (188)"}]
           - when: {response: "yes"}
             to: approved
           - when: {response: drop}
             to: dropped
       approved:
-        doc: approval given once is never re-asked (6); the record holds the type version in force
+        doc: approval given once is never re-asked (6); the record holds the type version in force; also the state the dictation `explore <intents...>` creates an elaboration in, covering the named intents (189)
         transitions:
           - when: {response: drop}
             to: dropped
@@ -53,9 +66,15 @@ regions:
             enter: {session: ended, place: removing}
             note: dictation undoes the work (4); the session is retired and the place released unless held
           - when: {final: done}
+            to: writing-back
+      writing-back:
+        doc: the writeback is per covered intent (188, 189); the records the session left in its place for each covered intent beyond the parent are committed onto that intent's line, before the place itself moves; nothing to do when covers names the parent alone
+        entry: [{do: record_per_intent}]
+        transitions:
+          - when: {ev: elaboration.records_fanned_out, is: true}
             to: finishing
       finishing:
-        doc: a self-closing place merges into the intent's line and is removed; a standing place is kept until the operator finishes it, then merged the same way (54)
+        doc: a self-closing place merges into the parent intent's line, carrying the parent's records and the book, and is removed; a standing place is kept until the operator finishes it, then merged the same way (54)
         enter: {place: merging}
         transitions:
           - when: {region: {name: place.place.life, in: [removed]}}

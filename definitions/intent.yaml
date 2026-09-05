@@ -1,14 +1,19 @@
 # One thread of design work about one subject (A.3). Proposed by curation or by
 # the operator's dictation; closed only by the operator (22). Its line is off
 # the books' shared line, a region of its own; archiving is the landing of that
-# line (49, 54).
+# line (49, 54). The intent is a change in the books: its change directory
+# holds its elaborations' records, and the book holds what they conclude
+# (187). An intent named in another elaboration's `covers` is covered by it:
+# while that elaboration is proposed or working it counts as this intent's
+# one elaboration, so no other is proposed here meanwhile (21, 189), and its
+# finish counts toward this intent's close (188).
 machine: intent
-version: 2
+version: 3
 kind: object
 object: intent
 parent: null
 owns: [elaboration, unit]   # units only as chores resolving the line's take conflicts (52)
-satisfies: [20, 21, 22, 23, 49, 54, 109, 117]
+satisfies: [20, 21, 22, 23, 49, 54, 109, 117, 187, 189]
 record:
   subject: string
   signals: list          # cited signal ids; weight is derived from them by event date
@@ -39,26 +44,29 @@ regions:
             states:
               settled:
                 transitions:
-                  - when: {ev: intent.material_pending, is: true}
+                  - when: {all: [{ev: intent.material_pending, is: true}, {not: {ev: intent.covered_by, in: [proposed, active]}}]}
                     to: settled
-                    effects: [{do: propose_elaboration, args: {material: pending, type: from-material}, note: new material joins the one proposal awaiting approval (21)}]
+                    effects: [{do: propose_elaboration, args: {material: pending, type: from-material}, note: "new material joins the one proposal awaiting approval (21); while another intent's elaboration covers this one, the material waits and is proposed when the cover ends (189)"}]
           close:
             initial: not-offered
             states:
               not-offered:
                 transitions:
-                  - when: {all: [{children: {kind: elaboration, none: [proposed, approved, placing, working, finishing]}},
-                                 {children: {kind: elaboration, any: [done]}},
+                  - when: {all: [{children: {kind: elaboration, none: [proposed, approved, placing, working, writing-back, finishing]}},
+                                 {not: {ev: intent.covered_by, in: [proposed, active]}},
+                                 {any: [{children: {kind: elaboration, any: [done]}}, {ev: intent.covered_by, is: done}]},
                                  {not: {ev: intent.close_declined_since_last_final, is: true}}]}
                     to: offered
+                    note: an elaboration covering this intent from another is this intent's work too; its finish is a done here (188)
               offered:
                 decision: {kind: intent-close, group: decide, answers: [close, keep open], satisfies: [10, 22]}
                 transitions:
                   - when: {response: "keep open"}
                     to: declined
-                  - when: {children: {kind: elaboration, any: [proposed, approved, placing, working, finishing]}}
+                  - when: {any: [{children: {kind: elaboration, any: [proposed, approved, placing, working, writing-back, finishing]}},
+                                 {ev: intent.covered_by, in: [proposed, active]}]}
                     to: not-offered
-                    note: new work arrived; the decision can no longer be made as posed
+                    note: new work arrived, here or as a gathering covering this intent; the decision can no longer be made as posed
               declined:
                 doc: re-offered only when another elaboration reaches done
                 transitions:

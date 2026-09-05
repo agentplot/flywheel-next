@@ -4,16 +4,18 @@
 # unit in it is separately answerable before the yes; the answer is forwarded
 # to the unit as a response of its own. Nothing becomes a bolt or a unit's
 # items until the yes: the units it names wait in in-proposal and read this
-# object's state. Planning's next run supersedes it silently (35).
+# object's state. Planning's next run supersedes it silently (35). A proposal
+# is a record in the state with its document beside it; no change directory
+# holds it (187).
 machine: proposal
-version: 1
+version: 2
 kind: object
 object: proposal
 parent: planning
-satisfies: [17, 35, 36, 171, 172]
+satisfies: [184, 17, 35, 36, 171, 172, 187]
 record:
   repository: string
-  document: ref          # the proposal document the session delivered; presented for review (17)
+  document: ref          # the proposal document the session delivered, kept beside this record in the state (187); presented for review (17)
   bolts: list            # the bolts it proposes: open ids, or new names
   units: list            # the unit ids it names, in in-proposal
   redo_notes: string

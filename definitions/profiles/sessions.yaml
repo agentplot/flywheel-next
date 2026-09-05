@@ -22,9 +22,15 @@ name: sessions
 complete: false
 kinds:
   doc: "the command each kind of agent is started with, the agent name and the work order path substituted (173); a stage names a kind per agent entry, default claude; the operator adds a kind by adding a line here"
-  claude:   "claude --agent <agent> -- <work order path>"
-  codex:    "codex --profile <agent> <work order path>"
-  opencode: "opencode --agent <agent> --prompt <work order path>"
+  claude:   "claude --agent <agent> --model <model> -- <work order path>"
+  codex:    "codex --profile <agent> --model <model> <work order path>"
+  opencode: "opencode --agent <agent> --model <model> --prompt <work order path>"
+models:
+  doc: "kind and model by role, the defaults a stage, unit type or elaboration type may override with its own `kind:` and `model:` (173); declared in `flywheel.yaml` roles.<role>: {kind, model}; nothing here is read from any agent program's own configuration (183)"
+  elaboration: {kind: claude, model: claude-fable-5-1}
+  construction: {kind: claude, model: claude-opus-5}
+  machinery:    {kind: claude, model: claude-fable-5-1}
+  example_override: "a code-review stage may declare {kind: codex, model: gpt-5-codex}"
 multiplexer_sessions:
   doc: "the herdr session a pane is started in (174); defaults by who charged the session, overridable per host in `flywheel.yaml` hosts.<host>.multiplexer_sessions by kind (`codex: flywheel-<org>-codex`) or by repository (`atlas: flywheel-atlas`), the most specific winning: repository over kind over default. The machinery creates the session when herdr does not list it"
   intents:   "flywheel-<org>-intents — elaboration sessions and the operator's own session"

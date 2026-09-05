@@ -317,6 +317,8 @@ impl Store {
             "unit.items_exist" => json!(self.objects.values().any(|o| o.parent.as_deref() == Some(object) && o.machine == "work-item")),
             // ---- design side
             "intent.material_pending" => json!(false),
+            "intent.covered_by" => json!("none"),
+            "elaboration.covers_set" | "elaboration.records_fanned_out" | "curation.gatherings_proposed" => json!(true),
             "intent.close_declined_since_last_final" => json!(obj.map(|o| o.record.get("close_declined_at").map(|v| !v.is_null()).unwrap_or(false)).unwrap_or(false)),
             "intent.archived" => json!(self.world.archived.get(object).copied().unwrap_or(false)),
             "elaboration.shown_with_parent" => json!(obj.and_then(|o| o.parent.as_deref()).and_then(|p| self.state_of(p)) == Some("proposed")),

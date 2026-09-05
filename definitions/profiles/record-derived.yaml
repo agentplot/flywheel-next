@@ -41,7 +41,8 @@ evidence:
   session.refusals_recorded: {read: "every refusal entry on the session's thread is in the run record"}
   session.answer_delivered: {read: "the thread's latest answer entry carries delivered = true"}
   session.message_delivered: {read: "the thread's latest message entry carries delivered = true"}
-  intent.material_pending: {read: "signals moved attach to the intent, or finding records on it, that no elaboration record in state proposed or later cites"}
+  intent.material_pending: {read: "signals moved attach to the intent, or finding records on it, that no elaboration record in state proposed or later cites, on this intent or covering it"}
+  intent.covered_by: {read: "among elaboration records whose parent is another intent and whose covers name this one, the newest by entered_at: none when there is none; proposed when its state is proposed; active in approved, placing, working, writing-back or finishing; done when done (dropped counts as none)"}
   intent.material_held: {read: "the intent has exactly one elaboration in proposed and it cites all pending material"}
   intent.close_declined_since_last_final: {read: "get(intent).close_declined_at is newer than every child elaboration's entered_at of done"}
   intent.split_done: {read: "two intent records name this one as split_from"}
@@ -50,6 +51,8 @@ evidence:
   elaboration.type_set: {read: "get(id).type equals the response's argument"}
   elaboration.shown_with_parent: {read: "get(parent).state is proposed"}
   elaboration.kept_since: {read: "get(id).kept_at"}
+  elaboration.covers_set: {read: "get(id).covers equals the response's picked set (with the parent kept), or lacks the intent the response named"}
+  curation.gatherings_proposed: {read: "for every gathering the session delivered, one elaboration record in proposed whose covers equal its intents"}
   unit.type:      {read: "get(id).type"}
   unit.type_version: {read: "get(id).type_version"}
   unit.batch:     {read: "get(id).batch"}
@@ -91,7 +94,9 @@ effects:
   record_offers:   {do: "for each uncited offer entry on the session's thread: a finding about the session's own intent -> put(new elaboration, proposed, document = the entry's document path, sources = entry id); a finding about its own bolt -> put(new unit, proposed, type = fast, target = the bolt, document = the path); a chore -> put(new unit, proposed, type = chore, batch = bolt id, scope from the place, document = the path); anything else -> a signal record citing the path (books.yaml). The record holds the path and the entry id, never the text (59)"}
   record_refusals: {do: "each refusal entry copied to the run record; the report effect carries them to attention"}
   set_type:        {do: "put(id): type and type_version = the type file's version in force"}
-  propose_elaboration: {do: "put(new elaboration, proposed, type from the material's kind, sources = the pending material) or put(existing proposed elaboration, sources += pending)"}
+  propose_elaboration: {do: "put(new elaboration, proposed, type from the material's kind, sources = the pending material, covers = [the intent]) or put(existing proposed elaboration, sources += pending)"}
+  set_covers:      {do: "put(elaboration): covers = the picked intents with the parent kept first, or covers minus the named intent; the elaboration's sources that came from an intent left out are dropped from it, so that intent's material is pending again"}
+  gather_elaborations: {do: "put(one elaboration, proposed) per gathering: parent = the first intent named, covers = the intents named, type from the material, sources = the material of every covered intent; no separate proposed elaboration is put on the other covered intents"}
   split_intent:    {do: "put(two new intents, proposed, split_from = id) with the signals partitioned by the response; the signals get join moves naming each"}
   propose_intents: {do: "put(one intent, proposed) per join with its signals, challenges and proposed elaborations"}
   propose_units:   {do: "put(one unit, in-proposal) per delivered unit: type, document, target, depends_on, claims, proposal = the run's proposal id; asks consumed get consumed_by"}

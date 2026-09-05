@@ -13,7 +13,7 @@ kind: object
 object: bolt
 parent: null
 owns: [unit, service]
-satisfies: [4, 30, 33, 39, 40, 44, 46, 47, 48, 55, 63, 74, 103, 175, 177]
+satisfies: [186, 4, 30, 33, 39, 40, 44, 46, 47, 48, 55, 63, 74, 103, 175, 177]
 record:
   repository: string
   name: string           # the operator's to change at any time; never the identity

@@ -7,6 +7,13 @@
 # crate's own parser) for the ledger and the signal records; OpenSpec change
 # directories for intents; `flywheel claims check` as the books' pre-commit
 # hook verifying every fenced claim block's lock hash.
+#
+# An intent is an OpenSpec change (`openspec/changes/<intent id>/`): its
+# elaborations' records — research notes, session records, prototype notes,
+# an interactive page — live in that change directory, and what they conclude
+# is written to the book's chapters and claims. A bolt has no change
+# directory in the books; a proposal's document sits beside its record in the
+# state store (187).
 format: flywheel-profile/1
 name: books
 complete: false

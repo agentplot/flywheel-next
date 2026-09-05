@@ -10,7 +10,7 @@
 machine: line
 version: 3
 kind: template
-satisfies: [42, 49, 50, 52, 53, 54, 175, 176, 177, 179, 180]
+satisfies: [42, 49, 50, 52, 53, 54, 183, 185, 175, 176, 177, 179, 180]
 params:
   parent: the shared line this line is off
   landing_policy: pull-request or direct, from the manifest

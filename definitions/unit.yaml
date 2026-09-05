@@ -17,7 +17,7 @@ satisfies: [4, 5, 13, 16, 17, 31, 35, 36, 37, 57, 60, 74, 172]
 record:
   type: string
   type_version: int
-  document: ref          # the proposal document, in the change directory it arose in; presented for review (17)
+  document: ref          # the proposal document, kept with the proposal record in the state, not in a change directory (187); presented for review (17). The unit's own change lives in its built repository and is written at its first stage
   target: {bolt: bolt-id, new_name: string}
   depends_on: list       # other units of the same bolt
   claims: list           # claim@version the work serves

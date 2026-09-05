@@ -3,10 +3,12 @@
 # threshold or the cadence says so; the session's exit delivers one move per
 # signal and the proposed intents the joins produce. A person writing the same
 # records by hand is curation too, and this machine then finds nothing to do.
+# When one run proposes elaborations of one type on several intents, it may
+# propose them gathered: one elaboration covering those intents (188).
 machine: curation
-version: 1
+version: 2
 kind: object
-satisfies: [4, 20, 108, 110, 118, 171, 182]
+satisfies: [4, 20, 108, 110, 118, 171, 182, 188]
 object: curation
 singleton: organization
 record:
@@ -52,6 +54,7 @@ regions:
         entry:
           - {do: record_moves, args: {moves: delivered}}
           - {do: propose_intents, args: {intents: delivered}}
+          - {do: gather_elaborations, args: {gatherings: delivered}, note: "each gathering the session delivered: one proposed elaboration covering the named intents, in place of one per intent (188)"}
         transitions:
           - when: {always: true}
             to: idle
