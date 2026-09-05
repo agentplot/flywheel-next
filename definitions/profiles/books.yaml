@@ -69,7 +69,12 @@ context_map:
     publishes, and of the seam nodes it homes that `fronts` another
     context's service. The table's contents are open (gaps.md); its shape is
     not: a function of the homed nodes' layers and kinds, the same on every
-    host.
+    host. The table is shipped data, versioned with the template set (208),
+    not a file in the books. Changing it re-derives kinds and capabilities
+    only: ledger cells key on claim version and repository, and scope comes
+    from attachments, so a table change never moves a verdict and never
+    stales one; what it can change is which node kinds a repository is said
+    to be, which the page shows and planning's work order carries.
 
     Scope, derived (200): `claim.scope_repos` = the homes of the nodes the
     claim attaches to; of every node in an attached context; and of both

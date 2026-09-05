@@ -21,6 +21,44 @@
 format: flywheel-profile/1
 name: host
 complete: false
+disk:
+  doc: |
+    The layout on disk is this binding's, the same on every host (205). The
+    manifest names one root (`flywheel.yaml` hosts.<host>.root, default
+    `~/flywheel`); a host joins by `flywheel host join <org>` and never by
+    hand, and a root that holds anything else is refused with what differs
+    (host.disk_layout = differs, the host machine's refused state).
+  root: "`<root>/<org>/`"
+  bare: "`<root>/<org>/<repo>.git` — a bare clone of the state, the books and every tracked built repository; the one remote every worktree shares"
+  shared_line: "`<root>/<org>/<repo>/main` — one checkout of each repository's shared line, the machinery's own working tree for takes, landings and the books' commits; no session ever runs here"
+  bolt_place: "`<root>/<org>/<repo>/bolts/<bolt id>` — the operator's place per open bolt (44), a worktree off the bolt's line"
+  places: "`<root>/<org>/<repo>/places/<owner id>` — a session's place (43), a worktree off its line, made by prepare_place with `wt` and removed by remove_place; nothing else is ever a worktree"
+  untracked: "`.flywheel/` inside any worktree, excluded through `.git/info/exclude` (203): the work order, the handoff, the installation token"
+  check: "`flywheel host doctor` lists every path under the root against this layout; join runs it first and refuses on any difference, naming the path and what was expected (205)"
+app:
+  doc: |
+    One GitHub App is the connection (207). The manifest names its id
+    (`flywheel.yaml` app.id); the private key is the operator's secret,
+    placed on each host outside every repository (`<root>/<org>/app.pem`,
+    mode 600) and never by an agent. The installation on the organization
+    must cover every repository the manifest lists; `extend_installation`
+    adds a new repository where the App's permissions allow, and where they
+    do not the repository's `uncovered` decision under attention asks the
+    operator. No host or session uses a personal token.
+  host_token: "the host mints an installation token from the key for its own git-host calls (pushes, the tracker's items, request reads), refreshed before expiry, held in memory only"
+  place_token: "prepare_place mints a short-lived installation token scoped to the place's repository alone and writes it to `.flywheel/token` in the place (untracked, mode 600) with a git credential helper that reads it; the session pushes to its place's branch with it and nothing else; the token is written nowhere else and expires with the hour (207)"
+templates:
+  doc: |
+    The books template, the built-repository template, the map schema and
+    the derivation table (198, 199), and the shipped skills and deliverables
+    (190) are one versioned set released with the flywheel binary (208):
+    `flywheel templates version` prints it. create_books and
+    create_repository stamp the version they used into the organization's
+    and the repository's records and into `flywheel/template.yaml` in the
+    repository; upgrading a repository to a newer set is a chore the
+    operator accepts (123), never a side effect of a new binary.
+  books: "`flywheel/` (instructions, schemas, skills, type files, the map schema's copy for editors), `context-map/` (empty current and target maps), `src/SUMMARY.md`, `book.toml` with the claims preprocessor, `flywheel.yaml` skeleton, the pre-commit hooks"
+  built: "`flywheel/services.yaml` (empty), `flywheel/commit-types.yaml` (defaults), `flywheel/template.yaml` (the set version), `openspec/` with the as-built spec layout, the asbuilt check gate"
 declarations:
   services: |
     A built repository declares its services as data in `flywheel/services.yaml`,
@@ -94,6 +132,20 @@ evidence:
   service.declared:    {read: "`flywheel/services.yaml` at the bolt's place's head holds a record with this name (203)"}
   service.process_absent: {read: "`wt tether status service/<name>` reports no tether by that name"}
   bolt.services_declared: {read: "for every record in `flywheel/services.yaml` at the bolt's place's head, a service object with parent = the bolt and that name exists in a state other than gone, from the state profile's list"}
+  host.disk_layout:    {read: "`flywheel host doctor` against disk: above (205): absent when the root has no `<org>/`, current when every path matches, differs otherwise"}
+  host.layout_difference: {read: "the doctor's first differing path and what was expected"}
+  host.repositories_cloned: {read: "for the state, the books and every manifest repository: `<root>/<org>/<repo>.git` is a bare clone of the manifest's remote and `<root>/<org>/<repo>/main` is a checkout of its shared line"}
+  org.books_ready:     {read: "the books repository exists on the git host and holds every path the books template of the recorded version requires"}
+  org.state_ready:     {read: "the state repository exists with the profile's layout: for git-only, `main` with `objects/`, `responses/`, `asks/`, `runs/`; for the tracker, the `flywheel-state` repository with its board and the milestone scheme"}
+  org.app_recorded:    {read: "`flywheel.yaml` app.id is set and the organization record says installation required"}
+  org.app_installed:   {read: "the git host reports an installation of the App on the organization, reached with the key at `<root>/<org>/app.pem`"}
+  org.app_id:          {read: "`flywheel.yaml` app.id"}
+  org.host_registered: {read: "some host record exists and `flywheel.yaml` hosts lists it"}
+  repository.nodes:    {read: "get(id).nodes"}
+  repository.repo:     {read: "get(id).repo"}
+  repository.exists:   {read: "the git host reports the repository under the organization, or the record is adopted"}
+  repository.registered: {read: "`flywheel.yaml` repositories.<name> exists; the repository's head holds `flywheel/services.yaml`, `flywheel/commit-types.yaml` and `flywheel/template.yaml`; every node in get(id).nodes is in the target map with home = name; a planning record for the repository exists"}
+  repository.covered_by_app: {read: "the App installation's repository list on the git host names the repository"}
   host.stray_places:   {read: "`wt worktree list` under the places root names a worktree whose derived owner id is no listed object in a live state, or is a listed object whose place region is removed, and whose owner record is not held"}
   host.no_stray_places: {read: the same list finds none}
   line.exists:         {read: "`git ls-remote <repo> refs/heads/<line>` returns the ref"}
@@ -126,7 +178,7 @@ evidence:
   intent.change_open:  {read: "`openspec/changes/<intent-id>/` exists on the intent's line"}
   line.acceptance_written: {read: "for a bolt's line: `openspec/acceptance.yaml` at the line's head lists exactly the claims the bolt's units cite (claims field, name@version) with the scenarios the book's claim blocks carry at those versions; for an intent's line: true (192)"}
   elaboration.records_fanned_out: {read: "for every intent in covers beyond the parent, the place holds nothing under `openspec/changes/<that intent id>/` and that intent's line holds the commit naming this elaboration, or the session left nothing for it"}
-  lease.coverable:     {read: "some host in `flywheel.yaml` hosts declares this object's kind, its repository (for a bolt, unit or item) and its unit type (for a unit or item); a sink is coverable when some host or the dispatcher declares it in `presents`"}
+  lease.coverable:     {read: "some host whose disk region is ready (205) in `flywheel.yaml` hosts declares this object's kind, its repository (for a bolt, unit or item) and its unit type (for a unit or item); a sink is coverable when some host or the dispatcher declares it in `presents`"}
 effects:
   create_line:     {do: "`git push <repo> <parent head>:refs/heads/<line>` with expected-old = zero; the ref exists afterwards"}
   take_parent:     {do: "in the owner's place (a bolt's operator place, an intent's own place): `git merge --no-ff <parent>`, never a rebase (179); on conflict `git merge --abort`; then push the line with expected-old = the head read"}
@@ -145,6 +197,14 @@ effects:
   declare_services: {do: "read `flywheel/services.yaml` at the bolt's place's head (203); for each record with no service object in a live state: put(new service, stopped, parent = the bolt, id = service/<bolt>/<name>, name, command, serves from the record); one put per record, each recorded as its own effect"}
   start_service:   {do: "in the bolt's place: `wt tether start --name service/<name> -- sh -c '<command>'` with PORT from the router in force's `port` (under portless `portless port <name>` for this worktree), BIND from its `bind` (127.0.0.1 under portless and tailnet, 0.0.0.0 under platform) and PLACE = the path; then the router's registration for the port where it needs one (`tailscale serve`, the proxy's admin API), and none under portless or platform (191); the tether binds the process to the worktree so `wt worktree remove` ends it (44, 54); put(service): moved_by = the response id; a tether already present by that name is refused by wt, which is the proof"}
   stop_service:    {do: "`wt tether stop service/<name>` in the bolt's place, then the router's deregistration where it registered one (191); put(service): moved_by = the response id; nothing when no tether by that name exists"}
+  clone_repositories: {do: "for the state, the books and every manifest repository missing under the root: `git clone --bare <remote> <root>/<org>/<repo>.git` and `git worktree add <root>/<org>/<repo>/main <shared line>`; a repeat clones only what is missing; then `flywheel host doctor` (205)"}
+  create_books:    {do: "`gh`-free: through the App's installation token, create `<org>/<books>` on the git host when absent, then commit the books template at the set's version — adding only missing paths to an adopted repository — with `flywheel/template.yaml` carrying the version; put(organization): template_version (204, 208)"}
+  create_state:    {do: "create `<org>/flywheel-state` on the git host when absent and commit the profile's layout (git-only: the directories and `status.html`; tracker: the repository, the board and the milestone scheme) (204, C.2)"}
+  register_app:    {do: "write app.id into `flywheel.yaml` and `installation_required: true` into the organization record; nothing is installed here (207)"}
+  register_host:   {do: "put(host, joining) for the host running init and add it to `flywheel.yaml` hosts; the host's own join then clones and checks (204, 205)"}
+  create_repository: {do: "through the App's installation token: create `<org>/<name>` on the git host under the organization, push the built-repository template at the set's version with `flywheel/template.yaml`; put(repository): template_version; nothing when adopted (206, 208)"}
+  register_repository: {do: "one commit on the books' shared line: `flywheel.yaml` repositories.<name> with repo, landing and cadence from the proposal or the defaults; the proposal's nodes appended to `context-map/maps/target.js` with home = name and status candidate where the proposal said no more; then, on the built repository, `flywheel/services.yaml` and `flywheel/commit-types.yaml` from the template when absent; then put(planning for the repository, current) so its fingerprint differs and the baseline run is due (104, 199, 202, 203, 206)"}
+  extend_installation: {do: "PUT the repository onto the App's installation through the git host's API where the App holds the permission; a 403 writes nothing and leaves the repository's `covering` state to time out into the decision (207)"}
   remove_stray_places: {do: "for each stray worktree under the places root: `wt worktree remove <path>`; one effect per removal, each recorded with the path and why it was stray"}
   archive_intent:  {do: "`openspec archive <intent-id>` in the intent's place, committed on the intent's line"}
   open_intent:     {do: "`openspec new <intent-id>` from the schema instruction in force, committed on the intent's line"}

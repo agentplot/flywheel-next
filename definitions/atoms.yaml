@@ -23,6 +23,20 @@ evidence:
   host.bound:       {of: host, type: int, doc: sessions this host may run at once}
   host.running:     {of: host, type: int, doc: sessions this host runs now}
   host.stray_places: {of: host, type: bool, doc: a place exists on this host that belongs to no live object and is not held (55)}
+  host.disk_layout:  {of: host, type: enum, values: [absent, current, differs], doc: the root the manifest names holds the profile's layout — bare clones, one shared-line checkout each, places as worktrees — or nothing yet, or something hand-made (205)}
+  host.layout_difference: {of: host, type: string, doc: what differs from the profile's layout, for the refusal (205)}
+  # ---- organization and repository (bootstrapping, 204–208)
+  org.books_ready:   {of: organization, type: bool, proof_of: create_books, doc: the books repository exists on the git host with everything the books template requires at the recorded set version (204, 208)}
+  org.state_ready:   {of: organization, type: bool, proof_of: create_state, doc: the state repository exists with the profile's layout (204, C.2)}
+  org.app_recorded:  {of: organization, type: bool, proof_of: register_app, doc: the manifest names the App and the state records that its installation is required (204, 207)}
+  org.app_installed: {of: organization, type: bool, doc: the App's installation on the organization is seen through the git host with the secret the operator placed (207)}
+  org.app_id:        {of: organization, type: string}
+  org.host_registered: {of: organization, type: bool, proof_of: register_host, doc: the first host's record exists and the manifest lists it (204, 205)}
+  repository.nodes:  {of: repository, type: list, doc: the map nodes the proposal places, each homed here (199, 206)}
+  repository.repo:   {of: repository, type: string}
+  repository.exists: {of: repository, type: bool, proof_of: create_repository, doc: the repository exists on the git host under the organization; true at once when adopted (206)}
+  repository.registered: {of: repository, type: bool, proof_of: register_repository, doc: the manifest entry, the flywheel/ declarations, the map nodes with their homes and the planning record all exist (199, 203, 206)}
+  repository.covered_by_app: {of: repository, type: bool, proof_of: extend_installation, doc: the App's installation lists the repository (207)}
   lease.holder:     {of: any, type: host-id, doc: the host recorded as holding the object, or none}
   lease.renewed_at: {of: any, type: time}
   lease.holder_is_me: {of: any, type: bool}
@@ -176,6 +190,7 @@ evidence:
   plan.status_current:      {of: plan, type: bool, proof_of: render_status, doc: the projection carries the read's as-of point}
   report.recorded:          {of: any, type: bool, proof_of: report}
   host.leases_expired:      {of: host, type: bool, proof_of: expire_leases}
+  host.repositories_cloned: {of: host, type: bool, proof_of: clone_repositories, doc: the state, the books and every tracked built repository are cloned bare under the root with a checkout of each shared line (205)}
   capture.source:           {of: capture, type: string}
 
 effects:
@@ -196,7 +211,7 @@ effects:
   write_acceptance: {of: line, args: [], proof: line.acceptance_written, satisfies: [181, 192, 203], doc: one file in the built repository beside the as-built, the claims the bolt's units named with their versions and each claim's scenarios from the book, committed on the bolt's line before its landing; readable from git by any delivery system, which generates and runs whatever suite it likes from it — the machinery writes the file and nothing more}
   seed_request_finding: {of: line, args: [], proof: line.request_review_recorded, satisfies: [176], doc: a review on the open request that asks for a change becomes a finding record on the bolt, pointing at the review; accepted, it is a chore on the bolt line}
   remove_line:     {of: line, args: [], proof: line.absent, satisfies: [42, 54]}
-  prepare_place:   {of: place, args: [line, agent_inputs], proof: place.ready, satisfies: [42, 43, 45, 88, 89, 119, 173, 190, 203], doc: worktree at the line's head, hooks that refuse line operations, the closed set of inputs written in — for each deliverable the producer skill, schema and review surface in force, resolved through the deliverables binding and the manifest's overrides at the books commit named in the header — ports derived from the place}
+  prepare_place:   {of: place, args: [line, agent_inputs], proof: place.ready, satisfies: [42, 43, 45, 88, 89, 119, 173, 190, 203, 207], doc: worktree at the line's head, hooks that refuse line operations, the closed set of inputs written in — for each deliverable the producer skill, schema and review surface in force, resolved through the deliverables binding and the manifest's overrides at the books commit named in the header — ports derived from the place}
   rebase_place:    {of: place, args: [], proof: place.contains_line, satisfies: [42, 51, 179], doc: rebase onto the line while no session works in the place; aborted whole on conflict}
   seed_conflict_job: {of: place, args: [], proof: place.job_seeded, satisfies: [52]}
   merge_place:     {of: place, args: [], proof: place.merged, satisfies: [38, 42, 54, 179], doc: merge the place into its line, one place at a time in the fixed order; an item's merge is a squash to one commit naming the item unless the manifest says otherwise for the repository}
@@ -209,6 +224,15 @@ effects:
   record_service_endpoint: {of: service, args: [], proof: service.endpoint_recorded, satisfies: [46, 47, 191], doc: write the endpoint the host's router names for this service into its record, so the page shows it beside the bolt as a link}
   # ---- host
   remove_stray_places: {of: host, args: [], proof: host.no_stray_places, satisfies: [55], doc: reconciliation found a place on this host belonging to no live object; remove it and record the removal}
+  clone_repositories: {of: host, args: [], proof: host.repositories_cloned, satisfies: [205], doc: clone the state, the books and every tracked built repository bare under the root the manifest names, and check out each shared line once for the machinery's own merges; places are worktrees made later by prepare_place; a repeat adds only what is missing}
+  # ---- organization and repository (204–208)
+  create_books:    {of: organization, args: [], proof: org.books_ready, satisfies: [204, 208], doc: create the books repository on the git host from the books template at the set's version, or adopt an existing one by adding what the template requires and is missing; the version is stamped in the organization's record}
+  create_state:    {of: organization, args: [], proof: org.state_ready, satisfies: [204], doc: create the state repository with the profile's layout (C.2), empty of objects}
+  register_app:    {of: organization, args: [], proof: org.app_recorded, satisfies: [204, 207], doc: write the App's id into the manifest and record that its installation is required; the secret is placed by the operator, never by an agent, so this never installs anything}
+  register_host:   {of: organization, args: [host], proof: org.host_registered, satisfies: [204, 205], doc: write the first host's record and manifest entry; every later host joins by its own command}
+  create_repository: {of: repository, args: [], proof: repository.exists, satisfies: [206, 208], doc: create the repository on the git host under the organization from the built-repository template at the set's version, stamping the version in the record; nothing when adopted}
+  register_repository: {of: repository, args: [], proof: repository.registered, satisfies: [104, 199, 202, 203, 206], doc: one books commit writing the manifest entry (git details only), the repository's flywheel/ declarations from the template, and the proposal's map nodes with home = this repository; then put the planning record for the repository, whose first run judges the claims attached to what it homes and proposes the baseline}
+  extend_installation: {of: repository, args: [], proof: repository.covered_by_app, satisfies: [149, 207], doc: ask the git host to add the repository to the App's installation where the App may; where it may not, nothing is written and the decision under attention follows}
   remove_stale_layout: {of: host, args: [], proof: host.layout_current, satisfies: [186, 196], doc: reconciliation found a workspace or tab in this host's multiplexer sessions naming an object that has left every view; close it and record the removal}
   expire_leases:   {of: host, args: [], proof: host.leases_expired, satisfies: [150]}
   # ---- design objects

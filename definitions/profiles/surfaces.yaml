@@ -33,6 +33,10 @@ tools:
     ask:           {args: [repository, text], doc: "an ask record for planning (28)"}
     explore:       {args: [intents, type], doc: "an elaboration in approved covering the selected intents, type with-operator or standing (189)"}
     open-session:  {args: [repository, text], doc: "the operator's own session (69)"}
+    init:          {args: [organization, profile, books, state], doc: "`flywheel init`: writes the organization record in absent and the machine does the rest, repeatably (204)"}
+    join-host:     {args: [host], doc: "`flywheel host join`: writes the host record in joining; the clones and the layout check follow (205)"}
+    create-repository: {args: [name, nodes, document], doc: "a repository proposal with its map nodes and homes, for the operator's yes (206); an elaboration proposes the same through its offer"}
+    adopt-repository:  {args: [name, repo, nodes, document], doc: "the same proposal for a repository that already exists on the git host; the yes registers it without creating it (206)"}
     drop:          {args: [object], doc: "undo work (4)"}
     later:         {args: [decision], doc: "defer a proposal a week (172)"}
     hold:          {args: [object], doc: "hold a place or a bolt's close (55)"}

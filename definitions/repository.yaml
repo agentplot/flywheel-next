@@ -1,0 +1,75 @@
+# A built repository the flywheel tracks (206). Proposed by an elaboration or
+# a dictation with its map nodes and homes; created by the machinery from the
+# operator's yes, never by a session: on the git host from the built-repository
+# template, then its manifest entry, its `flywheel/` declarations (203) and its
+# map nodes are written, planning is charged for its baseline (104, 202), and
+# the App's installation must cover it (207). Adopting an existing repository
+# is the same path without the creation. Creation stamps the template set's
+# version (208).
+machine: repository
+version: 1
+kind: object
+object: repository
+parent: organization
+satisfies: [5, 104, 149, 199, 202, 203, 206, 207, 208]
+record:
+  name: string           # the manifest entry's name and what map nodes name as home (199)
+  repo: string           # <org>/<name> on the git host
+  nodes: list            # the map nodes the proposal places, each with home = this repository
+  document: ref          # the proposal the operator reads
+  sources: list          # the elaboration or the dictation that proposed it
+  adopted: bool          # true when the repository already exists and is adopted
+  template_version: string   # the set's version at creation (208)
+regions:
+  life:
+    initial: proposed
+    states:
+      proposed:
+        doc: a decision; nothing exists on the git host, in the manifest or on the map until the yes (5, 206)
+        decision: {kind: repository-proposed, group: approve, document: document, answers: ["yes", drop], shows: [repository.nodes], satisfies: [10, 206]}
+        transitions:
+          - when: {response: "yes"}
+            to: creating
+          - when: {response: drop}
+            to: dropped
+      creating:
+        doc: created on the git host under the organization from the built-repository template; an adopted repository is already there (206, 208)
+        transitions:
+          - when: {ev: repository.exists, is: true}
+            to: registering
+          - when: {always: true}
+            to: creating
+            effects: [{do: create_repository, note: "nothing when adopted"}]
+      registering:
+        doc: the manifest entry, the `flywheel/` declarations and the map nodes with their homes are written in one books commit, and planning for the repository is put (199, 202, 203, 206)
+        transitions:
+          - when: {ev: repository.registered, is: true}
+            to: covering
+          - when: {always: true}
+            to: registering
+            effects: [{do: register_repository}]
+      covering:
+        doc: the App's installation must cover the repository (207); extended by the machinery where the App may, else a decision
+        transitions:
+          - when: {ev: repository.covered_by_app, is: true}
+            to: tracked
+          - when: {ev: entered_at, older: 10m}
+            to: uncovered
+          - when: {always: true}
+            to: covering
+            effects: [{do: extend_installation}]
+      uncovered:
+        doc: the installation does not cover it and the machinery could not extend it; the operator extends the installation, then answers (149, 207)
+        decision: {kind: app-coverage, group: attention, answers: [retry, drop], shows: [repository.repo], satisfies: [82, 149, 207]}
+        transitions:
+          - when: {ev: repository.covered_by_app, is: true}
+            to: tracked
+          - when: {response: retry}
+            to: covering
+          - when: {response: drop}
+            to: dropped
+      tracked:
+        doc: in the fleet; its ledger is empty and its first planning judges the claims attached to what it homes as the baseline (104, 202); nodes may be added and homes moved on the map afterwards (199)
+      dropped:
+        tail: dropped
+        final: true

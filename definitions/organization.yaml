@@ -1,0 +1,69 @@
+# The organization (204): one object per organization with a machine of its
+# own, driven by `flywheel init` and advanced by the same reconciler that
+# advances work. Every step is an effect with a proof, so a second init
+# changes nothing and a half-finished bootstrap finishes on the next tick.
+# The GitHub App is the one connection (207); its secret is placed by the
+# operator, never by an agent, so installation is a decision under attention
+# until it is seen. Initialization stamps the template set's version (208).
+machine: organization
+version: 1
+kind: object
+object: organization
+parent: null
+singleton: organization
+owns: [repository]
+satisfies: [204, 207, 208]
+record:
+  name: string
+  books: string          # <org>/<books repository>
+  state: string          # <org>/<state repository>
+  profile: string        # tracker | git-only (C.1, C.2)
+  app_id: string         # the organization's GitHub App; the installation is the operator's secret (207)
+  template_version: string   # the versioned set initialization used (208)
+  root: string           # the on-disk root every host clones under (205)
+regions:
+  life:
+    initial: absent
+    states:
+      absent:
+        doc: "`flywheel init` wrote the record; the books repository is created from the books template, or adopted when it exists (204)"
+        transitions:
+          - when: {ev: org.books_ready, is: true}
+            to: books-ready
+          - when: {always: true}
+            to: absent
+            effects: [{do: create_books, note: "from the books template at the set's version; adopting an existing books repository adds only what the template requires and is missing (204, 208)"}]
+      books-ready:
+        doc: the state repository is created with the profile's layout (C.2)
+        transitions:
+          - when: {ev: org.state_ready, is: true}
+            to: state-ready
+          - when: {always: true}
+            to: books-ready
+            effects: [{do: create_state}]
+      state-ready:
+        doc: the App's installation is recorded as required; the secret is the operator's to place (207)
+        transitions:
+          - when: {ev: org.app_installed, is: true}
+            to: connected
+          - when: {ev: org.app_recorded, is: true}
+            to: awaiting-app
+          - when: {always: true}
+            to: state-ready
+            effects: [{do: register_app}]
+      awaiting-app:
+        doc: a decision under attention until the installation is seen; never done by an agent
+        decision: {kind: app-install, group: attention, answers: [installed], shows: [org.app_id], satisfies: [82, 204, 207]}
+        transitions:
+          - when: {any: [{ev: org.app_installed, is: true}, {response: installed}]}
+            to: connected
+      connected:
+        doc: the first host is registered; hosts join by their own command from here (205)
+        transitions:
+          - when: {ev: org.host_registered, is: true}
+            to: hosted
+          - when: {always: true}
+            to: connected
+            effects: [{do: register_host, args: {host: first}}]
+      hosted:
+        doc: bootstrapped; repositories are proposed and created under it (206), and a template upgrade is a chore (208)
