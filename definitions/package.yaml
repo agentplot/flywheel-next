@@ -1,0 +1,100 @@
+# One package (228): one thing of one kind — an adapter, a chat sink, a
+# runner, a router, a sign-in, a unit type or an elaboration type, a
+# deliverable producer, a map vocabulary, a template, or a scenario pack — a
+# git repository at a tag, listed in an index that is a file (the shipped set
+# is the default index). An organization package installs into the books
+# under the prefix (203) and is read by every host at the shared line; a
+# per-host package installs on the named host. It declares the set version it
+# needs (208), its configuration schema and the secrets it needs, and is
+# content-hashed and registered when installed (224). The setup surface (229)
+# adds one — collecting its configuration and naming its secrets in the same
+# flow — and this machine raises the one install decision; a secret not yet
+# placed is under attention (207); configuration is one response; removal is
+# a response that ends what it runs and keeps its records. Nothing here but
+# the install decision enters the count. A package's file is refused at load
+# when its declared set version is not the installed one (224).
+machine: package
+version: 1
+kind: object
+tier: core
+object: package
+parent: organization
+satisfies: [5, 204, 207, 224, 228, 229]
+record:
+  name: string
+  kind: string           # adapter | chat-sink | runner | router | sign-in | unit-type | elaboration-type | deliverable-producer | map-vocabulary | template | scenario-pack (228)
+  scope: enum            # organization | host (228)
+  host: host-id          # the named host, for a per-host package
+  source: string         # <repository>@<tag>, from the index (228)
+  set_version: string    # the set the package declares it needs (208, 224)
+  hash: string           # the content hash registered at install (224)
+  config: string         # the configuration collected on the setup surface, validated against the package's schema (229)
+  secrets: list          # the names of the secrets it declares; their values are placed by the operator, never here (207)
+regions:
+  life:
+    initial: added
+    states:
+      added:
+        doc: added on the setup surface with its configuration and its secret names; the one decision the surface raises (229)
+        decision: {kind: package-install, group: approve, answers: ["yes", drop], shows: [package.kind, package.scope], satisfies: [10, 228, 229]}
+        transitions:
+          - when: {response: "yes"}
+            to: checking-secrets
+          - when: {response: drop}
+            to: dropped
+      checking-secrets:
+        doc: the yes given once is never re-asked (6); the install waits only for the secrets the package declares
+        transitions:
+          - when: {ev: package.secrets_placed, is: true}
+            to: installing
+          - when: {always: true}
+            to: needs-secret
+      needs-secret:
+        doc: a secret the package declares is not yet placed; under attention, outside the count, until the operator places it (207, 229)
+        decision: {kind: package-secret, group: attention, answers: [placed], shows: [package.kind], satisfies: [82, 207, 229]}
+        transitions:
+          - when: {ev: package.secrets_placed, is: true}
+            to: installing
+          - when: {response: placed}
+            to: checking-secrets
+      installing:
+        doc: fetched at its tag, checked against the set version, placed under the prefix or on the host, hashed and registered, started — effects with proofs, repeatable (204, 224, 228)
+        transitions:
+          - when: {ev: package.installed, is: true}
+            to: installed
+          - when: {always: true}
+            to: installing
+            effects: [{do: install_package}]
+      installed:
+        doc: in force; every host reads an organization package at the shared line, so no two hosts differ on a type (228); configuration is changed here with one response (229)
+        transitions:
+          - when: {response: "configure: <fields>"}
+            to: installed
+            effects: [{do: configure_package, args: {fields: $response}}]
+          - when: {response: disable}
+            to: disabled
+          - when: {response: remove}
+            to: removing
+      disabled:
+        doc: what it runs is stopped; its files stay; enable is the install effect again, which finds the files and starts it (229)
+        entry: [{do: disable_package}]
+        transitions:
+          - when: {response: enable}
+            to: installing
+          - when: {response: remove}
+            to: removing
+      removing:
+        doc: ends what the package runs and removes its files, keeping its records (229)
+        transitions:
+          - when: {ev: package.absent, is: true}
+            to: removed
+          - when: {always: true}
+            to: removing
+            effects: [{do: remove_package}]
+      removed:
+        tail: closed
+        final: true
+      dropped:
+        doc: never installed; nothing was placed (5)
+        tail: dropped
+        final: true

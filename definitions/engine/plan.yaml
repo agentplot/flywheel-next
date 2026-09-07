@@ -9,7 +9,7 @@ kind: engine
 tier: core
 object: plan
 singleton: organization
-satisfies: [7, 8, 9, 11, 15, 83, 86, 148]
+satisfies: [7, 8, 9, 11, 15, 83, 86, 148, 213, 214]
 record:
   next_number: int              # the counter; it only grows
   register: list                # {decision id, number, since}; a decision id is <object>/<kind>/<entered_at>
@@ -37,4 +37,4 @@ regions:
         transitions:
           - when: {not: {ev: plan.status_current, is: true}}
             to: current
-            effects: [{do: render_status, note: "the status view from list and read, stating the as-of point (145)"}]
+            effects: [{do: render_status, note: "the status view from list and read, stating the as-of point (145); with it the artifact views behind every object (213) and the flywheel instrument (214), both projections of the same read"}]

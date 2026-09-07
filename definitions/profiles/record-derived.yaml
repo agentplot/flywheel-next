@@ -16,6 +16,8 @@
 format: flywheel-profile/1
 name: record-derived
 complete: false
+engine_windows:
+  doc: "the engine machines' durations — host stale 5m, gone 30m, lease stale 5m, expiry 24h, register retention 30d, enrolment token 24h — are read from `flywheel.yaml` engine: {stale, gone, expiry, register_retention, token} at load, the literals in the machine files being the defaults the release ships (context.yaml ruling 22); a value the manifest gives is substituted for the literal before evaluation and recorded in the run record"
 evidence:
   state:          {read: "get(id).state"}
   entered_at:     {read: "get(id).entered_at"}

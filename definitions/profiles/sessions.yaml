@@ -20,8 +20,12 @@
 format: flywheel-profile/1
 name: sessions
 complete: false
+agents:
+  doc: "the agent definition a session starts as is `flywheel/agents/<agent>.md` in the books and its skill `flywheel/skills/<agent>/SKILL.md`, keyed by the agent name the machine or the stage names — curator, planner, capture-reader, chore-fixer, operator-console, spec-writer, builder, verifier, reviewer, tester; an elaboration type's `agent: by-type` names the type, so its agent is `flywheel/agents/<type>.md` (context.yaml ruling 3). A persona-test stage's sessions all start as the stage's `tester` definition; the persona file is a section of each session's work order, data and not an agent (56, ruling 20)"
+runners:
+  doc: "which process starts a session (217c): `pane` — `herdr agent start` as below; `inproc` — a bounded agent loop inside the host's own binary, the model through the SDK, the tools in-process, for the host's agent everywhere and for triage on a host without a multiplexer; `managed` — a session on an agent platform reaching the tool server over remote MCP with the session's identity, across the private network only. `flywheel.yaml` hosts.<host>.runners: {triage: pane | inproc | managed, agent: inproc}. Every runner starts the session with the same work order, instruction data and exits"
 kinds:
-  doc: "the command each kind of agent is started with, the agent name and the work order path substituted (173); a stage names a kind per agent entry, default claude; the operator adds a kind by adding a line here"
+  doc: "the command each kind of agent is started with, the agent name and the work order path substituted (173); a stage names a kind per agent entry, default claude; the operator adds a kind by adding a line here, or as a runner package (228)"
   claude:   "claude --agent <agent> --model <model> -- <work order path>"
   codex:    "codex --profile <agent> --model <model> <work order path>"
   opencode: "opencode --agent <agent> --model <model> --prompt <work order path>"

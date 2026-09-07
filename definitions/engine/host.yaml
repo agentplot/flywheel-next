@@ -6,20 +6,74 @@
 # A host joins by one command (205): it clones the state, the books and every
 # tracked built repository under the root the manifest names, with the
 # profile's layout on disk; a hand-made layout is refused with what differs.
+# Every tick reconciles the disk against the state (222): a bare repository or
+# a checkout missing, moved or changed by hand is a decision under attention
+# with the difference and the proposed repair, and nothing is repaired without
+# the response; the host covers nothing meanwhile (lease.coverable reads the
+# disk region). The tick is the scheduler (231): every timed behaviour of the
+# host is a guard here, the adapters it declares included (215) — each an
+# enumerator writing one keyed capture per source event. The dispatcher is a
+# host of this machine whose declaration takes nothing and presents the chat
+# (217). A host is added from a host that exists (230): the add-host tool
+# provisions with the operator's own platform credentials, stored nowhere, and
+# writes the record in `proposed`; the enrolment decision's yes places the
+# chosen parts' secrets and issues a one-time expiring token that admits the
+# host, a host already running the binary being adopted by the token alone.
 machine: host
-version: 4
+version: 5
 kind: engine
 tier: core
 object: host
 parent: null
-satisfies: [4, 32, 55, 96, 147, 149, 150, 151, 186, 196, 205]
+satisfies: [4, 32, 55, 96, 147, 149, 150, 151, 186, 196, 205, 215, 217, 222, 230, 231]
 record:
   bound: int            # sessions this host may run at once (a setting of the host)
   last_seen: time       # its heartbeat
-  declares: string      # the manifest declaration: kinds, repositories, unit types, sinks it presents
+  declares: string      # the manifest declaration: kinds, repositories, unit types, sinks it presents, sources it triages, callers of its endpoint, runners (217)
+  platform: string      # the platform picked when the host was added, or none for the first host (230)
+  parts: list           # the packages chosen for it at enrolment (229, 230)
 regions:
+  enrolment:
+    doc: how the host came to exist (230); an existing host — the first, registered by init — starts enrolled; the add-host tool writes a new host's record in proposed, after provisioning it with the operator's own credentials
+    initial: enrolled
+    states:
+      proposed:
+        doc: provisioned, not yet admitted; the decision shows the platform and the parts, and its yes places the parts' secrets and issues the token (230)
+        decision: {kind: host-enrol, group: approve, answers: ["yes", drop], shows: [host.platform], satisfies: [10, 205, 230]}
+        transitions:
+          - when: {response: "yes"}
+            to: admitting
+          - when: {response: drop}
+            to: dropped
+      admitting:
+        doc: the chosen parts' secrets go to the platform's secret store, then a one-time expiring token is issued; both are effects with proofs
+        entry:
+          - {do: place_secrets, args: {parts: parts}, note: "only the chosen parts' secrets, only on confirmation (230)"}
+          - {do: issue_enrolment_token, note: "shown once on the setup surface; `flywheel host join --token` admits the host, adopted or freshly provisioned (205, 230)"}
+        transitions:
+          - when: {all: [{ev: host.secrets_placed, is: true}, {ev: host.token_issued, is: true}]}
+            to: awaiting-join
+      awaiting-join:
+        doc: the token is out; the host's first heartbeat with it is the proof it joined
+        transitions:
+          - when: {ev: host.last_seen, exists: true}
+            to: enrolled
+          - when: {ev: entered_at, older: 24h}
+            to: lapsed
+      lapsed:
+        doc: the token expired unused; a decision under attention offers a reissue
+        decision: {kind: host-enrol-lapsed, group: attention, answers: [reissue, drop], shows: [host.platform], satisfies: [82, 230]}
+        transitions:
+          - when: {response: reissue}
+            to: admitting
+          - when: {response: drop}
+            to: dropped
+      enrolled:
+        doc: joined; the disk region takes it from here (205)
+      dropped:
+        final: true
   disk:
-    doc: the host's root on disk, beside its life; `flywheel host join` writes the record and this region clones and checks before the host takes any lease (205); lease.coverable reads it
+    doc: the host's root on disk, beside its life; `flywheel host join` writes the record and this region clones and checks before the host takes any lease (205); lease.coverable reads it; every tick re-reads the root, so a repository or checkout that goes missing, moves or is changed by hand is found and offered its repair (222)
     initial: unchecked
     states:
       unchecked:
@@ -48,17 +102,27 @@ regions:
           - when: {ev: host.disk_layout, is: differs}
             to: refused
       refused:
-        doc: a hand-made or drifted layout under the root; the host takes nothing, and the report says what differs (205)
-        decision: {kind: host-refused, group: attention, answers: [retry], shows: [host.layout_difference], satisfies: [82, 205]}
+        doc: a hand-made, drifted, moved or missing part of the layout under the root; the host takes nothing, and the decision says the first path that differs, what was expected, and the repair it would run (205, 222)
+        decision: {kind: host-refused, group: attention, answers: [repair, retry], shows: [host.layout_difference, host.layout_repair], satisfies: [82, 205, 222]}
         entry: [{do: report, args: {text: the host's disk layout differs from the profile's}}]
         transitions:
+          - when: {response: repair}
+            to: repairing
           - when: {response: retry}
             to: unchecked
+      repairing:
+        doc: the repair the decision showed, and only that; a place's worktree needs no response, prepare_place re-makes it from its line (222)
+        transitions:
+          - when: {ev: host.layout_repaired, is: true}
+            to: unchecked
+          - when: {always: true}
+            to: repairing
+            effects: [{do: repair_layout}]
   life:
     initial: alive
     states:
       alive:
-        doc: heartbeat within the stale window; every tick also reconciles the host's own disk against the live objects
+        doc: heartbeat within the stale window; every tick also reconciles the host's own disk against the live objects and runs the enumerators whose sources it declares (215, 231)
         transitions:
           - when: {ev: host.stray_places, is: true}
             to: alive
@@ -66,6 +130,9 @@ regions:
           - when: {ev: host.layout_current, is: false}
             to: alive
             effects: [{do: remove_stale_layout, note: "a tab or workspace naming an object that has left every view is closed; recorded like any removal (186, 196)"}]
+          - when: {ev: host.adapters_due, is: true}
+            to: alive
+            effects: [{do: run_adapters, note: "the enumerators of the sources this host declares, on their cadence or on a waiting drop or delivery; one keyed capture per source event, twice is once (111, 215, 231)"}]
           - when: {ev: host.last_seen, older: 5m}
             to: stale
       stale:

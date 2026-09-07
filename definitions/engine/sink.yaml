@@ -1,7 +1,9 @@
 # One sink the operator reads: the chat, the page, or the multiplexer's bell
 # on a named surface. Engine machine, one instance per sink the manifest
-# names. Its presenter is the holder of its lease, or the host the manifest
-# pins (148); a dispatcher running outside every host may be that presenter.
+# names, per organization — no sink serves two organizations (218). Its
+# presenter is the holder of its lease, or the host the manifest pins (148);
+# the dispatcher, a host that takes no work and presents the chat, is that
+# presenter for the chat sink (216, 217).
 # The delivery mark is the one recorded piece of state behind the tail (14).
 # Notifications are deliveries: the manifest routes decision kinds to sinks,
 # and a construction host is no sink unless the manifest names it (82).
@@ -11,7 +13,7 @@ kind: engine
 tier: core
 object: sink
 parent: null
-satisfies: [2, 8, 14, 18, 68, 82, 148, 152, 155]
+satisfies: [2, 8, 14, 18, 68, 82, 148, 152, 155, 216, 217, 218]
 record:
   kind: enum                    # chat | page | bell
   surface: string               # the chat channel, the page route, or the named multiplexer surface

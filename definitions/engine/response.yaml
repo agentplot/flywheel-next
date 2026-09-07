@@ -4,7 +4,7 @@
 # Every response is one tool call: the tool's name and its arguments by
 # object id, whoever called it — a page control, a chat reply, the dispatch
 # agent, the machinery (193). Free text never reaches this record: an
-# interpreter proposes one tool call, the operator confirms it, and the
+# host's agent's interpreter proposes one tool call per thing asked, the operator confirms each, and the
 # confirmation is what is recorded (194).
 machine: response
 version: 3
@@ -16,7 +16,7 @@ satisfies: [1, 3, 4, 6, 12, 137, 153, 154, 193, 194]
 record:
   kind: enum             # answer | dictation; a dictation may name only a transition that undoes or defers work — drop, hold, release, send back, retire, takeover, finish, close, end — never one that asserts work was done (4); one that does is unapplicable
   tool: string           # the tool invoked (193): answer for an answer; for a dictation the operation's name — drop, later, hold, release, rename, start, stop, finish, end, close, send-back, retire, takeover, revive, explore, open-session, propose-unit, propose-chore, ask, capture, mark-intent
-  proposed_by: string    # the interpreter that proposed the call — dispatch, page, or none when a control was used (194)
+  proposed_by: string    # the host's agent that proposed the call — dispatch, page, or none when a control was used (194)
   decision: number       # for an answer: the decision's number; resolved through the plan's register
   object: object-id      # the object the response concerns
   answer: string

@@ -59,26 +59,73 @@ tools:
     set-status:    {args: [id, status, question], doc: "settled, candidate or open with its question; refused for settled or candidate without a ref (198, 201, 211)"}
     mark-reviewed: {args: [], doc: "record the operator's review mark at the current books revision; the since-last-review overlay diffs from it (122, 211)"}
     add-repository: {args: [name, repo, elements], doc: "the create-repository or adopt-repository proposal by another name: a repository joins when the target map first homes something in it (202, 206, 211)"}
+    switch-organization: {args: [organization], doc: "the page shows one organization at a time; this picks which (218); nothing is written"}
+    remove-organization: {args: [organization], doc: "the organization's removal by response (221): sessions ended, places removed, state archived, git repositories left on disk"}
+    add-package:   {args: [package, scope, host, config, secrets], doc: "the setup surface's add flow: the index entry, the configuration collected against the package's schema, the names of its secrets, all in one call; writes the package in added, whose install decision is the one thing that enters the count (228, 229)"}
+    configure-package: {args: [package, fields], doc: "change an installed package's configuration; one response (229)"}
+    disable-package: {args: [package], doc: "stop what the package runs and keep its files (229)"}
+    enable-package: {args: [package], doc: "start it again; the install effect finds the files (229)"}
+    remove-package: {args: [package], doc: "end what the package runs and remove its files; records stay (229)"}
+    add-host:      {args: [name, platform, parts, adopt], doc: "provision a host on the platform with the operator's own platform credentials carried in this call and stored nowhere, or adopt one already running the binary; writes the host record in enrolment proposed, whose yes places the parts' secrets and issues the one-time token (230)"}
+    repair:        {args: [host], doc: "run the repair the host's disk decision showed (222)"}
   queries:
-    doc: "read-only tools over the rendered maps and the claims index; they write nothing and need no confirmation (193)"
+    doc: "read-only tools over the rendered maps, the claims index and the objects; they write nothing and need no confirmation (193). The host's agent answers with these on its own (194). Granted to the sessions the machinery charges, to the operator's own session and to the host's agent; a construction session's inputs are closed and it gets none (89, context.yaml ruling 24)"
     in-scope-for:  {args: [repository], doc: "the claims whose computed scope reaches the repository, with each one's attachments and the repository's verdict (200)"}
     changed-since: {args: [revision], doc: "the id-keyed difference of the target map from the revision (or the operator's last review mark) to now: added, removed, changed with fields, moved (121, 122)"}
     attachments-of: {args: [id], doc: "the claims attached to a map id, and for a repository the elements and contexts it homes (200)"}
     unhomed:       {args: [], doc: "elements with no effective home in a non-external context, and manifest entries nothing homes (199)"}
     map-check:     {args: [map], doc: "run the schema and vocabulary check on current or target at the books head and report every failure (121, 198)"}
   guard: "a tool that would assert work was done (done, pass, yes on nothing) does not exist; the response machine reports one that arrives anyway as unapplicable (4)"
-  identity: "a call from a session's pane carries the identity token start_session issued to that session (sessions.yaml identity:); the tool server matches it against the pane the call came from and refuses a mismatch with a refusal entry on the calling session's thread, so a session can act only in its own job and never on another session (43, 89, 197); a call from the page, the chat or dispatch carries the operator's or dispatch's identity instead"
-interpreter:
+  identity: "a call from a session's pane carries the identity token start_session issued to that session (sessions.yaml identity:); the tool server matches it against the pane the call came from and refuses a mismatch with a refusal entry on the calling session's thread, so a session can act only in its own job and never on another session (43, 89, 197); a call from the page, the chat or dispatch carries the operator's or dispatch's identity instead; a call from the operator's own session (69) carries that session's token and is recorded given_by the operator, proposed_by the session (context.yaml ruling 14)"
+host_agent:
   doc: |
-    Free text is never parsed by the machinery (194). An interpreter resolves
-    the names in it against the live objects (list and read through the
-    control plane) and proposes exactly one tool call, shown to the operator
-    as what will be sent; the operator's confirmation is the response, and
-    only the confirmed call is recorded (153). A name that resolves to
-    nothing, or to more than one object, is asked about, never guessed.
-  chat: "the organization's dispatch agent (tracker.yaml): it reads the message, proposes one call as a reply with a confirm control, and calls the tool on the operator's confirmation; a bare number reply (`yes 412`) needs no interpreter and is the answer tool at once"
-  page: "a model running in the page's browser (the page ships it as a script under the same private network; no text leaves the operator's network); a control on the page is a tool call with no interpreter at all, and the capture box sends its text to the capture tool unparsed"
+    Free text is never parsed by the machinery (194). The host's agent
+    serves the operator's free text on a surface: it reads and answers with
+    the query tools on its own, and every write it makes is a proposed tool
+    call the operator confirms. Its interpreter — the function that turns
+    text into a proposed call — resolves the names against the live objects
+    (list and read through the control plane) and proposes the call, shown
+    to the operator as what will be sent; the operator's confirmation is
+    the response, and only the confirmed call is recorded (153). A message
+    that asks for several things yields several proposed calls, one card
+    each, each confirmed and recorded on its own. A name that resolves to
+    nothing, or to more than one object, is asked about, never guessed. The
+    agent is a session of A.7 charged per message, with no context carried
+    from one message to the next (217a, 217b), run inproc (217c).
+  chat: "the organization's dispatch agent (tracker.yaml, 216): it reads the message, answers a question from the query tools in a reply, proposes each write as a card with a confirm control, and calls the tool on the operator's confirmation; a bare number reply (`yes 412`) needs no interpreter and is the answer tool at once"
+  page: "a model running in the page's browser (216a; the page ships it as a script under the same private network; no text leaves the operator's network): it answers from the query tools the page calls and proposes each write as a card; a control on the page is a tool call with no interpreter at all, and the capture box sends its text to the capture tool unparsed (19)"
   none: "a control — a button, a board move, a checklist tick, a plannotator annotation — is already one tool call; nothing is interpreted"
+organizations:
+  doc: "the page serves one organization at a time and switches with `switch-organization` (218); each organization has its own sinks and presenters, its own register and its own state; nothing on a surface names two"
+artifact_views:
+  doc: |
+    Every object opens the OpenSpec artifacts behind it, in a view fit to
+    the artifact (213). Each view is read from the repositories at the
+    shared line — the books for an intent or a claim, the built repository
+    for a unit, a bolt or a work item — at the as-of point the status view
+    names, and is never stored; an edit goes through the review surface
+    (17), never through the view.
+  intent: "`openspec/changes/<intent>/`: the proposal, the records each elaboration left (187), the spec deltas, the design, and whether the change is archived (`openspec/changes/archive/<date>-<intent>/`)"
+  unit: "`openspec/changes/<unit>/` in the built repository: the steps ff · apply · verify · archive set against the type's stages (the archive being the item's merge-time effect), the requirement blocks of its spec, and its tasks each with the item and the commit that did it (185)"
+  claim: "the fenced block in its chapter with every version from history, its attachments (200), and for each verdict of it in the ledger the evidence cited (100)"
+  bolt: "`openspec/acceptance.yaml` at the line's head (192): the claims with scenarios and each unit's estimate and actual (172)"
+  work_item: "its commits on the place's branch or, after the merge, the squash commit naming it (185); its deliverables, expected beside delivered (80); its report"
+instrument:
+  doc: |
+    The flywheel instrument (214), a projection render_status writes from
+    the same read as the status view and the page shows compact at rest,
+    whole when opened. It sets no target; the unattended streak is the
+    only thing the operator plays for. Every number below is derived from
+    list and read at the as-of point and nothing is stored.
+  runway: "days = the sum of estimates (172) over units approved, waiting or in flight, less the slot-days their sessions have already occupied, divided by the drain"
+  drain: "slot-days per day = the sum of alive hosts' bounds (host.bound over hosts alive), multiplied by the calibration — the ratio of actual to estimate over the landed units of the repository and type, from the acceptance files, 1 when none has landed yet; no constant"
+  feed: "what would add runway and waits on the operator: proposals in proposed, elaborations in proposed, intents in proposed, with their numbers"
+  pressure: "the units approved and waiting for a slot against the sum of alive hosts' bounds; the construction backpressure stage"
+  stages: "inception — the feed, what waits on the operator; construction — the queue against the bound; shown as two stages, one number each"
+  streak: "how long approved work has run with no op-response from the operator: from the newest response's given_at to now while any unit is in flight; at risk — the first thing that would stop it, the item nearest its retry bound, the block awaiting an answer, the queue running dry within the runway; ended the last — the response that ended the previous streak, with its decision"
+  reading: "one sentence from the counts, in this order: `drain is the limit` when pressure is at or over the bound; `you are the limit` when the feed is not empty and runway is under one day; `feed it` when the feed is empty and runway is under one day; `primed` otherwise"
+  velocity: "history: slot-days landed per week from the acceptance files, and the streaks with what ended each"
+  at_rest: "on the status view: runway in days, the reading sentence, the streak; opened: everything above"
 evidence:
   sink.due:        {read: "the sink record's routes name the kind or group of a decision whose register entry is newer than the sink's mark; or the sink's cadence (`flywheel.yaml` sinks.<name>.cadence) fired since the mark; or the operator asked (`plan` in chat, a page reload with refresh); a bell sink is due only for the kinds it routes"}
   sink.delivered:  {read: "the sink's mark is newer than every register entry of a decision routed to it, and the sink's last delivery id (a chat message id, the page's build id, the bell's event id) is recorded on the sink"}

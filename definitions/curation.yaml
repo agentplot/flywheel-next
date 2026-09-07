@@ -9,7 +9,7 @@
 # no claim it may offer a chore or an ask through the command, and the
 # signal's move is then route, naming that offer (116).
 machine: curation
-version: 3
+version: 4
 kind: object
 tier: core
 satisfies: [4, 20, 58, 60, 108, 110, 116, 118, 171, 182, 188]
@@ -41,7 +41,7 @@ regions:
             states:
               session:
                 machine: session
-                params: {agent: curator, place: own-place, work_order: rendered, keep_alive: false}
+                params: {agent: curator, place: own-place, work_order: rendered, keep_alive: false, deliverables: [{name: move, producer: default, schema: default, surface: default}, {name: intent-proposal, producer: default, schema: default, surface: default}]}
         transitions:
           - when: {all: [{final: exited}, {ev: session.exit, is: done}]}
             to: applying

@@ -5,17 +5,27 @@
 # The GitHub App is the one connection (207); its secret is placed by the
 # operator, never by an agent, so installation is a decision under attention
 # until it is seen. Initialization stamps the template set's version (208).
+# A host runs several organizations at once, each an object of its own,
+# isolated on disk (`<root>/<org>/`) and in state (its own state repository,
+# its own sinks, its own decision counter): nothing crosses (218). The name
+# is the operator's and need not be a git-host organization; repositories are
+# listed by URL (219). Init adopts what exists and creates what does not, for
+# the books, the state and each tracked repository; an existing repository
+# without the layout is upgraded by a chore, never rewritten (220). Removal is
+# the operator's response: sessions ended, places removed, state archived,
+# git repositories left on disk, numbers never reused (221). Packages of the
+# organization scope are owned here (228).
 machine: organization
-version: 1
+version: 2
 kind: object
 tier: core
 object: organization
 parent: null
 singleton: organization
-owns: [repository]
-satisfies: [204, 207, 208]
+owns: [repository, package]
+satisfies: [15, 204, 207, 208, 218, 219, 220, 221]
 record:
-  name: string
+  name: string           # the operator's name for it; may but need not coincide with a git-host organization (219)
   books: string          # <org>/<books repository>
   state: string          # <org>/<state repository>
   profile: string        # tracker | git-only (C.1, C.2)
@@ -67,4 +77,20 @@ regions:
             to: connected
             effects: [{do: register_host, args: {host: first}}]
       hosted:
-        doc: bootstrapped; repositories are proposed and created under it (206), and a template upgrade is a chore (208)
+        doc: bootstrapped; repositories are proposed and created under it (206), packages are added under it (228), and a template upgrade is a chore (208)
+        transitions:
+          - when: {response: remove}
+            to: removing
+            note: the operator's dictation `remove <organization>` (4, 221); never a deletion of files
+      removing:
+        doc: sessions ended, places removed, state archived, git repositories left on disk (221)
+        transitions:
+          - when: {ev: org.retired, is: true}
+            to: removed
+          - when: {always: true}
+            to: removing
+            effects: [{do: retire_organization}]
+      removed:
+        doc: the state is archived with its decision counter, so no number is ever reused (15, 221); the git repositories stay where they were
+        tail: closed
+        final: true

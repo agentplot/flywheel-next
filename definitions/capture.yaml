@@ -1,11 +1,15 @@
-# One source event as recorded (111). Captured by an adapter unattended;
-# read into signals by a session's judgment (115), except a forwarded
-# single message, which is its own excerpt and needs no judgment (S21).
+# One source event as recorded (111). Captured by an adapter unattended — one
+# kind of adapter, an enumerator run by the tick of the host that declares the
+# source (215, 231, host.yaml run_adapters) — and read into signals by a
+# session's judgment (115), except a forwarded single message, which is its
+# own excerpt and needs no judgment (S21). The reader is charged by the tick
+# of the host that declares the capture's source (217e); the capture endpoint
+# for callers that cannot reach any host's binary is dispatch's (216).
 machine: capture
-version: 1
+version: 2
 kind: object
 tier: core
-satisfies: [4, 19, 106, 111, 112, 114, 115, 178, 181]
+satisfies: [4, 19, 106, 111, 112, 114, 115, 178, 181, 215, 216]
 object: capture
 parent: null
 owns: [signal]
@@ -41,7 +45,7 @@ regions:
             states:
               session:
                 machine: session
-                params: {agent: capture-reader, place: own-place, work_order: rendered, keep_alive: false}
+                params: {agent: capture-reader, place: own-place, work_order: rendered, keep_alive: false, deliverables: [{name: signal, producer: default, schema: default, surface: default}]}
         transitions:
           - when: {all: [{final: exited}, {ev: session.exit, is: done}]}
             to: read

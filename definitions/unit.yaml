@@ -8,7 +8,7 @@
 # planning silently; an approved unstarted one is a decision; a started one
 # follows the bolt's claim-moved decision (35).
 machine: unit
-version: 3
+version: 4
 kind: object
 tier: core
 object: unit
@@ -22,6 +22,8 @@ record:
   target: {bolt: bolt-id, new_name: string}
   depends_on: list       # other units of the same bolt
   claims: list           # claim@version the work serves
+  estimate: int          # the proposal's size estimate in slot-days, one session slot for one day (172)
+  actual: int            # the slot-days its sessions occupied, summed from the session records at landing and written on the as-built by write_acceptance (172)
   batch: string          # chores share the bolt id, so they fold into one decision
   proposal: proposal-id  # the proposal that names it, when planning delivered it (172); none for a finding or a chore offer
   approval: string       # the response or dictation that approved it; a conflict chore names the cadence or the response that ordered the take (I1)
@@ -62,7 +64,7 @@ regions:
         doc: a finding routed to a bolt or a chore offer, proposed on its own (58, 60); the decision names the target bolt and what a yes starts, derived from the type's stages and the item count (13, 16); the document is reviewed on its own surface and an annotation on it is the response (17)
         decision: {kind: unit-proposed, group: approve, batch: batch, document: document,
                    answers: ["yes", drop, "redo: <notes>", "bolt <name>", "new bolt <name>", "rename <name>", "type <name>", "pick <letters>", later],
-                   shows: [unit.type, target, depends_on, claims], satisfies: [10, 11, 16, 17, 29]}
+                   shows: [unit.type, target, depends_on, claims, estimate], satisfies: [10, 11, 16, 17, 29, 172]}
         transitions:
           - when: {ev: unit.claim_moved, is: true}
             to: superseded

@@ -15,12 +15,12 @@ machine: session
 version: 4
 kind: template
 tier: core
-satisfies: [4, 24, 65, 66, 67, 70, 71, 72, 73, 80, 93, 171, 173, 174, 190, 196, 197]
+satisfies: [4, 24, 65, 66, 67, 70, 71, 72, 73, 80, 93, 171, 173, 174, 190, 196, 197, 226]
 params:
   agent: the agent definition to start
   kind: the agent program that runs it — claude, codex or opencode; default claude; started through the one command whatever the kind (173)
   place: the place prepared for it
-  work_order: the closed set of inputs, rendered by the engine and handed into the place
+  work_order: the closed set of inputs, rendered by the engine from the context enumeration for the session's type (profiles/context.yaml, 226) and handed into the place
   deliverables: "the entries {name, producer, schema, surface} the owner names; the producers, schemas and surfaces in force are resolved when the session starts and written into the work order with their versions, and the names are recorded as expected (88, 89, 190)"
   keep_alive: whether idle keeps the process (standing, with-operator) or the type ends it
 record:

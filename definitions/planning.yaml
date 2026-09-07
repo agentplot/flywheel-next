@@ -9,10 +9,13 @@
 # as the baseline (104, 202). It sees
 # every open bolt of the repository because the fingerprint and the work order
 # both include them. A run delivers one proposal: the bolts it proposes and
-# the units in each, one decision on the plan (172); the session is charged by
-# the machinery and has the fixed exits like any other (171).
+# the units in each, each unit with a size estimate in slot-days calibrated
+# by type and repository from the actuals the acceptance files record — no
+# constant (172); one decision on the plan; the session is charged by the
+# machinery and has the fixed exits like any other (171). Its deliverables are
+# the proposal document and the verdicts (190, 227).
 machine: planning
-version: 2
+version: 3
 kind: object
 tier: core
 satisfies: [4, 28, 29, 60, 64, 98, 101, 102, 104, 171, 172, 182, 198, 199, 200, 202]
@@ -49,7 +52,7 @@ regions:
             states:
               session:
                 machine: session
-                params: {agent: planner, place: own-place, work_order: rendered, keep_alive: false}
+                params: {agent: planner, place: own-place, work_order: rendered, keep_alive: false, deliverables: [{name: proposal-document, producer: default, schema: default, surface: default}, {name: verdict, producer: default, schema: default, surface: default}]}
         transitions:
           - when: {all: [{final: exited}, {ev: session.exit, is: done}]}
             to: applying
