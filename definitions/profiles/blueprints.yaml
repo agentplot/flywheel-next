@@ -1,25 +1,25 @@
-# The part of every profile's binding that reads and writes the books
+# The part of every profile's binding that reads and writes the blueprints
 # repository: claims, the ledger, captures, signals and moves, the manifest,
 # the type catalogue. The same in every profile; not a profile on its own.
 #
-# Tools: the books repository is a git repository holding an mdBook; recutils
+# Tools: the blueprints repository is a git repository holding an mdBook; recutils
 # files (`recsel`, `recins`, `recset` through the `recutils` binary, or the
 # crate's own parser) for the ledger and the signal records; OpenSpec change
-# directories for intents; `flywheel claims check` as the books' pre-commit
+# directories for intents; `flywheel claims check` as the blueprints' pre-commit
 # hook verifying every fenced claim block's lock hash.
 #
 # An intent is an OpenSpec change (`openspec/changes/<intent id>/`): its
 # elaborations' records — research notes, session records, prototype notes,
 # an interactive page — live in that change directory, and what they conclude
 # is written to the book's chapters and claims. A bolt has no change
-# directory in the books; a proposal's document sits beside its record in the
+# directory in the blueprints; a proposal's document sits beside its record in the
 # state store (187).
 format: flywheel-profile/1
-name: books
+name: blueprints
 complete: false
 manifest:
   doc: |
-    `flywheel.yaml` at the books' root lists the repositories the flywheel
+    `flywheel.yaml` at the blueprints' root lists the repositories the flywheel
     tracks with their git details only (199, 203); a repository's kinds and
     capabilities are derived from the map elements and contexts that name it as
     home, and the entry's name is what a node's `home` names:
@@ -32,7 +32,7 @@ manifest:
           item_merge: squash | merge               # 179
           personas: "personas/*.md"                # 56
 
-    `flywheel map check` (the books' pre-commit hook, with `flywheel claims
+    `flywheel map check` (the blueprints' pre-commit hook, with `flywheel claims
     check`) fails a commit in which a node's home names no manifest entry or
     a manifest entry is the home of no node (199). A repository's commit
     types are its own declaration, `flywheel/commit-types.yaml` in the built
@@ -41,10 +41,10 @@ context_map:
   doc: |
     The system context map is the scope surface (198), bound to the
     first-principles model in `models/context-map/` (model.md, schema.yaml):
-    the bounded contexts the books describe, in the terms of domain-driven
+    the bounded contexts the blueprints describe, in the terms of domain-driven
     design. Format `flywheel-context-map/2`; two complete YAML maps under the
     book's own layout, `context-map/current.yaml` (what is built) and
-    `context-map/target.yaml` (what the books say), each declaring
+    `context-map/target.yaml` (what the blueprints say), each declaring
     `schema: flywheel-map/N` and the same id naming the same thing in both.
     Four element types, each with the common fields id, name, ref
     (book/chapter, 120), status (settled | candidate | open, open paired with
@@ -73,7 +73,7 @@ context_map:
     that may extend a shipped kind (`store extends service`), link kinds with
     end constraints, facets with closed or open values, capability flags; a
     file that redeclares a shipped kind fails. `flywheel map check` validates
-    both maps against the union on every commit (the books' pre-commit hook,
+    both maps against the union on every commit (the blueprints' pre-commit hook,
     121) and fails a map or vocabulary whose N the installed flywheel does
     not read; upgrading N is a chore (123).
 
@@ -153,10 +153,10 @@ adapters:
 signal_schema:
   doc: "the signal record format is `flywheel/schemas/signal.md`, versioned and stable (113, 114); subject tags come from `flywheel/signal-tags.yaml`, a vocabulary the flywheel ships and the organization extends with open values; the capture reader is handed both in its work order and follows the raw pointer itself — nothing raw is copied into any repository (111, context.yaml ruling 7)"
 map_edit_trailer:
-  doc: "a commit that touches `context-map/current.yaml` or `context-map/target.yaml` must carry the trailer `flywheel-map-edit: <sha256 of the edit>` that `flywheel map edit|attach|detach|home|status` writes; the books' pre-commit hook refuses one without it, so a session's direct edit of the map in its place is told from a tool call and refused (211, context.yaml ruling 12)"
+  doc: "a commit that touches `context-map/current.yaml` or `context-map/target.yaml` must carry the trailer `flywheel-map-edit: <sha256 of the edit>` that `flywheel map edit|attach|detach|home|status` writes; the blueprints' pre-commit hook refuses one without it, so a session's direct edit of the map in its place is told from a tool call and refused (211, context.yaml ruling 12)"
 layout:
   doc: |
-    The books repository is the organization's (203). People and sessions
+    The blueprints repository is the organization's (203). People and sessions
     write the book (`src/`), the claim blocks in it, the context map
     (`context-map/current.yaml`, `context-map/target.yaml`) and the
     organization's map vocabulary (`flywheel/map-vocabulary.yaml`), the manifest (`flywheel.yaml`), the OpenSpec changes
@@ -170,10 +170,10 @@ layout:
     intent opens (open_intent), plus the archive move at landing. The
     shipped instructions, schemas, skills and type files live under
     `flywheel/` too, written by people (chores) and read by the machinery.
-    Every organization has a books repository of its own; nothing in one
+    Every organization has a blueprints repository of its own; nothing in one
     names another (218).
 evidence:
-  capture.signals_present: {read: "at least one `flywheel/signals/<capture key>/*.rec` exists on the books' shared line (203)"}
+  capture.signals_present: {read: "at least one `flywheel/signals/<capture key>/*.rec` exists on the blueprints' shared line (203)"}
   signal.move:             {read: "`flywheel/signals/moves/<signal id>.rec` target's first word (attach | challenge | join | answered | route | drop); none when the file is absent; a route target is `route <offer entry id>`"}
   cell.challenged:         {read: "some `flywheel/signals/moves/*.rec` whose target is `challenge <this cell's claim>` has a date newer than the cell's judged_at"}
   cell.verdict:            {read: "`flywheel/ledger/<repository>.rec` record with this claim: the verdict field; none when absent"}
@@ -187,7 +187,7 @@ evidence:
   planning.ledger_empty:   {read: "`flywheel/ledger/<repository>.rec` is absent or holds no record; a repository joins when a node names it as home (202)"}
   intent.signals_dropped:  {read: "every signal the intent cites has a move record whose target is `drop <intent id>`"}
 effects:
-  record_verdict:  {do: "recset/recins on `flywheel/ledger/<repository>.rec` (203): replace the record for the claim with verdict, claim_version, revision, evidence, judged_at, judged_by; one commit on the books' shared line whose message carries the effect id; pushed with expected-old, rebased and retried on rejection (the cell's lease makes a content conflict impossible)"}
-  record_moves:    {do: "one `flywheel/signals/moves/<signal id>.rec` per delivered move (203), target `attach <intent>` | `challenge <claim>` | `join <intent>` | `answered <claim or record>` | `route <offer entry id>` | `drop <reason>`; one commit on the books' shared line"}
+  record_verdict:  {do: "recset/recins on `flywheel/ledger/<repository>.rec` (203): replace the record for the claim with verdict, claim_version, revision, evidence, judged_at, judged_by; one commit on the blueprints' shared line whose message carries the effect id; pushed with expected-old, rebased and retried on rejection (the cell's lease makes a content conflict impossible)"}
+  record_moves:    {do: "one `flywheel/signals/moves/<signal id>.rec` per delivered move (203), target `attach <intent>` | `challenge <claim>` | `join <intent>` | `answered <claim or record>` | `route <offer entry id>` | `drop <reason>`; one commit on the blueprints' shared line"}
   drop_signals:    {do: "for each signal the intent cites, write a move record `drop <intent id>` with the reason; one commit"}
   ensure_signal:   {do: "for a capture whose source is forwarded-message: write one signal record whose excerpt is the message and whose kind is the operator's response (default ask); one commit"}

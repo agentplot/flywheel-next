@@ -1,7 +1,7 @@
 # One thread of design work about one subject (A.3). Proposed by curation or by
 # the operator's dictation; closed only by the operator (22). Its line is off
-# the books' shared line, a region of its own; archiving is the landing of that
-# line (49, 54). The intent is a change in the books: its change directory
+# the blueprints' shared line, a region of its own; archiving is the landing of that
+# line (49, 54). The intent is a change in the blueprints: its change directory
 # holds its elaborations' records, and the book holds what they conclude
 # (187). An intent named in another elaboration's `covers` is covered by it:
 # while that elaboration is proposed or working it counts as this intent's
@@ -78,7 +78,7 @@ regions:
             to: archiving
             enter: {line: landing}
       archiving:
-        doc: the archive lands the intent's line on the books' shared line; proposed claims become standing (49, S34)
+        doc: the archive lands the intent's line on the blueprints' shared line; proposed claims become standing (49, S34)
         transitions:
           - when: {all: [{ev: intent.archived, is: true}, {final: line.removed}]}
             to: closed
@@ -104,4 +104,4 @@ regions:
     states:
       line:
         machine: line
-        params: {parent: books-shared-line, landing_policy: direct}
+        params: {parent: blueprints-shared-line, landing_policy: direct}

@@ -1,7 +1,7 @@
 # The git-only profile (C.2). Every piece of durable state is a file in the
 # organization's `flywheel-state` git repository; the git host is the only
 # central service, used for pushes with expected-old and for a webhook on
-# push. Inherits the host, sessions, books, record-derived and surfaces
+# push. Inherits the host, sessions, blueprints, record-derived and surfaces
 # bindings.
 #
 # Tools: `gix` for reads and object writes, the `git` binary for push with
@@ -12,7 +12,7 @@
 format: flywheel-profile/1
 name: git-only
 complete: true
-inherits: [host, sessions, books, record-derived, surfaces]
+inherits: [host, sessions, blueprints, record-derived, surfaces]
 
 layout:
   repository: "`<org>/flywheel-state`; branch `main` is the shared line and the only branch hosts read state from"

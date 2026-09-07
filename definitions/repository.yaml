@@ -42,7 +42,7 @@ regions:
             to: creating
             effects: [{do: create_repository, note: "nothing when adopted"}]
       registering:
-        doc: the manifest entry, the `flywheel/` declarations and the map nodes with their homes are written in one books commit, and planning for the repository is put (199, 202, 203, 206)
+        doc: the manifest entry, the `flywheel/` declarations and the map nodes with their homes are written in one blueprints commit, and planning for the repository is put (199, 202, 203, 206)
         transitions:
           - when: {ev: repository.registered, is: true}
             to: covering

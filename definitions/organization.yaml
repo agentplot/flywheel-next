@@ -10,7 +10,7 @@
 # its own sinks, its own decision counter): nothing crosses (218). The name
 # is the operator's and need not be a git-host organization; repositories are
 # listed by URL (219). Init adopts what exists and creates what does not, for
-# the books, the state and each tracked repository; an existing repository
+# the blueprints, the state and each tracked repository; an existing repository
 # without the layout is upgraded by a chore, never rewritten (220). Removal is
 # the operator's response: sessions ended, places removed, state archived,
 # git repositories left on disk, numbers never reused (221). Packages of the
@@ -26,7 +26,7 @@ owns: [repository, package]
 satisfies: [15, 204, 207, 208, 218, 219, 220, 221]
 record:
   name: string           # the operator's name for it; may but need not coincide with a git-host organization (219)
-  books: string          # <org>/<books repository>
+  blueprints: string          # <org>/<blueprints repository>
   state: string          # <org>/<state repository>
   profile: string        # tracker | git-only (C.1, C.2)
   app_id: string         # the organization's GitHub App; the installation is the operator's secret (207)
@@ -37,20 +37,20 @@ regions:
     initial: absent
     states:
       absent:
-        doc: "`flywheel init` wrote the record; the books repository is created from the books template, or adopted when it exists (204)"
+        doc: "`flywheel init` wrote the record; the blueprints repository is created from the blueprints template, or adopted when it exists (204)"
         transitions:
-          - when: {ev: org.books_ready, is: true}
-            to: books-ready
+          - when: {ev: org.blueprints_ready, is: true}
+            to: blueprints-ready
           - when: {always: true}
             to: absent
-            effects: [{do: create_books, note: "from the books template at the set's version; adopting an existing books repository adds only what the template requires and is missing (204, 208)"}]
-      books-ready:
+            effects: [{do: create_blueprints, note: "from the blueprints template at the set's version; adopting an existing blueprints repository adds only what the template requires and is missing (204, 208)"}]
+      blueprints-ready:
         doc: the state repository is created with the profile's layout (C.2)
         transitions:
           - when: {ev: org.state_ready, is: true}
             to: state-ready
           - when: {always: true}
-            to: books-ready
+            to: blueprints-ready
             effects: [{do: create_state}]
       state-ready:
         doc: the App's installation is recorded as required; the secret is the operator's to place (207)

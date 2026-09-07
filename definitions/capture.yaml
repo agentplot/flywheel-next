@@ -39,7 +39,7 @@ regions:
             states:
               place:
                 machine: place
-                params: {line: books-shared-line, inputs: work-order, keep: false}
+                params: {line: blueprints-shared-line, inputs: work-order, keep: false}
           session:
             initial: session
             states:

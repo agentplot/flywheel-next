@@ -35,7 +35,7 @@
         "core",
         "extensible"
       ],
-      "description": "core: shipped in the binary — every object and engine machine and the structural templates line, place, session, stage; the directory is machines/ or machines/engine/. extensible: a type file an organization adds or overrides under flywheel/types/ in its books — a unit type or an elaboration type; the directory is machines/unit-types/ or machines/elaboration-types/, the file is named <machine>@<version>.yaml, and its content is immutable once registered (machines/registry.yaml; model.md 10.7)"
+      "description": "core: shipped in the binary — every object and engine machine and the structural templates line, place, session, stage; the directory is machines/ or machines/engine/. extensible: a type file an organization adds or overrides under flywheel/types/ in its blueprints — a unit type or an elaboration type; the directory is machines/unit-types/ or machines/elaboration-types/, the file is named <machine>@<version>.yaml, and its content is immutable once registered (machines/registry.yaml; model.md 10.7)"
     },
     "retired": {
       "type": "boolean",

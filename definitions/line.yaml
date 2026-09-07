@@ -1,5 +1,5 @@
 # A branch the machinery owns (49). Template run inside a bolt (off the
-# built repository's shared line) and inside an intent (off the books' shared
+# built repository's shared line) and inside an intent (off the blueprints' shared
 # line). Every operation here is an effect the machinery performs; a session
 # never touches a line (I12). A take that conflicts becomes a chore on the
 # line whose approval is the cadence the operator set or the response that

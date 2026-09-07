@@ -14,7 +14,7 @@ satisfies: [68, 69, 196]
 record:
   opened_by: string
   opened_at: time
-  repository: string     # the repository whose shared line the place is off; the books by default
+  repository: string     # the repository whose shared line the place is off; the blueprints by default
 regions:
   life:
     initial: placing

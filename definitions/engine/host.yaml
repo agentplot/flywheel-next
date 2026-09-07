@@ -3,7 +3,7 @@
 # whether it presents — and it takes leases only within that (149). Its
 # reconciliation finds stray places on its own disk and removes them (55), and
 # closes multiplexer tabs and workspaces whose object has left every view (196).
-# A host joins by one command (205): it clones the state, the books and every
+# A host joins by one command (205): it clones the state, the blueprints and every
 # tracked built repository under the root the manifest names, with the
 # profile's layout on disk; a hand-made layout is refused with what differs.
 # Every tick reconciles the disk against the state (222): a bare repository or
@@ -91,7 +91,7 @@ regions:
             to: cloning
             effects: [{do: clone_repositories}]
       cloning:
-        doc: the state, the books and every tracked built repository cloned bare under the root, one shared-line checkout each; a repeat adds only what is missing
+        doc: the state, the blueprints and every tracked built repository cloned bare under the root, one shared-line checkout each; a repeat adds only what is missing
         transitions:
           - when: {ev: host.disk_layout, is: differs}
             to: refused

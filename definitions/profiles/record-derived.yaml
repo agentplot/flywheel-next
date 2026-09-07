@@ -64,14 +64,14 @@ evidence:
   proposal.answer_forwarded: {read: "the unit the answer names lists a response with id <this response id>/forward in applied_responses"}
   unit.target_is_new_bolt: {read: "get(id).target.new_name is set and target.bolt is not"}
   unit.deps_merged: {read: "every id in get(id).depends_on has state merged or landed"}
-  unit.claim_moved: {read: "get(id).claims names claim@v and the books' shared line holds that claim at a version > v, and get(id).citation_choices holds no choice for that claim and version"}
+  unit.claim_moved: {read: "get(id).claims names claim@v and the blueprints' shared line holds that claim at a version > v, and get(id).citation_choices holds no choice for that claim and version"}
   unit.bolt_exists: {read: "a bolt record exists with id derived from (repository, new_name) or the unit's target.bolt names an existing bolt"}
   unit.routed:    {read: "get(id).target.bolt equals the response's argument"}
   unit.items_exist: {read: "work-item records with parent = id exist, one per task of the document"}
   chore.scope:    {read: "get(id).scope: bolt-line when the offer was made inside a bolt's place, intent-line inside an intent's, shared-line otherwise"}
   bolt.named:     {read: "get(bolt).name equals the response's argument"}
   bolt.chores_outstanding: {read: "a unit with parent = bolt, type chore, in a state before merged"}
-  bolt.citations_moved: {read: "a unit of the bolt in state in-flight or merged cites claim@v and the books' shared line holds that claim at a version > v, and get(bolt).citation_choices holds no choice for that claim and version"}
+  bolt.citations_moved: {read: "a unit of the bolt in state in-flight or merged cites claim@v and the blueprints' shared line holds that claim at a version > v, and get(bolt).citation_choices holds no choice for that claim and version"}
   bolt.moved_claim: {read: "the claim and versions of the first such citation"}
   citation_choice_recorded: {read: "get(id).citation_choices holds the claim and version"}
   bolt.hold_since_last_merge: {read: "get(bolt).held_at is newer than every child unit's entered_at of merged"}
@@ -93,7 +93,7 @@ evidence:
   place.conflict_retries: {read: "get(owner).conflict_retries"}
 effects:
   record_exit:     {do: "put(session): exit, expected, delivered, blocks, from the newest exit entry on its thread; append(item or elaboration) the exit as a thread entry with the expected/delivered difference first (77)"}
-  record_offers:   {do: "for each uncited offer entry on the session's thread: a finding about the session's own intent -> put(new elaboration, proposed, document = the entry's document path, sources = entry id); a finding about its own bolt -> put(new unit, proposed, type = fast, target = the bolt, document = the path); a chore -> put(new unit, proposed, type = chore, batch = bolt id, scope from the place, document = the path); anything else -> a signal record citing the path (books.yaml). The record holds the path and the entry id, never the text (59)"}
+  record_offers:   {do: "for each uncited offer entry on the session's thread: a finding about the session's own intent -> put(new elaboration, proposed, document = the entry's document path, sources = entry id); a finding about its own bolt -> put(new unit, proposed, type = fast, target = the bolt, document = the path); a chore -> put(new unit, proposed, type = chore, batch = bolt id, scope from the place, document = the path); anything else -> a signal record citing the path (blueprints.yaml). The record holds the path and the entry id, never the text (59)"}
   record_refusals: {do: "each refusal entry copied to the run record; the report effect carries them to attention"}
   set_type:        {do: "put(id): type and type_version = the type file's version in force"}
   propose_elaboration: {do: "put(new elaboration, proposed, type from the material's kind, sources = the pending material, covers = [the intent]) or put(existing proposed elaboration, sources += pending)"}

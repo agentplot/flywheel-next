@@ -1,7 +1,7 @@
 # The deliverables binding: the shipped set of deliverables and, for each,
 # the skill that produces it, the schema it must satisfy (88) and the surface
 # that reviews it (17). Versioned as one thing: `version` below moves when any
-# entry moves, and a session's work order header names it beside the books
+# entry moves, and a session's work order header names it beside the blueprints
 # commit, so a session started before a change and one after can be told
 # apart (123). An elaboration type or a stage names its deliverables as
 # entries {name, producer, schema, surface}; `default` in an entry resolves
@@ -13,7 +13,7 @@
 # deliverable in the manifest — `flywheel.yaml` deliverables.<name>.producer,
 # .schema or .surface — without touching the engine (119); the engine reads
 # only the resolved names and paths, never the text. Changing a producer, here
-# or in the manifest, is a chore on the books (123). Not a profile on its
+# or in the manifest, is a chore on the blueprints (123). Not a profile on its
 # own; every profile inherits it, since it binds no evidence and no effect.
 # (190)
 format: flywheel-profile/1

@@ -2,7 +2,7 @@
 # runner, a router, a sign-in, a unit type or an elaboration type, a
 # deliverable producer, a map vocabulary, a template, or a scenario pack — a
 # git repository at a tag, listed in an index that is a file (the shipped set
-# is the default index). An organization package installs into the books
+# is the default index). An organization package installs into the blueprints
 # under the prefix (203) and is read by every host at the shared line; a
 # per-host package installs on the named host. It declares the set version it
 # needs (208), its configuration schema and the secrets it needs, and is
