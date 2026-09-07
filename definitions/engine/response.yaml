@@ -21,7 +21,7 @@ record:
   object: object-id      # the object the response concerns
   answer: string
   args: string
-  given_by: string       # the operator: the local user on a page served with no sign-in, else the signed-in identity the manifest's sign-in kind vouched for (233)
+  given_by: string       # the operator: the local user on a page served with no sign-in, else the identity the host's sign-in kind vouched for (233); always one the organization's operators list allows — a call from any other identity is refused by the tool server before a response exists, and the refusal is recorded in the run record (surfaces.yaml tools.identity)
   given_at: time
   delivery: string       # chat message id, page submission id, review annotation id, or the operator's own direct write
 regions:
