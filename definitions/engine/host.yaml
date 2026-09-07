@@ -9,6 +9,7 @@
 machine: host
 version: 4
 kind: engine
+tier: core
 object: host
 parent: null
 satisfies: [4, 32, 55, 96, 147, 149, 150, 151, 186, 196, 205]

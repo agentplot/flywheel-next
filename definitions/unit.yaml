@@ -10,6 +10,7 @@
 machine: unit
 version: 3
 kind: object
+tier: core
 object: unit
 parent: [bolt, intent]   # an intent owns only the chore units that resolve its line's take conflicts (52)
 owns: [work-item]

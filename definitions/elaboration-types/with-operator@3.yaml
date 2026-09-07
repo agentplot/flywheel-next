@@ -5,6 +5,7 @@
 machine: with-operator
 version: 3
 kind: template
+tier: extensible
 satisfies: [4, 25, 26, 69, 190]
 params:
   place: the elaboration's place

@@ -15,6 +15,7 @@
 machine: ledger-cell
 version: 4
 kind: object
+tier: core
 satisfies: [100, 101, 102, 104, 116, 195, 198, 200, 202]
 object: ledger-cell
 parent: null

@@ -8,6 +8,7 @@
 machine: sink
 version: 1
 kind: engine
+tier: core
 object: sink
 parent: null
 satisfies: [2, 8, 14, 18, 68, 82, 148, 152, 155]

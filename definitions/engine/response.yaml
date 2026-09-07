@@ -9,6 +9,7 @@
 machine: response
 version: 3
 kind: engine
+tier: core
 object: response
 parent: null
 satisfies: [1, 3, 4, 6, 12, 137, 153, 154, 193, 194]

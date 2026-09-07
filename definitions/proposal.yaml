@@ -10,6 +10,7 @@
 machine: proposal
 version: 2
 kind: object
+tier: core
 object: proposal
 parent: planning
 satisfies: [184, 17, 35, 36, 171, 172, 187]

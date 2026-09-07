@@ -33,7 +33,12 @@ pub fn load_dir(dir: &Path) -> Result<Definitions> {
                 continue;
             }
             let m: Machine = serde_yaml::from_str(&text).with_context(|| format!("parsing {}", p.display()))?;
-            defs.machines.insert(m.machine.clone(), m);
+            // A type file is `<machine>@<version>.yaml`; when several versions of one name are
+            // present the highest wins for a bare reference (a pinned `name@N` is the record's).
+            match defs.machines.get(&m.machine) {
+                Some(have) if have.version >= m.version => {}
+                _ => { defs.machines.insert(m.machine.clone(), m); }
+            }
         }
     }
     Ok(defs)

@@ -3,8 +3,9 @@
 # blocked or stalled by the join rule. The session set is a fixed list or a
 # rule read against the repository worked.
 machine: stage
-version: 3
+version: 4
 kind: template
+tier: core
 satisfies: [4, 41, 56, 70, 173, 190]
 params:
   agents: "a fixed list of agent entries — a name, or {name, kind} where kind is claude, codex or opencode, default claude (173) — or a rule such as every persona definition matching a pattern"
@@ -12,7 +13,7 @@ params:
   join: all | any | count:<n>
   on_fail: the stage an item returns to when this stage judges it not done
   max_send_backs: how many times before the item stops and waits on the operator
-  deliverables: "what the work order asks for, recorded as expected: entries {name, producer, schema, surface}, where `default` for producer, schema or surface means the deliverables binding in force for that name (profiles/deliverables.yaml, overridable per deliverable in the manifest) and `by-type` means the stage's own type skill and schema instruction with no review surface (190)"
+  deliverables: "what the work order asks for, recorded as expected: entries {name, producer, schema, surface}, where `default` for producer, schema or surface means the deliverables binding in force for that name (profiles/deliverables.yaml, overridable per deliverable in the manifest) and `by-type` means the stage's own type skill and schema instruction with no review surface (190); an entry may carry `step:` naming the OpenSpec step that produces it — ff, apply, verify — so a by-type producer resolves to the type skill for that step"
 regions:
   run:
     initial: resolving

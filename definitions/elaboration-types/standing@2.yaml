@@ -7,6 +7,7 @@
 machine: standing
 version: 2
 kind: template
+tier: extensible
 satisfies: [4, 25, 26, 54, 190, 212]
 params:
   place: the elaboration's place

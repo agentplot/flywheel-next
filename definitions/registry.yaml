@@ -1,0 +1,25 @@
+# The type registry: name@version -> the file and its sha256 at registration.
+# Written by `check.py --register`; a registered file is immutable (model.md 10.7).
+types:
+  chore@2:
+    file: unit-types/chore@2.yaml
+    sha256: 25b19620cc47a5e86dcdc8ba4614425736c595b0dd00f32c3584c454300803d6
+  default@5:
+    file: unit-types/default@5.yaml
+    sha256: 2774a70f656645474ed2a91817722ef2d2deeccc42efb420ac7fe20f094dd94a
+  fast@3:
+    file: unit-types/fast@3.yaml
+    sha256: ba2f439a480c680d405b8845b2d8dde40e5407790ba12cb32f62366f2b9f521d
+  persona-test@3:
+    file: unit-types/persona-test@3.yaml
+    sha256: ecd47836b1e9b4eda8ec41a9e73327a925882318dcfe2a3e28438b59a566a931
+  self-closing@2:
+    file: elaboration-types/self-closing@2.yaml
+    sha256: a515bcad7fa55b65ea00543b97c9d6fb7fb785ad5264e014f885d365060db36c
+  standing@2:
+    file: elaboration-types/standing@2.yaml
+    sha256: c57483069a41a9891248e229f39f24eaabe6532f2b3a567c0eb6333aa87f3758
+  with-operator@3:
+    file: elaboration-types/with-operator@3.yaml
+    sha256: 4ac62703e7c149cff49c6f20bb27a6867e67c012f30d363b1ae27472aabd7b68
+doc: the content hash of every extensible machine file at registration; check.py fails a file whose hash moved (model.md 10.7). Add a version with `check.py --register`; never edit an entry

@@ -8,6 +8,7 @@
 machine: organization
 version: 1
 kind: object
+tier: core
 object: organization
 parent: null
 singleton: organization

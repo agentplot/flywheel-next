@@ -1,0 +1,53 @@
+# The default unit type: the OpenSpec steps as stages. spec runs `opsx ff`
+# (the change directory and the spec written from the item), build runs
+# `opsx apply` (the commits and the as-built statements), verify runs
+# `opsx verify` and judges; a failure sends the item back to build, up to
+# max_send_backs times, then the item stops and waits on the operator (41).
+# The archive is not a stage: `archive_change` runs on the work item at its
+# merge (work-item.archiving), so `openspec archive` moves the change into
+# the standing set as the item lands. Needs a change directory. Lands on the
+# bolt's line. Every deliverable names the OpenSpec step that produces it in
+# `step:`; `by-type` resolves the producer to the type skill for that step
+# (190). Addressed as default@5; a change is a new file at a new version,
+# never an edit of this one (57).
+machine: default
+version: 5
+kind: template
+tier: extensible
+satisfies: [37, 41, 99, 120, 190]
+doc: unit type
+params:
+  place: the item's place
+record:
+  needs_change_directory: "true"
+  lands_on: bolt-line
+regions:
+  stages:
+    initial: spec
+    states:
+      spec:
+        doc: "`opsx ff`: the change directory and the spec, written from the item"
+        machine: stage
+        params: {agents: [spec-writer], join: all, on_fail: spec, max_send_backs: 1, deliverables: [{name: change-directory, step: ff, producer: by-type, schema: by-type, surface: none}, {name: spec, step: ff, producer: by-type, schema: by-type, surface: none}]}
+        transitions:
+          - {when: {final: passed}, to: build}
+          - {when: {final: sent-back}, to: spec}
+          - {when: {final: stopped}, to: stopped}
+      build:
+        doc: "`opsx apply`: the commits and the as-built statements naming the claims"
+        machine: stage
+        params: {agents: [builder], join: all, on_fail: build, max_send_backs: 3, deliverables: [{name: commits, step: apply, producer: by-type, schema: by-type, surface: none}, {name: as-built-statements-naming-claims, step: apply, producer: by-type, schema: by-type, surface: none}]}
+        transitions:
+          - {when: {final: passed}, to: verify}
+          - {when: {final: sent-back}, to: build}
+          - {when: {final: stopped}, to: stopped}
+      verify:
+        doc: "`opsx verify` judges the built work against the spec; not done sends the item back to build, bounded by max_send_backs (41); the verdict reaches the ledger through the deliverables binding (100)"
+        machine: stage
+        params: {agents: [verifier], join: all, on_fail: build, max_send_backs: 3, deliverables: [{name: verify-report, step: verify, producer: by-type, schema: by-type, surface: none}, {name: verdict, step: verify, producer: default, schema: default, surface: default}]}
+        transitions:
+          - {when: {final: passed}, to: passed}
+          - {when: {final: sent-back}, to: build}
+          - {when: {final: stopped}, to: stopped}
+      passed: {final: true}
+      stopped: {final: true}

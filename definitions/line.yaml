@@ -14,6 +14,7 @@
 machine: line
 version: 4
 kind: template
+tier: core
 satisfies: [42, 49, 50, 52, 53, 54, 183, 185, 175, 176, 177, 179, 180, 192]
 params:
   parent: the shared line this line is off

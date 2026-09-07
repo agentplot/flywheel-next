@@ -8,6 +8,7 @@
     "machine",
     "version",
     "kind",
+    "tier",
     "regions",
     "satisfies"
   ],
@@ -28,6 +29,17 @@
         "engine"
       ],
       "description": "object: governs one object kind the control plane lists. template: instantiated inside another machine's state with params. engine: shipped with the engine, knows no domain name."
+    },
+    "tier": {
+      "enum": [
+        "core",
+        "extensible"
+      ],
+      "description": "core: shipped in the binary — every object and engine machine and the structural templates line, place, session, stage; the directory is machines/ or machines/engine/. extensible: a type file an organization adds or overrides under flywheel/types/ in its books — a unit type or an elaboration type; the directory is machines/unit-types/ or machines/elaboration-types/, the file is named <machine>@<version>.yaml, and its content is immutable once registered (machines/registry.yaml; model.md 10.7)"
+    },
+    "retired": {
+      "type": "boolean",
+      "description": "extensible only: the version is retired — no new object may start under it; the file stays while any object cites it (model.md 10.7)"
     },
     "object": {
       "type": "string",

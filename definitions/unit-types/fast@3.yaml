@@ -1,0 +1,32 @@
+# The fast type: one stage, one session, that runs `opsx ff` (the change
+# directory and the spec from the item) and `opsx apply` (the build) in one
+# sitting; no separate verify. The archive is the item's merge-time effect
+# (work-item.archiving, `archive_change`), not a stage. Needs a change
+# directory, since it lands code (37). One send-back, then the item stops
+# and waits on the operator (41). Addressed as fast@3; a change is a new
+# file at a new version, never an edit of this one (57).
+machine: fast
+version: 3
+kind: template
+tier: extensible
+satisfies: [37, 41, 190]
+doc: unit type
+params:
+  place: the item's place
+record:
+  needs_change_directory: "true"
+  lands_on: bolt-line
+regions:
+  stages:
+    initial: ff-apply
+    states:
+      ff-apply:
+        doc: "`opsx ff` then `opsx apply` in one session: the change directory, the spec, the commits and the as-built statements"
+        machine: stage
+        params: {agents: [builder], join: all, on_fail: ff-apply, max_send_backs: 1, deliverables: [{name: change-directory, step: ff, producer: by-type, schema: by-type, surface: none}, {name: spec, step: ff, producer: by-type, schema: by-type, surface: none}, {name: commits, step: apply, producer: by-type, schema: by-type, surface: none}, {name: as-built-statements-naming-claims, step: apply, producer: by-type, schema: by-type, surface: none}]}
+        transitions:
+          - {when: {final: passed}, to: passed}
+          - {when: {final: sent-back}, to: ff-apply}
+          - {when: {final: stopped}, to: stopped}
+      passed: {final: true}
+      stopped: {final: true}

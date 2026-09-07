@@ -88,7 +88,7 @@ pub fn perform(defs: &Definitions, store: &mut Store, object: &str, region: &str
             let ty = e.args.get("type").and_then(|v| v.as_str()).unwrap_or("").to_string();
             if let Some(u) = store.objects.get_mut(object) { u.record.insert("type".into(), json!(ty)); }
         }
-        "archive_intent" => { store.world.archived.insert(object.to_string(), true); }
+        "archive_intent" | "archive_change" => { store.world.archived.insert(object.to_string(), true); }
         "declare_services" => {
             let Some(bolt) = store.objects.get(object).cloned() else { return };
             let repo = bolt.record.get("repository").and_then(|v| v.as_str()).unwrap_or("").to_string();

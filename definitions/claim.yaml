@@ -13,6 +13,7 @@
 machine: claim
 version: 4
 kind: object
+tier: core
 satisfies: [23, 97, 98, 105, 121, 195, 198, 200, 211]
 object: claim
 parent: null

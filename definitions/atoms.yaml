@@ -149,6 +149,7 @@ evidence:
   item.send_backs:         {of: work-item, type: int}
   item.retry_max:          {of: work-item, type: int, doc: from the type, for the current stage}
   item.stage_is_last:      {of: work-item, type: bool}
+  item.change_archived:    {of: work-item, type: bool, doc: the item's OpenSpec change is archived in its place — its specifications moved into the standing set — or the type needs no change directory, which holds vacuously}
   stage.agents:            {of: stage, type: list, doc: the session set the type's rule resolves against the repository worked}
   stage.join_met:          {of: stage, type: bool}
   stage.verdict:           {of: stage, type: enum, values: [pending, pass, not-done, blocked, stalled]}
@@ -219,6 +220,7 @@ effects:
   prepare_place:   {of: place, args: [line, agent_inputs], proof: place.ready, satisfies: [42, 43, 45, 88, 89, 119, 173, 190, 203, 207, 211, 212], doc: worktree at the line's head, hooks that refuse line operations, the closed set of inputs written in — for each deliverable the producer skill, schema and review surface in force, resolved through the deliverables binding and the manifest's overrides at the books commit named in the header; for a construction session the map elements the item builds, their homes and the claims attached there, read from the target map (211), and the surface specification in force when a claim the unit cites is about a surface (212) — ports derived from the place}
   rebase_place:    {of: place, args: [], proof: place.contains_line, satisfies: [42, 51, 179], doc: rebase onto the line while no session works in the place; aborted whole on conflict}
   seed_conflict_job: {of: place, args: [], proof: place.job_seeded, satisfies: [52]}
+  archive_change:  {of: work-item, args: [], proof: item.change_archived, satisfies: [37, 38, 42], doc: "the OpenSpec archive step, run by the machinery on the work item between its type's last stage and its merge: `openspec archive` in the item's place, committed there, so the change's specifications enter the standing set with the item's merge and land with the bolt (section 9 givens); nothing for a type whose record says needs_change_directory false; never a stage of a type"}
   merge_place:     {of: place, args: [], proof: place.merged, satisfies: [38, 42, 54, 179], doc: merge the place into its line, one place at a time in the fixed order; an item's merge is a squash to one commit naming the item unless the manifest says otherwise for the repository}
   remove_place:    {of: place, args: [], proof: place.absent, satisfies: [42, 45, 55], doc: remove the worktree; the processes tethered to it end with it; never while the operator holds it}
   record_endpoints: {of: place, args: [], proof: place.endpoints_recorded, satisfies: [46], doc: write the endpoints the place's processes serve into the owner record, so the page shows them beside the bolt}

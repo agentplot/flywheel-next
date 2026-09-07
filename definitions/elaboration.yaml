@@ -17,6 +17,7 @@
 machine: elaboration
 version: 2
 kind: object
+tier: core
 satisfies: [4, 5, 24, 27, 54, 89, 187, 188, 189, 193, 210]
 object: elaboration
 parent: intent

@@ -10,6 +10,7 @@
 machine: intent
 version: 3
 kind: object
+tier: core
 object: intent
 parent: null
 owns: [elaboration, unit]   # units only as chores resolving the line's take conflicts (52)

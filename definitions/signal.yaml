@@ -6,6 +6,7 @@
 machine: signal
 version: 2
 kind: object
+tier: core
 satisfies: [58, 60, 106, 107, 113, 114, 116, 118]
 object: signal
 parent: capture

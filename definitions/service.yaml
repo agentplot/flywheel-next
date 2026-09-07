@@ -21,6 +21,7 @@
 machine: service
 version: 2
 kind: object
+tier: core
 object: service
 parent: bolt
 satisfies: [4, 12, 45, 46, 47, 48, 55, 191, 203]

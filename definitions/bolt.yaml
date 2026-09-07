@@ -10,6 +10,7 @@
 machine: bolt
 version: 2
 kind: object
+tier: core
 object: bolt
 parent: null
 owns: [unit, service]

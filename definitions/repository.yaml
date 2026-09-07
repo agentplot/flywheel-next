@@ -9,6 +9,7 @@
 machine: repository
 version: 1
 kind: object
+tier: core
 object: repository
 parent: organization
 satisfies: [5, 104, 149, 199, 202, 203, 206, 207, 208]

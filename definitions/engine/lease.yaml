@@ -5,6 +5,7 @@
 machine: lease
 version: 2
 kind: engine
+tier: core
 object: lease
 parent: null
 satisfies: [128, 134, 147, 149, 150]

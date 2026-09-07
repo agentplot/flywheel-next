@@ -1,11 +1,14 @@
 # One task of a unit, worked through the type's stages by sessions and merged
 # into the bolt when complete (41, 38). The stage list comes from the
 # unit's type at the version the unit recorded; a type change never moves an
-# item in flight (57).
+# item in flight (57). Between the type's last stage and the merge the item
+# archives its OpenSpec change in its place (archive_change): the archive is
+# the machinery's merge-time effect, never a stage of a type.
 machine: work-item
-version: 1
+version: 2
 kind: object
-satisfies: [4, 32, 38, 41, 43, 57, 74]
+tier: core
+satisfies: [4, 32, 38, 41, 42, 43, 57, 74]
 object: work-item
 parent: unit
 record:
@@ -49,10 +52,22 @@ regions:
             enter: {session: ended, place: removing}
             note: dictation retires the session (4); the item starts a fresh attempt in a fresh place; a pane killed by hand is read as a session gone, never as a response
           - when: {final: passed}
-            to: merging
-            enter: {place: merging}
+            to: archiving
           - when: {final: stopped}
             to: stopped
+      archiving:
+        doc: "the OpenSpec archive step, run by the machinery in the item's place: `openspec archive` moves the change's specifications into the standing set, so they merge with the item and land with the bolt (section 9 givens); the effect repeats each tick until its proof holds, and holds at once for a type with no change directory (chore)"
+        entry: [{do: archive_change}]
+        transitions:
+          - when: {parent: {in: [retired, dropped]}}
+            to: dropped
+            enter: {session: ended, place: removing}
+          - when: {response: drop}
+            to: dropped
+            enter: {session: ended, place: removing}
+          - when: {ev: item.change_archived, is: true}
+            to: merging
+            enter: {place: merging}
       stopped:
         doc: the retry bound was reached; the item waits on the operator (41)
         decision: {kind: stalled, group: decide, answers: [retry, drop], shows: [item.send_backs, stage], satisfies: [41]}

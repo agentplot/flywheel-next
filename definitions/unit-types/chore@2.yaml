@@ -1,9 +1,13 @@
 # The chore type (60): one stage, one session scoped to the line the fix
 # belongs on, no change directory, never a bolt of its own. The one session
-# gathers every accepted chore of the same bolt (63).
+# gathers every accepted chore of the same bolt (63). No OpenSpec step runs:
+# with no change directory there is nothing to ff, verify or archive, and
+# `archive_change` at the item's merge is nothing for this type. Addressed
+# as chore@2; a change is a new file at a new version (57).
 machine: chore
 version: 2
 kind: template
+tier: extensible
 satisfies: [60, 61, 63, 91, 123, 190]
 doc: unit type
 params:

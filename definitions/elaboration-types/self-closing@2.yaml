@@ -4,6 +4,7 @@
 machine: self-closing
 version: 2
 kind: template
+tier: extensible
 satisfies: [24, 25, 54, 190]
 params:
   place: the elaboration's place
