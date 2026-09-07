@@ -12,7 +12,7 @@ kind: engine
 tier: core
 object: response
 parent: null
-satisfies: [1, 3, 4, 6, 12, 137, 153, 154, 193, 194]
+satisfies: [1, 3, 4, 6, 12, 137, 153, 154, 193, 194, 233]
 record:
   kind: enum             # answer | dictation; a dictation may name only a transition that undoes or defers work — drop, hold, release, send back, retire, takeover, finish, close, end — never one that asserts work was done (4); one that does is unapplicable
   tool: string           # the tool invoked (193): answer for an answer; for a dictation the operation's name — drop, later, hold, release, rename, start, stop, finish, end, close, send-back, retire, takeover, revive, explore, open-session, propose-unit, propose-chore, ask, capture, mark-intent
@@ -21,7 +21,7 @@ record:
   object: object-id      # the object the response concerns
   answer: string
   args: string
-  given_by: string
+  given_by: string       # the operator: the local user on a page served with no sign-in, else the signed-in identity the manifest's sign-in kind vouched for (233)
   given_at: time
   delivery: string       # chat message id, page submission id, review annotation id, or the operator's own direct write
 regions:

@@ -19,13 +19,17 @@
 # writes the record in `proposed`; the enrolment decision's yes places the
 # chosen parts' secrets and issues a one-time expiring token that admits the
 # host, a host already running the binary being adopted by the token alone.
+# Several hosts run on one computer as separate processes, each with its own
+# id, root, multiplexer session, port range, heartbeat and leases, sharing
+# nothing but the git host (232); the scenario tool starts, stops and
+# disconnects them by name, so every host scenario runs on a laptop.
 machine: host
 version: 5
 kind: engine
 tier: core
 object: host
 parent: null
-satisfies: [4, 32, 55, 96, 147, 149, 150, 151, 186, 196, 205, 215, 217, 222, 230, 231]
+satisfies: [4, 32, 55, 96, 147, 149, 150, 151, 186, 196, 205, 215, 217, 222, 230, 231, 232]
 record:
   bound: int            # sessions this host may run at once (a setting of the host)
   last_seen: time       # its heartbeat

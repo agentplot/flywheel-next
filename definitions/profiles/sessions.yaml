@@ -40,6 +40,7 @@ multiplexer_sessions:
   intents:   "flywheel-<org>-intents — elaboration sessions and the operator's own session"
   bolts:     "flywheel-<org>-bolts — stage sessions of units the operator approved"
   machinery: "flywheel-<org>-machinery — curation, planning, capture reading, and the fix of a take conflict (171)"
+  shared_computer: "when `flywheel.yaml` hosts.<host>.shared_computer is true — several hosts on one computer (232) — the defaults become `flywheel-<org>-<host>-intents|bolts|machinery`, so two hosts never open a pane in one another's session"
 layout:
   doc: |
     The multiplexer layout (196), a binding with this shipped default. Every

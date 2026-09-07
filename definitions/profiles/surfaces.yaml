@@ -59,7 +59,9 @@ tools:
     set-status:    {args: [id, status, question], doc: "settled, candidate or open with its question; refused for settled or candidate without a ref (198, 201, 211)"}
     mark-reviewed: {args: [], doc: "record the operator's review mark at the current books revision; the since-last-review overlay diffs from it (122, 211)"}
     add-repository: {args: [name, repo, elements], doc: "the create-repository or adopt-repository proposal by another name: a repository joins when the target map first homes something in it (202, 206, 211)"}
-    switch-organization: {args: [organization], doc: "the page shows one organization at a time; this picks which (218); nothing is written"}
+    switch-organization: {args: [organization], doc: "the page shows one organization at a time; this picks which, among those the host has a root for (218, 233); nothing is written"}
+    configure-organization: {args: [organization, fields], doc: "the manifest as a form: one response per save, validated as `flywheel.yaml` is, one commit on the books' shared line (233)"}
+    sign-out:      {args: [], doc: "ends the page's session with the sign-in kind; absent on a page served with no sign-in (233)"}
     remove-organization: {args: [organization], doc: "the organization's removal by response (221): sessions ended, places removed, state archived, git repositories left on disk"}
     add-package:   {args: [package, scope, host, config, secrets], doc: "the setup surface's add flow: the index entry, the configuration collected against the package's schema, the names of its secrets, all in one call; writes the package in added, whose install decision is the one thing that enters the count (228, 229)"}
     configure-package: {args: [package, fields], doc: "change an installed package's configuration; one response (229)"}
@@ -97,6 +99,17 @@ host_agent:
   none: "a control — a button, a board move, a checklist tick, a plannotator annotation — is already one tool call; nothing is interpreted"
 organizations:
   doc: "the page serves one organization at a time and switches with `switch-organization` (218); each organization has its own sinks and presenters, its own register and its own state; nothing on a surface names two"
+account:
+  doc: |
+    The page carries one account item (233): who the operator is and how
+    they signed in; the organization shown, with a switch to any other the
+    host has a root for (218); and from it the organization's settings —
+    its manifest as a form, one response per save (`configure-organization`)
+    — its hosts with their parts (229), the organization's store apart from
+    any host's (228, the setup surface's organization column), and sign-out.
+  local: "a page served on the operator's own computer with no sign-in kind named shows the local user (the process's user name) and needs no account; sign-out is absent"
+  served: "a page served by a host behind a sign-in kind the manifest names (host.yaml sign_in; 207, 217j) shows the identity the kind vouched for, and every response the page records carries it as given_by (153); sign-out ends the page's session with the kind and records nothing"
+  stores: "the organization's store (its packages under the books' prefix) and a host's store (its per-host packages) are separate surfaces, reached from the account item and from the host respectively; neither lists the other's"
 artifact_views:
   doc: |
     Every object opens the OpenSpec artifacts behind it, in a view fit to

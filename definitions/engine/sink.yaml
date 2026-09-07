@@ -13,7 +13,7 @@ kind: engine
 tier: core
 object: sink
 parent: null
-satisfies: [2, 8, 14, 18, 68, 82, 148, 152, 155, 216, 217, 218]
+satisfies: [2, 8, 14, 18, 68, 82, 148, 152, 155, 216, 217, 218, 233]
 record:
   kind: enum                    # chat | page | bell
   surface: string               # the chat channel, the page route, or the named multiplexer surface

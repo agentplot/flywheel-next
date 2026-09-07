@@ -8,7 +8,7 @@ kind: engine
 tier: core
 object: lease
 parent: null
-satisfies: [128, 134, 147, 149, 150]
+satisfies: [128, 134, 147, 149, 150, 232]
 record:
   holder: host-id
   taken_at: time
