@@ -126,14 +126,18 @@ members:
     other member's page and chat show it as answered, by whom and when
     (153), and the tool server refuses a second response to that number as
     already answered before any response is written. Sinks are per member
-    (236): the page sink and the chat sink exist once per member in
-    `operators:` — the page keyed by the signed-in identity, the chat as a
-    direct message from the bot — each with its own mark, so the tail
-    since the last look, the attention acknowledgements and the
-    notifications are that member's; a shared channel is a sink of its own
-    with one mark, listed in `flywheel.yaml` sinks: with no member. A sink
-    record is created for a member when they are listed in `operators:`
-    and removed with them; the numbers and the count are never per member.
+    (236): the page sink exists once per member in `operators:`, keyed by
+    the signed-in identity, and a chat sink once per member per chat
+    address the entry carries (236a: `discord: <user id>`, `slack:
+    <member id>`), a direct message from that kind's bot, presented by
+    whichever host runs the kind's package and holds the sink's lease —
+    each with its own mark, so the tail since the last look, the attention
+    acknowledgements and the notifications are that member's; a member
+    with no address has a page sink only; a shared channel is a sink of
+    its own with one mark, listed in `flywheel.yaml` sinks: with no member.
+    A member's sink records are created and removed in the same write as
+    their `operators:` entry and its addresses; the numbers and the count
+    are never per member.
   owner: |
     A decision may carry an owner (237): the object's record `owner`, a
     member or a role from `roles:`. Planning's proposal names it per unit

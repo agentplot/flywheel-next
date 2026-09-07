@@ -1,8 +1,10 @@
 # One sink the operator reads: the chat, the page, or the multiplexer's bell
 # on a named surface. Engine machine, one instance per sink the manifest
 # names, per organization — no sink serves two organizations (218) — and per
-# member: each member's page and chat are sinks of their own with their own
-# mark, a shared channel a sink with one mark (236). Its
+# member: each member's page is a sink of their own, and each chat address
+# on their operators entry a chat sink of their own — one per member per
+# address, none without an address — each with its own mark, a shared
+# channel a sink with one mark (236, 236a). Its
 # presenter is the holder of its lease, or the host the manifest pins (148);
 # the dispatcher, a host that takes no work and presents the chat, is that
 # presenter for the chat sink (216, 217).
