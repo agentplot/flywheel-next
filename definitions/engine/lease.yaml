@@ -8,7 +8,7 @@ kind: engine
 tier: core
 object: lease
 parent: null
-satisfies: [128, 134, 147, 149, 150, 232]
+satisfies: [128, 134, 147, 149, 150, 232, 238]
 record:
   holder: host-id
   taken_at: time
@@ -25,7 +25,7 @@ regions:
           - when: {ev: lease.coverable, is: false}
             to: uncovered
       uncovered:
-        doc: no host's declaration covers this object; a decision under attention, not a silent wait (149)
+        doc: no host's declaration covers this object, or every host that declares it cannot satisfy its repository's environment (238); a decision under attention, not a silent wait (149)
         decision: {kind: uncovered, group: attention, answers: [ok], satisfies: [149]}
         transitions:
           - when: {ev: lease.coverable, is: true}

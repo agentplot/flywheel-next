@@ -24,8 +24,12 @@ manifest:
     capabilities are derived from the map elements and contexts that name it as
     home, and the entry's name is what a node's `home` names:
 
-      operators:                                   # authorization is the organization's (233): the identities allowed to respond in it, as the host's sign-in kind names them (a tailnet login, an oauth or oidc subject, or the local user name); a response from any other identity is refused and recorded as refused; edited on the account item's settings form, one response per save
-        - chuck@tail1234.ts.net
+      operators:                                   # authorization is the organization's (233): the identities allowed to respond in it, GitHub usernames by default (234), or as another sign-in kind bound on a host renders them; a response from any other identity is refused and recorded as refused; edited on the account item's settings form, one response per save
+        - cswanberg
+      roles:                                       # named roles a decision may be owned by (237): a role maps to members
+        reviewer: [cswanberg]
+      pools:                                       # host pools (240–242, host.yaml pool:)
+        burst: {platform: fly, image: auto, bound: 4, cost: {per_host_hour: 0.10, ceiling_per_day: 5}, retire_after: 20m, covers: {kinds: [unit, work-item], repositories: [atlas], unit_types: [default, fast]}}
       repositories:
         <name>:                                    # elements and contexts with home: <name> give it its kinds and capabilities (199)
           repo: <org>/<name>

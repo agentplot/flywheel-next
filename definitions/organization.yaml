@@ -14,7 +14,8 @@
 # without the layout is upgraded by a chore, never rewritten (220). Removal is
 # the operator's response: sessions ended, places removed, state archived,
 # git repositories left on disk, numbers never reused (221). Packages of the
-# organization scope are owned here (228).
+# organization scope are owned here (228), and so is a pool: a pool serves
+# one organization and shares nothing with another but the platform (241).
 machine: organization
 version: 2
 kind: object
@@ -22,8 +23,8 @@ tier: core
 object: organization
 parent: null
 singleton: organization
-owns: [repository, package]
-satisfies: [15, 204, 207, 208, 218, 219, 220, 221]
+owns: [repository, package, pool]
+satisfies: [15, 204, 207, 208, 218, 219, 220, 221, 241]
 record:
   name: string           # the operator's name for it; may but need not coincide with a git-host organization (219)
   blueprints: string          # <org>/<blueprints repository>

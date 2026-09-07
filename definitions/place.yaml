@@ -8,13 +8,14 @@ machine: place
 version: 2
 kind: template
 tier: core
-satisfies: [4, 42, 45, 46, 51, 52, 55]
+satisfies: [4, 42, 45, 46, 51, 52, 55, 238, 240]
 params:
   line: the line it is off
   inputs: the closed set of session inputs to write into it
   keep: kept as long as its session (standing) or merged and removed on done
 record:
   head: revision
+  environment: string      # the environment version prepare_place activated here: the declaration's hash and the provider (238)
   conflict_retries: int
   endpoints: list          # what the processes tethered to the place serve; shown on the page beside the bolt (46)
   held_at: time            # set by the operator's dictation; the place is not removed while held (55)
@@ -36,7 +37,7 @@ regions:
             to: preparing
             effects: [{do: prepare_place, args: {line: $line, agent_inputs: $inputs}}]
       ready:
-        doc: current with its line and holding no working session; the endpoints its processes serve are recorded with it (46)
+        doc: current with its line and holding no working session, its repository's environment active (238); the endpoints its processes serve are recorded with it (46); a place on a pool host that retires is re-made from its line on another host by the same path (240)
         transitions:
           - when: {not: {ev: place.contains_line, is: true}}
             to: behind

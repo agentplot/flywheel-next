@@ -23,6 +23,7 @@ record:
   depends_on: list       # other units of the same bolt
   claims: list           # claim@version the work serves
   estimate: int          # the proposal's size estimate in slot-days, one session slot for one day (172)
+  owner: string          # the member or role the unit's decisions belong to — from the proposal, the type, or an assign response (237); none is everyone's
   actual: int            # the slot-days its sessions occupied, summed from the session records at landing and written on the as-built by write_acceptance (172)
   batch: string          # chores share the bolt id, so they fold into one decision
   proposal: proposal-id  # the proposal that names it, when planning delivered it (172); none for a finding or a chore offer

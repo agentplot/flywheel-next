@@ -3,16 +3,23 @@
 # stored; this machine keeps only the decision register — a short number per
 # decision, unique in the organization, given once and never reused (15) —
 # and writes the status projection. Delivery to a sink is the sink machine's.
+# One board per organization (235): every member reads this one register, so
+# the numbers and the count are the same for all; a retracted entry keeps the
+# response that answered it, so a second response is refused as already
+# answered and every member sees by whom and when. A decision may carry an
+# owner — a member or a role — on its object's record (237): planning's
+# proposal or the type sets it, or the assign response here; it filters a
+# member's rail and chat and changes nothing else.
 machine: plan
-version: 2
+version: 3
 kind: engine
 tier: core
 object: plan
 singleton: organization
-satisfies: [7, 8, 9, 11, 15, 83, 86, 148, 213, 214]
+satisfies: [7, 8, 9, 11, 15, 83, 86, 148, 213, 214, 235, 237]
 record:
   next_number: int              # the counter; it only grows
-  register: list                # {decision id, number, since}; a decision id is <object>/<kind>/<entered_at>
+  register: list                # {decision id, number, since, answered_by, answered_at}; a decision id is <object>/<kind>/<entered_at>; answered fields from the response that retracted it (235)
   status_as_of: time
 regions:
   register:
@@ -23,6 +30,9 @@ regions:
         transitions:
           - when: {ev: plan.unnumbered, is: true}
             to: numbering
+          - when: {response: "assign <owner>"}
+            to: current
+            effects: [{do: assign_owner, args: {owner: $response}, note: "a member's response naming a decision number and a member or role (237); the owner lands on the object's record"}]
       numbering:
         entry:
           - {do: number_decisions, note: "each decision standing without a number takes the next number; one atomic write of the register and the counter; a re-entered decision state is a new decision and takes a new number"}

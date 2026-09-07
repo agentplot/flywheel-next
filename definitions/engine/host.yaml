@@ -29,13 +29,15 @@ kind: engine
 tier: core
 object: host
 parent: null
-satisfies: [4, 32, 55, 96, 147, 149, 150, 151, 186, 196, 205, 215, 217, 222, 230, 231, 232]
+satisfies: [4, 32, 55, 96, 147, 149, 150, 151, 186, 196, 205, 215, 217, 222, 230, 231, 232, 238, 240]
 record:
   bound: int            # sessions this host may run at once (a setting of the host)
   last_seen: time       # its heartbeat
   declares: string      # the manifest declaration: kinds, repositories, unit types, sinks it presents, sources it triages, callers of its endpoint, runners (217)
   platform: string      # the platform picked when the host was added, or none for the first host (230)
   parts: list           # the packages chosen for it at enrolment (229, 230)
+  pool: string          # the pool that provisioned it, or none (240); a pool host is ephemeral and holds no place past its life
+  provider: string      # the environment provider bound on this host — devenv, devcontainer, nix, image (238)
 regions:
   enrolment:
     doc: how the host came to exist (230); an existing host — the first, registered by init — starts enrolled; the add-host tool writes a new host's record in proposed, after provisioning it with the operator's own credentials
@@ -76,6 +78,20 @@ regions:
         doc: joined; the disk region takes it from here (205)
       dropped:
         final: true
+  environment:
+    doc: whether the host's provider satisfies the environment every repository it declares needs (238); while it does not, the host covers none of that work (lease.coverable reads it) and says so under attention
+    initial: satisfied
+    states:
+      satisfied:
+        transitions:
+          - when: {ev: host.environment_satisfied, is: false}
+            to: unsatisfied
+      unsatisfied:
+        decision: {kind: host-environment, group: attention, answers: [retry], shows: [host.environment_difference], satisfies: [82, 149, 238]}
+        entry: [{do: report, args: {text: the host cannot satisfy a repository's environment}}]
+        transitions:
+          - when: {any: [{ev: host.environment_satisfied, is: true}, {response: retry}]}
+            to: satisfied
   disk:
     doc: the host's root on disk, beside its life; `flywheel host join` writes the record and this region clones and checks before the host takes any lease (205); lease.coverable reads it; every tick re-reads the root, so a repository or checkout that goes missing, moves or is changed by hand is found and offered its repair (222)
     initial: unchecked

@@ -61,7 +61,9 @@ tools:
     add-repository: {args: [name, repo, elements], doc: "the create-repository or adopt-repository proposal by another name: a repository joins when the target map first homes something in it (202, 206, 211)"}
     switch-organization: {args: [organization], doc: "the page shows one organization at a time; this picks which, among those the host has a root for (218, 233); nothing is written"}
     configure-organization: {args: [organization, fields], doc: "the manifest as a form: one response per save, validated as `flywheel.yaml` is, one commit on the blueprints' shared line (233)"}
-    sign-out:      {args: [], doc: "ends the page's session with the sign-in kind; absent on a page served with no sign-in (233)"}
+    sign-out:      {args: [], doc: "ends the page's session with the sign-in kind (233)"}
+    assign:        {args: [decision, owner], doc: "set a decision's owner to a member or a role the manifest names; the plan machine applies it and nothing about the decision changes but who it is filtered to (237)"}
+    filter:        {args: [sink, filter], doc: "own | all: whether the member's own sink delivers only the decisions they own (237); nothing is written but the sink record"}
     remove-organization: {args: [organization], doc: "the organization's removal by response (221): sessions ended, places removed, state archived, git repositories left on disk"}
     add-package:   {args: [package, scope, host, config, secrets], doc: "the setup surface's add flow: the index entry, the configuration collected against the package's schema, the names of its secrets, all in one call; writes the package in added, whose install decision is the one thing that enters the count (228, 229)"}
     configure-package: {args: [package, fields], doc: "change an installed package's configuration; one response (229)"}
@@ -111,10 +113,38 @@ account:
     host's and authorization the organization's: the identity is the host's
     sign-in kind's and does not change when the organization is switched;
     whether it may respond is the organization's `operators:`.
-  local: "a page served on the operator's own computer with no sign-in kind declared on the host shows the local user (the process's user name) and needs no account; sign-out is absent; the local user must still be in the organization's `operators:` to respond, and the blueprints template lists the initializing user there"
+  local: "a page served on the operator's own computer signs in like any other, through the host's sign-in kind — GitHub by default, by the device flow (host.yaml sign_in, 234) — so the identity is the GitHub username there too; the blueprints template lists the initializing user's GitHub username in `operators:`, so a fresh organization is not locked out"
   served: "a page served by a host behind a sign-in kind declared on the host (host.yaml sign_in; 217j) shows the identity the kind vouched for, the same for every organization the host serves, and every response the page records carries it as given_by (153); sign-out ends the page's session with the kind and records nothing"
   switcher: "lists every organization the host has a root for; one whose `operators:` does not list the signed-in identity is shown as not a member — its name and nothing else — and switching to it shows the status view read-only with every control absent"
-  settings_form: "the manifest as a form: organization name, profile, blueprints and state repositories, repositories with their git details, hosts, sinks, curation, `operators:` as a list of identities; one save is one `configure-organization` response, validated as `flywheel.yaml` is; a save that would remove the saving identity from `operators:` is refused"
+  settings_form: "the manifest as a form: organization name, profile, blueprints and state repositories, repositories with their git details, hosts, pools with bound, cost and retire time (240), sinks, curation, `operators:` as a list of identities, `roles:` as lists of members (237); one save is one `configure-organization` response, validated as `flywheel.yaml` is; a save that would remove the saving identity from `operators:` is refused"
+members:
+  doc: |
+    One board per organization (235): every member reads the one plan from
+    the one register — the same numbers, the same count. A decision
+    answered by one member is applied once (7); the register keeps the
+    retracted entry with the response's given_by and given_at, so every
+    other member's page and chat show it as answered, by whom and when
+    (153), and the tool server refuses a second response to that number as
+    already answered before any response is written. Sinks are per member
+    (236): the page sink and the chat sink exist once per member in
+    `operators:` — the page keyed by the signed-in identity, the chat as a
+    direct message from the bot — each with its own mark, so the tail
+    since the last look, the attention acknowledgements and the
+    notifications are that member's; a shared channel is a sink of its own
+    with one mark, listed in `flywheel.yaml` sinks: with no member. A sink
+    record is created for a member when they are listed in `operators:`
+    and removed with them; the numbers and the count are never per member.
+  owner: |
+    A decision may carry an owner (237): the object's record `owner`, a
+    member or a role from `roles:`. Planning's proposal names it per unit
+    when it can, a unit or elaboration type may name a role for its
+    decisions, and `assign <owner>` on the decision's number sets it (the
+    plan machine's transition). An unowned decision is everyone's. A
+    member's page rail and chat filter to their own with `filter own`,
+    the count staying the organization's; ownership changes nothing about
+    what a decision is, whether it counts, or who may answer it.
+hosts_surface:
+  doc: "the hosts surface (229, 230) also shows each pool — its platform, bound, live hosts and image, and whether the image is behind the declarations (239) — with pool hosts listed under it (240); a host's environment provider and the host-environment decision when it cannot satisfy a repository (238); adding a pool host is never the operator's, retiring never asked"
   stores: "the organization's store (its packages under the blueprints' prefix) and a host's store (its per-host packages) are separate surfaces, reached from the account item and from the host respectively; neither lists the other's"
 artifact_views:
   doc: |
@@ -137,7 +167,7 @@ instrument:
     only thing the operator plays for. Every number below is derived from
     list and read at the as-of point and nothing is stored.
   runway: "days = the sum of estimates (172) over units approved, waiting or in flight, less the slot-days their sessions have already occupied, divided by the drain"
-  drain: "slot-days per day = the sum of alive hosts' bounds (host.bound over hosts alive), multiplied by the calibration — the ratio of actual to estimate over the landed units of the repository and type, from the acceptance files, 1 when none has landed yet; no constant"
+  drain: "slot-days per day = the sum of alive hosts' bounds (host.bound over hosts alive, pool hosts included), multiplied by the calibration — the ratio of actual to estimate over the landed units of the repository and type, from the acceptance files, 1 when none has landed yet; no constant. A pool host added or retired (242) moves it, and the instrument shows the change as drain changing, with the pool's live count beside it"
   feed: "what would add runway and waits on the operator: proposals in proposed, elaborations in proposed, intents in proposed, with their numbers"
   pressure: "the units approved and waiting for a slot against the sum of alive hosts' bounds; the construction backpressure stage"
   stages: "inception — the feed, what waits on the operator; construction — the queue against the bound; shown as two stages, one number each"

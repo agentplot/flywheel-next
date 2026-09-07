@@ -1,0 +1,77 @@
+# A host pool (240): a platform that provisions hosts on demand from the
+# organization's image (239), up to a bound, each joining by an enrolment
+# token the machinery issues (230), covering what the pool declares, and
+# retiring when idle for a stated time. A pool host is ephemeral: it holds no
+# place past its life, and a place it held is re-made from its line on another
+# host (52). A pool serves one organization (241). The machinery adds hosts
+# while approved work waits behind the bound and the instrument reads drain is
+# the limit (214), within the pool's bound and the cost setting the manifest
+# names, and retires them as the queue drains; every change is an effect with
+# a proof and shows on the instrument as drain changing (242). The hosts
+# surface shows the pool, its bound, its live hosts and its image; the
+# operator never needs to see a pool host.
+machine: pool
+version: 1
+kind: object
+tier: core
+object: pool
+parent: organization
+satisfies: [204, 230, 239, 240, 241, 242]
+record:
+  name: string
+  platform: string       # the platform that provisions hosts (240)
+  image: string          # the image tag hosts are created from, the declarations' hash (239)
+  bound: int             # the most hosts at once (240)
+  cost: string           # the cost setting the manifest names (242)
+  retire_after: string   # idle time before a host retires (240)
+  covers: string         # the declaration every pool host takes: kinds, repositories, unit types (149)
+regions:
+  image:
+    doc: the image the pool provisions from, built from the environment declarations of every repository the pool covers (239); behind when a declaration moved since the build, visible on the hosts surface; rebuilt by a chore
+    initial: current
+    states:
+      current:
+        transitions:
+          - when: {ev: pool.image_current, is: false}
+            to: behind
+      behind:
+        doc: the declarations moved; the pool provisions no new host until the image is rebuilt, and the surface says so (239)
+        transitions:
+          - when: {ev: pool.image_current, is: true}
+            to: current
+          - when: {response: rebuild}
+            to: building
+            note: the chore that rebuilds the image is accepted like any chore (123); its session runs the build effect through the command
+      building:
+        transitions:
+          - when: {ev: pool.image_current, is: true}
+            to: current
+          - when: {always: true}
+            to: building
+            effects: [{do: build_image, note: "repeatable: the same declarations yield the same tag and nothing is rebuilt (204, 239)"}]
+  hosts:
+    doc: hosts added while demand holds, within bound and cost, and retired when idle (242); each host is a host object of its own with pool = this pool, joined by an enrolment token (230)
+    initial: steady
+    states:
+      steady:
+        transitions:
+          - when: {all: [{ev: pool.demand, is: true}, {ev: pool.live, lt_ev: pool.bound}, {ev: pool.cost_allows, is: true}, {region: {name: image, in: [current]}}]}
+            to: adding
+          - when: {ev: pool.idle_host, is: true}
+            to: retiring
+      adding:
+        doc: one host asked of the platform from the image, with a token; it joins by the token and covers what the pool declares (230, 240)
+        transitions:
+          - when: {ev: pool.host_added, is: true}
+            to: steady
+          - when: {always: true}
+            to: adding
+            effects: [{do: provision_pool_host, note: "one effect per host, recorded with the demand it answered; drain moves when the host is alive (242)"}]
+      retiring:
+        doc: the idle host's leases released and places removed, then the platform ends it; a place it held is re-made from its line elsewhere (52, 240)
+        transitions:
+          - when: {ev: pool.host_retired, is: true}
+            to: steady
+          - when: {always: true}
+            to: retiring
+            effects: [{do: retire_pool_host}]

@@ -27,6 +27,7 @@ runners:
 kinds:
   doc: "the command each kind of agent is started with, the agent name and the work order path substituted (173); a stage names a kind per agent entry, default claude; the operator adds a kind by adding a line here, or as a runner package (228)"
   claude:   "claude --agent <agent> --model <model> -- <work order path>"
+  environment: "every kind is started inside the place's activated environment (238): the command runs through the provider's shell (`devenv shell -- <cmd>`, `nix develop -c <cmd>`, the devcontainer's exec, or plainly on an image host), so the tools the repository declares are on the session's path at their versions"
   codex:    "codex --profile <agent> --model <model> <work order path>"
   opencode: "opencode --agent <agent> --model <model> --prompt <work order path>"
 models:

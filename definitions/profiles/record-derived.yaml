@@ -36,6 +36,7 @@ evidence:
   response.answer: {read: "the op-response record's answer and args"}
   plan.unnumbered: {read: "a decision derived this tick (object, kind, entered_at) has no register entry"}
   plan.numbered:  {read: "every decision derived this tick has a register entry"}
+  host.environment_satisfied: {read: "as the host binding reads it; true for a host whose declaration covers no repository"}
   plan.status_current: {read: "the status projection's as-of equals the newest seq across list(all)"}
   report.recorded: {read: "the run record holds an entry with this effect id"}
   session.exit_recorded: {read: "get(session).exit is set and equals the newest exit entry's kind, with expected and delivered beside it"}
@@ -112,7 +113,7 @@ effects:
   create_items:    {do: "put(one work-item, waiting) per task in the document, ordinal by unit approval then position, depends_on from the document; put(unit): type_version = the type file's version now, approval = the response or dictation id, or the proposal's applied response when the unit came from one (172)"}
   record_service_endpoint: {do: "put(service): endpoint = service.endpoint; the page renders it as a link beside the bolt, with the service's state and its start/stop controls"}
   record_citation_choice: {do: "put(bolt or unit): citation_choices += {claim, version, choice}; choice amend also sets needs_amend on the citing units; choice keep pins the unit's cited version"}
-  number_decisions: {do: "put(plan): for each unnumbered decision, register += {decision id, number = next_number, since = now}, next_number += 1; entries whose decision is retracted are pruned 30 days after retraction; the counter never goes back"}
+  number_decisions: {do: "put(plan): for each unnumbered decision, register += {decision id, number = next_number, since = now}, next_number += 1; an entry whose decision is retracted gains answered_by and answered_at from the response that retracted it, or none when it was retracted by the machinery (235), and is pruned 30 days after retraction; the counter never goes back"}
   render_status:   {do: "write the status projection (section 4 of model.md) from list and get, with the as-of point"}
   report:          {do: "an entry in the run record with the effect id, the text, the evidence; attention lines read it"}
   expire_leases:   {do: "remove every lease record naming the host"}
