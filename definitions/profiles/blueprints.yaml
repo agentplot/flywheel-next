@@ -31,7 +31,8 @@ manifest:
           slack: U0123ABCD
       # roles: are not authored: on a hosted tier they are the roles the token
       # carries (248); a self-managed host has none — every operator holds
-      # every permission.
+      # every permission. A role authorizes and never owns: a decision's
+      # owner is one identity from `operators:` above, or none (237).
       pools:                                       # host pools (240–242, host.yaml pool:)
         burst: {platform: fly, image: auto, bound: 4, cost: {per_host_hour: 0.10, ceiling_per_day: 5}, retire_after: 20m, covers: {kinds: [unit, work-item], repositories: [atlas], unit_types: [default, fast]}}
       repositories:

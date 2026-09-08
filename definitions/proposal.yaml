@@ -20,7 +20,7 @@ record:
   bolts: list            # the bolts it proposes: open ids, or new names
   units: list            # the unit ids it names, in in-proposal
   redo_notes: string
-  owner: string          # the member or role planning's proposal names for its decision, or assigned (237); none is everyone's
+  owner: string          # the one member planning's proposal names for its decision, or assigned (237); never a role; none is everyone's
 regions:
   life:
     initial: proposed

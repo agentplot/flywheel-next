@@ -74,7 +74,7 @@ accounts:
     account whose creating user holds `owner`, so a fresh organization is
     never locked out (253).
   operators: "derived, never authored on a hosted tier: the account's assigned users, read at every fetch and rendered read-only on the settings form; adding or removing a member is an act on the account through the identity tools (255), never a commit. What stays authored is each member's chat addresses (236a) on their `operators:` entry, keyed by identity (blueprints.yaml manifest)"
-  roles: "held per account and carried in the JWT (248); the manifest's `roles:` is derived from the definitions below, not authored; a decision's owner names a member or a role (237)"
+  roles: "held per account and carried in the JWT (248); the manifest's `roles:` is derived from the definitions below, not authored. A role authorizes and never owns: a decision's owner is one member of the organization or nobody, and a role is not an owner (237)"
 permissions:
   doc: |
     Read from the token by the tool server (249): before any op-response is

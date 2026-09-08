@@ -27,7 +27,7 @@ record:
   sources: list          # the findings, signals or dictation that proposed it
   document: ref          # the proposal the operator reads
   covers: list           # the intent ids this elaboration covers, the parent first; more than one when gathered (188) or dictated over several (189)
-  owner: string          # the member or role its decisions belong to — from the type or an assign response (237); none is everyone's
+  owner: string          # the one member its decisions belong to — from the type or an assign response (237); never a role; none is everyone's
 regions:
   life:
     initial: proposed

@@ -7,7 +7,7 @@
 # the numbers and the count are the same for all; a retracted entry keeps the
 # response that answered it, so a second response is refused as already
 # answered and every member sees by whom and when. A decision may carry an
-# owner — a member or a role — on its object's record (237): planning's
+# owner — one member, never a role — on its object's record (237): planning's
 # proposal or the type sets it, or the assign response here; it filters a
 # member's rail and chat and changes nothing else. A role is one the token
 # carries on a hosted tier (248); a flag hides a surface and never a decision
@@ -37,7 +37,7 @@ regions:
             to: numbering
           - when: {response: "assign <owner>"}
             to: current
-            effects: [{do: assign_owner, args: {owner: $response}, note: "a member's response naming a decision number and a member or role (237); the owner lands on the object's record"}]
+            effects: [{do: assign_owner, args: {owner: $response}, note: "a member's response naming a decision number and one member of the organization (237); the owner lands on the object's record, and a role is never an owner"}]
       numbering:
         entry:
           - {do: number_decisions, note: "each decision standing without a number takes the next number; one atomic write of the register and the counter; a re-entered decision state is a new decision and takes a new number"}

@@ -15,6 +15,10 @@
 # the dispatcher, a host that takes no work and presents the chat, is that
 # presenter for the chat sink (216, 217).
 # The delivery mark is the one recorded piece of state behind the tail (14).
+# On a hosted tier the page sink's delivery writes one small page projection
+# per organization — the status view and the rail as data, with each member's
+# page sink and its mark — to an object under the organization's key; a page
+# request decrypts that one object and never the warm cache (291).
 # Notifications are deliveries: the manifest routes decision kinds to sinks,
 # and a construction host is no sink unless the manifest names it (82).
 # On the hosted tiers the chat sink's identity may be the service's own Slack
@@ -31,7 +35,7 @@ satisfies: [2, 8, 14, 18, 68, 82, 148, 152, 155, 216, 217, 218, 233, 236, 243, 2
 record:
   kind: enum                    # chat | page | bell
   member: string                # the member this sink belongs to, or none for a shared channel or surface (236)
-  filter: string                # own | all: whether the member's delivery is filtered to the decisions they own (237)
+  filter: string                # own | all: whether the member's delivery is filtered to the decisions they own, an owner being one member and never a role (237)
   surface: string               # the chat channel, the page route, or the named multiplexer surface
   routes: list                  # the decision kinds delivered here, from the manifest
   cadence: string
