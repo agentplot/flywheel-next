@@ -1,8 +1,8 @@
 ## Why
 
-The flywheel is specified whole — requirement clauses numbered to 305 with A.38
-beyond them, a statechart model of every machine, five phases — and none of it
-runs against real work. What exists in this repository is a prototype: the
+The flywheel is specified whole — requirement clauses numbered to 314, a
+statechart model of every machine, five phases — and none of it runs against
+real work. What exists in this repository is a prototype: the
 engine, the register, the tail and every effect the machines ask for are real,
 and sessions, git and hosts are faked (README.md). Nothing in it is durable in
 133's sense — the store is one file on the laptop, `state/store.json`, which no
@@ -27,7 +27,12 @@ The four phases after it, for context, because nothing here may foreclose them:
 | 2 | construction | units and bolts landing on willdan repositories — spec, build, review, merge, landing by pull request; the tracker profile (C.1) joining for willdan's board; sessions charged by the machinery on the pane runner; the flywheel instrument | A.17–A.21, A.27 (types) |
 | 3 | context | the context map, the books, the claims, the ledger, the OpenSpec artifact views in the dock, packages and the package store, scenario packs | A.14, A.21, A.26–A.28 |
 | 4 | dispatch | dispatch as a host with its four jobs, the receiver, the interpreter in the page's browser and in-process, triage placements, several organizations on one host, users and ownership, environments | A.25, A.26, A.29, A.30 |
-| 5 | scale | the hosted tiers: identity, the per-tier dispatcher, queues, cache, scheduler, pools, tenancy and encryption, plans and presets, the management console, the MCP endpoint, and the control plane the binary is invoked by | A.31–A.37 |
+| 5 | scale | the hosted tiers: identity, the per-tier dispatcher, queues, cache, scheduler, pools, tenancy and encryption, plans and presets, the management console, the MCP endpoint | A.31–A.36 |
+
+A.37 is the control plane, which belongs to flywheel-cloud and not to this
+repository (roadmap, Repositories). The binary's own part of it is the
+invocation contract as a public document in the open-source repository (297);
+the roadmap schedules it in no phase.
 
 **A note on two words.** Part B is the **state store**: durable, shared storage
 and the operator's surfaces, reached through a fixed set of operations with
@@ -67,11 +72,12 @@ phase is named.
   every minute for months add nothing to `main` (`profiles/git-only.yaml`
   `layout.leases`, `layout.hosts`; model.md §4.2).
 - **The definitions rule.** The shipped machines and profiles are inside the
-  binary and versioned with the set (208, 83), and an organization's own types
-  and packages are read from the blueprints repository at the shared line, so a
-  type composed of existing atoms is added with no code change and no host is
-  rebuilt for one (57, 85, 228). The engine evaluates predicates over evidence,
-  chooses transitions, runs effects idempotently and derives the plan's
+  binary as core machines, never edited by an organization, each carrying its
+  version and named by the release's set version (223, 224, 83; model.md §13);
+  an organization's own types and packages are read from the blueprints
+  repository at the shared line, so a type composed of existing atoms is added
+  with no code change and no host is rebuilt for one (57, 85, 228). The engine
+  evaluates predicates over evidence, chooses transitions, runs effects idempotently and derives the plan's
   decisions, and holds no name of any object it drives (86, 87). Every evidence
   and effect name is abstract in the definition and bound by the profile
   (138–140, I13).
@@ -95,12 +101,16 @@ phase is named.
 - **Captures land.** Adapters append captures unattended — one keyed capture per
   source event with its provenance and a pointer to raw material that stays
   outside every repository (111, 215) — and capture costs one gesture from
-  wherever the operator is (112). Phase 1 ships two: the page's capture box,
-  which writes a capture with one signal of kind ask so curation sees it, with
-  marking it an intent a control and never a word parsed out of the text (19,
-  194), and the chat forward, one response producing one capture and one signal
-  with a link back (112, 215, S21). The folder drop, the meeting transcript, the
-  log or monitor webhook follow with their sources. Signals are immutable, carry
+  wherever the operator is (112). Phase 1 ships three, all of them enumerator-only
+  arithmetic that starts no session (115): the page's capture box, which writes
+  a capture with one signal of kind ask so curation sees it, with marking it an
+  intent a control and never a word parsed out of the text (19, 194); the chat
+  forward, one response producing one capture and one signal with a link back
+  (112, 215, S21); and the meeting transcript, one keyed capture per file, so a
+  transcript imported twice yields one capture (111, 215, S22). Their judgment
+  half — turning a capture into signals — is curation's and never runs
+  unattended (115). The folder drop and the log or monitor webhook follow with
+  their sources. Signals are immutable, carry
   their kind, asserter, subject, assertion and verbatim excerpt (113), and each
   takes exactly one standing move with a stated consequence (107, 116). The
   signal and move formats are versioned and stable, so captures made before the
@@ -200,8 +210,15 @@ phase is named.
 - **The organization and its host are objects.** `flywheel init` drives the
   organization machine, whose bootstrap states 204 names as absent, blueprints
   ready, state ready, connected and hosted, and whose loaded definition adds
-  `awaiting-app` — the attention decision that stands while the installation is
-  unseen and is never done by an agent (204, 82). It creates or adopts the
+  three more: `awaiting-app`, the attention decision that stands while the
+  installation is unseen and is never done by an agent (204, 82), and
+  `removing` and `removed`, which the dictation `remove <organization>` enters
+  (4, 221). The machine ticks unchanged, so that dictation is in the tool
+  catalogue from day one (193); phase 1 honours it — ending sessions, removing
+  places, archiving the state and leaving the git repositories on disk, with
+  the numbers never reused (221, 15) — because refusing a transition the loaded
+  machine offers would be the machinery deciding what the operator may undo
+  (4). It creates or adopts the
   blueprints repository from its template, creates the state repository with the
   profile's layout (204, C.2), records that the GitHub App must be installed as a
   secret the operator places, and registers the first host, which is what carries
@@ -259,7 +276,7 @@ Every section of the roadmap's phase-1 row, and where it stands:
 | A.2 the plan (7–19) | real |
 | A.3 intents and curation (20–22) | real; the design book of 23 is phase 3 |
 | A.4 elaborations and their types (24–27) | real |
-| A.5 planning and construction (28–57) | the machines load and their decision kinds derive; nothing runs — phase 2 |
+| A.5 planning and construction (28–57) | the machines tick, unit types included, with the effects of 42 as store facts; the host binding of those effects and the pane runner are phase 2 |
 | A.6 findings and chores (58, 62) | real; chores as units of the chore type (59–61, 63, 64) are phase 2 |
 | A.7 sessions (65–67, 69, 71–74) | real, with the runner a stand-in; 68 (never opening a pane) and 70's living session need the pane runner, and 197 (the tool server refusing a call whose identity is not the pane's) needs panes — phase 2 |
 | A.8 state and evidence (75–78) | real |
@@ -295,10 +312,17 @@ What that leaves faked:
   that changes what a branch or a working place is — creating a line, preparing
   or removing a place, merging into the bolt, landing (42, 49–55) — stays a fact
   in the store until phase 2.
-- **Construction itself.** No bolt, unit, work item, stage or unit type runs.
-  Planning (28), the unit proposal document (36, 17), the type catalogue (37,
-  57), pull-request landing (53, A.18) and the flywheel instrument (214) are
-  phase 2.
+- **Construction reaching a repository.** One rule covers every machine phase 1
+  does not fully bind: every shipped machine ticks, unit types among them (37,
+  223), and the effects of 42 — creating a line, preparing or removing a place,
+  merging into the bolt, landing — are bound to the stand-in world as facts in
+  the store, exactly as the prototype binds them (README.md, 93). So a bolt, a
+  unit, a work item and a stage do move through their states in phase 1, and
+  nothing they do reaches a repository. What phase 2 adds is the host binding of
+  those effects, to `wt` and git, and the pane runner behind the sessions. Under
+  that rule planning (28), the unit proposal document (36, 17) and pull-request
+  landing (53, A.18) still wait on the runner, and the flywheel instrument (214)
+  on the acceptance files a landing writes.
 - **Two adapters of 215 never run on this profile.** The pull-request
   conversation and the issue tracker read the git host's issues and reviews, and
   C.2 forbids the machinery reading them; they belong to the tracker profile in
@@ -331,7 +355,7 @@ before the domain loads — first against the stand-in store, then against a loc
 bare state repository with no network. This is the set that admits the git-only
 profile, and it is the heart of the gate.
 
-**`scenarios/` — eighteen in phase 1.**
+**`scenarios/` — twenty-one in phase 1.**
 
 | scenario | path | what it proves here |
 |---|---|---|
@@ -342,7 +366,7 @@ profile, and it is the heart of the gate.
 | S06 a slow start | both | slow is not failed; it starts once (72, 73) |
 | S07 the intent's close | both | the close decision and its one response; the line's archive is a store fact until phase 2 (22, 13) |
 | S08 twenty signals curated | both | every signal has exactly one move; two decisions, not twenty (107, 109, 116) |
-| S13 two hosts, one loses power | git-only, two host processes | stale is shown, the other does not touch it, takeover by rule, never twice (150, 150a, I11) |
+| S13 two hosts, one loses power | both, two host processes | stale is shown, the other does not touch it, takeover by rule, never twice (150, 150a, I11) |
 | S16 a scenario as data | stand-in | it runs and renders as a trace; the dictation-into-data half waits for the interpreter (94, 95, phase 4) |
 | S17 two hosts race for one object | git-only, two host processes | exactly one takes it; the loser reads again (134, 162, I15) |
 | S18 a host's network drops for an hour | git-only, two host processes | it finishes what it owned, commits locally, reconciles (151, 165) |
@@ -352,7 +376,10 @@ profile, and it is the heart of the gate.
 | S22 the same transcript twice | both | one capture, its signals read once (111) |
 | S23 a proposed intent dropped | both | it is not re-proposed; each signal's move names the drop (117) |
 | S24 a dropped signal revived | both | the move is replaced and the next run clusters it (107) |
+| S29 three items, a bound of two | both | the third waits, starts when a slot frees, nothing twice across a restart (31, 32) |
 | X01 the operator's own session | both | no decision is ever raised about it; it ends by dictation (69) |
+| X05 a unit of a type no host declares | both | an attention decision, not a silent wait; a host takes it when the manifest covers it (149, 150) |
+| X08 an in-flight unit dropped by dictation | both | its sessions retired and places released; a dictation asserting work done is refused and reported; a pane killed by hand is a session gone (4, 12, 66, 74) |
 
 The two host processes of S13, S17 and S18 cost nothing: the stand-in's `hosts`
 binding already starts a second `flywheel host` as its own process on one
@@ -363,18 +390,21 @@ return it (`profiles/sessions-stand-in.yaml`).
 
 | scenarios | waits for |
 |---|---|
-| S03, S28, S29, S30, S31, X05, X08 | units and work items — phase 2 |
-| S12, S14, S15, S26, S32, S33, S34, X03, X06, X09 | real places, lines, merges, landings, unit types or panes — phase 2 |
+| S03, S28, S30, S31 | a session that reads a document, answers a question or reports work done — the pane runner, phase 2 |
+| S12, S14, S15, S26, S32, S33, S34, X03, X06, X09 | assertions about real merges, rebases, conflicts, landings, panes or operator-added types — phase 2 |
 | X07 | the bell on a named surface needs the multiplexer — phase 2 |
 | T01 | the tracker profile — phase 2 |
 | S09, S10, S11, S25, S27, X02 | claims, the ledger, planning and the map — phase 3 |
 | X04 | the dispatcher as a presenter — phase 4 |
 
-The rules those scenarios also carry are proved in phase 1 by the contract set
-and by the eighteen above: one presenter per sink by the page and chat leases
-(148), the attention decision for an uncovered object (149), the refusal of a
-dictation asserting work done (4), and routing by kind to the page and the chat
-(82).
+Of the four rules those deferred scenarios also carry, two are proved in phase 1
+by scenarios above: the attention decision for an object no declaration covers
+by X05 (149), and the refusal of a dictation asserting work done by X08 (4).
+The other two are built in phase 1 and proved later, because no phase-1
+scenario's `satisfies:` names them: one presenter per sink is the page and chat
+sinks' leases (148), which X04 proves when a dispatcher exists to contend for
+one, and routing by kind reaches the page and the chat in phase 1 (82), which
+X07 proves when the bell's surface exists.
 
 ## Capabilities
 
@@ -493,9 +523,9 @@ Phase 1 is the seed for four more phases, so these hold from day one:
   from `atoms.yaml`, checked by grep (86, I13).
 - **Definitions.** No hand edits. Any clause phase 1 needs that the requirements
   do not have is proposed to `blueprints` first (AGENTS.md).
-- **Naming.** This change is named for the phase it delivers, and phases 2 to 5
-  will be `construction`, `context`, `dispatch` and `scale`, as AGENTS.md and
-  the roadmap's flywheel-next row both say.
+- **Naming.** This change is named for the phase it delivers, as AGENTS.md and
+  the roadmap's flywheel-next row name it; phases 2 to 5 will be
+  `construction`, `context`, `dispatch` and `scale`.
 - **External systems.** One git host, depended on for exactly what section 9
   grants it — one update to a branch at a time, rejection of a stale base, and a
   call to a URL when a branch moves — and for nothing else (160, 162, 166). One
@@ -509,6 +539,6 @@ Phase 1 is the seed for four more phases, so these hold from day one:
 - **Not touched.** The existing flywheel keeps running willdan unmodified until
   phase 2 (96, roadmap).
 - **Gate.** `cargo test`, plus the conformance suite above: all thirteen
-  `contract/` files and the eighteen scenarios, on the stand-in and against a
+  `contract/` files and the twenty-one scenarios, on the stand-in and against a
   local bare state repository with no network, with the responses among them
   also run at 390px (92, 168, 314, AGENTS.md).

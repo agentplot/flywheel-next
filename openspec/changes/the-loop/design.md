@@ -35,12 +35,14 @@ plane** is the service side of A.37 and appears here only where phase 5 does.
 - The page is the phone (306–311) and the tool catalogue is the one write path
   (193, 194).
 - The acceptance in proposal.md — The acceptance runs green: thirteen `contract/`
-  files and eighteen scenarios, on the stand-in and against a local bare state
+  files and twenty-one scenarios, on the stand-in and against a local bare state
   repository (168, 314).
 
 **Non-Goals:**
 
-- Any construction machinery, real place or real line (A.5's 42, 49–55; phase 2).
+- Construction reaching a repository: no real line, place, merge or landing
+  (A.5's 42, 49–55; phase 2). The machines that drive them still tick, with
+  those effects as store facts (D8).
 - A second state-store profile. The tracker is phase 2 and is designed for here
   only by keeping the contract profile-neutral (139, 140, 156–159).
 - Performance work. Correctness first (section 8, non-goals).
@@ -83,8 +85,9 @@ beside `flywheel-store-git` rather than a refactor.
 Two sources, one rule each:
 
 - The machines, profiles, schemas, instructions and skills the flywheel ships
-  are compiled into the binary with `include_dir` and stamped with the set's
-  version, which initialization and creation record (208, 83). This is what
+  are compiled into the binary with `include_dir` as core machines an
+  organization never edits, each carrying its version and named by the release's
+  set version, which initialization and creation record (223, 224, 83, 208). This is what
   makes "same bytes everywhere" checkable (299) and what lets a host prove which
   set it ran.
 - The organization's own unit and elaboration types, and its packages, are read
@@ -195,6 +198,11 @@ memory decides anything (75, I14, 217a).
 | `StateStore` | real (`flywheel-store-git`) | + `flywheel-store-tracker` |
 | `World` — repositories, the manifest, the local router | real | unchanged |
 | `World` — places, lines, merges, landings | store facts | `wt` and git |
+
+One rule follows from that table, and the proposal states it as the phase-1
+scope of construction: every shipped machine ticks, unit types among them (37,
+223), and the effects of 42 are store facts, so a bolt, a unit, a work item and
+a stage move through their states while nothing they do reaches a repository.
 | `Sessions` | the scripted stand-in | herdr panes and Claude Code |
 
 The seam is deliberately *not* at the store, which is where the prototype puts
@@ -227,6 +235,12 @@ Phase 1 builds no stdio or MCP transport: there is no session client to use it,
 and by the proposal's own foreclosure argument a later transport is a transport,
 not a second write path (291, 293). Phase 2 adds it beside the runner that needs
 it.
+
+Because the organization machine ticks unchanged, its `remove` dictation is in
+the catalogue from day one and phase 1 performs it — sessions ended, places
+removed, state archived, git repositories left on disk, numbers never reused
+(4, 221, 15). Refusing a transition the loaded machine offers would be the
+machinery deciding what the operator may undo.
 
 *Alternative considered:* build the MCP shape now to prove the catalogue is
 transport-neutral. Rejected as untested surface area — the in-process caller
@@ -285,13 +299,13 @@ because no rendering of the plan is stored (15). Drift between a projection and
 its source is rewritten from the source on the next tick and reported to the run
 record with both values (77, model.md §3.3).
 
-### D13. Two adapters, both enumerators, and the operator is curation
+### D13. Three adapters, all enumerators, and the operator is curation
 
-Phase 1 ships the page's capture box (19) and the chat forward (112, 215, S21).
-Each writes one keyed capture per source event with its provenance and a pointer
-to raw material that stays outside every repository (111), under the blueprints'
-`flywheel/` prefix (203). Capturing the same source event twice yields one
-capture (111, S22).
+Phase 1 ships the page's capture box (19), the chat forward (112, 215, S21) and
+the meeting transcript (111, 215, S22). Each writes one keyed capture per
+source event with its provenance and a pointer to raw material that stays
+outside every repository (111), under the blueprints' `flywheel/` prefix (203).
+Capturing the same source event twice yields one capture (111, S22).
 
 Turning a capture into signals is a judgment and never runs unattended (115). In
 phase 1 the page's box writes its single ask signal directly, which is not a
@@ -377,7 +391,7 @@ The order below is chosen so each step is provable before the next depends on it
 7. **The surfaces**: the tool catalogue and its HTTP transport (D9), the page
    (D11), the chat sink and the reply grammar, notification routing by kind (82).
 8. **The adapters** (D13) and the signal and move records.
-9. **The eighteen scenarios** (proposal.md — The acceptance), including the two-
+9. **The twenty-one scenarios** (proposal.md — The acceptance), including the two-
    host runs and the 390px pass (D15).
 10. **The willdan week** on real work, which is what ends the phase (roadmap,
     phase gates).
@@ -389,18 +403,6 @@ migrate back and no service to drain.
 
 ## Open Questions
 
-- **Citation drift in the profile files.** At least five citations in
-  `definitions/profiles/` are off by exactly three, the numbering from before
-  A.25 was inserted: `git-only.yaml` cites 146 for a host leasing only what its
-  declaration covers (149), 151 for the operator being able to tell a response
-  was recorded (154), and 158 for a local commit being an intention until it
-  lands (161); `surfaces.yaml` cites 145 for one presenter per sink (148);
-  `record-derived.yaml` cites 77 for expected-beside-delivered (80) and 59 for
-  the record never holding the text (62). The machine files are current —
-  `sink.yaml` cites 148 and 306–311 correctly — so this is the profiles alone.
-  `check.py` passes because each wrong number names a real clause. A sweep
-  belongs in the model, not here (AGENTS.md); it changes no behaviour, no spec
-  and no task.
 - **Engine window defaults on an intermittent laptop.** Host stale 5m, gone 30m,
   lease expiry 24h, register retention 30d are the release's literals and are
   read from `flywheel.yaml` `engine:` at load (`record-derived.yaml`
