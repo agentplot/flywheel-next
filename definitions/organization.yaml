@@ -18,6 +18,16 @@
 # one organization and shares nothing with another but the platform (241).
 # The organization is its identity account (247): membership is the
 # Application's assignment to it, administered from the account item (255).
+# What the service holds for the organization and under which key is a stated
+# fact of its tier on the settings form (261), and the key has one of three
+# homes: the operator's own hosts, a tagged key in the service's account, or a
+# key in the organization's own account behind a role that trusts the service's
+# issuer, which is tier 3 (267, 276). An organization may declare that its state
+# records are written as envelopes under its key, the blueprints staying
+# plaintext outside the machinery's prefix (265, 266). On a hosted tier the
+# organization has a plan: entitlement features and stated limits held by the
+# identity provider, five rungs over the four tiers, hiding and metering and
+# never authorizing (279, 281, 282).
 machine: organization
 version: 2
 kind: object
@@ -26,7 +36,7 @@ object: organization
 parent: null
 singleton: organization
 owns: [repository, package, pool]
-satisfies: [15, 204, 207, 208, 218, 219, 220, 221, 241, 247, 255]
+satisfies: [15, 204, 207, 208, 218, 219, 220, 221, 241, 247, 255, 261, 265, 266, 267, 276, 279, 281, 282]
 record:
   name: string           # the operator's name for it; may but need not coincide with a git-host organization (219)
   blueprints: string          # <org>/<blueprints repository>

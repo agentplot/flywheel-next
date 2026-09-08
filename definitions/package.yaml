@@ -13,13 +13,19 @@
 # a response that ends what it runs and keeps its records. Nothing here but
 # the install decision enters the count. A package's file is refused at load
 # when its declared set version is not the installed one (224).
+# A package is of one kind, and bundle is one of them (287): a preset, a named
+# set of parts with their configuration defaults, offered as one choice and
+# installed under one install decision for the set (284). A package never
+# contributes a core surface — the rail, the board, the dock, the console —
+# which ship in the binary. A scenario pack is a development-time package,
+# hidden behind a flag and never listed in the production index (286).
 machine: package
 version: 1
 kind: object
 tier: core
 object: package
 parent: organization
-satisfies: [5, 204, 207, 224, 228, 229]
+satisfies: [5, 204, 207, 224, 228, 229, 284, 286, 287]
 record:
   name: string
   kind: string           # adapter | chat-sink | runner | router | sign-in | unit-type | elaboration-type | deliverable-producer | map-vocabulary | template | scenario-pack (228)

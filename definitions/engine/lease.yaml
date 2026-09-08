@@ -2,13 +2,16 @@
 # object the engine acts on. Taking is a compare-and-swap on the control plane
 # (128); the loser reads again. A host takes only what its manifest declaration
 # covers (149). Nothing in the domain names a lease.
+# An intermittent host keeps its place on a hosted tier: its leases stand while
+# it is away and the cloud agent keeps ticking everything else, so only the
+# work that host alone covers waits for it (278).
 machine: lease
 version: 2
 kind: engine
 tier: core
 object: lease
 parent: null
-satisfies: [128, 134, 147, 149, 150, 232, 238]
+satisfies: [128, 134, 147, 149, 150, 232, 238, 278]
 record:
   holder: host-id
   taken_at: time

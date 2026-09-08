@@ -5,11 +5,21 @@
 # own excerpt and needs no judgment (S21). The reader is charged by the tick
 # of the host that declares the capture's source (217e); the capture endpoint
 # for callers that cannot reach any host's binary is dispatch's (216).
+# On the hosted tiers the endpoint is a managed queue per organization with no
+# compute in the acknowledgement path: the queue is the caller's retry buffer
+# and not state, and its bodies are encrypted under the organization's key
+# (271). Raw material a capture points at is never read on a host serving more
+# than one organization (263): triage that must follow a pointer into the raw
+# store runs on the operator's own machine or on a pool host, while a capture
+# whose whole content is in hand carries no pointer and may be triaged in the
+# tick that took it. The binary's own instrumentation writes captures
+# about its operation — stalls, refusals, runway readings — to the agentplot
+# organization's flywheel, carrying no organization content (288).
 machine: capture
 version: 2
 kind: object
 tier: core
-satisfies: [4, 19, 106, 111, 112, 114, 115, 178, 181, 215, 216]
+satisfies: [4, 19, 106, 111, 112, 114, 115, 178, 181, 215, 216, 263, 271, 288]
 object: capture
 parent: null
 owns: [signal]

@@ -28,13 +28,28 @@
 # id, root, multiplexer session, port range, heartbeat and leases, sharing
 # nothing but the git host (232); the scenario tool starts, stops and
 # disconnects them by name, so every host scenario runs on a laptop.
+# A host carries a tier, 0 to 3, named by what exists on the service side
+# (268): your computer, the cloud agent, pools, your account. On the hosted
+# tiers the host is a function per tier, one invocation per organization's
+# tick under the tier's role with a session tag naming that organization
+# (259, 269), retaining nothing between invocations, its warm cache one
+# encrypted object holding a bundle of two sparse shallow clones downloaded
+# per tick and evicted when idle (256, 258, 262, 272). The tick is invoked
+# and not looped: a clock, a notification, an arriving capture, a chat event
+# and a page request are all invokers of the same tick (270), and each tick
+# upserts one named one-shot scheduler entry for the organization with the
+# due time the machines computed, a daily sweep the backstop (273). Notify is
+# primary and the poll is the backstop (274). The organization's key is
+# unwrapped only for the tick (257), and a key it cannot reach fails closed
+# with one attention line and never a fallback (260). Adding a cloud agent
+# asks nothing about routers or runners: the tier fixes both (283).
 machine: host
 version: 5
 kind: engine
 tier: core
 object: host
 parent: null
-satisfies: [4, 32, 55, 96, 147, 149, 150, 151, 186, 196, 205, 215, 217, 222, 230, 231, 232, 238, 240]
+satisfies: [4, 32, 55, 96, 147, 149, 150, 151, 186, 196, 205, 215, 217, 222, 230, 231, 232, 238, 240, 256, 257, 258, 259, 260, 262, 268, 269, 270, 272, 273, 274, 283]
 record:
   bound: int            # sessions this host may run at once (a setting of the host)
   last_seen: time       # its heartbeat

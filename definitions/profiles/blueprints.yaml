@@ -175,8 +175,12 @@ layout:
     under `flywheel/` — `flywheel/signals/` (captures, signals, moves),
     `flywheel/ledger/`, `flywheel/map/` (the rendered maps),
     `flywheel/claims.json` (the rendered claims index), `flywheel/packages/`
-    (organization packages, 228), `flywheel/registry.json` (types and
-    packages, 224) — and the OpenSpec change directory it creates when an
+    (organization packages of every kind — renderer, adapter, chat sink,
+    runner, router, unit type, elaboration type, deliverable producer, map
+    vocabulary, template, scenario pack, bundle — 228, 287; a **bundle** is a
+    named set of parts with their configuration defaults installed under one
+    install decision for the set, which is what a preset is, 283, 284),
+    `flywheel/registry.json` (types and packages, 224) — and the OpenSpec change directory it creates when an
     intent opens (open_intent), plus the archive move at landing. The
     shipped instructions, schemas, skills and type files live under
     `flywheel/` too, written by people (chores) and read by the machinery.

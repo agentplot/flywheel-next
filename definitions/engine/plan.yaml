@@ -12,13 +12,16 @@
 # member's rail and chat and changes nothing else. A role is one the token
 # carries on a hosted tier (248); a flag hides a surface and never a decision
 # (250).
+# A plan on a hosted tier hides and meters and never authorizes: permissions
+# come from roles and are checked on every tool call, and exceeding a limit is
+# one attention line and a refused add, never a stopped loop (280).
 machine: plan
 version: 3
 kind: engine
 tier: core
 object: plan
 singleton: organization
-satisfies: [7, 8, 9, 11, 15, 83, 86, 148, 213, 214, 235, 237, 248, 250]
+satisfies: [7, 8, 9, 11, 15, 83, 86, 148, 213, 214, 235, 237, 248, 250, 280]
 record:
   next_number: int              # the counter; it only grows
   register: list                # {decision id, number, since, answered_by, answered_at}; a decision id is <object>/<kind>/<entered_at>; answered fields from the response that retracted it (235)

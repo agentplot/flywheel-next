@@ -2,13 +2,17 @@
 # item's place, collects their exits as one set, and judges pass, not-done,
 # blocked or stalled by the join rule. The session set is a fixed list or a
 # rule read against the repository worked.
+# A stage names the model class it runs, declared by the unit type or the
+# elaboration type, so a stage that reviews code may name a different class
+# from the stage that writes it; the runner's own model is the default where
+# the type names none (285).
 machine: stage
 version: 4
 kind: template
 tier: core
-satisfies: [4, 41, 56, 70, 173, 190]
+satisfies: [4, 41, 56, 70, 173, 190, 285]
 params:
-  agents: "a fixed list of agent entries — a name, or {name, kind} where kind is claude, codex or opencode, default claude (173) — or a rule such as every persona definition matching a pattern"
+  agents: "a fixed list of agent entries — a name, or {name, kind, model} where kind is claude, codex or opencode, default claude (173), and model is the model class this stage runs, declared by the unit type or the elaboration type so a stage that reviews code may name a different class from the stage that writes it (285); the runner's own model is the default where the type names none, and the manifest's per-role model is the fallback under that — or a rule such as every persona definition matching a pattern"
 
   join: all | any | count:<n>
   on_fail: the stage an item returns to when this stage judges it not done

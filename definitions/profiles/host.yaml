@@ -18,6 +18,13 @@
 # a configuration file (wt, herdr), a file the machinery writes from
 # flywheel.yaml and passes on the command line; the host's own tool
 # configuration is never read (183).
+#
+# The hosted tiers are bound here too: `tier:` carries the tier per host, 0 to
+# 3 by what exists on the service side, with the placement facts each rung
+# implies — one function per tier, one invocation per organization's tick
+# under a tagged role, an encrypted warm cache, a managed capture queue, one
+# one-shot scheduler entry per organization, and microVM pool hosts
+# terminated at retire (A.33, A.34).
 format: flywheel-profile/1
 name: host
 complete: false
@@ -79,6 +86,44 @@ image:
     hosts surface shows an image whose hash is behind the current
     declarations; rebuilding it is a chore (123). add-host on a platform
     picks the pool's or the organization's image.
+tier:
+  doc: |
+    Every host carries a tier, 0 to 3, named by what exists on the service
+    side (268): `flywheel.yaml` hosts.<host>.tier, default 0. The tier is a
+    binding (217j) and never a second machinery; the same binary runs at
+    every rung.
+
+      0 · your computer      the binary on the operator's own machine, its own
+                             sign-in kind (243), nothing on the service side
+      1 · cloud agent        a capture queue, a key, a role, a warm cache
+                             object and a scheduler entry for the organization;
+                             no pool, so the operator's machines still build
+      2 · pools              tier 1 with pool hosts on demand from the
+                             organization's image (240, 275)
+      3 · your account       the same machinery reaching stores the
+                             organization owns, through a role it grants (276)
+
+  placement: |
+    On tiers 1 to 3 the host is not a process the operator's launcher starts.
+    It is one function per tier, and each invocation is one organization's
+    tick (269): it assumes the tier's role under a session tag naming that
+    organization (259), downloads the warm cache, fetches, evaluates, pushes
+    by compare-and-swap, delivers the plan, uploads the cache, wipes its
+    scratch and exits, retaining nothing between invocations (217a). It never
+    reads raw material a capture points at (263) and never holds code (264):
+    its declaration takes no object kind, no repository and no unit type
+    (217). It answers chat and triages a capture whose whole content is in
+    hand within its own tick (217b, 217e), and hands everything else to a
+    host that serves one organization. A failure in one
+    organization's tick ends that tick and no other (218).
+  invocation: "the tick is invoked, not looped (270): a clock, a notification, an arriving capture, a chat event and a request for the page are invokers of the same tick, and a run nothing invoked is caught up by the next one under the idempotent key (111). This is 231 read as `nothing but the tick keeps time`, not as `a process stands`"
+  cache: "one encrypted object per organization (256) holding a bundle of two sparse shallow clones — the state repository, and the blueprints restricted to the manifest, the claims and the machinery's prefix (203, 262) — downloaded to scratch per tick and uploaded back, mounted nowhere and shared with nothing; evicted when the organization has been idle past the stated time, its next tick re-cloning (258, 272)"
+  receiver: "the capture endpoint on a hosted tier is a managed queue per organization with no compute of the machinery's in the acknowledgement path (271): the platform answers the caller and the item waits for a tick; the queue is the caller's retry buffer and not state, and every body it holds is encrypted under the organization's key (256)"
+  scheduling: "one named one-shot entry per organization, upserted at the end of every tick with the due time the machines computed and deleted when it completes (273); the name is the organization's, so an interim tick replaces it, at most one entry per organization exists, an entry that fires with nothing due is one idempotent tick that reschedules or deletes (111), and a daily sweep is the backstop. The set of entries is a projection: ticking rebuilds it and its loss costs a sweep, never a decision (136)"
+  notify: "notification is primary and the poll is the backstop (274, 166): seconds where a live push reaches the host, a named interval where none does; no unconditional poll is the floor"
+  key: "the organization's key is unwrapped only for the duration of a tick and only by the role that runs it (257); a key the host cannot reach fails closed with one attention line naming the key and since when, running work uninterrupted and nothing kept unencrypted as a fallback (260)"
+  away: "an intermittent host keeps its place on a hosted tier (150a, 278): a laptop closed past its stale window is away, its leases stand and its sessions' clocks pause, and the cloud agent keeps ticking everything else, so only the work that host alone covers waits for the lid"
+  add_form: "adding a cloud agent asks nothing about routers or runners — the tier fixes both, the platform router at the served name and the in-process runner at bound 0 (191, 217c, 283). One screen asks the chat platform, the meeting source and the capture sources, with presets beside the selectors (284); a router or a runner is chosen only for a machine of the operator's own or an adopted host, under the advanced disclosure"
 pool:
   doc: |
     A pool (240): `flywheel.yaml` pools.<name>: {platform, image, bound,
@@ -96,6 +141,8 @@ pool:
     its bound, its live hosts and its image; a pool host is listed under
     the pool and never needs the operator's eye.
   cost: "`cost: {per_host_hour, ceiling_per_day}`: pool.cost_allows is false when one more host-hour would pass the day's ceiling at the platform's price"
+  hosted: "on a hosted tier a pool host is a microVM created from the organization's image (239, 275): no shared network of the service's is required, a container runtime runs inside it so a repository's own environment declaration works unchanged (238), and it is terminated at retire and never suspended, so its disk goes with it (240). The placement states a fixed maximum lifetime and the manifest names a fallback placement for a session that must run longer"
+  isolation: "code is never on a shared host (264, 289): a built repository is cloned only onto a pool host serving one organization (241), on a disk encrypted under that organization's key (256), and raw capture material is read only there or on the operator's own machine (263). This is the code-isolation guarantee the settings form's tier statement names (261)"
 packages:
   doc: |
     A package (228) is a git repository at a tag, listed in an index that is
@@ -113,6 +160,7 @@ packages:
     machine, the platform's secret store on a platform (207) — under the
     names the package declares; a name with no value is package.secrets_placed
     false, the package-secret decision under attention.
+  kinds: "one kind per package (228, 287): renderer, adapter, chat sink, runner, router, unit type, elaboration type, deliverable producer, map vocabulary, template, scenario pack, and bundle. A **bundle** is a named set of parts with their configuration defaults, installed under one install decision for the whole set and running nothing of its own (284); the cloud-agent presets are bundles (283), and removing one removes what it installed and no more. A scenario pack is development-time only: hidden behind `fw.ff.scenario-packs` and never listed in the production index (286). No package kind contributes a core surface — the rail, the board, the dock, the console ship in the binary (287). A sign-in is not a package: both kinds ship in the binary (identity: below)"
   index: "`flywheel-index/1`: one entry per package — name, kind, scope, repository URL, tag, set version, a one-line doc"
   identity: "a host binding with two kinds, bound in profiles/identity.yaml (243): `flywheel.yaml` hosts.<host>.identity: {kind: github} — self-managed hosts, GitHub's device flow, the GitHub username the identity, the manifest's authored operators list the membership, no environment and no sync — or {kind: frontegg, environment, client_id} — the hosted tiers, the served name registered once on the environment's redirect list (244), the hosted service's environment (252). One kind per host, the same for every organization it serves, so switching never changes the identity; every op-response the page writes carries it as given_by (153); the tool server checks every call by the host's kind (249, surfaces.yaml tools.identity). Neither kind is a package; both ship in the binary. Sign-in kinds tailnet, oauth and oidc are gone: an organization that needs its directory connects it to its Frontegg account on a hosted tier, never to a host"
   address: "one address per host, the organization in the path (205a): `<host address>/<org>/...` for every organization the host has a root for; a link names the organization it opens; the host's own screen is `/host/` and the settings form links to it for the host's keys. On the operator's own computer the address is a localhost port, any port, no proxy and no name required (245); several hosts on one computer are several ports (232); portless or a proxy may be advised for a stable name and is never required"

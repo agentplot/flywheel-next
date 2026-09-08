@@ -1,15 +1,19 @@
-# The identity binding (A.32, 243–255): a host binding with two kinds.
-# `github` for self-managed hosts — GitHub's device flow, the GitHub username
-# the identity, the manifest's authored operators list the membership, every
-# listed operator holding every permission, flags at their defaults. `frontegg`
-# for the hosted tiers — Frontegg through its SDK, one Application, membership
-# as the Application's assignment on the organization's account, roles and
-# permissions from the token, feature flags per account. GitHub stays the git
-# host and the App that reaches the repositories in both (207, 207a). The
-# definitions below ship in the binary with the set version (208, 224, 252)
-# and are synced to the Frontegg environment by the hosted service's release
-# alone. Not a profile on its own; every profile inherits it, since it binds
-# no evidence and no effect.
+# The identity binding (A.32, 243–255; the plans of A.35, 279–284): a host
+# binding with two kinds. `github` for self-managed hosts: GitHub's device
+# flow, the GitHub username the identity, the manifest's authored operators
+# list the membership, every listed operator holding every permission, flags
+# at their defaults. `frontegg` for the hosted tiers: Frontegg through its
+# SDK, one Application, membership as the Application's assignment on the
+# organization's account, roles and permissions from the token, feature flags
+# per account. GitHub stays the git host and the App that reaches the
+# repositories in both (207, 207a). The definitions below ship in the binary
+# with the set version (208, 224, 252) and are synced to the Frontegg
+# environment by the hosted service's release alone. The `plans:` block below
+# is the commercial ladder over the tiers: a plan is a named set of the
+# `fw.ff.*` features plus a few stated limits, held by the provider and read
+# only from the token and the SDK; it hides and it meters and it never
+# authorizes, and a `github` host has no plan at all. Not a profile on its
+# own; every profile inherits it, since it binds no evidence and no effect.
 format: flywheel-profile/1
 name: identity
 complete: false
@@ -129,14 +133,51 @@ definitions:
                fw.packages.manage, fw.hosts.manage, fw.org.configure,
                fw.secrets.place, fw.org.remove, fw.identity.admin]
   features:
+    - key: fw.ff.cloud-agent
+      flag: {default: off, on: []}       # a host of tier 1 may be added (268, 269); Hobby and up
     - key: fw.ff.pools
-      flag: {default: off, on: []}       # host pools (240–242); per account
-    - key: fw.ff.management-console
-      flag: {default: off, on: []}       # the hosts and setup surfaces beyond one host
-    - key: fw.ff.book-view
-      flag: {default: on,  on: []}       # the board's book view
-    - key: fw.ff.explore
-      flag: {default: on,  on: []}       # explore over intents
+      flag: {default: off, on: []}       # a pool may be declared (240–242, 275); Pro and up
     - key: fw.ff.store
-      flag: {default: off, on: []}       # the package store (228)
+      flag: {default: off, on: []}       # the package store (228); Pro and up
+    - key: fw.ff.book-view
+      flag: {default: on,  on: []}       # the board's book view; every plan
+    - key: fw.ff.explore
+      flag: {default: on,  on: []}       # explore over intents; every plan
+    - key: fw.ff.management-console
+      flag: {default: off, on: []}       # the hosts and setup surfaces beyond one host; Team and up
+    - key: fw.ff.members
+      flag: {default: off, on: []}       # roles, invite, assignment, ownership (237, 248, 255); Team and up
+    - key: fw.ff.federation
+      flag: {default: off, on: []}       # the organization's key and stores in its own account (267, 276); Enterprise
+    - key: fw.ff.sso
+      flag: {default: off, on: []}       # enterprise sign-in and provisioning through the organization's directory; Enterprise
+    - key: fw.ff.dedicated-dispatcher
+      flag: {default: off, on: []}       # a dispatcher function of its own (269); Enterprise
+    - key: fw.ff.scenario-packs
+      flag: {default: off, on: []}       # scenario packs, development-time only and never in the production index (286)
+  plans:
+    doc: |
+      A plan is a named set of the features above plus a few stated limits,
+      held by the provider and billed through the payment provider; the
+      flywheel reads it from the identity token and the SDK alone and keeps
+      no plan of its own (279). A plan hides and meters and never authorizes
+      (280): permissions come from roles and are checked on every tool call
+      (248, 249), a surface a flag hides is still guarded by its permission,
+      and exceeding a limit is one attention line and a refused add with the
+      reason, never a stopped loop. A `github` host has no plan: every flag
+      stands at its definition default there (250). Five rungs over the four
+      tiers (268, 281); what each unlocks is the requirement, the price is
+      not.
+    ladder:
+      free:       {tier: 0, unlocks: [], doc: "the binary, its sign-in, the organization's own App and bot, every package and every surface, nothing on the service side"}
+      hobby:      {tier: 1, unlocks: [fw.ff.cloud-agent], doc: "the service's App and bot, captures read and chat answered while the operator's machines sleep, the plan in the organization's chat, the page at a served name"}
+      pro:        {tier: 2, unlocks: [fw.ff.cloud-agent, fw.ff.pools, fw.ff.store], doc: "pools with an included allowance and metered overage, the package store, the book view and the presets"}
+      team:       {tier: 2, unlocks: [fw.ff.cloud-agent, fw.ff.pools, fw.ff.store, fw.ff.members, fw.ff.management-console], doc: "members with roles, ownership and assignment (237), identity administration (255), the management console, a higher ceiling on a pool host"}
+      enterprise: {tier: 3, unlocks: [fw.ff.cloud-agent, fw.ff.pools, fw.ff.store, fw.ff.members, fw.ff.management-console, fw.ff.federation, fw.ff.sso, fw.ff.dedicated-dispatcher], doc: "federation into the organization's own account (276), enterprise sign-in and provisioning through its own directory, a dispatcher function of its own, audit export, a private pool image"}
+    limits:
+      doc: "plan metadata, never flags (282); the tool server reads them beside the flags and refuses the add that would exceed one, with the reason"
+      organizations:      "how many organizations the account may hold"
+      members:            "how many users the Application may be assigned to on the account"
+      pool_hours_included: "pool host-hours the plan includes before metered overage (242 cost:)"
+      pool_memory_max:    "the largest pool host the plan admits (275)"
   retire: []
