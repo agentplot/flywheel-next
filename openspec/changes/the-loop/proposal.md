@@ -438,8 +438,9 @@ X07 proves when the bell's surface exists.
   the object on the page, the numbered reply grammar beside them, and
   notification routing by kind (18, 82, 152–155, 236, 308, 309).
 - `signals/capture-and-curation`: captures, signals, moves and their
-  consequences; the page capture box and the chat forward as the phase-1
-  adapters; curation's records and its cadence (106–118, 215).
+  consequences; the page capture box, the chat forward and the meeting
+  transcript as the phase-1 adapters; curation's records and its cadence
+  (106–118, 215).
 - `organization/bootstrap`: the organization machine, `flywheel init`, the
   blueprints and state repositories, the GitHub App, host join, and the
   versioned template set (204, 205, 205a, 207, 207a, 208, 203).
