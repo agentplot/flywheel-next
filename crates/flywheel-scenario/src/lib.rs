@@ -1,4 +1,4 @@
-//! flywheel-scenario: the stand-in control plane and the scenario runner.
+//! flywheel-scenario: the stand-in state store and the scenario runner.
 //! Sessions are played from a script; the engine, the register, the tail and
 //! the effects run for real.
 

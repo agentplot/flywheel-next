@@ -1,5 +1,5 @@
 # A host's bounded ownership of one object. Engine machine: one instance per
-# object the engine acts on. Taking is a compare-and-swap on the control plane
+# object the engine acts on. Taking is a compare-and-swap on the state store
 # (128); the loser reads again. A host takes only what its manifest declaration
 # covers (149). Nothing in the domain names a lease.
 # An intermittent host keeps its place on a hosted tier: its leases stand while

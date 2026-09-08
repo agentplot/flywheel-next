@@ -131,7 +131,7 @@ fn machine_object(cx: &Ctx, machine: &str) -> String {
     cx.defs.get(machine).and_then(|m| m.object.clone()).unwrap_or_else(|| machine.to_string())
 }
 
-/// Engine-provided evidence first, then the control plane's.
+/// Engine-provided evidence first, then the state store's.
 pub fn evidence(cx: &Ctx, name: &str) -> Option<Value> {
     match name {
         "state" => cx.object.config.get(cx.region).map(|s| Value::String(s.clone())),

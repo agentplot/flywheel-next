@@ -1,5 +1,5 @@
 //! The runtime shape of state the engine reads and writes: objects with an
-//! active configuration, responses, and the evidence the control plane serves.
+//! active configuration, responses, and the evidence the state store serves.
 
 use chrono::{DateTime, Utc};
 use serde::{Deserialize, Serialize};
@@ -121,7 +121,7 @@ pub struct TailEntry {
     pub by: Option<String>,
 }
 
-/// Evidence the control plane serves for one object, by atom name.
+/// Evidence the state store serves for one object, by atom name.
 pub trait EvidenceSource {
     fn evidence(&self, object: &str, region: &str, name: &str) -> Option<Value>;
 }

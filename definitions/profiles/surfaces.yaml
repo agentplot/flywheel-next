@@ -19,7 +19,7 @@ tools:
   doc: |
     The tool surface (193): every operation the operator may invoke is one
     tool with a schema naming its arguments by object id, served by the
-    control plane (the `flywheel` binary's MCP server and its HTTP twin the
+    state store (the `flywheel` binary's MCP server and its HTTP twin the
     page calls). The page's controls, the Discord bot, the dispatch agent and
     the machinery's own commands (`flywheel exit|offer|service`) call these
     and nothing else; no caller has an operation the others lack. Each call
@@ -93,7 +93,7 @@ host_agent:
     the query tools on its own, and every write it makes is a proposed tool
     call the operator confirms. Its interpreter — the function that turns
     text into a proposed call — resolves the names against the live objects
-    (list and read through the control plane) and proposes the call, shown
+    (list and read through the state store) and proposes the call, shown
     to the operator as what will be sent; the operator's confirmation is
     the response, and only the confirmed call is recorded (153). A message
     that asks for several things yields several proposed calls, one card
@@ -132,7 +132,7 @@ account:
     its manifest as a form, one response per save (`configure-organization`),
     the operators list among its fields (authored whole on a self-managed
     host; identities read-only and addresses authored on a hosted tier)
-    — its hosts with their parts (229), the organization's store apart
+    — its hosts with their parts (229), the organization's package store apart
     from any host's (228, the setup surface's organization column), on a
     hosted tier the members with their roles and the identity tools
     (255), and sign-out. Authentication is the host's identity kind and
@@ -183,7 +183,7 @@ away:
 hosts_surface:
   add_offers: "the `+ host` flow's platform choices are the host's identity kind and the plan together (295, host.yaml tier.add_offers): a `github` host offers another computer of the operator's, a virtual machine on their own network, a container on a platform of their own, and adopt-existing, with one line to move the organization to the hosted service in place of the managed options; a `frontegg` host offers those and the managed ones beside them, each shown only where its flag is on (250, 280)"
   doc: "the hosts surface (229, 230) also shows each pool — its platform, bound, live hosts and image, and whether the image is behind the declarations (239) — with pool hosts listed under it (240); a host's environment provider and the host-environment decision when it cannot satisfy a repository (238); adding a pool host is never the operator's, retiring never asked"
-  stores: "the organization's store (its packages under the blueprints' prefix) and a host's store (its per-host packages) are separate surfaces, reached from the account item and from the host respectively; neither lists the other's"
+  stores: "the organization's package store (its packages under the blueprints' prefix) and a host's package store (its per-host packages) are separate surfaces, reached from the account item and from the host respectively; neither lists the other's"
 artifact_views:
   doc: |
     Every object opens the OpenSpec artifacts behind it, in a view fit to

@@ -13,7 +13,7 @@
 # `gh` is not used anywhere in this binding. Nothing a session leaves on the
 # place's disk is read as state (64): the place holds the session's work and
 # the inputs handed in; every report from a session goes through the
-# `flywheel` command, which writes to the control plane.
+# `flywheel` command, which writes to the state store.
 # Every command below is run with explicit arguments and, for tools that read
 # a configuration file (wt, herdr), a file the machinery writes from
 # flywheel.yaml and passes on the command line; the host's own tool

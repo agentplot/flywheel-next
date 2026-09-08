@@ -3,7 +3,7 @@
 # operator's own session. Event-driven life is read as evidence each tick; the
 # machinery never pushes anything into a working session (I5). Its exits are
 # the fixed set — done, blocked, stalled — reported through the command the
-# machinery provides, which writes to the control plane (67); offers of a
+# machinery provides, which writes to the state store (67); offers of a
 # finding, a chore or a signal go the same way. Nothing on the place's disk is
 # state. This is the one binding a stand-in replaces (93).
 # The pane and the agent are named by the session id, in the workspace of the

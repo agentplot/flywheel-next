@@ -13,7 +13,7 @@
 #   flywheel exit stalled --note <text>            flywheel offer finding|chore|signal <document> --about <object> [--scope ..]
 #   flywheel note <text>                           flywheel refuse <what>   (run by the hooks)
 #   flywheel service start|stop <name>             (the bolt's declared service, 47)
-# Each writes one entry on the session's thread through the control plane and
+# Each writes one entry on the session's thread through the state store and
 # nothing else; the machinery decides what the entry means (63). The service
 # command is the one exception: it writes an op-response, not a thread entry,
 # so that it is the very record the operator's dictation produces (below).

@@ -1,4 +1,4 @@
-//! The stand-in control plane: every object, response and fact in one JSON
+//! The stand-in state store: every object, response and fact in one JSON
 //! file. Sessions are played from a script; everything the machinery owns
 //! (the engine, the register, the tail, the effects) runs for real.
 
