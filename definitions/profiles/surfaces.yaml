@@ -62,7 +62,7 @@ tools:
     switch-organization: {args: [organization], doc: "the page shows one organization at a time; this picks which, among those the host has a root for (218, 233); nothing is written"}
     configure-organization: {args: [organization, fields], doc: "the manifest as a form: one response per save, validated as `flywheel.yaml` is, one commit on the blueprints' shared line (233)"}
     sign-out:      {args: [], doc: "ends the page's session with the identity provider (233)"}
-    invite-member: {args: [organization, email], doc: "invite a user to the organization's account (255); under fw.identity.admin"}
+    invite-member: {args: [organization, email], doc: "invite a user to the organization's account (255); under fw.identity.admin; hosted tiers only — on a self-managed host the operators list on the settings form is the administration"}
     assign-application: {args: [organization, user], doc: "grant the flywheel Application to a user on the organization's account — membership (247, 255)"}
     revoke-application: {args: [organization, user], doc: "revoke it; the member's sinks go with the assignment (236a, 255)"}
     set-role:      {args: [organization, user, role], doc: "set a user's role on the account, from the shipped roles (248, 255)"}
@@ -85,7 +85,7 @@ tools:
     unhomed:       {args: [], doc: "elements with no effective home in a non-external context, and manifest entries nothing homes (199)"}
     map-check:     {args: [map], doc: "run the schema and vocabulary check on current or target at the blueprints head and report every failure (121, 198)"}
   guard: "a tool that would assert work was done (done, pass, yes on nothing) does not exist; the response machine reports one that arrives anyway as unapplicable (4)"
-  identity: "a call from a session's pane carries the identity token start_session issued to that session (sessions.yaml identity:); the tool server matches it against the pane the call came from and refuses a mismatch with a refusal entry on the calling session's thread, so a session can act only in its own job and never on another session (43, 89, 197); a call from the page, the chat or dispatch carries the operator's or dispatch's identity instead; a call from the operator's own session (69) carries that session's token and is recorded given_by the operator, proposed_by the session (context.yaml ruling 14). Authorization (233, 249): before any op-response is written, the tool server verifies the caller's Frontegg token (identity.yaml) and checks it for the permission the tool declares (identity.yaml permissions.by_tool) on the organization's account; a token without it — or a caller whose user is not assigned the Application on that account (247) — is refused, no response is recorded, and the refusal is written to the run record with the identity, the tool and the object (79), shown under attention on the next delivery; a tool whose permission the host's environment lacks is refused with that reason (252); the query tools are answered to any token carrying fw.read"
+  identity: "a call from a session's pane carries the identity token start_session issued to that session (sessions.yaml identity:); the tool server matches it against the pane the call came from and refuses a mismatch with a refusal entry on the calling session's thread, so a session can act only in its own job and never on another session (43, 89, 197); a call from the page, the chat or dispatch carries the operator's or dispatch's identity instead; a call from the operator's own session (69) carries that session's token and is recorded given_by the operator, proposed_by the session (context.yaml ruling 14). Authorization (233, 249), by the host's identity kind (identity.yaml kinds): on a github host the tool server checks the signed-in GitHub username against the organization's manifest `operators:`, every listed operator holding every permission; on a frontegg host it verifies the caller's token and checks it for the permission the tool declares (identity.yaml permissions.by_tool) on the organization's account, refusing a user not assigned the Application there (247) and a tool whose permission the host's environment lacks (252). Either way a refused call writes no response and is recorded in the run record with the identity, the tool and the object (79), shown under attention on the next delivery; the query tools are answered to any member (github) or any token carrying fw.read (frontegg)"
 host_agent:
   doc: |
     Free text is never parsed by the machinery (194). The host's agent
@@ -112,20 +112,22 @@ account:
     they signed in; the organization shown, with a switch to any other the
     host has a root for (218); and from it the organization's settings —
     its manifest as a form, one response per save (`configure-organization`),
-    the members and roles read-only and the addresses list among its fields
+    the operators list among its fields (authored whole on a self-managed
+    host; identities read-only and addresses authored on a hosted tier)
     — its hosts with their parts (229), the organization's store apart
-    from any host's (228, the setup surface's organization column), the
-    members with their roles and addresses and the identity tools (255),
-    and sign-out. Authentication is the provider's and authorization the
-    organization's: the identity is the Frontegg user the token vouches
-    for and does not change when the organization is switched; whether it
-    may respond is the Application's assignment on the organization's
-    account and the permission the token carries (247, 249).
-  local: "a page served on the operator's own computer signs in like any other, through Frontegg's hosted login under the host's name `https://<host>.flywheel.localhost` (245, 253); an organization created there is an account whose creating user holds owner, so a fresh organization is not locked out; there is no local-user case and no unauthenticated page"
-  served: "a page served by any host shows the Frontegg user the token vouches for — the identity block names the user, the GitHub connection's username used for authorship (246), the host serving the page and its environment — the same for every organization the host serves; every response the page records carries it as given_by (153); sign-out ends the page's session with the provider and records nothing"
-  switcher: "lists every organization the host has a root for, each at the host's one address under `/<org>/` (205a); one whose account does not assign the Application to the signed-in user is shown as not a member — its name and nothing else — and switching to it shows the status view read-only with every control absent"
-  settings_form: "the manifest as a form, the keys 233 assigns to the organization (205a): organization name, profile, blueprints and state repositories, repositories with their git details, pools with bound, cost and retire time (240), sinks, curation, `addresses:` keyed by user id (236a); the members and their roles shown read-only as derived from the account (247, 248), with the identity tools beside them; the host's keys — root, bound, declaration, provider, identity environment, router — shown read-only with a link to the host's own screen; one save is one `configure-organization` response, validated as `flywheel.yaml` is"
-  degraded: "when the provider is unreachable (254): an issued token is honoured until it expires, then the page is read-only — status view, book, map, the rail's decisions — with every writing control absent and one attention line saying identity is unreachable and since when; unbounded; the loops run on"
+    from any host's (228, the setup surface's organization column), on a
+    hosted tier the members with their roles and the identity tools
+    (255), and sign-out. Authentication is the host's identity kind and
+    authorization the organization's: the identity — the GitHub username
+    on a github host, the Frontegg user on a frontegg host — does not
+    change when the organization is switched; whether it may respond is
+    the operators list, or the Application's assignment and the token's
+    permission on a hosted tier (247, 249).
+  local: "a page served on the operator's own computer, on a localhost port of the host's choosing with no proxy and no name (245), signs in through the host's kind like any other — on a self-managed host GitHub's device flow, showing the code and the address to enter it at and waiting until GitHub confirms (253); the organization's creating user is the first operators entry, so a fresh organization is not locked out; there is no local-user case and no unauthenticated page"
+  served: "the identity block names the identity the host's kind vouched for — the GitHub username on a github host; on a frontegg host the Frontegg user with the GitHub connection's username used for authorship (246) — the host serving the page and its kind, the same for every organization the host serves; every response the page records carries it as given_by (153); sign-out ends the page's session with the kind and records nothing"
+  switcher: "lists every organization the host has a root for, each at the host's one address under `/<org>/` (205a); one the signed-in identity is not a member of — not in its operators list, or on a hosted tier not assigned the Application on its account — is shown as not a member, its name and nothing else, and switching to it shows the status view read-only with every control absent"
+  settings_form: "the manifest as a form, the keys 233 assigns to the organization (205a): organization name, profile, blueprints and state repositories, repositories with their git details, pools with bound, cost and retire time (240), sinks, curation, `operators:` with each member's addresses (236a) — authored whole on a self-managed host, identities read-only and addresses authored on a hosted tier, where the roles show read-only with the identity tools beside them (247, 248); the host's keys — root, bound, declaration, provider, identity kind, router — shown read-only with a link to the host's own screen; one save is one `configure-organization` response, validated as `flywheel.yaml` is; a save that would remove the saving identity from an authored list is refused"
+  degraded: "on a hosted host, when the provider is unreachable (254): an issued token is honoured until it expires, then the page is read-only — status view, book, map, the rail's decisions — with every writing control absent and one attention line saying identity is unreachable and since when; unbounded; the loops run on. A self-managed host has no provider to lose"
 members:
   doc: |
     One board per organization (235): every member reads the one plan from
@@ -144,13 +146,14 @@ members:
     acknowledgements and the notifications are that member's; a member
     with no address has a page sink only; a shared channel is a sink of
     its own with one mark, listed in `flywheel.yaml` sinks: with no member.
-    A member is a user assigned the Application on the organization's
-    account (247); the page sink follows the assignment and a chat sink its
-    address in `addresses:`, created and removed in the same write; the
-    numbers and the count are never per member.
+    A member is an entry in the operators list on a self-managed host, or
+    a user assigned the Application on the organization's account on a
+    hosted tier (247); the page sink follows the membership and a chat
+    sink each address on the member's entry, created and removed in the
+    same write; the numbers and the count are never per member.
   owner: |
     A decision may carry an owner (237): the object's record `owner`, a
-    member or a role the token carries (248). Planning's proposal names it per unit
+    member or, on a hosted tier, a role the token carries (248). Planning's proposal names it per unit
     when it can, a unit or elaboration type may name a role for its
     decisions, and `assign <owner>` on the decision's number sets it (the
     plan machine's transition). An unowned decision is everyone's. A

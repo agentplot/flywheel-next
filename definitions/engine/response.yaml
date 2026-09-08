@@ -21,7 +21,7 @@ record:
   object: object-id      # the object the response concerns
   answer: string
   args: string
-  given_by: string       # the member: the Frontegg user the token vouches for, the same on the operator's own computer as anywhere (233, 234, 246); the GitHub username its connection carries is what authorship uses. Always a user assigned to the organization's account whose token carries the tool's permission (247, 249) — a call without it is refused by the tool server before a response exists and the refusal is recorded in the run record (surfaces.yaml tools.identity). A session's call carries the identity the machinery issued it, never a user credential (251)
+  given_by: string       # the member: the identity the host's kind vouches for — the GitHub username on a self-managed host, the Frontegg user on a hosted tier — the same on the operator's own computer as anywhere (233, 234, 246); authorship is the GitHub username in both. Always a member of the organization holding the tool's permission — the authored operators list, or the account's assignment and the token's permission on a hosted tier (247, 249) — a call without it is refused by the tool server before a response exists and the refusal is recorded in the run record (surfaces.yaml tools.identity). A session's call carries the identity the machinery issued it, never a user credential (251)
   given_at: time
   delivery: string       # chat message id, page submission id, review annotation id, or the operator's own direct write
 regions:

@@ -24,15 +24,14 @@ manifest:
     capabilities are derived from the map elements and contexts that name it as
     home, and the entry's name is what a node's `home` names:
 
-      # operators: and roles: are not authored (247, 248): the members are the
-      # users assigned to the organization's identity account and the roles
-      # the token carries, derived at every fetch and shown read-only on the
-      # settings form (identity.yaml accounts); a member is added or removed
-      # on the account (255), never here.
-      addresses:                                   # authored (236a): each member's address per chat kind, keyed by user id; one chat sink per address, presented by the host running that kind's package and holding the lease; a member with no entry has a page sink only; the sink is added or removed in the same write as this list
-        "usr_01H8X…":                              # Frontegg user id
+      operators:                                   # membership (233, 247): on a self-managed host (identity kind github) authored whole — the GitHub usernames allowed to respond, the creating user first (253), every one holding every permission (248), edited on the settings form one response per save; on a hosted tier the identities are derived from the organization's account and shown read-only, only the addresses authored, and a member is added or removed on the account (255)
+        - identity: cswanberg                      # a bare identity: a page sink only (236a)
+        - identity: dana                           # with addresses per chat kind (236a): one chat sink per address, presented by the host running that kind's package and holding the lease; the sink is added or removed in the same write as this list
           discord: "118230000000000001"
           slack: U0123ABCD
+      # roles: are not authored: on a hosted tier they are the roles the token
+      # carries (248); a self-managed host has none — every operator holds
+      # every permission.
       pools:                                       # host pools (240–242, host.yaml pool:)
         burst: {platform: fly, image: auto, bound: 4, cost: {per_host_hour: 0.10, ceiling_per_day: 5}, retire_after: 20m, covers: {kinds: [unit, work-item], repositories: [atlas], unit_types: [default, fast]}}
       repositories:

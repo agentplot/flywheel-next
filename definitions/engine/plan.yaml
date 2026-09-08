@@ -10,7 +10,8 @@
 # owner — a member or a role — on its object's record (237): planning's
 # proposal or the type sets it, or the assign response here; it filters a
 # member's rail and chat and changes nothing else. A role is one the token
-# carries (248); a flag hides a surface and never a decision (250).
+# carries on a hosted tier (248); a flag hides a surface and never a decision
+# (250).
 machine: plan
 version: 3
 kind: engine

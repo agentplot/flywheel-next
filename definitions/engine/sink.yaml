@@ -4,10 +4,13 @@
 # member: each member's page is a sink of their own, and each chat address
 # on their operators entry a chat sink of their own — one per member per
 # address, none without an address — each with its own mark, a shared
-# channel a sink with one mark (236, 236a); a member is a user assigned to
-# the organization's account (247). The page sink signs its reader in through
-# the one identity provider, on every host alike, under the host's served
-# name (243–245, 253), and reads on when the provider is unreachable (254). Its
+# channel a sink with one mark (236, 236a); a member is an entry in the
+# operators list, or on a hosted tier a user assigned to the organization's
+# account (247). The page sink signs its reader in through the host's identity
+# kind — GitHub's device flow on a self-managed host, Frontegg's hosted login
+# on a hosted one — on a localhost port of its own when served on the
+# operator's computer (243–245, 253), and a hosted page reads on when the
+# provider is unreachable (254). Its
 # presenter is the holder of its lease, or the host the manifest pins (148);
 # the dispatcher, a host that takes no work and presents the chat, is that
 # presenter for the chat sink (216, 217).
