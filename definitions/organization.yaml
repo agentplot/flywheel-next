@@ -32,7 +32,13 @@
 # each plan includes a budget on the small model class for the jobs the
 # dispatcher runs inside a tick, overage is metered through the payment
 # provider, and the model class per job is a plan fact raisable per type and
-# stage on the upper rungs (294, identity.yaml plans.limits).
+# stage on the upper rungs (294, identity.yaml plans.limits). Billing is
+# optional in an installed control plane: where no payment provider is bound
+# the plans are entitlement targets alone, hiding and metering and charging
+# nothing (302). Such a control plane is tier 3's third shape and Enterprise's
+# fourth flavour — not marketed, not offered in the console, sold and
+# installed by us, with nothing of the service's running in it (304,
+# host.yaml tier.installed).
 machine: organization
 version: 2
 kind: object
@@ -41,7 +47,7 @@ object: organization
 parent: null
 singleton: organization
 owns: [repository, package, pool]
-satisfies: [15, 204, 207, 208, 218, 219, 220, 221, 241, 247, 255, 261, 265, 266, 267, 276, 279, 281, 282, 294]
+satisfies: [15, 204, 207, 208, 218, 219, 220, 221, 241, 247, 255, 261, 265, 266, 267, 276, 279, 281, 282, 294, 302, 304]
 record:
   name: string           # the operator's name for it; may but need not coincide with a git-host organization (219)
   blueprints: string          # <org>/<blueprints repository>

@@ -11,10 +11,12 @@
 # 223–225 are properties of the registry as a whole — the tier every file
 # carries, the versions and the content hashes check.py keeps, the
 # statecharts render.py draws from the same files — and are cited here
-# because this is the one file every machine depends on; 252 likewise — the
-# identity definitions (profiles/identity.yaml) ship with the same set.
+# because this is the one file every machine depends on; 252 and 301 likewise
+# — the identity definitions (profiles/identity.yaml) ship with the same set,
+# they are the one place any of them is defined, and each control plane's own
+# release syncs them into its own environment and nothing else does.
 format: flywheel-atoms/1
-satisfies: [87, 138, 139, 223, 224, 225, 252]
+satisfies: [87, 138, 139, 223, 224, 225, 252, 301]
 
 evidence:
   # ---- engine-provided for every object (read through the profile's `read`)

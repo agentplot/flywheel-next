@@ -42,7 +42,16 @@ kinds:
   frontegg:
     doc: |
       The hosted tiers (243). Everything below applies to a host of this
-      kind and to no other.
+      kind and to no other. The environment a host of this kind names may
+      be any control plane's — the hosted service's own, or one an
+      enterprise customer installed (296, 300, 304) — and the two are
+      indistinguishable to the binary, since every fact it reads about its
+      service side comes through the invocation contract (297, 298, 305).
+      The named provider is the reference implementation of that
+      environment: any provider that issues the token claims of 298 —
+      the identity, the accounts assigned, the roles and permissions on
+      the organization's account, and the entitlement features with their
+      flags — satisfies this kind (301).
 provider:
   doc: |
     Frontegg, on hosted hosts (243). One Application for the whole
@@ -51,8 +60,11 @@ provider:
     (244): the SDK builds `redirect_uri` from the origin the page is
     served on, so a host's served name is the only per-host fact,
     registered once on the environment's redirect list and never per
-    organization; the hosted service's hosts name the service's
-    environment (252). That served name is where the page and the tool
+    organization. A hosted host names an environment (252) and
+    `provider.environment` may be any control plane's: the hosted
+    service's own, or an installed control plane's, its redirect entry
+    written on that environment's list by that control plane's deployer
+    (296, 300, 304, 305). That served name is where the page and the tool
     server are served, by the same function on request under the caller's
     token (291): the page a static bundle, the tool server the binary's
     own tool catalogue (193) reached over HTTP with the token by the page
@@ -107,7 +119,7 @@ flags:
 degraded:
   doc: "a hosted host degrades rather than fails when the provider is unreachable (254): a token already issued is honoured until it expires; past that the page is read-only — the status view, the book and the map render, the rail shows its decisions with every writing control absent — with one attention line saying identity is unreachable and since when; unbounded for the page, and irrelevant to work: hosts cover work with the App token, not with an identity, so the loops keep running and nothing that needs a response is answered; flags fall back to their last-seen values, then to the definitions' defaults; a github host has no provider to lose — GitHub unreachable blocks a new sign-in and nothing else"
 sync:
-  doc: "the definitions below ship in the binary and are synced to the environment by the hosted service's release alone (252): the sync reads the environment's current definitions and writes only the difference, respecting the provider's write ceiling on features, plans and flags, deletes nothing not named in `retire:`, and never writes a hostname; a github host has no environment and never syncs; a hosted host whose binary names a permission the environment lacks refuses that tool with the reason"
+  doc: "the definitions below ship in the binary with the set version and are the one place they are defined (252, 208, 224); a control plane's own release syncs them into its own identity environment and nothing else does (301): the sync reads that environment's current definitions and writes only the difference, respecting the provider's write ceiling on features, plans and flags, deletes nothing not named in `retire:`, and never writes a hostname. The hosted service's release syncs the service's environment; an installed control plane's release syncs the installer's own (296, 300, 304). A github host has no environment and never syncs; a hosted host whose binary names a permission the environment lacks refuses that tool with the reason, whichever control plane holds that environment"
 admin:
   doc: "on hosted hosts identity administration is a surface of the flywheel (255): the account item lists the organization's members with their roles and their chat addresses, invites a user to the account, grants and revokes the Application, sets a role and targets a flag on the account; each is a tool under `fw.identity.admin`, recorded like any response (153); on a github host the operators list on the settings form is the administration"
 definitions:
@@ -181,13 +193,18 @@ definitions:
       none, each plan includes a budget on the small model class for the
       jobs the dispatcher runs inside a tick, overage is metered through the
       payment provider, and a budget spent is one attention line and a
-      slower cadence, never a stopped loop (280).
+      slower cadence, never a stopped loop (280). Billing is optional in an
+      installed control plane (302): where no payment provider is bound the
+      plans below are entitlement targets alone — a plan is still a named
+      set of the features plus its stated limits, it still hides and meters
+      and never authorizes, and nothing is charged — and the control plane
+      omits its billing stack and no other (300).
     ladder:
       free:       {tier: 0, unlocks: [], doc: "the binary, its sign-in, the organization's own App and bot, every package and every surface, nothing on the service side"}
       hobby:      {tier: 1, unlocks: [fw.ff.cloud-agent], doc: "cheap to run and needing no model key of the operator's (281, 294): the service's App and bot, chat structured so no model call is spent on it — a decision answered by button, free text a slash command with its arguments (`/fw yes 412`, `/fw capture <text>`), the plan delivered at no model cost (277) — free text interpreted in the page by the browser model instead (216a), a chat interaction or a webhook captured at once with no model, and a self-contained capture triaged in one daily batch at the sweep on the small model class inside the included budget (217e, 273). Immediate triage and free text in chat are unlocked by placing a model key of the operator's own (207). The plan in the organization's chat and the page and the tool server at a served name (291); raw-material triage, elaboration and construction wait for the operator's own machine or a pool host"}
       pro:        {tier: 2, unlocks: [fw.ff.cloud-agent, fw.ff.pools, fw.ff.store], doc: "pools with an included allowance and metered overage, the package store, the book view and the presets; the immediate triage of self-contained captures and the interpretation of free text in chat, both in the tick on the small model class inside the included budget (269, 294)"}
       team:       {tier: 2, unlocks: [fw.ff.cloud-agent, fw.ff.pools, fw.ff.store, fw.ff.members, fw.ff.management-console], doc: "members with roles, ownership and assignment (237), identity administration (255), the management console, a higher ceiling on a pool host, and a job's model class raisable above the small one per unit type, per elaboration type and per stage (285, 294)"}
-      enterprise: {tier: 3, unlocks: [fw.ff.cloud-agent, fw.ff.pools, fw.ff.store, fw.ff.members, fw.ff.management-console, fw.ff.federation, fw.ff.sso, fw.ff.dedicated-dispatcher, fw.ff.dedicated-compute], doc: "tier 3 in both shapes (268): stores only, the key, queue, cache and pool image in the organization's account with the service's compute assuming the granted role (276); or stores and compute, the binary provisioned into that account through the same role with only the control plane — registry, deployer, identity — left on the service side, and the console's dedicated compute options created there by the deployer (276a). Enterprise sign-in and provisioning through the organization's own directory, a dispatcher of its own — in the service account under the first shape, in the organization's own under the second — audit export, a private pool image, and a job's model class raisable per type and stage (294)"}
+      enterprise: {tier: 3, unlocks: [fw.ff.cloud-agent, fw.ff.pools, fw.ff.store, fw.ff.members, fw.ff.management-console, fw.ff.federation, fw.ff.sso, fw.ff.dedicated-dispatcher, fw.ff.dedicated-compute], doc: "tier 3 in both shapes (268): stores only, the key, queue, cache and pool image in the organization's account with the service's compute assuming the granted role (276); or stores and compute, the binary provisioned into that account through the same role with only the control plane — registry, deployer, identity — left on the service side, and the console's dedicated compute options created there by the deployer (276a). Enterprise sign-in and provisioning through the organization's own directory, a dispatcher of its own — in the service account under the first shape, in the organization's own under the second — audit export, a private pool image, and a job's model class raisable per type and stage (294). Tier 3's third shape is the whole control plane installed in the customer's own accounts (296, 300, 304, 305), the fourth flavour of this rung: not shown in marketing and not offered in the management console, sold and installed by us, with the installer's own identity environment (301), billing optional (302) and the chat applications theirs (303)"}
     limits:
       doc: "plan metadata, never flags (282); the tool server reads them beside the flags and refuses the add that would exceed one, with the reason"
       organizations:      "how many organizations the account may hold"

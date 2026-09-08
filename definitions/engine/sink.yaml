@@ -24,14 +24,16 @@
 # On the hosted tiers the chat sink's identity may be the service's own Slack
 # or Discord application, scoped to the organization's channel, carrying plan
 # text and the interactions it receives and nothing else; the record still
-# names who responded (277).
+# names who responded (277). On an installed control plane those applications
+# are the installer's own, with their ids, tokens and signing secrets, and the
+# two shared components are still exactly two (303, 290).
 machine: sink
 version: 1
 kind: engine
 tier: core
 object: sink
 parent: null
-satisfies: [2, 8, 14, 18, 68, 82, 148, 152, 155, 216, 217, 218, 233, 236, 243, 244, 245, 247, 253, 254, 277]
+satisfies: [2, 8, 14, 18, 68, 82, 148, 152, 155, 216, 217, 218, 233, 236, 243, 244, 245, 247, 253, 254, 277, 303]
 record:
   kind: enum                    # chat | page | bell
   member: string                # the member this sink belongs to, or none for a shared channel or surface (236)
