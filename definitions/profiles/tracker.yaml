@@ -1,5 +1,5 @@
 # The tracker profile (C.1). State lives in GitHub: one issue per object with a
-# plan-facing lifecycle in the organization's `flywheel-state` repository, a
+# rail-facing lifecycle in the organization's `flywheel-state` repository, a
 # milestone per bolt and per intent, and one Projects v2 board for the
 # organization. Signals, moves, claims, verdicts and definitions are files in
 # the blueprints repository, never items (157). The tracker is the central
@@ -26,7 +26,7 @@ complete: true
 inherits: [host, sessions, blueprints, record-derived, surfaces, identity]
 
 records:
-  where: "issue in `<org>/flywheel-state`, title `<kind> <id>`, body = one fenced ```flywheel block holding the record (the envelope of model.md 3.4); labels `kind:<kind>` and `state:<leaf>` and the board column are projections written after the body. Objects: intent, elaboration, bolt, unit, work-item, operator-session, curation, planning, plan, sink, host; and one issue per numbered decision (below)"
+  where: "issue in `<org>/flywheel-state`, title `<kind> <id>`, body = one fenced ```flywheel block holding the record (the envelope of model.md 3.4); labels `kind:<kind>` and `state:<leaf>` and the board column are projections written after the body. Objects: intent, elaboration, bolt, unit, work-item, operator-session, curation, planning, rail, sink, host; and one issue per numbered decision (below)"
   get:    "GET /repos/{org}/flywheel-state/issues/{n}; the fenced block parsed; the id -> issue number map is the issue title, found by list"
   put:    "PATCH the body with the new block and seq+1; single writer is the lease (below), so no CAS is needed on the body; after the write the body is read back and its seq compared, a mismatch is a lost lease and is reported"
   append: "POST a comment on the issue; the comment is the thread entry; comments are the status view's discussion (144). A session's `flywheel exit|offer|note|refuse` writes such a comment through the App token scoped to its own object"

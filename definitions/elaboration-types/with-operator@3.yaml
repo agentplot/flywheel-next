@@ -27,7 +27,7 @@ regions:
             note: a done the session declares does not end a with-operator session; only dictation does
           - when: {response: end}
             to: finished
-            note: the dictation `end <session>`; there is no decision on the plan for this type
+            note: the dictation `end <session>`; there is no decision on the rail for this type
       finished:
         enter: {session: ended}
         transitions:

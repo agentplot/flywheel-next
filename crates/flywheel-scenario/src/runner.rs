@@ -4,7 +4,7 @@ use crate::store::Store;
 use crate::world;
 use chrono::Duration;
 use flywheel_engine::runtime::{DecisionInstance, Response, ResponseKind, Snapshot};
-use flywheel_engine::{plan, tick, Definitions};
+use flywheel_engine::{rail, tick, Definitions};
 use serde_json::{json, Value};
 use std::collections::BTreeMap;
 
@@ -20,7 +20,7 @@ impl Runtime {
 
     /// The standing decisions, numbered.
     pub fn decisions(&mut self) -> Vec<DecisionInstance> {
-        let d = plan::derive(&self.defs, &self.store.objects, &mut self.store.register);
+        let d = rail::derive(&self.defs, &self.store.objects, &mut self.store.register);
         self.store.standing = d.iter().map(|x| x.id.clone()).collect();
         d
     }

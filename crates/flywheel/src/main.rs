@@ -4,7 +4,7 @@ use flywheel_scenario::{scenario, Runtime, Store};
 use std::path::PathBuf;
 
 #[derive(Parser)]
-#[command(name = "flywheel", about = "flywheel next — prototype: seed a scenario, tick the machinery, answer decisions, serve the plan")]
+#[command(name = "flywheel", about = "flywheel next — prototype: seed a scenario, tick the machinery, answer decisions, serve the rail")]
 struct Cli {
     /// Machine definitions directory.
     #[arg(long, global = true, default_value = "definitions")]
@@ -29,11 +29,11 @@ enum Cmd {
     Respond { number: u32, answer: Vec<String> },
     /// Dictate on an object.
     Dictate { object: String, answer: Vec<String> },
-    /// Print the plan.
-    Plan,
+    /// Print the rail.
+    Rail,
     /// Print the last N log lines.
     Log { #[arg(default_value = "30")] n: usize },
-    /// Serve the plan page.
+    /// Serve the page.
     Serve { #[arg(long, default_value = "4242")] port: u16 },
     /// Dump an object's configuration and record.
     Obj { id: String },
@@ -47,7 +47,7 @@ fn open(cli: &Cli) -> Result<Runtime> {
     Ok(Runtime::new(defs, store))
 }
 
-fn print_plan(rt: &mut Runtime) {
+fn print_rail(rt: &mut Runtime) {
     let d = rt.decisions();
     let count = d.iter().filter(|x| x.group != "attention").count();
     println!("PLAN · {} · tick {} · {} decisions", rt.store.now.format("%Y-%m-%d %H:%M"), rt.store.tick, count);
@@ -87,14 +87,14 @@ async fn main() -> Result<()> {
             if *drive { scenario::drive(&mut rt, &sc); }
             flywheel_scenario::save(&rt.store, &cli.state)?;
             println!("seeded {} · {} objects", sc.scenario, rt.store.objects.len());
-            print_plan(&mut rt);
+            print_rail(&mut rt);
         }
         Cmd::Tick { n } => {
             let mut rt = open(&cli)?;
             let fired = if *n == 0 { rt.settle(50) } else { (0..*n).map(|_| rt.tick()).sum() };
             flywheel_scenario::save(&rt.store, &cli.state)?;
             println!("{fired} transitions");
-            print_plan(&mut rt);
+            print_rail(&mut rt);
         }
         Cmd::Respond { number, answer } => {
             let mut rt = open(&cli)?;
@@ -102,7 +102,7 @@ async fn main() -> Result<()> {
             let fired = rt.settle(50);
             flywheel_scenario::save(&rt.store, &cli.state)?;
             println!("{fired} transitions");
-            print_plan(&mut rt);
+            print_rail(&mut rt);
         }
         Cmd::Dictate { object, answer } => {
             let mut rt = open(&cli)?;
@@ -110,9 +110,9 @@ async fn main() -> Result<()> {
             let fired = rt.settle(50);
             flywheel_scenario::save(&rt.store, &cli.state)?;
             println!("{fired} transitions");
-            print_plan(&mut rt);
+            print_rail(&mut rt);
         }
-        Cmd::Plan => { let mut rt = open(&cli)?; print_plan(&mut rt); }
+        Cmd::Rail => { let mut rt = open(&cli)?; print_rail(&mut rt); }
         Cmd::Log { n } => {
             let rt = open(&cli)?;
             for l in rt.store.log.iter().rev().take(*n).collect::<Vec<_>>().into_iter().rev() {

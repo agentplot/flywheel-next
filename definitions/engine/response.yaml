@@ -17,7 +17,7 @@ record:
   kind: enum             # answer | dictation; a dictation may name only a transition that undoes or defers work — drop, hold, release, send back, retire, takeover, finish, close, end — never one that asserts work was done (4); one that does is unapplicable
   tool: string           # the tool invoked (193): answer for an answer; for a dictation the operation's name — drop, later, hold, release, rename, start, stop, finish, end, close, send-back, retire, takeover, revive, explore, open-session, propose-unit, propose-chore, ask, capture, mark-intent
   proposed_by: string    # the host's agent that proposed the call — dispatch, page, or none when a control was used (194)
-  decision: number       # for an answer: the decision's number; resolved through the plan's register
+  decision: number       # for an answer: the decision's number; resolved through the rail's register
   object: object-id      # the object the response concerns
   answer: string
   args: string

@@ -4,7 +4,7 @@
 # id, the pane, activity and keystrokes the multiplexer would show and the
 # exits, offers and refusals a real session would report through the
 # `flywheel` command — each played by the stand-in through the very same
-# command path, so the state store, the engine, the git effects, the plan
+# command path, so the state store, the engine, the git effects, the rail
 # and the page run for real with no agent anywhere. A scenario may also set
 # these evidence names directly with an `evidence` step; the script is the
 # way to say what a session would have done. `flywheel scenario run` swaps

@@ -125,7 +125,7 @@ context_map:
     Difference (121, 122, 201): one engine keyed on id over two maps —
     added, removed, changed with the fields listed, moved when the only
     differing field is home — used twice: current → target, the design
-    difference; and target at the operator's last review (the plan's
+    difference; and target at the operator's last review (the rail's
     reviewed_at revision, the since-review map rebuilt from git history
     between the mark and head) → target now. Never stored.
 

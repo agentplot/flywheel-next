@@ -5,7 +5,7 @@
 # profile's `receive` (tracker.yaml, git-only.yaml), which is where the two
 # profiles differ.
 #
-# Tools: the Discord bot through `serenity`; the plan page through `axum` over
+# Tools: the Discord bot through `serenity`; the page through `axum` over
 # Tailscale, on the operator's private network, phone-sized; the bell through
 # `herdr` on the surface the manifest names; plannotator for a document under
 # review (`plannotator review <path> --decision <n>`), lavish for a rich page
@@ -67,7 +67,7 @@ tools:
     revoke-application: {args: [organization, user], doc: "revoke it; the member's sinks go with the assignment (236a, 255)"}
     set-role:      {args: [organization, user, role], doc: "set a user's role on the account, from the shipped roles (248, 255)"}
     target-flag:   {args: [organization, flag, on], doc: "target a feature flag on the account, per account only (250, 255)"}
-    assign:        {args: [decision, owner], doc: "set a decision's owner to one member of the organization, or to nobody; a role is never an owner. The plan machine applies it and nothing about the decision changes but who it is filtered to (237)"}
+    assign:        {args: [decision, owner], doc: "set a decision's owner to one member of the organization, or to nobody; a role is never an owner. The rail machine applies it and nothing about the decision changes but who it is filtered to (237)"}
     filter:        {args: [sink, filter], doc: "own | all: whether the member's own sink delivers only the decisions they own (237); nothing is written but the sink record"}
     remove-organization: {args: [organization], doc: "the organization's removal by response (221): sessions ended, places removed, state archived, git repositories left on disk"}
     add-package:   {args: [package, scope, host, config, secrets], doc: "the setup surface's add flow: the index entry, the configuration collected against the package's schema, the names of its secrets, all in one call; writes the package in added, whose install decision is the one thing that enters the count (228, 229)"}
@@ -117,7 +117,7 @@ phone:
     screen and a back control, the desktop's metaphor at a smaller size
     (307, S38, S60). One bundle is built and its version is the binary's
     (291).
-  links: "every chat rendering, every notification and every plan line carries a link to the object on the page at the host's address with the organization in the path (308, 205a); the link opens that object in the dock with its answer controls in reach, and works whether the page is served on a localhost port of the operator's own computer, over their private network, or at a hosted served name (245, 291); a link to a host that is away says so rather than failing silently (150a, away)"
+  links: "every chat rendering, every notification and every rail line carries a link to the object on the page at the host's address with the organization in the path (308, 205a); the link opens that object in the dock with its answer controls in reach, and works whether the page is served on a localhost port of the operator's own computer, over their private network, or at a hosted served name (245, 291); a link to a host that is away says so rather than failing silently (150a, away)"
   notification: "a decision raised reaches the operator's phone through the chat sink's own notification, with the answer controls the platform provides and the link above (309, 155); the page pushes nothing of its own on any tier, and the short reply grammar always works beside the controls (194)"
   one_request: "the status view renders from one request, which on a hosted tier is the page projection and its one decrypt (310, 291); the page holds no client state a reload loses, so a reload after an answer shows the answer recorded with who gave it and when (153, 154); the bundle carries no dependency the phone must fetch from anywhere else"
   touch: "every answer is one tap or one short reply; nothing is reachable only by hover or by a keyboard, and anything a hover reveals on the desktop is reachable by tap (311, S61); a long-form answer, a proposal edit for one unit among several, is given on the phone with the platform's own keyboard"
@@ -148,7 +148,7 @@ account:
   degraded: "on a hosted host, when the provider is unreachable (254): an issued token is honoured until it expires, then the page is read-only — status view, book, map, the rail's decisions — with every writing control absent and one attention line saying identity is unreachable and since when; unbounded; the loops run on. A self-managed host has no provider to lose"
 members:
   doc: |
-    One board per organization (235): every member reads the one plan from
+    One board per organization (235): every member reads the one rail from
     the one register — the same numbers, the same count. A decision
     answered by one member is applied once (7); the register keeps the
     retracted entry with the response's given_by and given_at, so every
@@ -174,7 +174,7 @@ members:
     member or, on a hosted tier, a role the token carries (248). Planning's proposal names it per unit
     when it can, a unit or elaboration type may name a role for its
     decisions, and `assign <owner>` on the decision's number sets it (the
-    plan machine's transition). An unowned decision is everyone's. A
+    rail machine's transition). An unowned decision is everyone's. A
     member's page rail and chat filter to their own with `filter own`,
     the count staying the organization's; ownership changes nothing about
     what a decision is, whether it counts, or who may answer it.
@@ -214,7 +214,7 @@ instrument:
   velocity: "history: slot-days landed per week from the acceptance files, and the streaks with what ended each"
   at_rest: "on the status view: runway in days, the reading sentence, the streak; opened: everything above"
 evidence:
-  sink.due:        {read: "the sink record's routes name the kind or group of a decision whose register entry is newer than the sink's mark; or the sink's cadence (`flywheel.yaml` sinks.<name>.cadence) fired since the mark; or the operator asked (`plan` in chat, a page reload with refresh); a bell sink is due only for the kinds it routes"}
+  sink.due:        {read: "the sink record's routes name the kind or group of a decision whose register entry is newer than the sink's mark; or the sink's cadence (`flywheel.yaml` sinks.<name>.cadence) fired since the mark; or the operator asked (`rail` in chat, a page reload with refresh); a bell sink is due only for the kinds it routes"}
   sink.delivered:  {read: "the sink's mark is newer than every register entry of a decision routed to it, and the sink's last delivery id (a chat message id, the page's build id, the bell's event id) is recorded on the sink"}
 effects:
-  deliver_plan:    {do: "chat: post one message — one line per numbered decision routed here (`#n kind · object · answers`), the tail since the mark, a link to the page — then put(sink): delivered_at = now, delivery = the message id. page: rebuild the plan page from the register and the objects; every decision shows its number and its answers as controls — the decision card is the one answerable form, and every other kind keeps the form the status view gives it (209): a proposal a document with its unit proposals hanging off it, an intent a thread opening each elaboration's own surface (210), a bolt a ledger, a landed bolt a record, a signal a quote, phase shown by placement; a decision with a document shows the plannotator link that opens it for review, and a rich page opens in lavish; put(sink) the same way. chat keeps the same forms in one line each (18): a decision line is answerable, any other line is not. bell: `herdr surface bell <surface> <text>` with the numbers, then put(sink). No rendering is stored anywhere (15): the page and the chat read the register and the objects. On a hosted tier the page sink's delivery writes one small page projection per organization — the status view and the rail as data, with each member's page sink and its mark — to an object under the organization's key, which is what a page request decrypts and returns; no request opens the warm cache (291, host.yaml tier.projection)"}
+  deliver_rail:    {do: "chat: post one message — one line per numbered decision routed here (`#n kind · object · answers`), the tail since the mark, a link to the page — then put(sink): delivered_at = now, delivery = the message id. page: rebuild the page from the register and the objects; every decision shows its number and its answers as controls — the decision card is the one answerable form, and every other kind keeps the form the status view gives it (209): a proposal a document with its unit proposals hanging off it, an intent a thread opening each elaboration's own surface (210), a bolt a ledger, a landed bolt a record, a signal a quote, phase shown by placement; a decision with a document shows the plannotator link that opens it for review, and a rich page opens in lavish; put(sink) the same way. chat keeps the same forms in one line each (18): a decision line is answerable, any other line is not. bell: `herdr surface bell <surface> <text>` with the numbers, then put(sink). No rendering is stored anywhere (15): the page and the chat read the register and the objects. On a hosted tier the page sink's delivery writes one small page projection per organization — the status view and the rail as data, with each member's page sink and its mark — to an object under the organization's key, which is what a page request decrypts and returns; no request opens the warm cache (291, host.yaml tier.projection)"}

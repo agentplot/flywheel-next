@@ -86,7 +86,7 @@ pub struct DecisionInstance {
     pub number: Option<u32>,
 }
 
-/// The plan's register: a short number per decision, given once, never reused.
+/// The rail's register: a short number per decision, given once, never reused.
 #[derive(Debug, Clone, Serialize, Deserialize, Default)]
 pub struct Register {
     pub next_number: u32,

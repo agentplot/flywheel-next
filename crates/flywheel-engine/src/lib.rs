@@ -1,12 +1,12 @@
 //! flywheel-engine: the generic part. Loads machine definitions, evaluates
-//! guards over evidence, plans and applies ticks, derives decisions. It
+//! guards over evidence, plans and applies ticks, derives the rail's decisions. It
 //! contains no domain name and no store: evidence and effects are strings a
 //! profile binds.
 
 pub mod defs;
 pub mod eval;
 pub mod load;
-pub mod plan;
+pub mod rail;
 pub mod rec;
 pub mod runtime;
 pub mod tick;

@@ -23,7 +23,7 @@ lands here.
 
 | product | repository | holds |
 |---|---|---|
-| the binary (this repo, open source) | `agentplot/flywheel-next` | machines and profiles, the page bundle (plan console and management console), the tool server and MCP endpoint, adapters, runners, routers, the definitions of permissions, roles, features, flags and plans, the CLI, the templates for the blueprints and built repositories |
+| the binary (this repo, open source) | `agentplot/flywheel-next` | machines and profiles, the page bundle (rail console and management console), the tool server and MCP endpoint, adapters, runners, routers, the definitions of permissions, roles, features, flags and plans, the CLI, the templates for the blueprints and built repositories |
 | the control plane (commercial) | `agentplot/flywheel-cloud` (private) | the receiver, dispatcher packaging and its roles and tags, queues, scheduler, warm cache and page projection stores and keys, page distribution, registry, deployer, identity environment sync, plans and billing, pool image build and provisioning, the shared chat applications |
 
 The line between them is the **invocation contract** (requirements A.37,
@@ -57,4 +57,4 @@ this repository.
 
 Use the requirements' words exactly: organization, host, place, capture,
 signal, decision, response, intent, elaboration, bolt, unit, stage, proposal,
-claim, sink, tick, tier, plan. Not job, task, ticket, pin, mint, instance.
+claim, sink, tick, tier, rail. Not job, task, ticket, pin, mint, instance.

@@ -11,7 +11,7 @@
 # both include them. A run delivers one proposal: the bolts it proposes and
 # the units in each, each unit with a size estimate in slot-days calibrated
 # by type and repository from the actuals the acceptance files record — no
-# constant (172); one decision on the plan; the session is charged by the
+# constant (172); one decision on the rail; the session is charged by the
 # machinery and has the fixed exits like any other (171). Its deliverables are
 # the proposal document and the verdicts (190, 227).
 machine: planning
@@ -65,7 +65,7 @@ regions:
             enter: {session: ended, place: removing}
             note: dictation retires the session (4); the run is due again on the next tick
       applying:
-        doc: verdicts to the ledger, the proposal and its units to the plan, the fingerprint recorded, all in one write
+        doc: verdicts to the ledger, the proposal and its units to the rail, the fingerprint recorded, all in one write
         entry:
           - {do: record_verdict, args: {verdict: each, claim_version: each, revision: each, evidence: each}, note: "every verdict the session delivered, including not-applicable"}
           - {do: propose_units, args: {units: delivered}, note: "each unit in in-proposal, naming the proposal; a first planning's proposal is the baseline"}

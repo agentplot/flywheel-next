@@ -108,8 +108,8 @@ permissions:
     listed operator holding every permission below (248, 249).
   by_tool:
     fw.read:             [status view, book, map, the query tools, artifact views, the instrument]
-    fw.plan.answer:      [answer, yes all, drop, later, hold, release, finish, end, close, send-back, retire, takeover, revive, take, start, stop, filter]
-    fw.plan.assign:      [assign]
+    fw.rail.answer:      [answer, yes all, drop, later, hold, release, finish, end, close, send-back, retire, takeover, revive, take, start, stop, filter]
+    fw.rail.assign:      [assign]
     fw.capture.write:    [capture, mark-intent, ask, propose-unit, propose-chore, explore, open-session]
     fw.proposal.edit:    [the per-unit answers on a proposal before its yes]
     fw.map.edit:         [map-edit, set-home, set-status, attach, detach, add-repository, create-repository, adopt-repository]
@@ -134,8 +134,8 @@ definitions:
     surfaces: [page, tool-server]        # one Application for the whole flywheel (243)
   permissions:
     - fw.read                            # status view, book, map, the query tools
-    - fw.plan.answer                     # respond to a decision, including yes-all
-    - fw.plan.assign                     # set a decision's owner (237)
+    - fw.rail.answer                     # respond to a decision, including yes-all
+    - fw.rail.assign                     # set a decision's owner (237)
     - fw.capture.write                   # the capture box (19)
     - fw.proposal.edit                   # edit a proposal before answering it
     - fw.map.edit                        # map-edit, set-home, set-status, attach, detach, add-repository
@@ -150,11 +150,11 @@ definitions:
     viewer:   [fw.read]
     reviewer: [fw.read, fw.capture.write, fw.review.mark, fw.proposal.edit]
     operator: [fw.read, fw.capture.write, fw.review.mark, fw.proposal.edit,
-               fw.plan.answer, fw.plan.assign, fw.map.edit,
+               fw.rail.answer, fw.rail.assign, fw.map.edit,
                fw.packages.manage, fw.hosts.manage, fw.org.configure]
     identity-admin: [fw.read, fw.identity.admin]
     owner:    [fw.read, fw.capture.write, fw.review.mark, fw.proposal.edit,
-               fw.plan.answer, fw.plan.assign, fw.map.edit,
+               fw.rail.answer, fw.rail.assign, fw.map.edit,
                fw.packages.manage, fw.hosts.manage, fw.org.configure,
                fw.secrets.place, fw.org.remove, fw.identity.admin]
   features:
@@ -207,7 +207,7 @@ definitions:
       omits its billing stack and no other (300).
     ladder:
       free:       {tier: 0, unlocks: [], doc: "the binary, its sign-in, the organization's own App and bot, every package and every surface, nothing on the service side"}
-      hobby:      {tier: 1, unlocks: [fw.ff.cloud-agent], doc: "cheap to run and needing no model key of the operator's (281, 294): the service's App and bot, chat structured so no model call is spent on it — a decision answered by button, free text a slash command with its arguments (`/fw yes 412`, `/fw capture <text>`), the plan delivered at no model cost (277) — free text interpreted in the page by the browser model instead (216a), a chat interaction or a webhook captured at once with no model, and a self-contained capture triaged in one daily batch at the sweep on the small model class inside the included budget (217e, 273). Immediate triage and free text in chat are unlocked by placing a model key of the operator's own (207). The plan in the organization's chat and the page and the tool server at a served name (291); raw-material triage, elaboration and construction wait for the operator's own machine or a pool host"}
+      hobby:      {tier: 1, unlocks: [fw.ff.cloud-agent], doc: "cheap to run and needing no model key of the operator's (281, 294): the service's App and bot, chat structured so no model call is spent on it — a decision answered by button, free text a slash command with its arguments (`/fw yes 412`, `/fw capture <text>`), the rail delivered at no model cost (277) — free text interpreted in the page by the browser model instead (216a), a chat interaction or a webhook captured at once with no model, and a self-contained capture triaged in one daily batch at the sweep on the small model class inside the included budget (217e, 273). Immediate triage and free text in chat are unlocked by placing a model key of the operator's own (207). The rail in the organization's chat and the page and the tool server at a served name (291); raw-material triage, elaboration and construction wait for the operator's own machine or a pool host"}
       pro:        {tier: 2, unlocks: [fw.ff.cloud-agent, fw.ff.pools, fw.ff.store], doc: "pools with an included allowance and metered overage, the package store, the book view and the presets; the immediate triage of self-contained captures and the interpretation of free text in chat, both in the tick on the small model class inside the included budget (269, 294)"}
       team:       {tier: 2, unlocks: [fw.ff.cloud-agent, fw.ff.pools, fw.ff.store, fw.ff.members, fw.ff.management-console], doc: "members with roles, ownership and assignment (237), identity administration (255), the management console, a higher ceiling on a pool host, and a job's model class raisable above the small one per unit type, per elaboration type and per stage (285, 294)"}
       enterprise: {tier: 3, unlocks: [fw.ff.cloud-agent, fw.ff.pools, fw.ff.store, fw.ff.members, fw.ff.management-console, fw.ff.federation, fw.ff.sso, fw.ff.dedicated-dispatcher, fw.ff.dedicated-compute], doc: "tier 3 in both shapes (268): stores only, the key, queue, cache and pool image in the organization's account with the service's compute assuming the granted role (276); or stores and compute, the binary provisioned into that account through the same role with only the control plane — registry, deployer, identity — left on the service side, and the console's dedicated compute options created there by the deployer (276a). Enterprise sign-in and provisioning through the organization's own directory, a dispatcher of its own — in the service account under the first shape, in the organization's own under the second — audit export, a private pool image, and a job's model class raisable per type and stage (294). Tier 3's third shape is the whole control plane installed in the customer's own accounts (296, 300, 304, 305), the fourth flavour of this rung: not shown in marketing and not offered in the management console, sold and installed by us, with the installer's own identity environment (301), billing optional (302) and the chat applications theirs (303)"}

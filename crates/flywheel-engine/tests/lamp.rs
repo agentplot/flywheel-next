@@ -6,7 +6,7 @@ use chrono::{DateTime, Duration, TimeZone, Utc};
 use flywheel_engine::defs::{Atoms, Definitions, Guard, Machine, State};
 use flywheel_engine::eval::{self, Ctx};
 use flywheel_engine::runtime::{EvidenceSource, Object, Register, Response, ResponseKind, Snapshot};
-use flywheel_engine::{apply, initialise, plan, plan_tick, Fired};
+use flywheel_engine::{apply, initialise, rail, plan_tick, Fired};
 use serde_json::{json, Value};
 use std::collections::BTreeMap;
 
@@ -138,7 +138,7 @@ fn response_fires_once_and_is_recorded() {
     objects.insert("lamp/1".to_string(), lamp(&d, t0()));
     let mut register = Register::default();
 
-    let decisions = plan::derive(&d, &objects, &mut register);
+    let decisions = rail::derive(&d, &objects, &mut register);
     assert_eq!(decisions.len(), 1);
     let number = decisions[0].number.expect("numbered");
 
@@ -176,7 +176,7 @@ fn proof_present_suppresses_the_effect() {
     let mut objects = BTreeMap::new();
     objects.insert("lamp/1".to_string(), lamp(&d, t0()));
     let mut register = Register::default();
-    let number = plan::derive(&d, &objects, &mut register)[0].number.unwrap();
+    let number = rail::derive(&d, &objects, &mut register)[0].number.unwrap();
 
     let responses = vec![answer("r1", number, "on", t0())];
     let fired = tick(&d, &mut objects, &responses, &register, &facts, t0());
@@ -192,7 +192,7 @@ fn evidence_and_dictation_leave_on() {
     let mut objects = BTreeMap::new();
     objects.insert("lamp/1".to_string(), lamp(&d, t0()));
     let mut register = Register::default();
-    let number = plan::derive(&d, &objects, &mut register)[0].number.unwrap();
+    let number = rail::derive(&d, &objects, &mut register)[0].number.unwrap();
     let mut responses = vec![answer("r1", number, "on", t0())];
     tick(&d, &mut objects, &responses, &register, &facts, t0());
 
@@ -213,7 +213,7 @@ fn evidence_and_dictation_leave_on() {
     assert_eq!(o.applied_responses, vec!["r1".to_string(), "r2".to_string()]);
 
     // Back on, then a fault turns it off with no response at all.
-    let number2 = plan::derive(&d, &objects, &mut register).last().unwrap().number.unwrap();
+    let number2 = rail::derive(&d, &objects, &mut register).last().unwrap().number.unwrap();
     responses.push(answer("r3", number2, "on", t0()));
     tick(&d, &mut objects, &responses, &register, &facts, t0() + Duration::minutes(3));
     assert_eq!(objects["lamp/1"].config.get("power").map(String::as_str), Some("on"));
@@ -298,7 +298,7 @@ fn decision_number_is_stable_until_the_state_is_re_entered() {
     objects.insert("lamp/1".to_string(), lamp(&d, t0()));
     let mut register = Register::default();
 
-    let first = plan::derive(&d, &objects, &mut register);
+    let first = rail::derive(&d, &objects, &mut register);
     assert_eq!(first.len(), 1);
     let one = &first[0];
     assert_eq!((one.object.as_str(), one.kind.as_str(), one.state.as_str(), one.group.as_str()), ("lamp/1", "switch", "off", "decide"));
@@ -308,7 +308,7 @@ fn decision_number_is_stable_until_the_state_is_re_entered() {
     // Ticks that change nothing keep the number.
     for i in 1..4 {
         tick(&d, &mut objects, &[], &register, &facts, t0() + Duration::minutes(i));
-        let again = plan::derive(&d, &objects, &mut register);
+        let again = rail::derive(&d, &objects, &mut register);
         assert_eq!(again.len(), 1);
         assert_eq!(again[0].number, Some(number));
         assert_eq!(again[0].id, one.id);
@@ -317,12 +317,12 @@ fn decision_number_is_stable_until_the_state_is_re_entered() {
     // Leave `off`: no decision stands.
     let mut responses = vec![answer("r1", number, "on", t0())];
     tick(&d, &mut objects, &responses, &register, &facts, t0() + Duration::minutes(5));
-    assert!(plan::derive(&d, &objects, &mut register).is_empty());
+    assert!(rail::derive(&d, &objects, &mut register).is_empty());
 
     // Re-enter `off` later: a new decision with a new number; the old number is never reused.
     responses.push(dictation("r2", "lamp/1", "off", t0()));
     tick(&d, &mut objects, &responses, &register, &facts, t0() + Duration::minutes(6));
-    let third = plan::derive(&d, &objects, &mut register);
+    let third = rail::derive(&d, &objects, &mut register);
     assert_eq!(third.len(), 1);
     assert_ne!(third[0].id, one.id);
     assert_eq!(third[0].number, Some(number + 1));

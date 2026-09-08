@@ -1,4 +1,4 @@
-//! The plan mockup scenario driven through the stand-in: one approval cascades
+//! The rail mockup scenario driven through the stand-in: one approval cascades
 //! into items, places, sessions and a merge; one dictation retires work.
 
 use flywheel_scenario::{scenario, Runtime};
@@ -10,7 +10,7 @@ fn workspace() -> PathBuf {
 
 fn seeded() -> Runtime {
     let defs = flywheel_engine::load::load_dir(&workspace().join("definitions")).expect("definitions load");
-    let sc = scenario::load(&workspace().join("scenarios/plan-mockup.yaml")).expect("scenario loads");
+    let sc = scenario::load(&workspace().join("scenarios/rail-mockup.yaml")).expect("scenario loads");
     scenario::seed(defs, &sc)
 }
 
@@ -88,14 +88,14 @@ fn approving_a_unit_cascades_to_a_merge_and_a_question() {
 #[test]
 fn dropping_a_unit_retires_its_items_and_ends_their_sessions() {
     let mut rt = seeded();
-    let unit = "unit/atlas/plan-tail";
-    let items = ["unit/atlas/plan-tail/wi-1", "unit/atlas/plan-tail/wi-2"];
-    let sessions = ["unit/atlas/plan-tail/wi-1/build", "unit/atlas/plan-tail/wi-2/build"];
+    let unit = "unit/atlas/rail-tail";
+    let items = ["unit/atlas/rail-tail/wi-1", "unit/atlas/rail-tail/wi-2"];
+    let sessions = ["unit/atlas/rail-tail/wi-1/build", "unit/atlas/rail-tail/wi-2/build"];
     assert_eq!(state(&rt, unit).as_deref(), Some("in-flight"));
     for s in sessions {
         assert!(rt.store.world.sessions[s].pane, "{s} runs before the drop");
     }
-    let other_before = rt.store.world.sessions["elaboration/plan-derivation/prototype/work"].pane;
+    let other_before = rt.store.world.sessions["elaboration/rail-derivation/prototype/work"].pane;
 
     rt.dictate(unit, "drop", "test");
     run_until_quiet(&mut rt, 100, 5);
@@ -110,7 +110,7 @@ fn dropping_a_unit_retires_its_items_and_ends_their_sessions() {
     for s in sessions {
         assert!(!rt.store.world.sessions[s].pane, "{s} was ended");
     }
-    assert_eq!(rt.store.world.sessions["elaboration/plan-derivation/prototype/work"].pane, other_before, "an unrelated session is untouched");
+    assert_eq!(rt.store.world.sessions["elaboration/rail-derivation/prototype/work"].pane, other_before, "an unrelated session is untouched");
 
     let dropped: Vec<_> = rt.store.tail.iter().filter(|t| t.kind == "dropped" && t.object.starts_with(unit)).map(|t| t.object.clone()).collect();
     assert!(dropped.contains(&unit.to_string()));
@@ -221,7 +221,7 @@ fn the_capture_box_makes_captures_and_marks_intents_with_a_control() {
 fn a_bolt_close_yes_lands_the_bolt() {
     let root = std::path::Path::new(env!("CARGO_MANIFEST_DIR")).join("../..");
     let defs = flywheel_engine::load::load_dir(&root.join("definitions")).unwrap();
-    let sc = flywheel_scenario::scenario::load(&root.join("scenarios/plan-mockup.yaml")).unwrap();
+    let sc = flywheel_scenario::scenario::load(&root.join("scenarios/rail-mockup.yaml")).unwrap();
     let mut rt = flywheel_scenario::scenario::seed(defs, &sc);
     rt.settle(50);
     let d = rt.decisions().into_iter().find(|d| d.kind == "bolt-close" && d.object == "bolt/switchboard/plan-rows").expect("close offered");

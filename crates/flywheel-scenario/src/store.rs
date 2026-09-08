@@ -325,7 +325,7 @@ impl Store {
             "elaboration.kept_since" => obj.and_then(|o| o.record.get("kept_at").cloned()).filter(|v| !v.is_null())?,
             "elaboration.type" => obj.and_then(|o| o.record.get("type").cloned())?,
             // ---- engine machines
-            "plan.unnumbered" | "plan.status_current" | "sink.due" | "host.stray_places" => json!(name == "plan.status_current"),
+            "rail.unnumbered" | "rail.status_current" | "sink.due" | "host.stray_places" => json!(name == "rail.status_current"),
             "host.last_seen" => obj.and_then(|o| o.record.get("last_seen").cloned())?,
             "lease.holder" => return None,
             "lease.coverable" => json!(true),

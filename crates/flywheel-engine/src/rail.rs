@@ -1,4 +1,4 @@
-//! Deriving the plan: every active state carrying `decision:` is a decision.
+//! Deriving the rail: every active state carrying `decision:` is a decision.
 
 use crate::defs::Definitions;
 use crate::runtime::{DecisionInstance, Object, Register};

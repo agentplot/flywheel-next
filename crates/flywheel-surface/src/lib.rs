@@ -1,4 +1,4 @@
-//! flywheel-surface: the plan page. One axum process serves the plan and the
+//! flywheel-surface: the page. One axum process serves the rail and the
 //! running work from the store and takes responses; every response is applied
 //! on its own and the machinery settles before the page re-renders.
 
@@ -19,14 +19,14 @@ pub async fn serve(rt: Runtime, state_path: PathBuf, port: u16) -> anyhow::Resul
     let app = App { rt: Arc::new(Mutex::new(rt)), state_path };
     let router = Router::new()
         .route("/", get(page))
-        .route("/api/plan", get(api_plan))
+        .route("/api/rail", get(api_rail))
         .route("/api/respond", post(api_respond))
         .route("/api/dictate", post(api_dictate))
         .route("/api/capture", post(api_capture))
         .route("/api/tick", post(api_tick))
         .with_state(app);
     let addr = format!("0.0.0.0:{port}");
-    println!("plan page on http://localhost:{port}");
+    println!("page on http://localhost:{port}");
     let listener = tokio::net::TcpListener::bind(&addr).await?;
     axum::serve(listener, router).await?;
     Ok(())
@@ -74,7 +74,7 @@ fn plan_json(rt: &mut Runtime) -> Value {
     })
 }
 
-async fn api_plan(State(app): State<App>) -> impl IntoResponse {
+async fn api_rail(State(app): State<App>) -> impl IntoResponse {
     let mut rt = app.rt.lock().await;
     Json(plan_json(&mut rt))
 }

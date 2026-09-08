@@ -22,7 +22,7 @@
 # Notifications are deliveries: the manifest routes decision kinds to sinks,
 # and a construction host is no sink unless the manifest names it (82).
 # On the hosted tiers the chat sink's identity may be the service's own Slack
-# or Discord application, scoped to the organization's channel, carrying plan
+# or Discord application, scoped to the organization's channel, carrying rail
 # text and the interactions it receives and nothing else; the record still
 # names who responded (277). On an installed control plane those applications
 # are the installer's own, with their ids, tokens and signing secrets, and the
@@ -34,7 +34,7 @@
 # short reply (306, 307, 311, S38, S39, S61). The status view it renders
 # comes from one request and holds no client state a reload loses, so a
 # reload after an answer shows the answer recorded (310, 154). Every
-# rendering, notification and plan line this sink delivers carries a link
+# rendering, notification and rail line this sink delivers carries a link
 # to the object on the page at the host's address with the organization in
 # the path, which opens that object in the dock with its answer controls
 # in reach and says so when the host is away (308, 205a, 150a). A decision
@@ -67,7 +67,7 @@ regions:
             to: delivering
       delivering:
         entry:
-          - {do: deliver_plan, note: "the numbered decisions routed to this sink and the tail since its mark; the mark advances in the same write; the chat carries one line per decision and a link to the page (18)"}
+          - {do: deliver_rail, note: "the numbered decisions routed to this sink and the tail since its mark; the mark advances in the same write; the chat carries one line per decision and a link to the page (18)"}
         transitions:
           - when: {always: true}
             to: idle

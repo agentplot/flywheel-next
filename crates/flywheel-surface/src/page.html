@@ -76,7 +76,7 @@ let data = null;
 function fmtAgo(iso, now) { const d = (new Date(now) - new Date(iso)) / 60000; if (d < 60) return Math.round(d) + 'm'; if (d < 60*48) return Math.round(d/60) + 'h'; return Math.round(d/1440) + 'd'; }
 function toast(t) { const e = $('#toast'); e.textContent = t; e.classList.add('on'); setTimeout(() => e.classList.remove('on'), 1800); }
 async function api(path, body) { const r = await fetch(path, {method: body ? 'POST' : 'GET', headers: {'content-type':'application/json'}, body: body ? JSON.stringify(body) : undefined}); return r.json(); }
-async function refresh() { data = await api('/api/plan'); render(); }
+async function refresh() { data = await api('/api/rail'); render(); }
 async function respond(number, answer) { data = await api('/api/respond', {number, answer}); toast(`${number} → ${answer} · recorded · ${data.applied.fired} transitions`); render(); }
 async function dictate(object, answer) { data = await api('/api/dictate', {object, answer}); toast(`${object} → ${answer} · ${data.applied.fired} transitions`); render(); }
 async function capture(text, intent) { data = await api('/api/capture', {text, intent}); toast(`${data.applied.kind} ${short(data.applied.made)} · recorded · ${data.applied.fired} transitions`); render(); }
