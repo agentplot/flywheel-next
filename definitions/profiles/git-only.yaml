@@ -1,5 +1,5 @@
 # The git-only profile (C.2). Every piece of durable state is a file in the
-# organization's `flywheel-state` git repository; the git host is the only
+# instance's `flywheel-state` git repository; the git host is the only
 # central service, used for pushes with expected-old and for a webhook on
 # push. Inherits the host, sessions, blueprints, record-derived and surfaces
 # bindings.
@@ -15,7 +15,7 @@ complete: true
 inherits: [host, sessions, blueprints, record-derived, surfaces, identity]
 
 layout:
-  repository: "`<org>/flywheel-state`; branch `main` is the shared line and the only branch hosts read state from"
+  repository: "`<instance>/flywheel-state`; branch `main` is the shared line and the only branch hosts read state from"
   object:     "`objects/<kind>/<id>/object.rec` — the envelope of model.md 3.4, one file per object; the rail's register and a sink's mark are the `rail` and `sink` objects' records"
   thread:     "`objects/<kind>/<id>/thread.rec` — append-only entries: question, answer, note, exit, offer, refusal, moved, op-response. A session's `flywheel exit|offer|note|refuse` appends here through the same commit path, as the session's own writer"
   responses:  "`responses/<response id>.rec` — the op-response record, written by the presenter of the sink it came through; the id is the Discord message id, the page submission id, the plannotator annotation id, or `commit/<sha>` for the operator's own commit"

@@ -1,6 +1,6 @@
 $ flywheel seed scenarios/rail-mockup.yaml
 seeded rail-mockup · 27 objects
-PLAN · 2026-09-04 14:40 · tick 0 · 9 decisions
+DECISIONS · 2026-09-04 14:40 · tick 0 · 9 decisions
   APPROVE
      412  intent-proposed        intent/atlas-provider-limits             → yes · drop · split
      413  elaboration-proposed   elaboration/atlas-provider-limits/research → yes · drop · type <name> · pick <intents> · <intent>: drop
@@ -19,7 +19,7 @@ PLAN · 2026-09-04 14:40 · tick 0 · 9 decisions
         landed   bolt/switchboard/idle-timeout            13:52
 
 $ flywheel rail
-PLAN · 2026-09-04 14:40 · tick 0 · 9 decisions
+DECISIONS · 2026-09-04 14:40 · tick 0 · 9 decisions
   APPROVE
      412  intent-proposed        intent/atlas-provider-limits             → yes · drop · split
      413  elaboration-proposed   elaboration/atlas-provider-limits/research → yes · drop · type <name> · pick <intents> · <intent>: drop
@@ -39,7 +39,7 @@ PLAN · 2026-09-04 14:40 · tick 0 · 9 decisions
 
 $ flywheel tick 1
 8 transitions
-PLAN · 2026-09-04 14:41 · tick 1 · 12 decisions
+DECISIONS · 2026-09-04 14:41 · tick 1 · 12 decisions
   APPROVE
      412  intent-proposed        intent/atlas-provider-limits             → yes · drop · split
      413  elaboration-proposed   elaboration/atlas-provider-limits/research → yes · drop · type <name> · pick <intents> · <intent>: drop
@@ -64,7 +64,7 @@ PLAN · 2026-09-04 14:41 · tick 1 · 12 decisions
 
 $ flywheel respond 412 yes
 18 transitions
-PLAN · 2026-09-04 14:57 · tick 17 · 11 decisions
+DECISIONS · 2026-09-04 14:57 · tick 17 · 11 decisions
   APPROVE
      413  elaboration-proposed   elaboration/atlas-provider-limits/research → yes · drop · type <name> · pick <intents> · <intent>: drop
      414  elaboration-proposed   elaboration/atlas-provider-limits/prototype → yes · drop · type <name> · pick <intents> · <intent>: drop
@@ -90,7 +90,7 @@ PLAN · 2026-09-04 14:57 · tick 17 · 11 decisions
 
 $ flywheel dictate bolt/atlas/plan-rows land and follow
 3 transitions
-PLAN · 2026-09-04 15:00 · tick 20 · 11 decisions
+DECISIONS · 2026-09-04 15:00 · tick 20 · 11 decisions
   APPROVE
      413  elaboration-proposed   elaboration/atlas-provider-limits/research → yes · drop · type <name> · pick <intents> · <intent>: drop
      414  elaboration-proposed   elaboration/atlas-provider-limits/prototype → yes · drop · type <name> · pick <intents> · <intent>: drop

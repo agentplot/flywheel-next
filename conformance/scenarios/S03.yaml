@@ -1,7 +1,6 @@
 scenario: S3
 title: a construction session offers a stale-instruction fix as a chore; one response; one agent fixes it in place; no bolt, no change directory
 profiles: [all]
-requires: [real-workspace]     # the chore's fix merges into the line it belongs on
 satisfies: [59, 60, 61, 63]
 invariants: [I8]
 given:

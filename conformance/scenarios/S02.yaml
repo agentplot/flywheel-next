@@ -1,7 +1,6 @@
 scenario: S2
 title: a standing prototype goes idle; it keeps running; the rail offers finish or keep; next morning it is still there
 profiles: [all]
-requires: [real-workspace]     # the standing prototype's place is rebased onto the line while idle
 satisfies: [25, 26]
 invariants: [I5, I6]
 given:

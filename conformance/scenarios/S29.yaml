@@ -1,7 +1,6 @@
 scenario: S29
 title: three items, two independent and one dependent; a bound of two; the third waits, starts when merges land and a slot frees; nothing twice across a restart
 profiles: [all]
-requires: [real-workspace]     # the two independent items merge, and in ordinal order
 satisfies: [31, 32]
 given:
   objects:

@@ -23,12 +23,12 @@ name: blueprints
 complete: false
 manifest:
   doc: |
-    `flywheel.yaml` at the blueprints' root lists the repositories the flywheel
+    `flywheel.yaml` at the blueprints' root lists the repositories the instance
     tracks with their git details only (199, 203); a repository's kinds and
     capabilities are derived from the map elements and contexts that name it as
     home, and the entry's name is what a node's `home` names:
 
-      operators:                                   # membership (233, 247): on a self-managed host (identity kind github) authored whole — the GitHub usernames allowed to respond, the creating user first (253), every one holding every permission (248), edited on the settings form one response per save; on a hosted tier the identities are derived from the organization's account and shown read-only, only the addresses authored, and a member is added or removed on the account (255)
+      operators:                                   # membership (233, 247): on a self-managed host (identity kind github) authored whole — the GitHub usernames allowed to respond, the creating user first (253), every one holding every permission (248), edited on the settings form one response per save; on a hosted tier the identities are derived from the account and shown read-only, only the addresses authored, and a member is added or removed on the account (255)
         - identity: cswanberg                      # a bare identity: a page sink only (236a)
         - identity: dana                           # with addresses per chat kind (236a): one chat sink per address, presented by the host running that kind's package and holding the lease; the sink is added or removed in the same write as this list
           discord: "118230000000000001"
@@ -41,7 +41,7 @@ manifest:
         burst: {platform: fly, image: auto, bound: 4, cost: {per_host_hour: 0.10, ceiling_per_day: 5}, retire_after: 20m, covers: {kinds: [unit, work-item], repositories: [atlas], unit_types: [default, fast]}}
       repositories:
         <name>:                                    # elements and contexts with home: <name> give it its kinds and capabilities (199)
-          repo: <org>/<name>
+          repo: <instance>/<name>
           landing: pull-request | direct           # 175
           take_cadence: "0 6 * * *"                # 50
           item_merge: squash | merge               # 179
@@ -75,7 +75,7 @@ context_map:
         (anticorruption-layer), kernel
       - link: kind (from the vocabulary), from, to; a link across contexts
         must cross a relationship that is not separate-ways
-    Lanes, tiers, runtimes and stores are tags or organization kinds, never
+    Lanes, tiers, runtimes and stores are tags or instance kinds, never
     structure; there is no seam layer, no lane, no runtime on an edge, no
     seamRow, no configurations companion and no verifiedFiles (model.md 2.5).
 
@@ -83,7 +83,7 @@ context_map:
     default vocabulary (element kinds aggregate, domain-event, contract with
     capability true, service; link kinds uses, implements, emits, handles; no
     facets) and the derivation table as one thing, `schema: flywheel-map/N`,
-    with the release. The organization extends it in
+    with the release. The flywheel extends it in
     `flywheel/map-vocabulary.yaml` (`extends: flywheel-map/N`): element kinds
     that may extend a shipped kind (`store extends service`), link kinds with
     end constraints, facets with closed or open values, capability flags; a
@@ -158,7 +158,7 @@ adapters:
     run by the tick of whichever host declares the source (231, host.yaml
     launcher: adapters), never by a process of its own. Triage of the source
     is charged on that host (217e). The capture endpoint (216) is for a
-    caller that cannot reach any host's binary. An organization adds an
+    caller that cannot reach any host's binary. An instance adds an
     adapter as a package of the adapter kind (228).
   chat-forward:   "`flywheel capture chat-forward`: a message forwarded to the bot; key `message/<id>`; its one signal by ensure_signal (S21)"
   meeting:        "`flywheel capture meeting <file>`: a transcript in the raw store; key `meeting/<date>/<name>`; read by a capture-reader session"
@@ -169,23 +169,23 @@ adapters:
   page-capture:   "the page's capture box is the capture tool itself (19); key `page/<submission id>`; its one signal by ensure_signal"
   raw_store:      "`flywheel.yaml` sources.<source>.raw: where the raw material lives so the reading host reaches it (217h)"
 signal_schema:
-  doc: "the signal record format is `flywheel/schemas/signal.md`, versioned and stable (113, 114); subject tags come from `flywheel/signal-tags.yaml`, a vocabulary the flywheel ships and the organization extends with open values; the capture reader is handed both in its work order and follows the raw pointer itself — nothing raw is copied into any repository (111, context.yaml ruling 7)"
+  doc: "the signal record format is `flywheel/schemas/signal.md`, versioned and stable (113, 114); subject tags come from `flywheel/signal-tags.yaml`, a vocabulary the flywheel ships and the flywheel extends with open values; the capture reader is handed both in its work order and follows the raw pointer itself — nothing raw is copied into any repository (111, context.yaml ruling 7)"
 map_edit_trailer:
   doc: "a commit that touches `context-map/current.yaml` or `context-map/target.yaml` must carry the trailer `flywheel-map-edit: <sha256 of the edit>` that `flywheel map edit|attach|detach|home|status` writes; the blueprints' pre-commit hook refuses one without it, so a session's direct edit of the map in its place is told from a tool call and refused (211, context.yaml ruling 12)"
 layout:
   doc: |
-    The blueprints repository is the organization's (203). People and sessions
+    The blueprints repository is the instance's (203). People and sessions
     write the book (`src/`), whose chapters include their claims by anchor,
     the standing specifications those claims live in
     (`openspec/specs/<capability>/spec.md`), the context map
     (`context-map/current.yaml`, `context-map/target.yaml`) and the
-    organization's map vocabulary (`flywheel/map-vocabulary.yaml`), the manifest (`flywheel.yaml`), the OpenSpec changes
+    instance's map vocabulary (`flywheel/map-vocabulary.yaml`), the manifest (`flywheel.yaml`), the OpenSpec changes
     for intents (`openspec/changes/<intent id>/`) and the elaboration records
     inside them, under the book's own layout. The machinery writes only
     under `flywheel/` — `flywheel/signals/` (captures, signals, moves),
     `flywheel/ledger/`, `flywheel/map/` (the rendered maps),
     `flywheel/packages/`
-    (organization packages of every kind — renderer, adapter, chat sink,
+    (instance packages of every kind — renderer, adapter, chat sink,
     runner, router, unit type, elaboration type, deliverable producer, map
     vocabulary, template, scenario pack, bundle — 228, 287; a **bundle** is a
     named set of parts with their configuration defaults installed under one
@@ -194,7 +194,7 @@ layout:
     intent opens (open_intent), plus the archive move at landing. The
     shipped instructions, schemas, skills and type files live under
     `flywheel/` too, written by people (chores) and read by the machinery.
-    Every organization has a blueprints repository of its own; nothing in one
+    Every instance has a blueprints repository of its own; nothing in one
     names another (218).
 evidence:
   capture.signals_present: {read: "at least one `flywheel/signals/<capture key>/*.rec` exists on the blueprints' shared line (203)"}

@@ -10,7 +10,7 @@ loss of that laptop survives — nothing reaches the operator's phone, and no
 second host could ever read it.
 
 Phase 1 of the roadmap, **the loop**, is the first of five and the smallest thing
-that is a flywheel rather than a demonstration: one organization, one laptop
+that is a flywheel rather than a demonstration: one instance, one laptop
 host, where captures land, the tick evaluates the machines, decisions are raised
 and delivered to the page and one chat sink, responses are recorded, and the run
 record is readable — with the machines and profiles run from their definitions,
@@ -26,7 +26,7 @@ The four phases after it, for context, because nothing here may foreclose them:
 |---|---|---|---|
 | 2 | construction | units and bolts landing on willdan repositories — spec, build, review, merge, landing by pull request; the tracker profile (C.1) joining for willdan's board; sessions charged by the machinery on the pane runner; the flywheel instrument | A.17–A.21, A.27 (types) |
 | 3 | context | the context map, the books, the claims, the ledger, the OpenSpec artifact views in the dock, packages and the package store, scenario packs | A.14, A.21, A.26–A.28 |
-| 4 | dispatch | dispatch as a host with its four jobs, the receiver, the interpreter in the page's browser and in-process, triage placements, several organizations on one host, users and ownership, environments | A.25, A.26, A.29, A.30 |
+| 4 | dispatch | dispatch as a host with its four jobs, the receiver, the interpreter in the page's browser and in-process, triage placements, several instances on one host, users and ownership, environments | A.25, A.26, A.29, A.30 |
 | 5 | scale | the hosted tiers: identity, the per-tier dispatcher, queues, cache, scheduler, pools, tenancy and encryption, plans and presets, the management console, the MCP endpoint | A.31–A.36 |
 
 A.37 is the control plane, which belongs to flywheel-cloud and not to this
@@ -72,9 +72,9 @@ phase is named.
   every minute for months add nothing to `main` (`profiles/git-only.yaml`
   `layout.leases`, `layout.hosts`; model.md §4.2).
 - **The definitions rule.** The shipped machines and profiles are inside the
-  binary as core machines, never edited by an organization, each carrying its
+  binary as core machines, never edited by an instance, each carrying its
   version and named by the release's set version (223, 224, 83; model.md §13);
-  an organization's own types and packages are read from the blueprints
+  an instance's own types and packages are read from the blueprints
   repository at the shared line, so a type composed of existing atoms is added
   with no code change and no host is rebuilt for one (57, 85, 228). The engine
   evaluates predicates over evidence, chooses transitions, runs effects idempotently and derives the rail's
@@ -131,7 +131,7 @@ phase is named.
   current state and nothing a process remembers (7), always current (8), and a
   decision appears exactly when the choice becomes the operator's and disappears
   when it is made or can no longer be made (9, I3). Every decision carries a
-  short number unique in the organization, given once and never reused, the same
+  short number unique in the instance, given once and never reused, the same
   on the page and in chat, with no rendering stored (15). Decisions group so
   that "yes to all" means something and any one can be answered alone (11).
   Delivery is to two sinks — the page and one chat sink — each with its own
@@ -147,7 +147,7 @@ phase is named.
   Board, with the dock full screen and a back control — the desktop's metaphor at
   a smaller size (307). Every chat rendering, every notification and every rail
   line carries a link to the object on the page at the host's address with the
-  organization in the path, opening that object in the dock with its answer
+  instance in the path, opening that object in the dock with its answer
   controls in reach, and a link to a host that is away says so rather than
   failing silently (308, 205a, 150a). A decision raised reaches the phone through
   the chat sink's own notification with the platform's controls and that link;
@@ -207,12 +207,12 @@ phase is named.
   the view shows it (144). Each kind of object has one form and no two share one
   (209), and an elaboration is a surface of its own reached from its intent
   (210).
-- **The organization and its host are objects.** `flywheel init` drives the
-  organization machine, whose bootstrap states 204 names as absent, blueprints
+- **The instance and its host are objects.** `flywheel init` drives the
+  instance machine, whose bootstrap states 204 names as absent, blueprints
   ready, state ready, connected and hosted, and whose loaded definition adds
   three more: `awaiting-app`, the attention decision that stands while the
   installation is unseen and is never done by an agent (204, 82), and
-  `removing` and `removed`, which the dictation `remove <organization>` enters
+  `removing` and `removed`, which the dictation `remove <instance>` enters
   (4, 221). The machine ticks unchanged, so that dictation is in the tool
   catalogue from day one (193); phase 1 honours it — ending sessions, removing
   places, archiving the state and leaving the git repositories on disk, with
@@ -222,14 +222,14 @@ phase is named.
   blueprints repository from its template, creates the state repository with the
   profile's layout (204, C.2), records that the GitHub App must be installed as a
   secret the operator places, and registers the first host, which is what carries
-  the organization to `hosted`: bootstrapped, one host registered — not a hosted
+  the instance to `hosted`: bootstrapped, one host registered — not a hosted
   tier. Every step is an effect with a proof, so running it again changes nothing
   and the reconciler advances a half-finished bootstrap (204). A host joins by
   one command and never by hand, cloning the state, the blueprints and every
   tracked built repository as bare repositories under one root the manifest
   names, keeping one checkout of each shared line for the machinery's own merges,
   and refusing to start on a hand-made layout, saying what differs (205); it has
-  one address with the organization in the path (205a). One GitHub App is the
+  one address with the instance in the path (205a). One GitHub App is the
   connection; no host or session uses a personal token (207, 207a). The template
   set is versioned and stamped at initialization (208).
 - **Hosts, leases and ownership.** A host declares what it takes and takes
@@ -264,7 +264,7 @@ phase is named.
   reach every host with it (91, 208), and each is versioned so a session started
   before a change and one started after can be told apart (123).
 - **Coexistence.** The new flywheel runs beside the current one against the same
-  organization with a disjoint, explicit scope of objects (96).
+  instance with a disjoint, explicit scope of objects (96).
 
 ### What stays faked, and what waits
 
@@ -412,7 +412,7 @@ X07 proves when the bell's surface exists.
 ### New Capabilities
 
 - `engine/definitions-and-tick`: the shipped machines and profiles inside the
-  binary, the organization's types read from the blueprints, guards, regions,
+  binary, the instance's types read from the blueprints, guards, regions,
   submachines, effects with proofs, idempotent repeat, the tick as the only
   clock, and the engine/domain line (57, 83–87, 138–140, 75–78, 228, 231).
 - `engine/rail`: decision derivation from active states, the register and its
@@ -442,7 +442,7 @@ X07 proves when the bell's surface exists.
   consequences; the page capture box, the chat forward and the meeting
   transcript as the phase-1 adapters; curation's records and its cadence
   (106–118, 215).
-- `organization/bootstrap`: the organization machine, `flywheel init`, the
+- `instance/bootstrap`: the instance machine, `flywheel init`, the
   blueprints and state repositories, the GitHub App, host join, and the
   versioned template set (204, 205, 205a, 207, 207a, 208, 203).
 - `hosts/ownership`: the host object, its declaration, its heartbeat, leases and
@@ -491,7 +491,7 @@ Phase 1 is the seed for four more phases, so these hold from day one:
   behaviour after a restart (75, I14), every decision is derived from what read
   and list return (136, 217a), and every timed behaviour is a guard on the tick
   (231). That is what lets phase 5's control plane invoke this binary in tick
-  mode — organization, tier, queue messages, scheduler entry, scratch directory
+  mode — instance, tier, queue messages, scheduler entry, scratch directory
   with a budget, returning the rail delivered, the shared lines pushed by
   compare-and-swap, the messages acknowledged, one next due time and the run
   record — without the binary changing (297, 298).

@@ -1,7 +1,7 @@
 scenario: S15
 title: a build session tries to create a line; refused and reported; the machinery prepared the place; the session commits inside it only
 profiles: [all]
-requires: [real-workspace]     # the place's own git hooks refuse the ref the session tried to write
+requires: [real-workspace]     # repository_refs_changed_by_session: 0 — an assertion on the repository's refs
 satisfies: [42, 43]
 invariants: [I12]
 given:

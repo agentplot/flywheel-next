@@ -1,6 +1,6 @@
 ## Purpose
 
-Bringing an organization and its first host into existence deterministically:
+Bringing an instance and its first host into existence deterministically:
 the two central repositories, the connection to the git host, and a layout on
 disk no person makes by hand.
 
@@ -9,19 +9,19 @@ disk no person makes by hand.
 ### Requirement: Initialization is an object with a machine, driven repeatably
 
 Initialization SHALL be the machinery's, deterministic and repeatable (204). An
-organization SHALL be an object with a machine of its own, and the
+instance SHALL be an object with a machine of its own, and the
 initialization command SHALL drive it: create or adopt the blueprints repository
 from the blueprints template, create the state repository with the profile's
-layout, record that the organization's GitHub App must be installed, and
+layout, record that the instance's GitHub App must be installed, and
 register the first host (204). Every step SHALL be an effect with a proof, so
 running it again changes nothing, and the reconciler that advances work SHALL
 advance a half-finished bootstrap (204).
 
 #### Scenario: Running initialization twice
-- **WHEN** initialization is run again against an organization already
+- **WHEN** initialization is run again against an instance already
   bootstrapped
 - **THEN** every step finds its proof present, nothing is created or written,
-  and the organization's state is unchanged (204)
+  and the instance's state is unchanged (204)
 
 #### Scenario: A half-finished bootstrap is advanced, not restarted
 - **WHEN** initialization stops after the blueprints repository exists and
@@ -32,7 +32,7 @@ advance a half-finished bootstrap (204).
 #### Scenario: The App's installation waits on the operator
 - **WHEN** the machinery has recorded that the App must be installed and the
   installation is not yet present
-- **THEN** the organization stands at a decision under attention until the
+- **THEN** the instance stands at a decision under attention until the
   installation is seen, and no agent performs it (204, 207, 82)
 
 ### Requirement: A host joins by one command and never by hand
@@ -45,7 +45,7 @@ recorded (93a). The layout on disk SHALL be the profile's, and a host that finds
 a hand-made layout SHALL refuse to start and SHALL say what differs (205).
 
 #### Scenario: Joining clones what the manifest names
-- **WHEN** the join command is run for an organization
+- **WHEN** the join command is run for an instance
 - **THEN** the state, blueprints and tracked built repositories are cloned bare
   under the manifest's root, each shared line is checked out once, and no other
   worktree exists (205)
@@ -60,15 +60,15 @@ a hand-made layout SHALL refuse to start and SHALL say what differs (205).
 - **WHEN** the join command is run again on a host already joined
 - **THEN** it clones only what is missing and re-runs the layout check (205)
 
-### Requirement: A host has one address with the organization in the path
+### Requirement: A host has one address with the instance in the path
 
-A host SHALL have one address, and the organization SHALL be in the path; a host
-serving several organizations SHALL serve them all at that one address, and a
-link SHALL name the organization it opens (205a).
+A host SHALL have one address, and the instance SHALL be in the path; a host
+serving several instances SHALL serve them all at that one address, and a
+link SHALL name the instance it opens (205a).
 
-#### Scenario: A link names its organization
+#### Scenario: A link names its instance
 - **WHEN** any surface writes a link to an object
-- **THEN** the link is at the host's one address with the organization in the
+- **THEN** the link is at the host's one address with the instance in the
   path (205a)
 
 ### Requirement: One GitHub App is the connection, and its key is the operator's to place
@@ -81,7 +81,7 @@ installation token scoped to that repository, issued into the place and written
 nowhere else (207); with the operator as the session binding and the
 line-and-place effects recorded there is no place on disk to issue one into, so
 that sentence is proved in the phase that has both (93a, 93b). A self-managed
-organization SHALL use its own App, its key placed by the operator and never by
+instance SHALL use its own App, its key placed by the operator and never by
 an agent (207a).
 
 #### Scenario: A repository the installation does not cover
@@ -97,12 +97,12 @@ an agent (207a).
 ### Requirement: The new flywheel's objects are its own, in its own state repository
 
 The new flywheel SHALL run beside the existing one against the same
-organization, without either interfering with the other, and its scope of
+instance, without either interfering with the other, and its scope of
 objects SHALL be disjoint and explicit (96). Its objects SHALL live in its own
 state repository, and it SHALL touch nothing of the existing flywheel's (96).
 
 #### Scenario: The two do not meet
-- **WHEN** both flywheels run against the same organization
+- **WHEN** both flywheels run against the same instance
 - **THEN** the new one reads and writes only its own state repository and the
   prefix it owns, and nothing of the existing one's is read or written (96)
 
@@ -116,15 +116,15 @@ never hold a hand-declared kind, capability or scope (199).
 - **THEN** its record names its git details, and no kind, capability or scope
   appears on it (199)
 
-### Requirement: An organization is removed by a response, never by deleting files
+### Requirement: An instance is removed by a response, never by deleting files
 
-An organization SHALL be removed by a response and never by deleting files: its
+An instance SHALL be removed by a response and never by deleting files: its
 sessions SHALL end, its places SHALL be removed, its state SHALL be archived,
 its git repositories SHALL be left on disk, and its numbers SHALL never be
 reused (221, 15, 4).
 
 #### Scenario: The operator dictates the removal
-- **WHEN** the operator dictates the organization's removal
+- **WHEN** the operator dictates the instance's removal
 - **THEN** its sessions end, its places are removed, its state is archived with
   its decision counter, its repositories stay on disk, and no number it issued
   is ever reused (221, 15, 4)
@@ -136,7 +136,7 @@ and deliverables SHALL be one versioned set released with the flywheel (208).
 Initialization and repository creation SHALL stamp the version they used (208).
 
 #### Scenario: The set version is recorded at initialization
-- **WHEN** an organization is initialized or a repository is created
+- **WHEN** an instance is initialized or a repository is created
 - **THEN** the version of the set used is recorded with it (208)
 
 #### Scenario: A newer set upgrades nothing on its own

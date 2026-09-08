@@ -59,7 +59,7 @@ or a command.
 - [ ] 4.2 Add `cargo test -p flywheel-domain embedded_set_matches_definitions_dir`, hashing the embedded set against `definitions/`; verify it fails when the directory is edited without a rebuild (D2)
 - [ ] 4.3 Accept `--definitions <dir>` on the scenario runner and refuse it on `flywheel host`; verify `cargo test -p flywheel host_refuses_definitions_override` (D2)
 - [ ] 4.4 Validate a profile's binding at load: refuse one that leaves an evidence or effect name unbound or a guarantee without a named mechanism, refuse a binding naming evidence outside the atoms file, and report the name; verify `flywheel scenario run --profile git-only conformance/contract/binding.yaml` and `cargo test -p flywheel-domain incomplete_binding_is_refused` against a deliberately incomplete profile (138–140, 169, 170, `state-store/contract`)
-- [ ] 4.5 Load the organization's own type files from a blueprints checkout at the shared line; verify `cargo test -p flywheel-domain type_from_blueprints_runs` against a fixture blueprints directory, with no binary change and no host restart (57, 85)
+- [ ] 4.5 Load the instance's own type files from a blueprints checkout at the shared line; verify `cargo test -p flywheel-domain type_from_blueprints_runs` against a fixture blueprints directory, with no binary change and no host restart (57, 85)
 - [ ] 4.6 Record the extensible machine's version on each object and hold it across a type change; verify `cargo test -p flywheel-domain type_version_held_in_flight` (57, 224)
 - [ ] 4.7 Refuse a blueprints file that would override a core machine and write the refusal to the run record; verify `cargo test -p flywheel-domain core_machine_override_refused` (223)
 
@@ -75,8 +75,8 @@ or a command.
 - [ ] 5.8 Read the App key from where the operator placed it and mint short-lived installation tokens, in `flywheel-world-host`; verify `cargo test -p flywheel-world-host token_written_nowhere_else` asserting no key or token in configuration, code or the state repository (207, 207a)
 - [ ] 5.9 Raise the attention decision for a manifest repository the App's installation does not cover, in `flywheel-world-host`; verify `cargo test -p flywheel-world-host uncovered_repository_decision` (207)
 - [ ] 5.10 Enforce the prefix rule: refuse and report a tracked write outside the machinery's prefix that is not the effect of a response; verify `cargo test -p flywheel prefix_write_refused` (203)
-- [ ] 5.11 Scope the new flywheel to its own state repository and prefix, touching nothing of the existing flywheel's; verify `cargo test -p flywheel coexistence_scope_is_disjoint` asserting no read or write outside them (96, D14, `organization/bootstrap`)
-- [ ] 5.12 Implement the organization's removal by dictation — sessions ended, places removed, state archived with its counter, repositories left on disk; verify `cargo test -p flywheel remove_organization_keeps_counter` asserting no number is reused (221, 15, 4)
+- [ ] 5.11 Scope the new flywheel to its own state repository and prefix, touching nothing of the existing flywheel's; verify `cargo test -p flywheel coexistence_scope_is_disjoint` asserting no read or write outside them (96, D14, `instance/bootstrap`)
+- [ ] 5.12 Implement the instance's removal by dictation — sessions ended, places removed, state archived with its counter, repositories left on disk; verify `cargo test -p flywheel remove_instance_keeps_counter` asserting no number is reused (221, 15, 4)
 - [ ] 5.13 Hold a repository record to its git details alone; verify `cargo test -p flywheel repository_record_has_git_details_only` refusing a kind, capability or scope (199)
 - [ ] 5.14 Stamp the set version at initialization and at repository creation; verify `cargo test -p flywheel set_version_stamped` and that a newer set upgrades nothing (208)
 
@@ -96,7 +96,7 @@ or a command.
 - [ ] 6.12 Record what was expected of a session beside what it delivered, difference first; verify `cargo test -p flywheel expected_beside_delivered` with a session delivering two of three (80)
 - [ ] 6.13 Report a problem with the machinery through the run record and create no work for it; verify `cargo test -p flywheel machinery_problem_is_not_work` (81)
 - [ ] 6.14 Record every refusal with the identity, the operation and the object, and surface it under attention; verify `cargo test -p flywheel refusal_reaches_attention` (4, 79, 81)
-- [ ] 6.15 Derive the status view from `list` and `read` alone: every object grouped by queued, in progress, waiting on the operator and done, with its holder, its runner and that host's liveness, one place for the organization; verify `cargo test -p flywheel status_view_groups_every_object` (141, 143, 146)
+- [ ] 6.15 Derive the status view from `list` and `read` alone: every object grouped by queued, in progress, waiting on the operator and done, with its holder, its runner and that host's liveness, one place for the instance; verify `cargo test -p flywheel status_view_groups_every_object` (141, 143, 146)
 - [ ] 6.16 Keep a question, an answer and a note on the object and show them under it on the status view; verify `cargo test -p flywheel discussion_stays_with_the_object` reading them back after the session is gone (144)
 - [ ] 6.17 Implement `render_status` as an effect of the rail object, committing the status file on the shared line with its as-of commit and time, written only by the rail's lease holder; verify `flywheel scenario run --profile git-only conformance/contract/status.yaml` (D12, 132, 145, 148)
 - [ ] 6.18 Verify S20: `flywheel scenario run --profile git-only conformance/scenarios/S20.yaml` — the committed file is readable from the state repository alone and its as-of commit is the last that landed
@@ -181,7 +181,7 @@ or a command.
 
 ## 12. The phase gate
 
-- [ ] 12.1 Initialize the willdan organization on the git-only profile and join the laptop host; verify `flywheel host doctor` passes and the organization's record reads bootstrapped (204, 205)
+- [ ] 12.1 Initialize the willdan instance on the git-only profile and join the laptop host; verify `flywheel host doctor` passes and the instance's record reads bootstrapped (204, 205)
 - [ ] 12.2 Run the loop on real work for a week — captures landing, decisions answered from the phone, responses recorded, the record readable; verify the week completes and `git log` on the state repository shows no commit made by hand (roadmap, phase gates)
 - [ ] 12.3 Set the engine windows and the status file's rewrite cadence in `flywheel.yaml` from what the week measured, or record that the defaults held; verify `flywheel host` reads the values back at load (design.md — Open Questions)
 - [ ] 12.4 Confirm the gate: `cargo test`, `flywheel scenario run --profile git-only conformance/`, and `uv run --with pyyaml --with jsonschema python3 machines/check.py` in the model with `definitions/` byte-identical

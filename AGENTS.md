@@ -57,6 +57,8 @@ this repository.
 
 ## Vocabulary
 
-Use the requirements' words exactly: organization, host, place, capture,
+Use the requirements' words exactly: instance, account, host, place, capture,
 signal, decision, response, intent, elaboration, bolt, unit, stage, proposal,
-claim, sink, tick, tier, rail. Not job, task, ticket, pin, mint, instance.
+claim, sink, tick, tier, rail. Not job, task, ticket, pin, mint. An instance is
+what the state holds and an account holds one or more instances; organization is
+for a company or the git host's organization alone.

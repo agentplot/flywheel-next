@@ -1,4 +1,4 @@
-# Curation: one machine per organization (A.15). It never opens an intent. It
+# Curation: one machine per instance (A.15). It never opens an intent. It
 # runs a session over the signals with no move when the count crosses the
 # threshold or the cadence says so; the session's exit delivers one move per
 # signal and the proposed intents the joins produce. A person writing the same
@@ -14,7 +14,7 @@ kind: object
 tier: core
 satisfies: [4, 20, 58, 60, 108, 110, 116, 118, 171, 182, 188]
 object: curation
-singleton: organization
+singleton: instance
 record:
   threshold: int
   cadence: string

@@ -113,7 +113,7 @@ sessions:
     charged_by: operator-session.open (69)
     schema_instruction: "none"
     type_skill: "`flywheel/agents/operator-console.md`, `flywheel/skills/operator-console/SKILL.md`"
-    work_order: "the tool catalogue and the query tools (surfaces.yaml tools:, 193); the organization's objects in one summary — every intent, bolt and host with its state — as the status view lists them; the dictation grammar; nothing else (ruling 14)"
+    work_order: "the tool catalogue and the query tools (surfaces.yaml tools:, 193); the instance's objects in one summary — every intent, bolt and host with its state — as the status view lists them; the dictation grammar; nothing else (ruling 14)"
     change_artifacts: "none; a place off the blueprints' or a named repository's shared line, kept until `end` unless held"
     chapters_and_claims: "on disk when off the blueprints"
     map: "on disk"
@@ -137,7 +137,7 @@ sessions:
     map: "the map section prepare_place writes from `flywheel/map/target.json`: the elements the unit builds — the ids its claims attach to, and those homed in the repository that the chapters name — each with context, kind and effective home, and the claims attached to each with versions (211)"
     surface_specification: "the chapter in force at the header's commit when a claim the unit cites is about a surface — attached to an element of a surface kind, or stated in a surface-specification chapter (212; gaps.md 212; ruling 2)"
     deliverables: "spec: change-directory, spec; build: commits, as-built-statements-naming-claims; verify: verify-report, verdict (default@5)"
-    identity: "the token; the place-scoped installation token in `.flywheel/token`, for reads only (207; ruling 17); `flywheel exit|offer|note`, `flywheel service start|stop` (48); the multiplexer session `flywheel-<org>-bolts` (174), the construction role's kind and model (173)"
+    identity: "the token; the place-scoped installation token in `.flywheel/token`, for reads only (207; ruling 17); `flywheel exit|offer|note`, `flywheel service start|stop` (48); the multiplexer session `flywheel-<instance>-bolts` (174), the construction role's kind and model (173)"
     never: "the blueprints as a tree; the state store; the bolt's operator place (44); sibling items' places; another session's thread (197); a push of any branch — the session commits and the machinery merges, the `pre-push` hook refusing every push (43; ruling 17); the query tools — its inputs are closed and the map section carries what 211 requires (89; ruling 24)"
   fast:
     charged_by: "work-item.in-type under fast@3: ff-apply (builder)"
@@ -186,7 +186,7 @@ rulings:
   11: "an elaboration's cited chapters are the proposal document's citations plus the chapters of the claims the intent's signals argue with"
   12: "the blueprints' pre-commit hook refuses a commit touching `context-map/*.yaml` that lacks the `flywheel-map-edit:` trailer the tool writes (blueprints.yaml)"
   13: "a proposal narrows an elaboration's deliverables and never widens them; a surface specification needs a standing elaboration"
-  14: "the operator's session is told the catalogue, the query tools and one summary of the organization's objects; its calls are recorded given_by the operator and proposed_by the session"
+  14: "the operator's session is told the catalogue, the query tools and one summary of the instance's objects; its calls are recorded given_by the operator and proposed_by the session"
   15: "other covered intents' change directories and unlanded chapters are copied read-only into `.flywheel/covers/<id>/`; new records are written under `openspec/changes/<id>/` in the place"
   16: "the type version in force is in every unit session's header; a verify or review session is not told the send-back bound"
   17: "a session commits only and never pushes; the place token serves reads; the pre-push hook refuses every push (host.yaml app.place_token)"

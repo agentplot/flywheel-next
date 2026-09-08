@@ -25,7 +25,7 @@ evidence:
   applied_responses: {read: "get(id).applied_responses"}
   host.bound:     {read: "hosts()[me].bound, from `flywheel.yaml` hosts at startup"}
   host.running:   {read: "count of session records with host = me and state alive"}
-  host.last_seen: {read: "hosts()[host].last_seen, except on an invoked host (269, 292), where it reads the later of that heartbeat and the due time of the scheduler entry standing for the organization, and reads now while the organization's queue holds an item; an invoked host heartbeats once per tick, so its stale window is the due time it wrote plus the engine's grace and a host with no entry, no queued item and no heartbeat inside the window is gone"}
+  host.last_seen: {read: "hosts()[host].last_seen, except on an invoked host (269, 292), where it reads the later of that heartbeat and the due time of the scheduler entry standing for the instance, and reads now while the instance's queue holds an item; an invoked host heartbeats once per tick, so its stale window is the due time it wrote plus the engine's grace and a host with no entry, no queued item and no heartbeat inside the window is gone"}
   host.leases_expired: {read: "no lease record names the host"}
   lease.holder:   {read: "leases(id).holder"}
   lease.renewed_at: {read: "leases(id).renewed_at"}

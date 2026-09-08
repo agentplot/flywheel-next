@@ -1,7 +1,7 @@
 scenario: S32
 title: two units build side by side; the first merges; the second's place is untouched while working, rebased when idle, told what moved; one conflict resolved in place; the merge retries and lands
 profiles: [all]
-requires: [real-workspace]     # a merge, a rebase of an idle place, and a conflict resolved in the place
+requires: [real-workspace]     # the conflict transitions and conflict_retries_after: 1 — a real conflict
 satisfies: [51, 52]
 invariants: [I16]
 given:

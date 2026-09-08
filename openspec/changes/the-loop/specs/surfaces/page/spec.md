@@ -81,7 +81,7 @@ order (210).
 
 ### Requirement: A single-operator host on a private network serves the page unsigned-in, and every response names that operator
 
-Until the organization's operators list holds more than one entry, a
+Until the instance's operators list holds more than one entry, a
 self-managed host MAY serve the page on the operator's private network with no
 sign-in (253a). The single entry SHALL be the identity every response records as
 given by, with when (253a, 153, 236a). The host SHALL refuse to serve
@@ -127,8 +127,8 @@ response (19).
 The page SHALL be served on the operator's private network and SHALL work on a
 phone (155). The manifest SHALL name the router per host, and this phase's host
 address SHALL be the private-network router's name for the host (191, 205a). The
-host SHALL have one address with the organization in the path, a link SHALL name
-the organization it opens, and a link SHALL never name a localhost port (205a,
+host SHALL have one address with the instance in the path, a link SHALL name
+the instance it opens, and a link SHALL never name a localhost port (205a,
 308). Nothing SHALL be published beyond the operator's private network unless
 the operator says so (46).
 

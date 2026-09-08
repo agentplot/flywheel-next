@@ -9,7 +9,7 @@ and does so on a tick that is the only clock the flywheel keeps.
 ### Requirement: The shipped definitions live in the binary and are named by the set version
 
 The machines, profiles and schemas the flywheel ships SHALL be core definitions
-carried inside the binary, never edited by an organization, each carrying its
+carried inside the binary, never edited by an instance, each carrying its
 own version, and all of them named by the release's set version (223, 224, 83).
 Initialization and repository creation SHALL record the set version they used
 (208).
@@ -19,15 +19,15 @@ Initialization and repository creation SHALL record the set version they used
 - **THEN** the run record names the set version the binary carries, and that
   version names the version of every core machine it evaluated (224)
 
-#### Scenario: An organization cannot edit a core machine
-- **WHEN** a file under the organization's blueprints prefix would override a
+#### Scenario: An instance cannot edit a core machine
+- **WHEN** a file under the instance's blueprints prefix would override a
   core machine
 - **THEN** the machinery refuses it and reports the refusal, because a core
   machine ships with the release (223)
 
-### Requirement: An organization's own types are read from the blueprints
+### Requirement: An instance's own types are read from the blueprints
 
-Unit types and elaboration types an organization adds or overrides SHALL be read
+Unit types and elaboration types an instance adds or overrides SHALL be read
 from the blueprints repository at the shared line, and a type composed only of
 existing predicate and effect atoms SHALL require no code change and no rebuilt
 host (57, 85). An object SHALL record the version of the extensible machine it

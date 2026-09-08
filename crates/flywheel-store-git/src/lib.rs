@@ -1,7 +1,7 @@
 //! flywheel-store-git: `StateStore` over the state repository.
 //!
 //! `profiles/git-only.yaml` is this crate's specification. Every durable fact
-//! is a commit on `<org>/flywheel-state`'s shared line, and the record is
+//! is a commit on `<instance>/flywheel-state`'s shared line, and the record is
 //! readable as files with no host running (160, 161, 132, 145).
 //!
 //! The layout, from the profile:

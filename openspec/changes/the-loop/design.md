@@ -26,11 +26,11 @@ plane** is the service side of A.37 and appears here only where phase 5 does.
 
 **Goals:**
 
-- One `flywheel` binary that runs a real loop for one organization on one laptop:
+- One `flywheel` binary that runs a real loop for one instance on one laptop:
   fetch, tick, effects, decisions, delivery, response, commit (125–137, 160–167).
 - The seams where phases 2 to 5 attach are four traits with one implementation
   each in phase 1, not branches in the code (139, 140, 299).
-- Every durable fact is a commit on `<org>/flywheel-state`'s shared line, and the
+- Every durable fact is a commit on `<instance>/flywheel-state`'s shared line, and the
   record is readable as files with no host running (160, 161, 132, 145).
 - The page is the phone (306–311) and the tool catalogue is the one write path
   (193, 194).
@@ -62,7 +62,7 @@ model.md §13 lays them out.
 |---|---|
 | `flywheel-engine` | the loader, the guard algebra, regions and submachines, `plan_tick` (pure, no IO), decision derivation and the register, proofs and effect ids, the five engine machines, the generic rec reader and writer |
 | `flywheel-atoms` | the evidence and effect name registries generated from `atoms.yaml`; the `StateStore`, `World`, `Workspace` and `Sessions` traits (D8); the scenario file types |
-| `flywheel-domain` | the shipped machines embedded, the organization's type catalogue loader, the object envelope and the domain's record schemas, the work order renderer |
+| `flywheel-domain` | the shipped machines embedded, the instance's type catalogue loader, the object envelope and the domain's record schemas, the work order renderer |
 | `flywheel-world-host` | `World` over git, the manifest and the host's router; `profiles/host.yaml` is its specification |
 | `flywheel-workspace-recorded` | `Workspace` as records: each line, place, merge and landing effect written as a fact in the state store (D8) |
 | `flywheel-sessions-operator` | `Sessions` with the operator as the session: the work shown on the rail, reported through `flywheel exit` (D8) |
@@ -98,17 +98,17 @@ written on top of them. Nothing moves.
 is then one new crate beside `flywheel-store-git`, and the phase-2 runner one
 beside `flywheel-sessions-operator`, rather than a refactor of either.
 
-### D2. Shipped definitions are embedded; the organization's types are read from the blueprints
+### D2. Shipped definitions are embedded; the instance's types are read from the blueprints
 
 Two sources, one rule each:
 
 - The machines, profiles, schemas, instructions and skills the flywheel ships
   are compiled into the binary with `include_dir` as core machines an
-  organization never edits, each carrying its version and named by the release's
+  instance never edits, each carrying its version and named by the release's
   set version, which initialization and creation record (223, 224, 83, 208). This is what
   makes "same bytes everywhere" checkable (299) and what lets a host prove which
   set it ran.
-- The organization's own unit and elaboration types are read from the blueprints
+- The instance's own unit and elaboration types are read from the blueprints
   repository at the shared line, so a type composed of existing atoms is added
   with no code change and no host is rebuilt for one (57, 85). Packages are
   A.28 and phase 3; phase 1 installs none, and the loader reads the type files
@@ -364,7 +364,7 @@ and by the proposal's own foreclosure argument a later transport is a transport,
 not a second write path (291, 293). Phase 2 adds it beside the runner that needs
 it.
 
-Because the organization machine ticks unchanged, its `remove` dictation is in
+Because the instance machine ticks unchanged, its `remove` dictation is in
 the catalogue from day one and phase 1 performs it — sessions ended, places
 removed, state archived, git repositories left on disk, numbers never reused
 (4, 221, 15). Refusing a transition the loaded machine offers would be the
@@ -381,7 +381,7 @@ would vouch for that identity — GitHub's device flow, the operators list as
 membership, roles and permissions — is A.29 and A.32, phases 4 and 5 (233, 243,
 253). Phase 1 does not build it.
 
-Instead: one organization, one operator, the first entry of the manifest's
+Instead: one instance, one operator, the first entry of the manifest's
 `operators:` list (236a); every response records that name as `given_by` with
 `given_at` (153). Because `given_by` is a field of the op-response record from
 the first commit, phase 4's sign-in fills it rather than changing the record's
@@ -400,7 +400,7 @@ every response already committed.
 
 The phone is the surface every decision must be answerable on (306), and it
 reaches the page by the link every chat rendering and notification carries (308,
-309). A link to `http://localhost:4242/<org>/…` opens nothing on a phone, so a
+309). A link to `http://localhost:4242/<instance>/…` opens nothing on a phone, so a
 laptop serving only a localhost port fails 306 and 309 for every decision of the
 willdan week.
 
@@ -408,7 +408,7 @@ Phase 1 therefore binds the host's address (205a) to the private-network router
 191 names — the host's tailnet hostname, `flywheel.yaml hosts.<host>.router:
 {kind: tailnet}` — and the page is served there, on the operator's private
 network as 155 requires. Every link of 308 is written at that address with the
-organization in the path. The localhost port stays available to the operator
+instance in the path. The localhost port stays available to the operator
 sitting at the laptop, which is what 245 permits rather than requires; it is
 never what a link names.
 
@@ -438,7 +438,7 @@ such publication.
   form; every other kind keeps the form the status view gives it (209), and an
   elaboration is a surface of its own reached from its intent (210).
 - Every chat line, notification and rail line carries a link at the host's
-  address — its private-network name, D10a — with the organization in the path,
+  address — its private-network name, D10a — with the instance in the path,
   opening that object in the dock with its answer controls in reach (308, 205a).
   A link to a host that is away says so rather than failing silently (308,
   150a); with one host there is nothing left to serve that message, so phase 1

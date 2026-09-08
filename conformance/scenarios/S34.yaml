@@ -1,7 +1,7 @@
 scenario: S34
 title: research exits done and its place merges into the intent's line and is removed; the standing prototype's place is rebased and kept; the archive lands the line; two claims stand
 profiles: [all]
-requires: [real-workspace]     # the research place merges, the prototype's place is rebased, the intent's line lands
+requires: [real-workspace]     # branches_of_intent_after_close: 0 — the repository's refs after the close
 satisfies: [49, 54, 98]
 given:
   objects:

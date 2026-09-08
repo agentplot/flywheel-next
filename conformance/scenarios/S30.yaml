@@ -1,7 +1,6 @@
 scenario: S30
 title: a build session exits blocked; only its item waits; siblings merge; the page answer reaches the same living session; the block and answer are on the item
 profiles: [all]
-requires: [real-workspace]     # the blocked item's siblings merge while it waits
 satisfies: [67, 68, 70, 71, 144]
 given:
   objects:

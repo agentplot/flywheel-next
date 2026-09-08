@@ -246,7 +246,7 @@ pub trait World {
     /// The manifest as of the shared line, by key path.
     fn manifest(&self) -> Result<Value>;
 
-    /// The repositories the organization tracks (205).
+    /// The repositories the instance tracks (205).
     fn repositories(&self) -> Result<Vec<RepositoryRef>>;
 
     /// Clone what the manifest names bare under the root, checking out each

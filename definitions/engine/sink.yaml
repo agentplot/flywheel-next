@@ -1,11 +1,11 @@
 # One sink the operator reads: the chat, the page, or the multiplexer's bell
 # on a named surface. Engine machine, one instance per sink the manifest
-# names, per organization — no sink serves two organizations (218) — and per
+# names, per instance — no sink serves two instances (218) — and per
 # member: each member's page is a sink of their own, and each chat address
 # on their operators entry a chat sink of their own — one per member per
 # address, none without an address — each with its own mark, a shared
 # channel a sink with one mark (236, 236a); a member is an entry in the
-# operators list, or on a hosted tier a user assigned to the organization's
+# operators list, or on a hosted tier a user assigned to the instance's
 # account (247). The page sink signs its reader in through the host's identity
 # kind — GitHub's device flow on a self-managed host, Frontegg's hosted login
 # on a hosted one — on a localhost port of its own when served on the
@@ -16,13 +16,13 @@
 # presenter for the chat sink (216, 217).
 # The delivery mark is the one recorded piece of state behind the tail (14).
 # On a hosted tier the page sink's delivery writes one small page projection
-# per organization — the status view and the rail as data, with each member's
-# page sink and its mark — to an object under the organization's key; a page
+# per instance — the status view and the rail as data, with each member's
+# page sink and its mark — to an object under the instance's key; a page
 # request decrypts that one object and never the warm cache (291).
 # Notifications are deliveries: the manifest routes decision kinds to sinks,
 # and a construction host is no sink unless the manifest names it (82).
 # On the hosted tiers the chat sink's identity may be the service's own Slack
-# or Discord application, scoped to the organization's channel, carrying rail
+# or Discord application, scoped to the instance's channel, carrying rail
 # text and the interactions it receives and nothing else; the record still
 # names who responded (277). On an installed control plane those applications
 # are the installer's own, with their ids, tokens and signing secrets, and the
@@ -35,7 +35,7 @@
 # comes from one request and holds no client state a reload loses, so a
 # reload after an answer shows the answer recorded (310, 154). Every
 # rendering, notification and rail line this sink delivers carries a link
-# to the object on the page at the host's address with the organization in
+# to the object on the page at the host's address with the instance in
 # the path, which opens that object in the dock with its answer controls
 # in reach and says so when the host is away (308, 205a, 150a). A decision
 # raised reaches the phone through the chat sink's own notification with

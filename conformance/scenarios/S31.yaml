@@ -1,7 +1,6 @@
 scenario: S31
 title: yes at 07:40, look again at 16:00; nothing nudged; the tail shows built, archived, merged since; the only new decision is the bolt's close
 profiles: [all]
-requires: [real-workspace]     # the unit's items build, archive and merge unattended
 satisfies: [13, 14]
 given:
   objects:

@@ -5,23 +5,23 @@
 # own excerpt and needs no judgment (S21). The reader is charged by the tick
 # of the host that declares the capture's source (217e); the capture endpoint
 # for callers that cannot reach any host's binary is dispatch's (216).
-# On the hosted tiers the endpoint is a managed queue per organization behind
+# On the hosted tiers the endpoint is a managed queue per instance behind
 # one stateless receiver, which verifies the caller's signature, answers the
 # platform's liveness check, acknowledges inside the platform's deadline and
-# routes by workspace to the organization's queue, encrypting what it
+# routes by workspace to the instance's queue, encrypting what it
 # enqueues and never decrypting (271). The queue is the caller's retry buffer
-# and not state, and its bodies are encrypted under the organization's key
+# and not state, and its bodies are encrypted under the instance's key
 # (256). That receiver and the chat application are the two shared components
 # of the hosted tiers, each seeing a payload once in transit and keeping
 # nothing (290). Raw material a capture points at is never read on a host serving more
-# than one organization (263): triage that must follow a pointer into the raw
+# than one instance (263): triage that must follow a pointer into the raw
 # store runs on the operator's own machine or on a pool host, while a
 # self-contained capture — one whose whole content is already in the queue,
 # a chat message or a webhook body — is triaged in the dispatcher's own tick
 # beside the interpreter, bounded per tick with the remainder carried to the
 # next (269). The binary's own instrumentation writes captures
 # about its operation — stalls, refusals, runway readings — to the agentplot
-# organization's flywheel, carrying no organization content (288).
+# instance's instance, carrying no instance content (288).
 machine: capture
 version: 2
 kind: object

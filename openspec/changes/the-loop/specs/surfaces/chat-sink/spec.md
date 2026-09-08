@@ -66,7 +66,7 @@ A decision raised SHALL reach the operator's phone through the chat sink's own
 notification, carrying the answer controls the platform provides and a link to
 the object on the page (309). The page SHALL send no push of its own (309).
 Every chat rendering, notification and rail line SHALL carry a link at the
-host's address with the organization in the path, opening that object in the
+host's address with the instance in the path, opening that object in the
 dock with its answer controls in reach; a link to a host that is away SHALL say
 so rather than failing silently (308, 205a, 150a).
 

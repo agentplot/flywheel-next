@@ -72,7 +72,7 @@ whether that host is alive (141). For every state an object can be in, exactly
 one source of truth SHALL prove it, and anything else showing that state SHALL
 be a projection, written from the source and never read as truth (76, 142). The
 status view SHALL be such a projection, never written by hand to look right
-(142). It SHALL be central, one place for the whole organization, reachable
+(142). It SHALL be central, one place for the whole instance, reachable
 from a phone however many hosts run (143). It SHALL be derived from list and
 read alone (146).
 

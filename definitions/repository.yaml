@@ -11,11 +11,11 @@ version: 1
 kind: object
 tier: core
 object: repository
-parent: organization
+parent: instance
 satisfies: [5, 104, 149, 199, 202, 203, 206, 207, 208]
 record:
   name: string           # the manifest entry's name and what map nodes name as home (199)
-  repo: string           # <org>/<name> on the git host
+  repo: string           # <instance>/<name> on the git host
   nodes: list            # the map nodes the proposal places, each with home = this repository
   document: ref          # the proposal the operator reads
   sources: list          # the elaboration or the dictation that proposed it
@@ -34,7 +34,7 @@ regions:
           - when: {response: drop}
             to: dropped
       creating:
-        doc: created on the git host under the organization from the built-repository template; an adopted repository is already there (206, 208)
+        doc: created on the git host under the instance from the built-repository template; an adopted repository is already there (206, 208)
         transitions:
           - when: {ev: repository.exists, is: true}
             to: registering

@@ -1,7 +1,7 @@
 scenario: X3
 title: a bolt's morning take conflicts; a chore on the bolt's line appears in approved with the cadence as its approval; its session resolves it; the take retries and lands; no decision was asked
 profiles: [all]
-requires: [real-workspace]     # the take conflicts and the conflict chore merges up
+requires: [real-workspace]     # half_done_tree_seen: false and session_touched_a_ref: 0 — the tree and the refs
 satisfies: [50, 52, 60]
 invariants: [I1, I12]
 given:

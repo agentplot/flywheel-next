@@ -1,7 +1,6 @@
 scenario: X8
 title: the operator drops an in-flight unit by dictation; its sessions are retired and its places released; a dictation asserting an item done is refused and reported; a pane killed by hand is a session gone, never a response
 profiles: [all]
-requires: [real-workspace]     # the fresh attempt merges after the hand-run stop
 satisfies: [4, 12, 66, 74]
 invariants: [I1, I6]
 given:

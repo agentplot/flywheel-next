@@ -1,12 +1,12 @@
-# The organization (204): one object per organization with a machine of its
+# The instance (204): one object per instance with a machine of its
 # own, driven by `flywheel init` and advanced by the same reconciler that
 # advances work. Every step is an effect with a proof, so a second init
 # changes nothing and a half-finished bootstrap finishes on the next tick.
 # The GitHub App is the one connection (207); its secret is placed by the
 # operator, never by an agent, so installation is a decision under attention
 # until it is seen. Initialization stamps the template set's version (208).
-# A host runs several organizations at once, each an object of its own,
-# isolated on disk (`<root>/<org>/`) and in state (its own state repository,
+# A host runs several instances at once, each an object of its own,
+# isolated on disk (`<root>/<instance>/`) and in state (its own state repository,
 # its own sinks, its own decision counter): nothing crosses (218). The name
 # is the operator's and need not be a git-host organization; repositories are
 # listed by URL (219). Init adopts what exists and creates what does not, for
@@ -14,21 +14,21 @@
 # without the layout is upgraded by a chore, never rewritten (220). Removal is
 # the operator's response: sessions ended, places removed, state archived,
 # git repositories left on disk, numbers never reused (221). Packages of the
-# organization scope are owned here (228), and so is a pool: a pool serves
-# one organization and shares nothing with another but the platform (241).
-# The organization is its identity account (247): membership is the
+# instance scope are owned here (228), and so is a pool: a pool serves
+# one instance and shares nothing with another but the platform (241).
+# The instance is its identity account (247): membership is the
 # Application's assignment to it, administered from the account item (255).
-# What the service holds for the organization and under which key is a stated
+# What the service holds for the instance and under which key is a stated
 # fact of its tier on the settings form (261), and the key has one of three
 # homes: the operator's own hosts, a tagged key in the service's account, or a
-# key in the organization's own account behind a role that trusts the service's
-# issuer, which is tier 3 (267, 276). An organization may declare that its state
+# key in the customer's own cloud account behind a role that trusts the service's
+# issuer, which is tier 3 (267, 276). An instance may declare that its state
 # records are written as envelopes under its key, the blueprints staying
 # plaintext outside the machinery's prefix (265, 266). On a hosted tier the
-# organization has a plan: entitlement features and stated limits held by the
+# instance has a plan: entitlement features and stated limits held by the
 # identity provider, five rungs over the four tiers, hiding and metering and
 # never authorizing (279, 281, 282). Model cost is one of those limits: the
-# organization's own model key is welcome on every plan and required on none,
+# instance's own model key is welcome on every plan and required on none,
 # each plan includes a budget on the small model class for the jobs the
 # dispatcher runs inside a tick, overage is metered through the payment
 # provider, and the model class per job is a plan fact raisable per type and
@@ -44,21 +44,21 @@
 # them, complete there, which is what Hobby promises an operator with no
 # computer of their own to run; a journey that needs one says so on its
 # card (312, 281, 283, 295).
-machine: organization
+machine: instance
 version: 2
 kind: object
 tier: core
-object: organization
+object: instance
 parent: null
-singleton: organization
+singleton: instance
 owns: [repository, package, pool]
 satisfies: [15, 204, 207, 208, 218, 219, 220, 221, 241, 247, 255, 261, 265, 266, 267, 276, 279, 281, 282, 294, 302, 304, 312]
 record:
   name: string           # the operator's name for it; may but need not coincide with a git-host organization (219)
-  blueprints: string          # <org>/<blueprints repository>
-  state: string          # <org>/<state repository>
+  blueprints: string          # <instance>/<blueprints repository>
+  state: string          # <instance>/<state repository>
   profile: string        # tracker | git-only (C.1, C.2)
-  app_id: string         # the organization's GitHub App; the installation is the operator's secret (207)
+  app_id: string         # the flywheel's GitHub App; the installation is the operator's secret (207)
   template_version: string   # the versioned set initialization used (208)
   root: string           # the on-disk root every host clones under (205)
 regions:
@@ -68,7 +68,7 @@ regions:
       absent:
         doc: "`flywheel init` wrote the record; the blueprints repository is created from the blueprints template, or adopted when it exists (204)"
         transitions:
-          - when: {ev: org.blueprints_ready, is: true}
+          - when: {ev: instance.blueprints_ready, is: true}
             to: blueprints-ready
           - when: {always: true}
             to: absent
@@ -76,7 +76,7 @@ regions:
       blueprints-ready:
         doc: the state repository is created with the profile's layout (C.2)
         transitions:
-          - when: {ev: org.state_ready, is: true}
+          - when: {ev: instance.state_ready, is: true}
             to: state-ready
           - when: {always: true}
             to: blueprints-ready
@@ -84,23 +84,23 @@ regions:
       state-ready:
         doc: the App's installation is recorded as required; the secret is the operator's to place (207)
         transitions:
-          - when: {ev: org.app_installed, is: true}
+          - when: {ev: instance.app_installed, is: true}
             to: connected
-          - when: {ev: org.app_recorded, is: true}
+          - when: {ev: instance.app_recorded, is: true}
             to: awaiting-app
           - when: {always: true}
             to: state-ready
             effects: [{do: register_app}]
       awaiting-app:
         doc: a decision under attention until the installation is seen; never done by an agent
-        decision: {kind: app-install, group: attention, answers: [installed], shows: [org.app_id], satisfies: [82, 204, 207]}
+        decision: {kind: app-install, group: attention, answers: [installed], shows: [instance.app_id], satisfies: [82, 204, 207]}
         transitions:
-          - when: {any: [{ev: org.app_installed, is: true}, {response: installed}]}
+          - when: {any: [{ev: instance.app_installed, is: true}, {response: installed}]}
             to: connected
       connected:
         doc: the first host is registered; hosts join by their own command from here (205)
         transitions:
-          - when: {ev: org.host_registered, is: true}
+          - when: {ev: instance.host_registered, is: true}
             to: hosted
           - when: {always: true}
             to: connected
@@ -110,15 +110,15 @@ regions:
         transitions:
           - when: {response: remove}
             to: removing
-            note: the operator's dictation `remove <organization>` (4, 221); never a deletion of files
+            note: the operator's dictation `remove <instance>` (4, 221); never a deletion of files
       removing:
         doc: sessions ended, places removed, state archived, git repositories left on disk (221)
         transitions:
-          - when: {ev: org.retired, is: true}
+          - when: {ev: instance.retired, is: true}
             to: removed
           - when: {always: true}
             to: removing
-            effects: [{do: retire_organization}]
+            effects: [{do: retire_instance}]
       removed:
         doc: the state is archived with its decision counter, so no number is ever reused (15, 221); the git repositories stay where they were
         tail: closed

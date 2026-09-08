@@ -2,7 +2,7 @@
 # runner, a router, a sign-in, a unit type or an elaboration type, a
 # deliverable producer, a map vocabulary, a template, or a scenario pack — a
 # git repository at a tag, listed in an index that is a file (the shipped set
-# is the default index). An organization package installs into the blueprints
+# is the default index). An instance package installs into the blueprints
 # under the prefix (203) and is read by every host at the shared line; a
 # per-host package installs on the named host. It declares the set version it
 # needs (208), its configuration schema and the secrets it needs, and is
@@ -24,12 +24,12 @@ version: 1
 kind: object
 tier: core
 object: package
-parent: organization
+parent: instance
 satisfies: [5, 204, 207, 224, 228, 229, 284, 286, 287]
 record:
   name: string
   kind: string           # adapter | chat-sink | runner | router | sign-in | unit-type | elaboration-type | deliverable-producer | map-vocabulary | template | scenario-pack (228)
-  scope: enum            # organization | host (228)
+  scope: enum            # instance | host (228)
   host: host-id          # the named host, for a per-host package
   source: string         # <repository>@<tag>, from the index (228)
   set_version: string    # the set the package declares it needs (208, 224)
@@ -72,7 +72,7 @@ regions:
             to: installing
             effects: [{do: install_package}]
       installed:
-        doc: in force; every host reads an organization package at the shared line, so no two hosts differ on a type (228); configuration is changed here with one response (229)
+        doc: in force; every host reads an instance package at the shared line, so no two hosts differ on a type (228); configuration is changed here with one response (229)
         transitions:
           - when: {response: "configure: <fields>"}
             to: installed

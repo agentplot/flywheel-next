@@ -78,7 +78,7 @@ operator's response (27).
 
 ### Requirement: Every decision carries a number, given once and never reused
 
-Every decision SHALL carry a short number unique in the organization, given once
+Every decision SHALL carry a short number unique in the instance, given once
 and never reused (15). The page and the chat SHALL show the same number, and a
 response SHALL name it (15, 18). A decision state left and re-entered SHALL be a
 new decision with a new number, so an earlier reply cannot land on a question

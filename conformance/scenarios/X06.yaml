@@ -1,7 +1,7 @@
 scenario: X6
 title: a bolt lands; its place is removed and its tethered server ends; a stray worktree from a crashed session is found by reconciliation and removed; a place the operator holds by dictation stays; every removal is recorded
 profiles: [all]
-requires: [real-workspace]     # the landing, the place's removal, and a stray worktree found by reconciling
+requires: [real-workspace]     # remove_stray_places — a worktree found on the host's own disk
 satisfies: [45, 55, 74]
 invariants: [I12]
 given:

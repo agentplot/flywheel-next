@@ -1,7 +1,7 @@
 scenario: S33
 title: a bolt takes the shared line every morning and before landing; the pull request is opened and then closed unmerged; the bolt stays open with the failure; no session asked anything
 profiles: [all]
-requires: [real-workspace]     # the morning take, the pull-request landing and its failed gates
+requires: [real-workspace]     # open_request and the gates that fail it — a real pull request
 satisfies: [40, 50, 53, 175]
 given:
   objects:

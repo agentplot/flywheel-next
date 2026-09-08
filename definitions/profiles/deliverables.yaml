@@ -9,7 +9,7 @@
 # with no review surface. A stage's entry may add `step:` — ff, apply or
 # verify, the OpenSpec step that produces it — and a by-type producer then
 # resolves to the type skill for that step; the archive is no deliverable,
-# since `archive_change` runs it at the item's merge. An organization replaces or adds a producer per
+# since `archive_change` runs it at the item's merge. An instance replaces or adds a producer per
 # deliverable in the manifest — `flywheel.yaml` deliverables.<name>.producer,
 # .schema or .surface — without touching the engine (119); the engine reads
 # only the resolved names and paths, never the text. Changing a producer, here

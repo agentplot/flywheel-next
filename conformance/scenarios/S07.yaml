@@ -1,7 +1,6 @@
 scenario: S7
 title: all elaborations done; the rail offers the intent's close; yes closes and archives it; nothing else moved
 profiles: [all]
-requires: [real-workspace]     # the intent's line lands on the blueprints' shared line
 satisfies: [22, 49, 54]
 given:
   objects:

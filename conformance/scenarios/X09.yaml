@@ -1,7 +1,7 @@
 scenario: X9
 title: a bolt's place declares two services; the operator starts one by dictation and a session starts the other through the command; both are one record; a crash is a decision under attention; the place's removal takes the services with it
 profiles: [all]
-requires: [real-workspace]     # the place's declared services run as real tethered processes and end with the worktree
+requires: [real-workspace]     # real tethered processes and the router's endpoint, ended by the worktree's removal
 satisfies: [45, 46, 47, 48, 55]
 invariants: [I1, I13]
 given:

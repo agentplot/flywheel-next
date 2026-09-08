@@ -199,7 +199,7 @@ fn print_rail(rt: &mut Runtime) -> Result<()> {
     // rail record (15, 131).
     let d = console::rail(&mut rt.store, &rt.defs)?;
     let count = d.iter().filter(|x| x.group != "attention").count();
-    println!("PLAN · {} · tick {} · {} decisions", rt.store.now.format("%Y-%m-%d %H:%M"), rt.store.tick, count);
+    println!("DECISIONS · {} · tick {} · {} decisions", rt.store.now.format("%Y-%m-%d %H:%M"), rt.store.tick, count);
     for g in ["approve", "decide", "answer", "attention"] {
         let rows: Vec<_> = d.iter().filter(|x| x.group == g).collect();
         if rows.is_empty() { continue; }

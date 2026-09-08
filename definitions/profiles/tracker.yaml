@@ -1,10 +1,10 @@
 # The tracker profile (C.1). State lives in GitHub: one issue per object with a
-# rail-facing lifecycle in the organization's `flywheel-state` repository, a
+# rail-facing lifecycle in the instance's `flywheel-state` repository, a
 # milestone per bolt and per intent, and one Projects v2 board for the
-# organization. Signals, moves, claims, verdicts and definitions are files in
+# flywheel. Signals, moves, claims, verdicts and definitions are files in
 # the blueprints repository, never items (157). The tracker is the central
 # service. Inherits the host, sessions, blueprints, record-derived and surfaces
-# bindings. The organization's dispatch agent, running outside every host,
+# bindings. The instance's dispatch agent, running outside every host,
 # is this profile's binding for signals appended by adapters (106) and for
 # capture in one gesture (112): it is the capture endpoint a delivery system
 # or a chat calls, and it writes the capture and signal records in the blueprints
@@ -18,7 +18,7 @@
 # host_agent).
 #
 # Tools: GitHub REST and GraphQL through the `octocrab` crate with a GitHub
-# App installation token per organization; the chat, page, bell and review
+# App installation token per instance; the chat, page, bell and review
 # surfaces as surfaces.yaml binds them; `gh` is not used.
 format: flywheel-profile/1
 name: tracker
@@ -26,7 +26,7 @@ complete: true
 inherits: [host, sessions, blueprints, record-derived, surfaces, identity]
 
 records:
-  where: "issue in `<org>/flywheel-state`, title `<kind> <id>`, body = one fenced ```flywheel block holding the record (the envelope of model.md 3.4); labels `kind:<kind>` and `state:<leaf>` and the board column are projections written after the body. Objects: intent, elaboration, bolt, unit, work-item, operator-session, curation, planning, rail, sink, host; and one issue per numbered decision (below)"
+  where: "issue in `<instance>/flywheel-state`, title `<kind> <id>`, body = one fenced ```flywheel block holding the record (the envelope of model.md 3.4); labels `kind:<kind>` and `state:<leaf>` and the board column are projections written after the body. Objects: intent, elaboration, bolt, unit, work-item, operator-session, curation, planning, rail, sink, host; and one issue per numbered decision (below)"
   get:    "GET /repos/{org}/flywheel-state/issues/{n}; the fenced block parsed; the id -> issue number map is the issue title, found by list"
   put:    "PATCH the body with the new block and seq+1; single writer is the lease (below), so no CAS is needed on the body; after the write the body is read back and its seq compared, a mismatch is a lost lease and is reported"
   append: "POST a comment on the issue; the comment is the thread entry; comments are the status view's discussion (144). A session's `flywheel exit|offer|note|refuse` writes such a comment through the App token scoped to its own object"

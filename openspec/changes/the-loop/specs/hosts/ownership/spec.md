@@ -112,16 +112,16 @@ offering a chore, stalled — with anything else refused (65, 66).
 - **THEN** the run record names the operator binding, no finish-or-keep is
   offered, and the session ends only by the operator's dictation (93b, 25)
 
-### Requirement: More than one host may run for one organization
+### Requirement: More than one host may run for one instance
 
-More than one host MAY run the machinery for one organization at once, every one
+More than one host MAY run the machinery for one instance at once, every one
 working from the same shared line of every repository and the same central state
-(147). There SHALL be one rail per organization, derived from the shared state,
+(147). There SHALL be one rail per instance, derived from the shared state,
 and any host SHALL be able to serve it; exactly one presenter SHALL deliver it to
 each sink at a time (148).
 
 #### Scenario: Two hosts, one rail
-- **WHEN** two hosts run for one organization
+- **WHEN** two hosts run for one instance
 - **THEN** both derive the same rail with the same numbers, and each sink is
   delivered to by exactly one of them (147, 148, 15)
 

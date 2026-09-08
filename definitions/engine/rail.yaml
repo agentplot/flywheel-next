@@ -1,9 +1,9 @@
-# The rail as an object: one per organization (148). Engine machine. Its
+# The rail as an object: one per instance (148). Engine machine. Its
 # decisions are derived every tick from every object's state (7) and are never
 # stored; this machine keeps only the decision register — a short number per
-# decision, unique in the organization, given once and never reused (15) —
+# decision, unique in the instance, given once and never reused (15) —
 # and writes the status projection. Delivery to a sink is the sink machine's.
-# One board per organization (235): every member reads this one register, so
+# One board per instance (235): every member reads this one register, so
 # the numbers and the count are the same for all; a retracted entry keeps the
 # response that answered it, so a second response is refused as already
 # answered and every member sees by whom and when. A decision may carry an
@@ -20,7 +20,7 @@ version: 3
 kind: engine
 tier: core
 object: rail
-singleton: organization
+singleton: instance
 satisfies: [7, 8, 9, 11, 15, 83, 86, 148, 213, 214, 235, 237, 248, 250, 280]
 record:
   next_number: int              # the counter; it only grows
@@ -37,7 +37,7 @@ regions:
             to: numbering
           - when: {response: "assign <owner>"}
             to: current
-            effects: [{do: assign_owner, args: {owner: $response}, note: "a member's response naming a decision number and one member of the organization (237); the owner lands on the object's record, and a role is never an owner"}]
+            effects: [{do: assign_owner, args: {owner: $response}, note: "a member's response naming a decision number and one member of the instance (237); the owner lands on the object's record, and a role is never an owner"}]
       numbering:
         entry:
           - {do: number_decisions, note: "each decision standing without a number takes the next number; one atomic write of the register and the counter; a re-entered decision state is a new decision and takes a new number"}

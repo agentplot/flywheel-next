@@ -1,27 +1,27 @@
 # A host pool (240): a platform that provisions hosts on demand from the
-# organization's image (239), up to a bound, each joining by an enrolment
+# instance's image (239), up to a bound, each joining by an enrolment
 # token the machinery issues (230), covering what the pool declares, and
 # retiring when idle for a stated time. A pool host is ephemeral: it holds no
 # place past its life, and a place it held is re-made from its line on another
-# host (52). A pool serves one organization (241). The machinery adds hosts
+# host (52). A pool serves one instance (241). The machinery adds hosts
 # while approved work waits behind the bound and the instrument reads drain is
 # the limit (214), within the pool's bound and the cost setting the manifest
 # names, and retires them as the queue drains; every change is an effect with
 # a proof and shows on the instrument as drain changing (242). The hosts
 # surface shows the pool, its bound, its live hosts and its image; the
 # operator never needs to see a pool host.
-# A pool host on a hosted tier is a microVM from the organization's image with
+# A pool host on a hosted tier is a microVM from the instance's image with
 # a container runtime inside it and a stated maximum lifetime, terminated at
 # retire and never suspended, its disk going with it (275). Code is never on a
 # shared host: a built repository is cloned only onto a pool host serving one
-# organization, which is the code-isolation guarantee the tier statement names
+# instance, which is the code-isolation guarantee the tier statement names
 # (264, 289).
 machine: pool
 version: 1
 kind: object
 tier: core
 object: pool
-parent: organization
+parent: instance
 satisfies: [204, 230, 239, 240, 241, 242, 264, 275, 289]
 record:
   name: string
