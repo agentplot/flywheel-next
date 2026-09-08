@@ -36,7 +36,13 @@ kinds:
       lose, so GitHub unreachable blocks a new sign-in and nothing else
       (254); the operators list on the settings form is the
       administration (255). The organization's creating user is the first
-      entry, so a fresh organization is never locked out (253).
+      entry, so a fresh organization is never locked out (253). While that
+      entry is the only one, a host on the operator's private network may
+      serve the page with no sign-in, the entry being the identity every
+      response records as given_by and the network the boundary (153, 155,
+      236a); the host refuses to serve unsigned-in on the second operator
+      or at the first address off that network, and the exception closes
+      when the account item exists (253a, 233).
     advice: "portless or a local proxy may be advised for a stable local name and is never required; the flywheel serves no name and registers none"
     upgrade: "moving the organization to a hosted tier (247a): the service creates its account, invites the same GitHub usernames, carries every address over, and the list is derived from then on"
   frontegg:

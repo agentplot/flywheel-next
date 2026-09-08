@@ -2,7 +2,13 @@
 # the machinery acts on — git repositories, worktrees, the blueprints' claim blocks,
 # the manifest. Both profiles inherit it. Not a profile on its own
 # (complete: false). The session binding is a partial of its own
-# (sessions.yaml) because it is the one a stand-in replaces (93).
+# (sessions.yaml) because it is the one a stand-in replaces (93); the effects
+# that change a line of work or a place to work in are the other, and a build
+# with no construction may bind them to a recorded stand-in that writes the
+# evidence each proof reads and touches no repository (93a). The manifest names
+# which — `flywheel.yaml` hosts.<host>.workspace: {kind: host | recorded},
+# default host — and the machines, their proofs and every name below are the
+# same under either.
 #
 # Tools: git (libgit2 through the `gix` crate for reads, the `git` binary for
 # merges, rebases and pushes so hooks and credentials behave as the operator's

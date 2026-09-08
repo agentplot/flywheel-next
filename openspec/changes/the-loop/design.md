@@ -316,12 +316,11 @@ offer | note | refuse` is built in phase 1 and writes through
 command wrote and never the script's internals. When the phase-2 runner arrives
 the command does not change.
 
-**This exceeds 93, and phase 1 says so.** Clause 93 admits exactly one stand-in,
-the session binding, and says everything the machinery owns is real. Phase 1
-recording `Workspace` is a second stand-in, and the operator standing in for an
-agent is a reading of 69 and 110 that 93 does not grant. Both are stated as the
-phase-1 exception below, in "Proposed to blueprints", rather than assumed here
-(AGENTS.md).
+**Both bindings are granted, not assumed.** Clause 93 admits one stand-in, the
+session binding. Recording `Workspace` is a second, and the operator standing in
+for an agent is a reading of 69 and 110 that 93 did not grant; 93a and 93b now
+grant both, and `host.yaml` and `sessions.yaml` bind them by name. See "The
+three clauses phase 1 rests on".
 
 ### D9. One tool catalogue, one transport in phase 1
 
@@ -376,12 +375,10 @@ Instead: one organization, one operator, the first entry of the manifest's
 the first commit, phase 4's sign-in fills it rather than changing the record's
 shape.
 
-**This is an exception, not only a deferral.** Clause 253 says a self-managed
-host signs every operator in through GitHub's device flow and that there is no
-unauthenticated page, and `surfaces.yaml` `account.local` binds it. Phase 1
-serves the page with no sign-in, on the operator's private network alone (155),
-to one named operator. That exception is stated below in "Proposed to
-blueprints"; 233 closes it in phase 4.
+**This is an exception, not only a deferral, and it is granted.** Clause 253
+forbids an unauthenticated page; 253a admits one while the operators list holds
+a single entry, on the operator's private network alone (155), and
+`surfaces.yaml` `account.local` binds it. 233 closes it in phase 4.
 
 *Alternative considered:* omit identity until there is a sign-in to justify it.
 Rejected — 153 is a phase-1 clause, and retrofitting the field would rewrite
@@ -582,57 +579,44 @@ in git. A host that misbehaves is stopped; the state is read, and if necessary
 edited, as files — which is itself a response (3, S19). There is no schema to
 migrate back and no service to drain.
 
-## Proposed to blueprints
+## The three clauses phase 1 rests on
 
-Three things phase 1 needs that the requirements do not grant. None is assumed
-here; each is proposed to `agentplot/blueprints` as clause text, and the design
-holds only if they land (AGENTS.md).
+Three things phase 1 needs that the requirements did not grant. Each is now a
+lettered sub-clause in `blueprints`, so no number moved, and each is bound by
+the profile that satisfies it.
 
-**1. A phase with no construction may record the line-and-place effects.**
-Amends 93, which admits one stand-in.
+- **93a — a phase with no construction may record the line-and-place effects.**
+  A build that performs no construction may bind the effects of 42 to a recorded
+  stand-in that writes the evidence each proof reads and touches no repository;
+  the binding is stated like any other (139), the machines and proofs do not
+  change, and a scenario asserting a real take, merge, rebase, conflict or
+  landing is not run against it. Bound in `profiles/host.yaml` as
+  `flywheel.yaml hosts.<host>.workspace: {kind: host | recorded}`, which is what
+  `flywheel-workspace-recorded` implements (D8).
+- **93b — a host may declare the operator as its session binding.** The
+  machinery charges the session as it always does — place prepared, work order
+  rendered (89), session recorded — the plan shows it as the operator's to run,
+  and the operator reports through the same command a session reports through
+  (67); the exits, offers and refusals are the same records, and the session is
+  with-operator for every rule that turns on the type (25). The machinery's own
+  sessions (171) are the operator's under the same rule, as 110 already said of
+  curation. Bound in `profiles/sessions.yaml` as `runners: {…: operator}`, which
+  is what `flywheel-sessions-operator` implements (D8).
+- **253a — a single-operator host on a private network may serve the page
+  unsigned-in.** The one entry of the operators list is the identity every
+  response records as `given_by` (153, 236a), the private network is the
+  boundary (155), and the host refuses to serve unsigned-in as soon as a second
+  operator is listed or the page is reached at any address but that network's;
+  the exception closes when the account item exists (233). Bound in
+  `profiles/surfaces.yaml` `account.local` and `profiles/identity.yaml`
+  `github:`, which is what D10 relies on.
 
-> A build that performs no construction may bind the effects that change a line
-> of work or a place to work in (42) to a recorded implementation, which writes
-> the fact each effect's proof reads and touches no repository. The binding is
-> named in the manifest like any other, the machines and their proofs are
-> unchanged, and a scenario whose assertions are about a real merge, rebase,
-> conflict or landing does not run against it. Everything else the machinery
-> owns is real, as 93 requires.
-
-*Why:* phase 1's gate is the loop — captures, the tick, decisions, responses,
-the record — and there is no bolt to land. Without this the design must either
-build the `wt` and git binding a phase early, or leave `flywheel host` calling
-nothing when an elaboration reaches `placing`.
-
-**2. The operator may be the session binding of a host that runs no agent.**
-Amends 93 and reads 69 and 110 together.
-
-> A host may declare the operator as its session binding. Under it the machinery
-> charges a session as it always does — a place prepared, a work order rendered,
-> the session recorded — and the plan shows the session as the operator's to
-> run; the operator does the work and reports through the same command a session
-> reports through (67). The exits, the offers and the refusals are the same
-> records, so nothing downstream can tell the two apart, and a session so
-> charged is a with-operator session for every rule that distinguishes them
-> (25).
-
-*Why:* 110 already says a person writing the records is curation and 69 already
-gives the operator a session of their own; this states the general case, which
-is what a phase with no runner needs.
-
-**3. A self-managed host serving one operator may serve the page unsigned-in.**
-Amends 253.
-
-> Until an organization's manifest lists more than one operator, a host on the
-> operator's own private network may serve the page with no sign-in. The single
-> entry of `operators:` is the identity every response records as `given_by`
-> (153, 236a), the private network is the boundary (155), and the host refuses
-> to serve unsigned-in as soon as a second operator is listed or the page is
-> reached at any address but the private network's.
-
-*Why:* 253's device flow is A.32, phase 5, and 233's account item is A.26, phase
-4. Phase 1 must record who answered (153) and must reach a phone (306) without
-building either.
+What each leaves unproved is recorded in the model's `gaps.md` against the same
+numbers: under 93a, every assertion about a real take, merge, rebase, conflict
+or landing (S14, S32, X03); under 93b, start latency, the pane's presence
+evidence and the multiplexer's refusal of a duplicate name (72, 196); under
+253a, the refusal on the second operator and on the first address off the
+private network.
 
 ## Open Questions
 
