@@ -11,7 +11,7 @@
 # review (`plannotator review <path> --decision <n>`), lavish for a rich page
 # (`npx -y lavish-axi`); both are bindings of the review surface, not parts of
 # the machinery. Which host (or the dispatcher) presents a sink is the sink's
-# lease, or the manifest's `presenters:` pin (145).
+# lease, or the manifest's `presenters:` pin (148).
 format: flywheel-profile/1
 name: surfaces
 complete: false

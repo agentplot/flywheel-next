@@ -128,10 +128,11 @@ phase is named.
   delivery mark as recorded state, so the tail of what reached done, landed,
   closed or dropped since that sink's last look is derivable like the decisions
   (14, 18, 148, 236).
-- **The phone is the first surface, not a port of one.** Every decision is
-  answerable on a phone, and every control and every form the page carries is
-  available there; nothing the page offers is desktop-only and nothing the phone
-  answers is missing on the desktop (306, 2, 155). The phone is the same served
+- **The phone is a first-class surface, not a port of one.** Desktop and phone
+  ship together from one bundle: every decision is answerable on either, and
+  every control and every form the page carries is available on both — nothing
+  the page offers is desktop-only and nothing the phone answers is missing on
+  the desktop (306, 307, 2, 155). The phone is that same served
   bundle under 760px and never a second application: two tabs, Decisions and
   Board, with the dock full screen and a back control — the desktop's metaphor at
   a smaller size (307). Every chat rendering, every notification and every plan

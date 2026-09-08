@@ -1,4 +1,4 @@
-# The stand-in session binding (90): the same evidence and effect names as
+# The stand-in session binding (93): the same evidence and effect names as
 # sessions.yaml, bound to a scripted player instead of herdr and Claude Code.
 # A scenario seeds it with `given.script` (or a `script` step): per session
 # id, the pane, activity and keystrokes the multiplexer would show and the

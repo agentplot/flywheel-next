@@ -1,7 +1,7 @@
 # The session binding: agent panes in the multiplexer, and the command the
 # machinery provides for a session to report its exit, offers and refusals
-# (64). The same in every profile. It is the one binding a stand-in replaces
-# (sessions-stand-in.yaml, 89); everything else stays real when a scenario
+# (67). The same in every profile. It is the one binding a stand-in replaces
+# (sessions-stand-in.yaml, 93); everything else stays real when a scenario
 # runs. Not a profile on its own.
 #
 # Tools: herdr `herdr agent` (start, status, send, stop) as the multiplexer
@@ -14,7 +14,7 @@
 #   flywheel note <text>                           flywheel refuse <what>   (run by the hooks)
 #   flywheel service start|stop <name>             (the bolt's declared service, 47)
 # Each writes one entry on the session's thread through the state store and
-# nothing else; the machinery decides what the entry means (63). The service
+# nothing else; the machinery decides what the entry means (66). The service
 # command is the one exception: it writes an op-response, not a thread entry,
 # so that it is the very record the operator's dictation produces (below).
 format: flywheel-profile/1
@@ -80,7 +80,7 @@ evidence:
   session.pane:        {read: "`herdr agent status <session-id>`; present when the multiplexer lists the pane by that name"}
   session.activity:    {read: "`herdr agent status`: the agent-aware state (working | idle); none when absent. While the holding host is away (150a) the value the host last wrote on the session record stands"}
   session.idle_since:  {read: "`herdr agent status` last-activity time. While the holding host is away (150a) the clock pauses: on the host's return the recorded idle_since is advanced by the time it was away before any `older` guard reads it, so a stall bound never counts absence"}
-  session.operator_present: {read: "`herdr agent status` last human keystroke within the presence window: 30 minutes, a setting of this binding (24)"}
+  session.operator_present: {read: "`herdr agent status` last human keystroke within the presence window: 30 minutes, a setting of this binding (25)"}
   session.pane_absent: {read: "`herdr agent status` reports no pane by that name"}
   session.exit:        {read: "the newest `exit` entry on the session's thread, written by `flywheel exit` (kind done | blocked | stalled with deliverables, question, note); none when there is no entry; invalid when the entry fails the exit schema in force"}
   session.offers_pending: {read: "`offer` entries on the session's thread (kind, document path in the change directory, about, scope) that no unit, elaboration or signal record cites by entry id"}
@@ -89,7 +89,7 @@ evidence:
   session.identity:    {read: "the token the session record carries, issued by start_session and written into the work order's header (197)"}
   host.layout_current: {read: "`herdr workspace list` and `herdr tab list` in each of the host's multiplexer sessions name only objects still in a view (186); every live session's pane is in its object's tab"}
 commands:
-  service: {do: "`flywheel service start|stop <name>` run inside a session's place: the machinery resolves the place's line to its bolt and writes an op-response through the state profile's `receive` — object = service/<bolt>/<name>, answer = start | stop, by = session/<session id>, id = the thread entry id — exactly the record the operator's dictation `start <bolt>/<name>` produces; the service machine's `{response: start}` and `{response: stop}` guards see one record whichever wrote it (47). A name the bolt's place does not declare is refused with the declared names, and the refusal is a thread entry. Anything a session starts without the command is its own process under the place's rule (44): tethered to the session's own place, never shown, gone with it"}
+  service: {do: "`flywheel service start|stop <name>` run inside a session's place: the machinery resolves the place's line to its bolt and writes an op-response through the state profile's `receive` — object = service/<bolt>/<name>, answer = start | stop, by = session/<session id>, id = the thread entry id — exactly the record the operator's dictation `start <bolt>/<name>` produces; the service machine's `{response: start}` and `{response: stop}` guards see one record whichever wrote it (48). A name the bolt's place does not declare is refused with the declared names, and the refusal is a thread entry. Anything a session starts without the command is its own process under the place's rule (45): tethered to the session's own place, never shown, gone with it"}
 effects:
   start_session:   {do: "the multiplexer session created first when absent (174), then the object's workspace and the unit's or elaboration's tab when absent and the pane split when the tab already has one (layout: above, 196); `herdr agent start --session <multiplexer session> --pane <pane id> --name <session-id> --cwd <place> -- <the kind's command from kinds:>`; the identity token is issued and written into the work order's header before the start (197); the work order path is the first message; a name already present is refused by herdr, which is the proof (173)"}
   remove_stale_layout: {do: "`herdr tab close` and `herdr workspace close` for every label naming an object that has left every view (186, 196); recorded like any removal"}

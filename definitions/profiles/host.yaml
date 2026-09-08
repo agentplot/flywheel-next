@@ -2,7 +2,7 @@
 # the machinery acts on — git repositories, worktrees, the blueprints' claim blocks,
 # the manifest. Both profiles inherit it. Not a profile on its own
 # (complete: false). The session binding is a partial of its own
-# (sessions.yaml) because it is the one a stand-in replaces (90).
+# (sessions.yaml) because it is the one a stand-in replaces (93).
 #
 # Tools: git (libgit2 through the `gix` crate for reads, the `git` binary for
 # merges, rebases and pushes so hooks and credentials behave as the operator's
@@ -11,7 +11,7 @@
 # router, endpoints; the `router:` section below binds the other routers);
 # mdBook books; OpenSpec change directories;
 # `gh` is not used anywhere in this binding. Nothing a session leaves on the
-# place's disk is read as state (64): the place holds the session's work and
+# place's disk is read as state (67): the place holds the session's work and
 # the inputs handed in; every report from a session goes through the
 # `flywheel` command, which writes to the state store.
 # Every command below is run with explicit arguments and, for tools that read
