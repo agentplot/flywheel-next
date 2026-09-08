@@ -155,7 +155,9 @@ definitions:
     - key: fw.ff.members
       flag: {default: off, on: []}       # roles, invite, assignment, ownership (237, 248, 255); Team and up
     - key: fw.ff.federation
-      flag: {default: off, on: []}       # the organization's key and stores in its own account (267, 276); Enterprise
+      flag: {default: off, on: []}       # tier 3, both shapes (268): the organization's key and stores in its own account (267, 276), and the binary provisioned into that account behind the control plane (276a); Enterprise
+    - key: fw.ff.dedicated-compute
+      flag: {default: off, on: []}       # under tier 3's second shape, the console's dedicated compute options created in the organization's account by the deployer — the dispatcher invoked or long-lived, pools on microVMs, container tasks or instances (276a); Enterprise
     - key: fw.ff.sso
       flag: {default: off, on: []}       # enterprise sign-in and provisioning through the organization's directory; Enterprise
     - key: fw.ff.dedicated-dispatcher
@@ -174,18 +176,25 @@ definitions:
       reason, never a stopped loop. A `github` host has no plan: every flag
       stands at its definition default there (250). Five rungs over the four
       tiers (268, 281); what each unlocks is the requirement, the price is
-      not.
+      not. Model cost is a plan fact of the same kind (294): the
+      organization's own model key is welcome on every plan and required on
+      none, each plan includes a budget on the small model class for the
+      jobs the dispatcher runs inside a tick, overage is metered through the
+      payment provider, and a budget spent is one attention line and a
+      slower cadence, never a stopped loop (280).
     ladder:
       free:       {tier: 0, unlocks: [], doc: "the binary, its sign-in, the organization's own App and bot, every package and every surface, nothing on the service side"}
-      hobby:      {tier: 1, unlocks: [fw.ff.cloud-agent], doc: "the service's App and bot, with the interpreter and the triage of self-contained captures running in the cloud (269), so chat is fully usable with the laptop closed: a decision answered by button, by slash command, and in Slack by free text (277), a capture written as text, the query tools answered; the plan in the organization's chat and the page and the tool server at a served name (291). What waits for the operator's own machine or a pool host is raw-material triage, elaboration and construction"}
-      pro:        {tier: 2, unlocks: [fw.ff.cloud-agent, fw.ff.pools, fw.ff.store], doc: "pools with an included allowance and metered overage, the package store, the book view and the presets"}
-      team:       {tier: 2, unlocks: [fw.ff.cloud-agent, fw.ff.pools, fw.ff.store, fw.ff.members, fw.ff.management-console], doc: "members with roles, ownership and assignment (237), identity administration (255), the management console, a higher ceiling on a pool host"}
-      enterprise: {tier: 3, unlocks: [fw.ff.cloud-agent, fw.ff.pools, fw.ff.store, fw.ff.members, fw.ff.management-console, fw.ff.federation, fw.ff.sso, fw.ff.dedicated-dispatcher], doc: "federation into the organization's own account (276), enterprise sign-in and provisioning through its own directory, a dispatcher function of its own in the service account, audit export, a private pool image"}
+      hobby:      {tier: 1, unlocks: [fw.ff.cloud-agent], doc: "cheap to run and needing no model key of the operator's (281, 294): the service's App and bot, chat structured so no model call is spent on it — a decision answered by button, free text a slash command with its arguments (`/fw yes 412`, `/fw capture <text>`), the plan delivered at no model cost (277) — free text interpreted in the page by the browser model instead (216a), a chat interaction or a webhook captured at once with no model, and a self-contained capture triaged in one daily batch at the sweep on the small model class inside the included budget (217e, 273). Immediate triage and free text in chat are unlocked by placing a model key of the operator's own (207). The plan in the organization's chat and the page and the tool server at a served name (291); raw-material triage, elaboration and construction wait for the operator's own machine or a pool host"}
+      pro:        {tier: 2, unlocks: [fw.ff.cloud-agent, fw.ff.pools, fw.ff.store], doc: "pools with an included allowance and metered overage, the package store, the book view and the presets; the immediate triage of self-contained captures and the interpretation of free text in chat, both in the tick on the small model class inside the included budget (269, 294)"}
+      team:       {tier: 2, unlocks: [fw.ff.cloud-agent, fw.ff.pools, fw.ff.store, fw.ff.members, fw.ff.management-console], doc: "members with roles, ownership and assignment (237), identity administration (255), the management console, a higher ceiling on a pool host, and a job's model class raisable above the small one per unit type, per elaboration type and per stage (285, 294)"}
+      enterprise: {tier: 3, unlocks: [fw.ff.cloud-agent, fw.ff.pools, fw.ff.store, fw.ff.members, fw.ff.management-console, fw.ff.federation, fw.ff.sso, fw.ff.dedicated-dispatcher, fw.ff.dedicated-compute], doc: "tier 3 in both shapes (268): stores only, the key, queue, cache and pool image in the organization's account with the service's compute assuming the granted role (276); or stores and compute, the binary provisioned into that account through the same role with only the control plane — registry, deployer, identity — left on the service side, and the console's dedicated compute options created there by the deployer (276a). Enterprise sign-in and provisioning through the organization's own directory, a dispatcher of its own — in the service account under the first shape, in the organization's own under the second — audit export, a private pool image, and a job's model class raisable per type and stage (294)"}
     limits:
       doc: "plan metadata, never flags (282); the tool server reads them beside the flags and refuses the add that would exceed one, with the reason"
       organizations:      "how many organizations the account may hold"
       members:            "how many users the Application may be assigned to on the account"
       pool_hours_included: "pool host-hours the plan includes before metered overage (242 cost:)"
       pool_memory_max:    "the largest pool host the plan admits (275)"
-      model_usage:        "the model usage the plan includes on a hosted tier, where the tier role carries the service's model access (269, host.yaml tier.model); an organization that places its own model key is metered on none of it (207)"
+      captures_included:  "self-contained captures the plan's model budget triages in a month (294); past it the add is not refused — the capture is written and waits for the next month's budget, for a key the operator places, or for the daily batch (281)"
+      model_class:        "the model class the in-tick jobs run at (285, 294): small on Hobby and Pro, and on Team and Enterprise raisable per unit type, per elaboration type and per stage, so the plan states a ceiling and the type states the choice"
+      model_usage:        "the model usage the plan includes on a hosted tier for the jobs the dispatcher runs inside a tick — reading a capture and answering a message (217b, 269) — carried by the tier role as the service's access (host.yaml tier.model) and metered through the payment provider past the budget (279, 294); an organization that places its own model key is metered on none of it (207), and the key is welcome on every plan and required on none"
   retire: []
