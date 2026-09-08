@@ -493,9 +493,8 @@ Phase 1 is the seed for four more phases, so these hold from day one:
 - **Definitions.** No hand edits. Any clause phase 1 needs that the requirements
   do not have is proposed to `blueprints` first (AGENTS.md).
 - **Naming.** This change is named for the phase it delivers, and phases 2 to 5
-  will be `construction`, `context`, `dispatch` and `scale`. AGENTS.md and the
-  roadmap's flywheel-next row still call phase 1 `stage1`; both need that
-  reference amended so a reader following them finds this directory.
+  will be `construction`, `context`, `dispatch` and `scale`, as AGENTS.md and
+  the roadmap's flywheel-next row both say.
 - **External systems.** One git host, depended on for exactly what section 9
   grants it — one update to a branch at a time, rejection of a stale base, and a
   call to a URL when a branch moves — and for nothing else (160, 162, 166). One
