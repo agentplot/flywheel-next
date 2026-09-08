@@ -1,0 +1,28 @@
+scenario: S5
+title: the machinery restarts mid-day; every session still runs; the rail is identical; no object changed state
+profiles: [all]
+satisfies: [7, 75, 78]
+invariants: [I7]
+given:
+  objects:
+    - {id: intent/a, machine: intent, state: {life: proposed}}
+    - {id: bolt/atlas/plan-rows, machine: bolt, state: {life: open, line: current, place: ready, open.citations: current, open.close: not-offered}, record: {repository: atlas}}
+    - {id: unit/atlas/status-writer, machine: unit, parent: bolt/atlas/plan-rows, state: {life: in-flight}, record: {type: default, type_version: 5}}
+    - {id: work-item/atlas/wi-418, machine: work-item, parent: unit/atlas/status-writer, state: {life: in-type, in-type.stages: build, build.run: sessions, session.life: alive, alive.activity: working}}
+    - {id: elaboration/b/prototype, machine: elaboration, parent: intent/b, state: {life: working, working.work: idle-offered}, record: {type: standing}}
+    - {id: intent/b, machine: intent, state: {life: open, line: current, open.material: settled, open.close: not-offered}}
+  evidence: {session.pane: {"*": present}, session.activity: {"work-item/atlas/wi-418/build/1": working, "elaboration/b/prototype/standing/1": idle}, place.contains_line: {"*": true}, line.contains_parent: {"*": true}}
+  register: {intent/a/intent-proposed: 41, elaboration/b/prototype/idle: 42, next: 43}
+  marks: {chat: now, page: now}
+when:
+  - tick: {}
+  - restart: {}
+  - tick: {}
+  - restart: {}
+  - tick: {}
+then:
+  no_transitions: [intent/a, bolt/atlas/plan-rows, unit/atlas/status-writer, work-item/atlas/wi-418, elaboration/b/prototype, intent/b]
+  effects: []
+  effects_closed: true
+  writes: {total: 0}
+  decisions: [{after_step: 5, present: [intent-proposed, idle], count: 2, numbers: {intent/a/intent-proposed: 41, elaboration/b/prototype/idle: 42}}]

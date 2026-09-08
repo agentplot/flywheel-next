@@ -1,0 +1,11 @@
+scenario: S16
+title: a dictated scenario becomes data, runs against the stand-in, and renders as a trace
+profiles: [stand-in]
+satisfies: [84, 90, 92, 93, 94, 95]
+given:
+  files: {"dictation": "when the operator says keep on an idle prototype, the decision goes away and the session is not ended"}
+when:
+  - files: {"conformance/scenarios/dictated-keep.yaml": "the scenario a session wrote from the dictation, valid against schema.json"}
+  - tick: {run: conformance/scenarios/dictated-keep.yaml}
+then:
+  state_store: {scenario_valid: true, ran_without_live_service: true, trace_written: "target/flywheel-trace/stand-in/dictated-keep.trace.json + .md", trace_lists: [ticks, guards, transitions, effects, decisions, numbers]}

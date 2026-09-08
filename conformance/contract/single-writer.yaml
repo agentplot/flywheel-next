@@ -1,0 +1,17 @@
+scenario: B.2.134-single-writer
+title: two writers of one object cannot both succeed; the loser learns it lost and reads again
+profiles: [all]
+satisfies: [134, 162]
+invariants: [I15]
+machines: ./contract/lamp
+hooks: [bypass_lease]        # force both to attempt the write without taking the lease
+given:
+  objects: [{id: lamp/1, machine: lamp, state: {power: "off"}}]
+  evidence: {lamp.switch: {lamp/1: up}}
+  hosts: [{name: a, bound: 1}, {name: b, bound: 1}]
+when:
+  - tick: {concurrent_hosts: [a, b]}
+then:
+  transitions: [{object: lamp/1, from: "off", to: "on"}]
+  state_store: {writes_attempted: 2, writes_succeeded: 1, loser_told: true, loser_reread_before_deciding: true}
+  records: {lamp/1: {seq: 1}}

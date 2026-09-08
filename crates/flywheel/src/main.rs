@@ -1,6 +1,7 @@
 use anyhow::{Context, Result};
 use clap::{Parser, Subcommand};
-use flywheel_scenario::{scenario, Runtime, Store};
+use flywheel::report::{self, Report, Reported, SESSION_ENV};
+use flywheel_scenario::{conformance, scenario, Runtime, Store};
 use std::path::PathBuf;
 
 #[derive(Parser)]
@@ -35,10 +36,98 @@ enum Cmd {
     Log { #[arg(default_value = "30")] n: usize },
     /// Serve the page.
     Serve { #[arg(long, default_value = "4242")] port: u16 },
+    /// The conformance suite: load the definitions, seed the stores, play the
+    /// steps against the real engine and assert the `then` clauses (94).
+    Scenario {
+        #[command(subcommand)]
+        cmd: ScenarioCmd,
+    },
     /// Dump an object's configuration and record.
     Obj { id: String },
     /// Evaluate one evidence name for an object (and optional region path).
     Ev { object: String, name: String, #[arg(default_value = "life")] region: String },
+
+    // ---- what a session reports (65, 67). The operator runs these in phase 1
+    // (93b); the scripted stand-in and the phase-2 runner run the same binary.
+    /// Report an exit: done, blocked or stalled.
+    Exit {
+        kind: String,
+        /// What `done` delivered; repeatable.
+        #[arg(long = "deliverable")]
+        deliverables: Vec<String>,
+        /// What `blocked` is blocked on.
+        #[arg(long)]
+        question: Option<String>,
+        /// Anything else the report carries.
+        #[arg(long)]
+        text: Option<String>,
+        #[arg(long, env = SESSION_ENV, default_value = "")]
+        session: String,
+    },
+    /// Offer a finding or a chore, pointing at its document.
+    Offer {
+        kind: String,
+        #[arg(long)]
+        document: String,
+        #[arg(long, env = SESSION_ENV, default_value = "")]
+        session: String,
+    },
+    /// Say something on the session's thread that is not an exit.
+    Note {
+        text: Vec<String>,
+        #[arg(long, env = SESSION_ENV, default_value = "")]
+        session: String,
+    },
+    /// Refuse the work the session was given (43).
+    Refuse {
+        reason: Vec<String>,
+        #[arg(long, env = SESSION_ENV, default_value = "")]
+        session: String,
+    },
+}
+
+/// Write one report through the store and print what it was. A refused report
+/// is recorded and the command exits non-zero, so nothing is dropped and the
+/// caller learns (66, 80).
+fn do_report(cli: &Cli, session: &str, report: &Report) -> Result<i32> {
+    let mut store = flywheel_scenario::load(&cli.state)
+        .with_context(|| "no store; run `flywheel seed <scenario>` first")?;
+    let by = std::env::var("USER").unwrap_or_else(|_| "operator".into());
+    let at = chrono::Utc::now();
+    let outcome = report::write_report(&mut store, session, &by, at, report)?;
+    flywheel_scenario::save(&store, &cli.state)?;
+    Ok(match outcome {
+        Reported::Accepted(entry) => {
+            println!("{} recorded on {session}", entry.kind);
+            0
+        }
+        Reported::Refused { reason, .. } => {
+            eprintln!("refused: {reason}");
+            eprintln!("recorded on {session} as invalid, with the raw report");
+            1
+        }
+    })
+}
+
+#[derive(Subcommand)]
+enum ScenarioCmd {
+    /// Run scenario files or a directory of them.
+    Run {
+        paths: Vec<PathBuf>,
+        /// The `StateStore` binding.
+        #[arg(long, default_value = "stand-in")]
+        profile: String,
+        /// Every host in the scenario is a process of its own.
+        #[arg(long = "hosts", value_parser = ["real"])]
+        hosts: Option<String>,
+        /// Load the machine files from a directory instead of the embedded set.
+        #[arg(long)]
+        definitions: Option<PathBuf>,
+        /// Render each run as a trace; the directory defaults to
+        /// `target/flywheel-trace/<profile>/`.
+        #[arg(long, num_args = 0..=1, default_missing_value = "")]
+        trace: Option<String>,
+    },
 }
 
 fn open(cli: &Cli) -> Result<Runtime> {
@@ -127,6 +216,37 @@ async fn main() -> Result<()> {
             use flywheel_engine::runtime::EvidenceSource;
             let rt = open(&cli)?;
             println!("{:?}", rt.store.evidence(object, region, name));
+        }
+        Cmd::Exit { kind, deliverables, question, text, session } => {
+            let r = Report::Exit { kind: kind.clone(), deliverables: deliverables.clone(), question: question.clone(), text: text.clone() };
+            std::process::exit(do_report(&cli, session, &r)?);
+        }
+        Cmd::Offer { kind, document, session } => {
+            let r = Report::Offer { kind: kind.clone(), document: document.clone() };
+            std::process::exit(do_report(&cli, session, &r)?);
+        }
+        Cmd::Note { text, session } => {
+            let r = Report::Note { text: text.join(" ") };
+            std::process::exit(do_report(&cli, session, &r)?);
+        }
+        Cmd::Refuse { reason, session } => {
+            let r = Report::Refuse { reason: reason.join(" ") };
+            std::process::exit(do_report(&cli, session, &r)?);
+        }
+        Cmd::Scenario { cmd } => {
+            let ScenarioCmd::Run { paths, profile, hosts, definitions, trace } = cmd;
+            let options = conformance::RunOptions {
+                profile: conformance::Profile::parse(profile)?,
+                hosts_real: hosts.as_deref() == Some("real"),
+                definitions: definitions.clone().or(Some(cli.defs.clone())),
+                trace: trace.as_ref().filter(|t| !t.is_empty()).map(PathBuf::from),
+                tracing: trace.is_some(),
+                interval: chrono::Duration::seconds(60),
+            };
+            let paths = if paths.is_empty() { vec![PathBuf::from("conformance")] } else { paths.clone() };
+            let report = conformance::run(&paths, &options)?;
+            print!("{}", report.render());
+            std::process::exit(report.exit_code());
         }
         Cmd::Serve { port } => {
             let rt = open(&cli)?;

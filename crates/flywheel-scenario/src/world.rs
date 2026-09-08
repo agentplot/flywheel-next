@@ -1,30 +1,41 @@
 //! Performing effects in the stand-in world. Each effect is bound by name to
 //! a small simulation; an unbound effect is logged and counts as done.
 
-use crate::store::{place_key, session_key, LineFact, ServiceFact, SessionFact, Store};
+use crate::store::{place_key, session_key, ServiceFact, SessionFact, Store};
+use flywheel_atoms::Workspace;
 use flywheel_engine::runtime::Object;
 use flywheel_engine::{Definitions, PlannedEffect};
 use serde_json::{json, Value};
 
-pub fn perform(defs: &Definitions, store: &mut Store, object: &str, region: &str, e: &PlannedEffect) {
+/// Perform one effect, and say whether the world actually did anything.
+///
+/// A retry the world refuses is not a second act: the pane and the agent are
+/// named by the session id, so a second start of the same name is refused by
+/// the multiplexer and the machinery reads the refusal (72). The count a
+/// scenario asserts is of acts, not of attempts.
+pub fn perform(defs: &Definitions, store: &mut Store, object: &str, region: &str, e: &PlannedEffect) -> bool {
     let text = format!("{}{}", e.name, e.note.as_ref().map(|n| format!(" — {n}")).unwrap_or_default());
     store.log("effect", object, text);
+    let mut acted = true;
     let skey = session_key(object, region);
     let pkey = place_key(object, region);
     match e.name.as_str() {
-        "prepare_place" => { store.world.places.entry(pkey).or_default().exists = true; }
+        // The effects of 42 are the recorded workspace's, so there is one
+        // implementation of them and the runner and the host share it (93a, D8).
+        "prepare_place" => { let _ = crate::bindings::RecordedWorkspace::new(store).prepare_place(&pkey, object, ""); }
         "rebase_place" | "tell_moved" | "seed_conflict_job" | "record_endpoints" => {
             if let Some(p) = store.world.places.get_mut(&pkey) { p.endpoints_recorded = true; }
         }
-        "merge_place" => { store.world.places.entry(pkey).or_default().merged = true; }
-        "remove_place" => { let p = store.world.places.entry(pkey).or_default(); p.absent = true; p.exists = false; }
-        "create_line" => { store.world.lines.entry(object.to_string()).or_insert(LineFact { exists: true, ..Default::default() }); }
-        "take_parent" => {}
-        "land_line" => { let l = store.world.lines.entry(object.to_string()).or_default(); l.exists = true; l.landed = true; l.landing = "passed".into(); }
-        "remove_line" => { let l = store.world.lines.entry(object.to_string()).or_default(); l.absent = true; }
+        "merge_place" => { let _ = crate::bindings::RecordedWorkspace::new(store).merge_place(&pkey); }
+        "remove_place" => { let _ = crate::bindings::RecordedWorkspace::new(store).remove_place(&pkey); }
+        "create_line" => { if !store.world.lines.contains_key(object) { let _ = crate::bindings::RecordedWorkspace::new(store).create_line(object, ""); } }
+        "take_parent" => { let _ = crate::bindings::RecordedWorkspace::new(store).take_parent(object); }
+        "land_line" => { let _ = crate::bindings::RecordedWorkspace::new(store).land_line(object, flywheel_atoms::LandingPolicy::Direct); }
+        "remove_line" => { store.world.lines.entry(object.to_string()).or_default().absent = true; }
         "start_session" => {
             let s = store.world.sessions.entry(skey.clone()).or_insert_with(|| SessionFact { pane: false, activity: "working".into(), ..Default::default() });
             if !s.pane { s.pane = true; s.activity = "working".into(); s.exit = None; s.ticks_alive = 0; s.played.clear(); }
+            else { acted = false; }
             store.play_scripts_for(&skey);
         }
         "end_session" => { if let Some(s) = store.world.sessions.get_mut(&skey) { s.pane = false; } }
@@ -34,7 +45,7 @@ pub fn perform(defs: &Definitions, store: &mut Store, object: &str, region: &str
             store.play_after_answer(&skey);
         }
         "create_items" => {
-            if store.objects.values().any(|o| o.parent.as_deref() == Some(object) && o.machine == "work-item") { return; }
+            if store.objects.values().any(|o| o.parent.as_deref() == Some(object) && o.machine == "work-item") { return true; }
             let unit = store.objects.get(object).cloned();
             let n = unit.as_ref().and_then(|u| u.record.get("items")).and_then(|v| v.as_u64()).unwrap_or(2) as usize;
             let ty = unit.as_ref().and_then(|u| u.record.get("type").cloned()).unwrap_or(json!("default"));
@@ -49,10 +60,10 @@ pub fn perform(defs: &Definitions, store: &mut Store, object: &str, region: &str
             }
         }
         "create_bolt" => {
-            let Some(unit) = store.objects.get(object).cloned() else { return };
+            let Some(unit) = store.objects.get(object).cloned() else { return true };
             let target = unit.record.get("target").cloned().unwrap_or(Value::Null);
             let has_bolt = target.get("bolt").and_then(|v| v.as_str()).map(|s| !s.is_empty()).unwrap_or(false);
-            if has_bolt { return; }
+            if has_bolt { return true; }
             let name = target.get("new_name").and_then(|v| v.as_str()).unwrap_or("new-bolt").to_string();
             let repo = unit.record.get("repository").and_then(|v| v.as_str()).unwrap_or("repo").to_string();
             let bid = format!("bolt/{repo}/{name}");
@@ -90,7 +101,7 @@ pub fn perform(defs: &Definitions, store: &mut Store, object: &str, region: &str
         }
         "archive_intent" | "archive_change" => { store.world.archived.insert(object.to_string(), true); }
         "declare_services" => {
-            let Some(bolt) = store.objects.get(object).cloned() else { return };
+            let Some(bolt) = store.objects.get(object).cloned() else { return true };
             let repo = bolt.record.get("repository").and_then(|v| v.as_str()).unwrap_or("").to_string();
             let decls = store.world.declarations.get(&repo).cloned().unwrap_or_default();
             let live = |store: &Store, id: &str| store.objects.get(id).and_then(|o| o.top_state()).map(|s| s != "gone").unwrap_or(false);
@@ -129,6 +140,7 @@ pub fn perform(defs: &Definitions, store: &mut Store, object: &str, region: &str
         }
         _ => {}
     }
+    acted
 }
 
 fn store_snapshot_bolts(_t: &serde_json::Map<String, Value>, name: &str) -> String { name.to_string() }

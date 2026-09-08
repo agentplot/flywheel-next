@@ -1,0 +1,16 @@
+scenario: S22
+title: the same transcript imported on two days yields one capture with its signals read once
+profiles: [all]
+satisfies: [111]
+given:
+  objects: [{id: capture/meeting-2026-09-02-willdan-weekly, machine: capture, state: {reading: read}, record: {event_key: meeting/2026-09-02/willdan-weekly}}]
+  evidence: {capture.signals_present: {"*": true}}
+when:
+  - direct: {do: adapter, command: "flywheel capture meeting meeting/2026-09-02-willdan-weekly.vtt"}
+  - tick: {}
+  - clock: {advance: 1d}
+  - direct: {do: adapter, command: "flywheel capture meeting meeting/2026-09-02-willdan-weekly.vtt"}
+  - tick: {}
+then:
+  effects: [{do: start_session, count: 0}]
+  state_store: {captures_existing: 1, capture_files_written_on_second_import: 0, signal_files_written_on_second_import: 0}

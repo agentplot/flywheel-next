@@ -1,0 +1,22 @@
+scenario: B.1.128-lease
+title: two would-be holders of one object cannot both hold it; the loser reads again
+profiles: [all]
+satisfies: [128, 134, 150]
+invariants: [I11, I15]
+machines: ./contract/lamp
+given:
+  objects: [{id: lamp/1, machine: lamp, state: {power: "off"}}]
+  evidence: {lamp.switch: {lamp/1: up}}
+  hosts: [{name: a, bound: 1}, {name: b, bound: 1}]
+when:
+  - tick: {concurrent_hosts: [a, b]}
+  - host: {name: a}
+  - clock: {advance: 6m}
+  - tick: {}
+  - clock: {advance: 24h}
+  - host: {name: b}
+  - tick: {}
+then:
+  transitions: [{object: lamp/1, from: "off", to: "on"}]
+  effects: [{do: light, count: 1}]
+  leases: {lamp/1: {holders_ever: 1, after_step_1_holder_in: [a, b], loser_read_again: true, stale_after_5m: true, expired_after_24h: true, taken_by_b_after_expiry: true}}

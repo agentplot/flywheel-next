@@ -13,20 +13,147 @@ pub struct Runtime {
     pub store: Store,
 }
 
+/// What one tick did. The trace is rendered from these and the assertions
+/// evaluate them, so the document a person reads and the evidence a failure
+/// cites cannot diverge (95).
+#[derive(Debug, Clone, Default, serde::Serialize, serde::Deserialize)]
+pub struct TickRecord {
+    pub tick: u64,
+    #[serde(default = "crate::runner::epoch")]
+    pub at: chrono::DateTime<chrono::Utc>,
+    #[serde(default)]
+    pub guards: Vec<GuardRecord>,
+    #[serde(default)]
+    pub transitions: Vec<TransitionRecord>,
+    #[serde(default)]
+    pub effects: Vec<EffectRecord2>,
+    #[serde(default)]
+    pub decisions: Vec<DecisionRecord>,
+}
+
+pub fn epoch() -> chrono::DateTime<chrono::Utc> {
+    chrono::DateTime::from_timestamp(0, 0).expect("the epoch")
+}
+
+#[derive(Debug, Clone, serde::Serialize, serde::Deserialize)]
+pub struct GuardRecord {
+    pub object: String,
+    pub region: String,
+    pub from: String,
+    pub matched: String,
+    pub response: Option<String>,
+}
+
+#[derive(Debug, Clone, serde::Serialize, serde::Deserialize)]
+pub struct TransitionRecord {
+    pub object: String,
+    pub region: String,
+    pub from: String,
+    pub to: String,
+    pub response: Option<String>,
+    pub reason: Option<String>,
+}
+
+/// One effect performed, with the identity the write carries (79, 127).
+#[derive(Debug, Clone, serde::Serialize, serde::Deserialize)]
+pub struct EffectRecord2 {
+    pub effect_id: String,
+    pub name: String,
+    pub object: String,
+    pub args: BTreeMap<String, Value>,
+}
+
+#[derive(Debug, Clone, serde::Serialize, serde::Deserialize)]
+pub struct DecisionRecord {
+    pub id: String,
+    pub object: String,
+    pub kind: String,
+    pub number: Option<u32>,
+}
+
 impl Runtime {
     pub fn new(defs: Definitions, store: Store) -> Self {
         Runtime { defs, store }
     }
 
-    /// The standing decisions, numbered.
+    /// The standing decisions, numbered. A number a scenario gave by the
+    /// decision's readable name is honoured here, before anything reads it.
     pub fn decisions(&mut self) -> Vec<DecisionInstance> {
+        if !self.store.register_aliases.is_empty() {
+            let standing = rail::derive(&self.defs, &self.store.objects, &mut self.store.register.clone());
+            for d in &standing {
+                if let Some(n) = self.store.register_aliases.get(&Runtime::decision_name(&d.object, &d.kind)) {
+                    self.store.register.numbers.insert(d.id.clone(), *n);
+                    if self.store.register.next_number <= *n {
+                        self.store.register.next_number = n + 1;
+                    }
+                }
+            }
+        }
         let d = rail::derive(&self.defs, &self.store.objects, &mut self.store.register);
         self.store.standing = d.iter().map(|x| x.id.clone()).collect();
+        for x in &d {
+            if let Some(n) = x.number {
+                self.store
+                    .decision_numbers
+                    .insert(Runtime::decision_name(&x.object, &x.kind), n);
+            }
+        }
         d
+    }
+
+    /// The readable name of a decision: `<object id>/<decision kind>`, which is
+    /// how a scenario names one.
+    pub fn decision_name(object: &str, kind: &str) -> String {
+        format!("{object}/{kind}")
+    }
+
+    /// The standing decision a scenario's readable name resolves to, right now.
+    pub fn standing_decision(&mut self, name: &str) -> Option<DecisionInstance> {
+        self.decisions()
+            .into_iter()
+            .find(|d| Runtime::decision_name(&d.object, &d.kind) == name)
     }
 
     /// One pass: plan, apply, perform. Returns how many transitions fired.
     pub fn tick(&mut self) -> usize {
+        self.tick_recorded().transitions.len()
+    }
+
+    /// One pass, with what happened, and the clock moved once.
+    pub fn tick_recorded(&mut self) -> TickRecord {
+        let record = self.pass();
+        self.store.now = self.store.now + Duration::seconds(self.store.tick_seconds);
+        record
+    }
+
+    /// One tick as a scenario's `tick` step means it: plan, apply and perform
+    /// until nothing more fires, because a tick is one bounded invocation that
+    /// decides everything the state it read implies (D7). The clock moves once
+    /// for the whole tick, which is the second of the two reasons it ever
+    /// moves (D15).
+    pub fn tick_settled(&mut self) -> TickRecord {
+        let mut record = TickRecord { tick: self.store.tick + 1, at: self.store.now, ..Default::default() };
+        for _ in 0..50 {
+            let pass = self.pass();
+            // A self-transition is not progress: it re-enters the state it is
+            // already in, so a tick that only re-entered has settled. Without
+            // this the tick would perform its effect once per pass.
+            let moved = pass.transitions.iter().any(|t| t.from != t.to);
+            record.guards.extend(pass.guards);
+            record.transitions.extend(pass.transitions);
+            record.effects.extend(pass.effects);
+            record.decisions = pass.decisions;
+            if !moved {
+                break;
+            }
+        }
+        self.store.now = self.store.now + Duration::seconds(self.store.tick_seconds);
+        record
+    }
+
+    /// One plan-apply-perform pass. The clock does not move here.
+    fn pass(&mut self) -> TickRecord {
         self.store.tick += 1;
         // Alive hosts heartbeat: their last_seen is now.
         let now = self.store.now;
@@ -38,7 +165,7 @@ impl Runtime {
             let snap = Snapshot { objects: &self.store.objects, responses: &self.store.responses, register: &self.store.register, evidence: &self.store, now: self.store.now };
             tick::plan_tick(&self.defs, &snap)
         };
-        let n = fired.len();
+        let mut record = TickRecord { tick: self.store.tick, at: self.store.now, ..Default::default() };
         for f in &fired {
             let commanded = self.store.objects.get(&f.object).map(|o| tick::commanded_effects(&self.defs, o, f)).unwrap_or_default();
             let mut tail = Vec::new();
@@ -46,14 +173,42 @@ impl Runtime {
                 tail = tick::apply(&self.defs, o, f, self.store.now);
             }
             self.store.log("transition", &f.object, format!("{}: {} → {}{}", f.region, f.from, f.to, f.note.as_ref().map(|n| format!(" — {n}")).unwrap_or_default()));
+            // The guard that matched, as the trace states it.
+            record.guards.push(GuardRecord {
+                object: f.object.clone(),
+                region: f.region.clone(),
+                from: f.from.clone(),
+                matched: f.note.clone().unwrap_or_else(|| format!("→ {}", f.to)),
+                response: f.response.as_ref().map(|(id, _)| id.clone()),
+            });
+            record.transitions.push(TransitionRecord {
+                object: f.object.clone(),
+                region: f.region.clone(),
+                from: f.from.clone(),
+                to: f.to.clone(),
+                response: f.response.as_ref().map(|(id, _)| id.clone()),
+                reason: f.note.clone(),
+            });
             for (region, e) in commanded.iter().map(|(r, e)| (r.as_str(), e)).chain(f.effects.iter().map(|e| (f.region.as_str(), e))) {
-                world::perform(&self.defs, &mut self.store, &f.object, region, e);
+                // Only an act the world actually performed is an effect the
+                // scenario counts (72, 73).
+                if world::perform(&self.defs, &mut self.store, &f.object, region, e) {
+                    record.effects.push(EffectRecord2 {
+                        effect_id: e.id.clone(),
+                        name: e.name.clone(),
+                        object: f.object.clone(),
+                        args: e.args.clone(),
+                    });
+                }
             }
             self.store.tail.extend(tail);
         }
-        self.decisions();
-        self.store.now = self.store.now + Duration::seconds(self.store.tick_seconds);
-        n
+        record.decisions = self
+            .decisions()
+            .iter()
+            .map(|d| DecisionRecord { id: d.id.clone(), object: d.object.clone(), kind: d.kind.clone(), number: d.number })
+            .collect();
+        record
     }
 
     /// Tick until nothing fires (or a bound), so one response cascades as far as it can.

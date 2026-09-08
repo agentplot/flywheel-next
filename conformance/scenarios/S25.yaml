@@ -1,0 +1,22 @@
+scenario: S25
+title: an elaboration amends a claim; chapter, claim and context map change in one commit; the review view takes the operator there with the previous version beside
+profiles: [all]
+satisfies: [88, 90, 97, 119, 120, 121, 122, 123, 124]
+given:
+  objects:
+    - {id: intent/atlas-provider-limits, machine: intent, state: {life: open, line: current, open.material: settled, open.close: not-offered}}
+    - {id: elaboration/atlas-provider-limits/amend-1, machine: elaboration, parent: intent/atlas-provider-limits, state: {life: working, working.work: session, session.life: alive, alive.activity: working}, record: {type: self-closing, type_version: 1}}
+  files: {"blueprints flywheel/instructions/design-conclusion.md": "version blueprints@a1b2: the chapter, the requirement it includes, and the context map in one commit"}
+when:
+  - files: {"intent line commit c9": "openspec/changes/atlas-provider-limits/specs/providers/spec.md (the requirement one-writer amended, so its content hash moves; nothing else recomputed), src/providers/one-writer.md (the chapter that includes it), src/context-map.md, context-map.json"}
+  - evidence: {session.exit: {"*": done}}
+  - tick: {}
+  - direct: {do: page, path: "/review", by: chuck}
+then:
+  state_store:
+    map_check_passed: true
+    one_commit_touched: ["src/providers/one-writer.md", "src/context-map.md", "context-map.json"]
+    review_view_derived_from_history: true
+    review_view_points_to: ["providers/one-writer chapter", "context-map node providers"]
+    previous_version_shown: true
+    hand_written_files_for_view: 0

@@ -1,0 +1,35 @@
+scenario: S18
+title: a host's network drops for an hour; it finishes what it owned and commits locally; on reconnect its commits land and nothing of others is lost
+profiles: [git-only]
+satisfies: [151, 165]
+given:
+  objects:
+    - {id: bolt/atlas/plan-rows, machine: bolt, state: {life: open, line: current, place: ready, open.citations: current, open.close: not-offered}, record: {repository: atlas}}
+    - {id: unit/atlas/status-writer, machine: unit, parent: bolt/atlas/plan-rows, state: {life: in-flight}, record: {type: default, type_version: 5}}
+    - {id: work-item/atlas/wi-418, machine: work-item, parent: unit/atlas/status-writer, state: {life: in-type, in-type.stages: build, build.run: sessions, session.life: alive, alive.activity: working}}
+    - {id: unit/atlas/retry-jitter, machine: unit, parent: bolt/atlas/plan-rows, state: {life: approved}}
+  leases: [{object: work-item/atlas/wi-418, holder: mac-mini, renewed_at: now}]
+  hosts: [{name: mac-mini, bound: 3}, {name: studio, bound: 2}]
+  evidence: {session.pane: {"*": present}, session.activity: {"*": working}, unit.deps_merged: {"*": true}}
+when:
+  - host: {name: mac-mini}
+  - disconnect: {}
+  - evidence: {session.exit: {"work-item/atlas/wi-418/build/1": done}, stage.join_met: {"*": true}, stage.verdict: {"*": pass}}
+  - tick: {}
+  - tick: {}
+  - host: {name: studio}
+  - tick: {}
+  - host: {name: mac-mini}
+  - clock: {advance: 1h}
+  - reconnect: {}
+  - tick: {}
+then:
+  transitions:
+    - {object: work-item/atlas/wi-418, from: build, to: verify, host: mac-mini}
+    - {object: unit/atlas/retry-jitter, from: approved, to: in-flight, host: studio}
+  state_store:
+    local_commits_while_offline: {mac-mini: ">= 1"}
+    leases_taken_while_offline: {mac-mini: 0}
+    sessions_started_while_offline: {mac-mini: 0}
+    commits_present_after_reconnect: {studio: true, mac-mini: true}
+    status_as_of_after_reconnect: latest

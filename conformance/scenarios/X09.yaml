@@ -1,0 +1,84 @@
+scenario: X9
+title: a bolt's place declares two services; the operator starts one by dictation and a session starts the other through the command; both are one record; a crash is a decision under attention; the place's removal takes the services with it
+profiles: [all]
+requires: [real-workspace]     # the place's declared services run as real tethered processes and end with the worktree
+satisfies: [45, 46, 47, 48, 55]
+invariants: [I1, I13]
+given:
+  objects:
+    - {id: bolt/atlas/plan-rows, machine: bolt, state: {life: open, line: current, place: preparing, services: none, open.citations: current, open.close: not-offered}, record: {repository: atlas}}
+    - {id: unit/atlas/u, machine: unit, parent: bolt/atlas/plan-rows, state: {life: in-flight}, record: {type: default, type_version: 5}}
+    - {id: work-item/atlas/u/1, machine: work-item, parent: unit/atlas/u, state: {life: in-type, in-type.stages: test, test.run: sessions, session.life: alive, alive.activity: working, place.place.life: ready}, record: {ordinal: 1}}
+  files:
+    "atlas@bolt-place-head:.flywheel/services.yaml": |
+      format: flywheel-services/1
+      services:
+        - {name: web, command: "uv run fastapi dev app/main.py --port $PORT", serves: "http://localhost:$PORT/", ready: "curl -sf http://localhost:$PORT/health"}
+        - {name: worker, command: "uv run python -m atlas.worker", serves: "queue"}
+  evidence:
+    place.exists: {bolt/atlas/plan-rows: true}
+    place.contains_line: {bolt/atlas/plan-rows: true}
+    place.endpoints_recorded: {bolt/atlas/plan-rows: true}
+    service.place_present: {"*": true}
+    service.declared: {"*": true}
+    service.process: {"*": absent}
+    session.pane: {"*": present}
+  script:
+    "work-item/atlas/u/1/test/1":
+      - {after: "4", service: {start: worker}}
+when:
+  - tick: {}                                                             # 1: the place is ready; declare_services makes service/atlas/plan-rows/web and /worker in stopped
+  - tick: {}                                                             # 2: nothing starts on its own
+  - direct: {do: dictation, text: "start bolt/atlas/plan-rows/web", by: chuck}          # 3: the operator's dictation
+  - tick: {}                                                             # 4: web -> starting, start_service; the session runs `flywheel service start worker`
+  - tick: {}                                                             # 5: worker -> starting by the same kind of record
+  - evidence: {service.process: {service/atlas/plan-rows/web: present, service/atlas/plan-rows/worker: present}, service.serving: {"*": true}, service.endpoint: {service/atlas/plan-rows/web: "https://web-3f9a.atlas.ts.net/"}}
+  - tick: {}                                                             # 7: both running; web's endpoint recorded
+  - tick: {}                                                             # 8: nothing changed, nothing written
+  - evidence: {service.process: {service/atlas/plan-rows/web: exited}, service.failure: {service/atlas/plan-rows/web: "exit 1: address in use"}}
+  - tick: {}                                                             # 10: web -> failed, a decision under attention
+  - response: {decision: service/atlas/plan-rows/web/service-failed, answer: start, id: discord/2001, by: chuck}
+  - tick: {}                                                             # 12: web -> starting again
+  - evidence: {service.process: {service/atlas/plan-rows/web: present}}
+  - tick: {}                                                             # 14: web -> running
+  - direct: {do: dictation, text: "drop bolt/atlas/plan-rows", by: chuck}               # 15
+  - tick: {}                                                             # 16: the bolt is dropped; its place enters removing
+  - evidence: {place.absent: {bolt/atlas/plan-rows: true}, service.place_present: {"*": false}, service.process: {"*": absent}}
+  - tick: {}                                                             # 18: the place is removed; the services are gone with it
+then:
+  transitions:
+    - {object: bolt/atlas/plan-rows, region: place.place.life, from: preparing, to: ready}
+    - {object: bolt/atlas/plan-rows, region: services, from: none, to: declared}
+    - {object: service/atlas/plan-rows/web, from: stopped, to: starting, response: discord/dictation-1}
+    - {object: service/atlas/plan-rows/worker, from: stopped, to: starting, response: "thread/work-item/atlas/u/1/test/1/1"}
+    - {object: service/atlas/plan-rows/web, from: starting, to: running}
+    - {object: service/atlas/plan-rows/worker, from: starting, to: running}
+    - {object: service/atlas/plan-rows/web, from: running, to: failed}
+    - {object: service/atlas/plan-rows/web, from: failed, to: starting, response: discord/2001}
+    - {object: service/atlas/plan-rows/web, from: starting, to: running}
+    - {object: bolt/atlas/plan-rows, from: open, to: dropped}
+    - {object: service/atlas/plan-rows/web, from: running, to: gone}
+    - {object: service/atlas/plan-rows/worker, from: running, to: gone}
+    - {object: bolt/atlas/plan-rows, region: services, from: declared, to: gone}
+  effects:
+    - {do: declare_services, count: 1}
+    - {do: start_service, count: 3}
+    - {do: stop_service, count: 0}
+    - {do: record_service_endpoint, count: 1}
+    - {do: remove_place, count: 1}
+  decisions:
+    - {after_step: 2, count: 0}
+    - {after_step: 10, present: [service-failed], count: 1}
+    - {after_step: 12, absent: [service-failed]}
+  records:
+    service/atlas/plan-rows/web: {endpoint: "https://web-3f9a.atlas.ts.net/", moved_by: discord/2001}
+    service/atlas/plan-rows/worker: {moved_by: "thread/work-item/atlas/u/1/test/1/1"}
+  applied_responses:
+    service/atlas/plan-rows/web: [discord/dictation-1, discord/2001]
+    service/atlas/plan-rows/worker: ["thread/work-item/atlas/u/1/test/1/1"]
+  writes: {max_per_tick_when_unchanged: 0}
+  state_store:
+    session_command_and_dictation_write_the_same_record_shape: true
+    worker_endpoint_absent_because_it_serves_no_url: true
+    services_never_started_by_declaration_alone: true
+    processes_ended_by_the_worktree_removal: true

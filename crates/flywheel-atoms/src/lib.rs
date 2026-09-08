@@ -7,6 +7,7 @@
 //! `Sessions` (D8). No implementation of any of them is in this crate.
 
 pub mod atoms;
+pub mod conformance;
 pub mod scenario;
 pub mod traits;
 

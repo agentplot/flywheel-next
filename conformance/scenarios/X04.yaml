@@ -1,0 +1,28 @@
+scenario: X4
+title: two hosts and a dispatcher; the manifest pins the chat sink to the dispatcher and leaves the page to the lease; exactly one presenter delivers each sink; both show the same numbers
+profiles: [all]
+satisfies: [15, 18, 148, 149]
+invariants: [I11]
+given:
+  objects:
+    - {id: intent/a, machine: intent, state: {life: proposed}, record: {signals: [s1, s2]}}
+    - {id: unit/atlas/u, machine: unit, parent: bolt/atlas/plan-rows, state: {life: proposed}, record: {type: fast, target: bolt/atlas/plan-rows}}
+    - {id: bolt/atlas/plan-rows, machine: bolt, state: {life: open, line: current, place: ready, open.citations: current, open.close: not-offered}, record: {repository: atlas}}
+  hosts:
+    - {name: mac-mini, bound: 3, declares: {kinds: [all], repositories: [atlas], presents: [page]}}
+    - {name: studio, bound: 2, declares: {kinds: [all], repositories: [atlas], presents: [page]}}
+    - {name: dispatcher, bound: 0, declares: {kinds: [], presents: [chat]}}
+  sinks:
+    - {id: sink/chat, kind: chat, surface: "#flywheel", pinned_to: dispatcher, routes: [approve, decide, answer, attention]}
+    - {id: sink/page, kind: page, surface: /rail, routes: [approve, decide, answer, attention]}
+  register: {next: 100}
+when:
+  - tick: {concurrent_hosts: [mac-mini, studio, dispatcher]}
+  - tick: {}
+  - tick: {}
+then:
+  transitions: [{object: rail/willdan, from: current, to: numbering}, {object: sink/chat, from: idle, to: delivering}, {object: sink/page, from: idle, to: delivering}]
+  effects: [{do: number_decisions, count: 1}, {do: deliver_rail, count: 2}]
+  decisions: [{after_step: 4, present: [intent-proposed, unit-proposed], count: 2, numbers: {intent/a/intent-proposed: 100, unit/atlas/u/unit-proposed: 101}}]
+  leases: {sink/chat: {holder: dispatcher, holders_ever: 1}, sink/page: {holders_ever: 1, holder_in: [mac-mini, studio]}}
+  state_store: {chat_lines: 2, chat_numbers: [100, 101], page_numbers: [100, 101], chat_links_page: true, dispatcher_took_object_leases: 0}

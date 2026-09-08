@@ -1,0 +1,22 @@
+scenario: S12
+title: the status view from a phone with no machinery running shows every bolt, unit and session by state and holder
+profiles: [all]
+satisfies: [141, 143, 145, 146, 156]
+given:
+  objects:
+    - {id: bolt/atlas/plan-rows, machine: bolt, state: {life: open, line: current, place: ready, open.citations: current, open.close: not-offered}, record: {repository: atlas}}
+    - {id: unit/atlas/status-writer, machine: unit, parent: bolt/atlas/plan-rows, state: {life: in-flight}}
+    - {id: work-item/atlas/wi-418, machine: work-item, parent: unit/atlas/status-writer, state: {life: in-type, in-type.stages: build, build.run: sessions, session.life: alive, alive.activity: blocked}}
+    - {id: unit/atlas/retry-jitter, machine: unit, parent: bolt/atlas/plan-rows, state: {life: waiting}}
+  leases: [{object: work-item/atlas/wi-418, holder: mac-mini, renewed_at: now}]
+  hosts: [{name: mac-mini, bound: 3, last_seen: now}]
+when:
+  - tick: {}
+  - host: {name: none}
+then:
+  status:
+    readable_with_no_host: true
+    groups: {queued: [unit/atlas/retry-jitter], in progress: [bolt/atlas/plan-rows, unit/atlas/status-writer], waiting on the operator: [work-item/atlas/wi-418]}
+    holders: {work-item/atlas/wi-418: mac-mini}
+    host_alive: {mac-mini: alive}
+    as_of_stated: true

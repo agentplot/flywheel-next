@@ -1,0 +1,21 @@
+scenario: S19
+title: the operator edits an object's state file by hand and commits; the next pass on every host treats it as the response
+profiles: [git-only]
+satisfies: [3, 159, 160, 161, 164]
+given:
+  objects:
+    - {id: intent/loop-granularity, machine: intent, state: {life: open, line: current, open.material: settled, open.close: offered}}
+    - {id: elaboration/loop-granularity/e1, machine: elaboration, parent: intent/loop-granularity, state: {life: done}}
+  hosts: [{name: mac-mini, bound: 3}, {name: studio, bound: 2}]
+  evidence: {line.contains_parent: {"*": true}, intent.archived: {"*": false}}
+when:
+  - direct: {do: commit, file: objects/intent/loop-granularity/object.rec, set: {state: "life=archiving"}, sha: abc123, by: chuck}
+  - host: {name: mac-mini}
+  - tick: {}
+  - host: {name: studio}
+  - tick: {}
+then:
+  transitions: [{object: intent/loop-granularity, from: offered, to: archiving, response: commit/abc123}]
+  effects: [{do: archive_intent, count: 1}]
+  applied_responses: {intent/loop-granularity: [commit/abc123]}
+  state_store: {response_derived_from_fetch: true, processes_told: 0, hosts_agreeing: 2}

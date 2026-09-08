@@ -74,23 +74,52 @@ pub struct SessionFact {
     pub played: Vec<usize>,
 }
 
-/// One thing a scripted session does, at an offset from its start.
+/// One thing a scripted session does. `after` is a **step number**, never a
+/// duration: the clock moves only through a `clock` step and the tick
+/// interval, so a delay is written as a `clock` step in `when`.
 #[derive(Debug, Clone, Serialize, Deserialize, Default)]
+#[serde(deny_unknown_fields)]
 pub struct ScriptEntry {
     #[serde(default)]
     pub after: Option<String>,
+    /// `present` or `absent`, as the multiplexer would report it.
     #[serde(default)]
     pub pane: Option<String>,
+    /// `working` or `idle`.
     #[serde(default)]
     pub activity: Option<String>,
+    /// The operator typed in the pane.
+    #[serde(default)]
+    pub keystroke: bool,
+    /// `done`, `blocked`, `stalled` or `invalid`, reported by running the
+    /// command a real session reports through (67, 93).
     #[serde(default)]
     pub exit: Option<String>,
+    #[serde(default)]
+    pub deliverables: Vec<String>,
     #[serde(default)]
     pub question: Option<String>,
     #[serde(default)]
     pub verdict: Option<String>,
+    /// Findings and chores the session offered, each pointing at a document.
     #[serde(default)]
-    pub deliverables: Vec<String>,
+    pub offers: Vec<Offer>,
+    #[serde(default)]
+    pub refusal: Option<String>,
+    /// The session ran `flywheel service start|stop <name>` (48).
+    #[serde(default)]
+    pub service: Option<BTreeMap<String, String>>,
+    /// Files the session committed in its place.
+    #[serde(default)]
+    pub commits: Vec<String>,
+}
+
+/// One thing a session offered: its kind and the document it points at (58,
+/// 59, 62). The record never holds the text.
+#[derive(Debug, Clone, Serialize, Deserialize, Default)]
+pub struct Offer {
+    pub kind: String,
+    pub document: String,
 }
 
 /// One service declaration a repository carries. `fails: true` scripts a

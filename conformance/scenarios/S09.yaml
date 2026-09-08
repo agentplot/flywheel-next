@@ -1,0 +1,30 @@
+scenario: S9
+title: a build session finds a claim's boundary wrong; the amended claim lands; the bolt gets the claim-moved decision; the operator picks; nothing rebuilt on its own
+profiles: [all]
+satisfies: [58, 103]
+given:
+  objects:
+    - {id: bolt/atlas/plan-rows, machine: bolt, state: {life: open, line: current, place: ready, open.citations: current, open.close: not-offered}, record: {repository: atlas}}
+    - {id: unit/atlas/status-writer, machine: unit, parent: bolt/atlas/plan-rows, state: {life: in-flight}, record: {type: default, type_version: 5, claims: ["providers/one-writer@sha256:4b2d…e1"]}}
+    - {id: claim/providers-one-writer, machine: claim, state: {standing: standing}, record: {name: providers/one-writer, version: "sha256:4b2d…e1"}}
+    - {id: planning/atlas, machine: planning, state: {run: current}, record: {planned_fingerprint: f0}}
+  evidence: {claim.version: {claim/providers-one-writer: "sha256:4b2d…e1"}, bolt.citations_moved: {"*": false}, planning.fingerprint: {planning/atlas: f0}, planning.planned_fingerprint: {planning/atlas: f0}}
+when:
+  - tick: {}
+  - files: {"blueprints openspec/specs/providers/spec.md": "the requirement one-writer amended on the shared line, so its content hash is now sha256:9f07…c3 (the finding's elaboration landed and its delta was archived)"}
+  - evidence: {claim.version: {claim/providers-one-writer: "sha256:9f07…c3"}, bolt.citations_moved: {bolt/atlas/plan-rows: true}, bolt.moved_claim: {bolt/atlas/plan-rows: "providers/one-writer sha256:4b2d…e1 -> sha256:9f07…c3"}}
+  - tick: {}
+  - response: {decision: bolt/atlas/plan-rows/claim-moved, answer: "amend bolt", id: discord/5001}
+  - tick: {}
+  - evidence: {bolt.citations_moved: {"*": false}, planning.fingerprint: {planning/atlas: f1}}
+  - tick: {}
+  - tick: {}
+then:
+  transitions:
+    - {object: bolt/atlas/plan-rows, from: current, to: moved}
+    - {object: bolt/atlas/plan-rows, from: moved, to: current, response: discord/5001}
+    - {object: planning/atlas, from: current, to: due}
+  effects: [{do: record_citation_choice, count: 1}, {do: create_items, count: 0}, {do: end_session, count: 0}]
+  decisions: [{after_step: 4, present: [claim-moved], count: 1}, {after_step: 6, absent: [claim-moved]}]
+  records: {unit/atlas/status-writer: {needs_amend: true}}
+  states: {unit/atlas/status-writer: {life: in-flight}}

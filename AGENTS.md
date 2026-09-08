@@ -14,8 +14,10 @@ The requirements and the model are in the blueprints repository, not here:
   the later sections), `generic/` (business processes on the flywheel).
 - Local checkout: `/Users/chuck/Code/github_agentplot/blueprints/main/design/flywheel-next/`.
 
-`definitions/` is a byte-for-byte mirror of the model's machines and profiles.
-Change the model there first, then copy; never edit `definitions/` by hand.
+`definitions/` is a byte-for-byte mirror of the model's machines and profiles,
+and `conformance/` of the model's conformance suite (scenarios, contract,
+fixtures, observations, schema). Change the model there first, then copy;
+never edit `definitions/` or `conformance/` by hand.
 `check.py` in the model must report every clause cited before a definition
 lands here.
 

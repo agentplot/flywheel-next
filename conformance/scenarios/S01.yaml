@@ -1,0 +1,36 @@
+scenario: S1
+title: the operator approves a proposed elaboration from their phone at a 390px viewport; work starts; nothing re-asks
+profiles: [all]
+satisfies: [1, 6, 13, 24, 314]
+invariants: [I1, I2]
+given:
+  objects:
+    - {id: intent/atlas-provider-limits, machine: intent, state: {life: open, line: current, open.material: settled, open.close: not-offered}}
+    - {id: elaboration/atlas-provider-limits/research-1, machine: elaboration, parent: intent/atlas-provider-limits, state: {life: proposed}, record: {type: self-closing, type_version: 1}}
+  evidence:
+    line.contains_parent: {intent/atlas-provider-limits: true}
+    session.pane: {"*": absent}
+when:
+  - tick: {}
+  - response: {decision: elaboration/atlas-provider-limits/research-1/elaboration-proposed, answer: "yes", id: discord/1001}
+  - tick: {}
+  - tick: {}
+  - evidence: {place.exists: {"*": true}, place.contains_line: {"*": true}, place.ready: {"*": true}}
+  - tick: {}
+  - tick: {}
+  - response: {decision: elaboration/atlas-provider-limits/research-1/elaboration-proposed, answer: "yes", id: discord/1001}
+  - evidence: {session.pane: {"*": present}, session.activity: {"*": working}}
+  - restart: {}
+  - tick: {}
+then:
+  transitions:
+    - {object: elaboration/atlas-provider-limits/research-1, from: proposed, to: approved, response: discord/1001}
+    - {object: elaboration/atlas-provider-limits/research-1, from: approved, to: placing}
+    - {object: elaboration/atlas-provider-limits/research-1, from: placing, to: working}
+  effects: [{do: prepare_place, count: 1}, {do: start_session, count: 1}]
+  decisions:
+    - {after_step: 1, present: [elaboration-proposed], count: 1}
+    - {after_step: 3, absent: [elaboration-proposed], count: 0}
+    - {after_step: 11, count: 0}
+  applied_responses: {elaboration/atlas-provider-limits/research-1: [discord/1001]}
+  states: {elaboration/atlas-provider-limits/research-1: {life: working, working.work: session, session.life: alive}}

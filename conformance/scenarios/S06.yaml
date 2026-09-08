@@ -1,0 +1,24 @@
+scenario: S6
+title: a slow host takes two minutes to start a session; it starts once; nothing is reported failed
+profiles: [all]
+satisfies: [72, 73]
+given:
+  objects:
+    - {id: intent/a, machine: intent, state: {life: open, line: current, open.material: settled, open.close: not-offered}}
+    - {id: elaboration/a/research-1, machine: elaboration, parent: intent/a, state: {life: working, working.work: session, session.life: requested}, record: {type: self-closing, type_version: 1}}
+  evidence: {session.pane: {"*": absent}, place.contains_line: {"*": true}}
+when:
+  - tick: {}
+  - clock: {advance: 30s}
+  - tick: {}
+  - clock: {advance: 30s}
+  - tick: {}
+  - clock: {advance: 60s}
+  - evidence: {session.pane: {"*": present}, session.activity: {"*": working}}
+  - tick: {}
+then:
+  transitions:
+    - {object: elaboration/a/research-1, from: requested, to: starting}
+    - {object: elaboration/a/research-1, from: starting, to: alive}
+  effects: [{do: start_session, count: 3}, {do: report, count: 0}]
+  state_store: {distinct_session_names_started: 1, multiplexer_refused_duplicates: 2, reported_failed: false}

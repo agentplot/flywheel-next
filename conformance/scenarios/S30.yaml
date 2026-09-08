@@ -1,0 +1,34 @@
+scenario: S30
+title: a build session exits blocked; only its item waits; siblings merge; the page answer reaches the same living session; the block and answer are on the item
+profiles: [all]
+requires: [real-workspace]     # the blocked item's siblings merge while it waits
+satisfies: [67, 68, 70, 71, 144]
+given:
+  objects:
+    - {id: bolt/atlas/plan-rows, machine: bolt, state: {life: open, line: current, place: ready, open.citations: current, open.close: not-offered}, record: {repository: atlas}}
+    - {id: unit/atlas/u, machine: unit, parent: bolt/atlas/plan-rows, state: {life: in-flight}, record: {type: default, type_version: 5}}
+    - {id: work-item/atlas/wi-418, machine: work-item, parent: unit/atlas/u, state: {life: in-type, in-type.stages: build, build.run: sessions, session.life: alive, alive.activity: working}, record: {ordinal: 1}}
+    - {id: work-item/atlas/wi-419, machine: work-item, parent: unit/atlas/u, state: {life: in-type, in-type.stages: verify, verify.run: sessions, session.life: alive, alive.activity: working}, record: {ordinal: 2}}
+  evidence: {session.pane: {"*": present}, session.activity: {"*": working}}
+when:
+  - script: {"work-item/atlas/wi-418/build/1": [{after: "0", exit: blocked, question: "should Ready imply Backlog cleared?"}]}    # played through the exit command, which writes to the state store (67)
+  - tick: {}
+  - evidence: {stage.join_met: {"work-item/atlas/wi-419/verify/1": true}, stage.verdict: {"work-item/atlas/wi-419/verify/1": pass}, item.change_archived: {"*": true}, place.merge_slot: {"*": true}, place.merged: {"*": true}}
+  - tick: {}
+  - tick: {}
+  - tick: {}
+  - response: {decision: work-item/atlas/wi-418/build/1/question, answer: "yes; Ready is a superset", id: page/8f1c}
+  - tick: {}
+  - evidence: {session.answer_delivered: {"work-item/atlas/wi-418/build/1": true}}
+  - tick: {}
+then:
+  transitions:
+    - {object: work-item/atlas/wi-418, from: working, to: blocked}
+    - {object: work-item/atlas/wi-419, from: in-type, to: archiving}
+    - {object: work-item/atlas/wi-419, from: archiving, to: merging}
+    - {object: work-item/atlas/wi-419, from: merging, to: merged}
+    - {object: work-item/atlas/wi-418, from: blocked, to: working, response: page/8f1c}
+  decisions: [{after_step: 3, present: [question], count: 1}, {after_step: 9, absent: [question]}]
+  effects: [{do: deliver_answer, count: 1}, {do: start_session, count: 0}]
+  records: {"work-item/atlas/wi-418/build/1": {blocks: 1}, work-item/atlas/wi-418: {thread: [question, answer]}}
+  state_store: {answer_sent_to_same_pane: true, exit_written_through_command: true, state_read_from_place_disk: 0, question_answered_in_pane: false}

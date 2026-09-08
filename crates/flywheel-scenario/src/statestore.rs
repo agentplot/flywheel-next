@@ -1,0 +1,361 @@
+//! The stand-in state store: the six record operations and the eight
+//! operations of 125, over the in-memory store.
+//!
+//! Everything here is the real contract, played against a map instead of a
+//! repository. What is faked is where the bytes live and nothing about what the
+//! operations promise, which is why the same scenarios run against `git-only`
+//! unchanged (168).
+
+use crate::store::{EffectRecord, PresentedRecord, Store};
+use anyhow::{anyhow, Result};
+use flywheel_atoms::{
+    EffectWrite, EvidenceRead, HostRecord, LeaseOp, LeaseOutcome, LeaseRecord, Listing, Notice,
+    Object, Presentation, PutOutcome, ReadPoint, Received, Records, Scope, StateStore, StatusView,
+    ThreadEntry, WriteOutcome,
+};
+use flywheel_engine::runtime::{EvidenceSource, Response};
+use std::collections::BTreeMap;
+
+impl Store {
+    /// Who is writing: the acting host a `host` step named, or `local` (232).
+    pub fn me(&self) -> String {
+        self.acting_host.clone().unwrap_or_else(|| "local".to_string())
+    }
+
+    /// A host that cannot reach the store keeps ticking what it holds and
+    /// commits locally; its writes are intentions until it reconnects (151).
+    pub fn is_disconnected(&self) -> bool {
+        self.disconnected.contains(&self.me())
+    }
+
+    /// The point a read is as of.
+    pub fn as_of(&self) -> ReadPoint {
+        ReadPoint {
+            mark: format!("w{}", self.writes),
+            seq: self.writes,
+            at: self.now,
+        }
+    }
+
+    /// Record that an object moved, and name the point it moved at.
+    fn moved_at(&mut self, id: &str) -> u64 {
+        self.writes += 1;
+        self.moved.push((self.writes, id.to_string()));
+        self.writes
+    }
+
+    /// The first top-level region of an object; the region every evidence read
+    /// without one is asked against.
+    fn top_region(&self, id: &str) -> String {
+        self.objects
+            .get(id)
+            .and_then(|o| o.config.keys().find(|k| !k.contains('.')).cloned())
+            .unwrap_or_else(|| "life".to_string())
+    }
+
+    fn in_scope(object: &Object, scope: &Scope) -> bool {
+        match scope {
+            Scope::All => true,
+            Scope::Machine(m) => &object.machine == m,
+            Scope::Under(id) => {
+                &object.id == id || object.parent.as_deref() == Some(id.as_str())
+            }
+        }
+    }
+}
+
+impl Records for Store {
+    fn get(&self, id: &str) -> Result<Option<Object>> {
+        Ok(self.objects.get(id).cloned())
+    }
+
+    fn put(&mut self, id: &str, record: &Object, base_seq: u64) -> Result<PutOutcome> {
+        let held = self.objects.get(id).map(|o| o.seq).unwrap_or(0);
+        if held != base_seq {
+            // The loser learns that it lost and reads again before deciding
+            // anything (134).
+            return Ok(PutOutcome::Rejected { held_seq: held });
+        }
+        let mut next = record.clone();
+        next.seq = held + 1;
+        self.objects.insert(id.to_string(), next);
+        let _ = self.moved_at(id);
+        Ok(PutOutcome::Written { seq: held + 1 })
+    }
+
+    fn append(&mut self, id: &str, entry: &ThreadEntry) -> Result<()> {
+        self.threads
+            .entry(id.to_string())
+            .or_default()
+            .push(entry.clone());
+        let _ = self.moved_at(id);
+        Ok(())
+    }
+
+    fn list_records(&self, scope: &Scope) -> Result<Vec<Object>> {
+        Ok(self
+            .objects
+            .values()
+            .filter(|o| Store::in_scope(o, scope))
+            .cloned()
+            .collect())
+    }
+
+    fn thread(&self, id: &str) -> Result<Vec<ThreadEntry>> {
+        Ok(self.threads.get(id).cloned().unwrap_or_default())
+    }
+
+    fn responses(&self, id: &str) -> Result<Vec<Response>> {
+        let numbers: Vec<u32> = self
+            .register
+            .numbers
+            .iter()
+            .filter(|(decision, _)| decision.starts_with(&format!("{id}/")))
+            .map(|(_, n)| *n)
+            .collect();
+        Ok(self
+            .responses
+            .iter()
+            .filter(|r| {
+                r.object.as_deref() == Some(id)
+                    || r.decision.is_some_and(|n| numbers.contains(&n))
+            })
+            .cloned()
+            .collect())
+    }
+
+    fn leases(&self, id: &str) -> Result<Option<LeaseRecord>> {
+        Ok(self.leases.get(id).cloned())
+    }
+
+    fn hosts(&self) -> Result<Vec<HostRecord>> {
+        Ok(self.heartbeats.values().cloned().collect())
+    }
+}
+
+impl StateStore for Store {
+    fn read(&self, id: &str) -> Result<EvidenceRead> {
+        let region = self.top_region(id);
+        let mut evidence = BTreeMap::new();
+        // The five the record itself answers (`record-derived.yaml`).
+        if let Some(o) = self.objects.get(id) {
+            evidence.insert("state".into(), serde_json::to_value(&o.config)?);
+            evidence.insert("entered_at".into(), serde_json::to_value(&o.entered_at)?);
+            evidence.insert("seq".into(), serde_json::json!(o.seq));
+            evidence.insert(
+                "applied_responses".into(),
+                serde_json::to_value(&o.applied_responses)?,
+            );
+        }
+        evidence.insert("now".into(), serde_json::json!(self.now.to_rfc3339()));
+        for atom in flywheel_atoms::Evidence::all() {
+            if let Some(v) = EvidenceSource::evidence(self, id, &region, atom.name) {
+                evidence.insert(atom.name.to_string(), v);
+            }
+        }
+        Ok(EvidenceRead {
+            object: self.objects.get(id).cloned(),
+            evidence,
+            as_of: self.as_of(),
+        })
+    }
+
+    fn list(&self, scope: &Scope) -> Result<Listing> {
+        Ok(Listing {
+            objects: self.list_records(scope)?,
+            as_of: self.as_of(),
+        })
+    }
+
+    fn status(&self) -> Result<StatusView> {
+        // The status projection is written from `list` and `get` alone, and
+        // states the point it is as of (132, 145).
+        let as_of = self.as_of();
+        let mut body = format!("status as of {} · {}\n", as_of.mark, as_of.at.to_rfc3339());
+        for o in self.objects.values() {
+            body.push_str(&format!(
+                "{}\t{}\t{}\n",
+                o.id,
+                o.machine,
+                o.top_states().join(",")
+            ));
+        }
+        Ok(StatusView { as_of, body })
+    }
+
+    fn write_effect(&mut self, write: &EffectWrite) -> Result<WriteOutcome> {
+        // A repeat of an effect already written changes nothing, is not an
+        // error, and is not reported as a second write (127).
+        if self
+            .effects_written
+            .iter()
+            .any(|e| e.effect_id == write.effect_id)
+        {
+            return Ok(WriteOutcome::AlreadyWritten {
+                effect_id: write.effect_id.clone(),
+            });
+        }
+        let pending = self.is_disconnected();
+        let by = self.me();
+        self.effects_written.push(EffectRecord {
+            effect_id: write.effect_id.clone(),
+            object: write.object.clone(),
+            effect: write.effect.clone(),
+            reason: write.reason.clone(),
+            evidence: write.evidence.clone(),
+            at: self.now,
+            by,
+            pending,
+        });
+        let _ = self.moved_at(&write.object);
+        Ok(if pending {
+            WriteOutcome::Pending {
+                effect_id: write.effect_id.clone(),
+            }
+        } else {
+            WriteOutcome::Written {
+                effect_id: write.effect_id.clone(),
+            }
+        })
+    }
+
+    fn lease(&mut self, op: &LeaseOp) -> Result<LeaseOutcome> {
+        match op {
+            LeaseOp::Take { object, holder } => {
+                if let Some(held) = self.leases.get(object) {
+                    if &held.holder != holder && !self.lease_expired(held) {
+                        // Two would-be holders of one object never both hold it
+                        // (128): the other reads the holder and moves on.
+                        return Ok(LeaseOutcome::HeldByAnother(held.clone()));
+                    }
+                }
+                let record = LeaseRecord {
+                    object: object.clone(),
+                    holder: holder.clone(),
+                    taken_at: self.now,
+                    renewed_at: self.now,
+                };
+                self.leases.insert(object.clone(), record.clone());
+                Ok(LeaseOutcome::Held(record))
+            }
+            LeaseOp::Renew { object, holder } => {
+                let Some(held) = self.leases.get_mut(object) else {
+                    return Err(anyhow!("no lease on {object} to renew"));
+                };
+                if &held.holder != holder {
+                    return Ok(LeaseOutcome::HeldByAnother(held.clone()));
+                }
+                held.renewed_at = self.now;
+                Ok(LeaseOutcome::Held(held.clone()))
+            }
+            LeaseOp::Release { object, holder } => {
+                match self.leases.get(object) {
+                    Some(held) if &held.holder != holder => {
+                        Ok(LeaseOutcome::HeldByAnother(held.clone()))
+                    }
+                    _ => {
+                        self.leases.remove(object);
+                        Ok(LeaseOutcome::Released)
+                    }
+                }
+            }
+        }
+    }
+
+    fn notify(&self, since: &ReadPoint) -> Result<Notice> {
+        // A notice names what moved, so a host re-reads only those objects and
+        // never the whole store (130).
+        let mut objects: Vec<String> = self
+            .moved
+            .iter()
+            .filter(|(seq, _)| *seq > since.seq)
+            .map(|(_, id)| id.clone())
+            .collect();
+        objects.sort();
+        objects.dedup();
+        Ok(Notice {
+            as_of: self.as_of(),
+            objects,
+        })
+    }
+
+    fn present(&mut self, presentation: &Presentation) -> Result<()> {
+        // A disconnected host delivers to no sink (151).
+        if self.is_disconnected() {
+            return Ok(());
+        }
+        self.presented.push(PresentedRecord {
+            sink: presentation.sink.clone(),
+            at: self.now,
+            numbers: presentation
+                .decisions
+                .iter()
+                .filter_map(|d| d.number)
+                .collect(),
+            decisions: presentation
+                .decisions
+                .iter()
+                .map(|d| d.id.clone())
+                .collect(),
+        });
+        self.marks.insert(presentation.sink.clone(), self.now);
+        Ok(())
+    }
+
+    fn receive(&mut self, response: &Response) -> Result<Received> {
+        // The same delivery twice takes effect once, whatever restarts happen
+        // between the giving and the application (137, I2).
+        if self.responses.iter().any(|r| r.id == response.id)
+            || self
+                .objects
+                .values()
+                .any(|o| o.applied_responses.contains(&response.id))
+        {
+            return Ok(Received::AlreadyApplied {
+                id: response.id.clone(),
+            });
+        }
+        // A response naming a decision that has been retracted is handed back
+        // as unapplicable and never dropped (6, 129).
+        if let Some(number) = response.decision {
+            match self.register.decision_of(number) {
+                Some(decision) if self.standing.iter().any(|d| d == decision) => {}
+                Some(decision) => {
+                    let decision = decision.to_string();
+                    self.log("unapplicable", &decision, "the decision no longer stands");
+                    return Ok(Received::Unapplicable {
+                        id: response.id.clone(),
+                        reason: format!("decision {decision} no longer stands"),
+                    });
+                }
+                None => {
+                    return Ok(Received::Unapplicable {
+                        id: response.id.clone(),
+                        reason: format!("no decision carries number {number}"),
+                    })
+                }
+            }
+        }
+        // The response is written before the transition it causes fires (129,
+        // 153): the record first, the engine's guard second.
+        self.responses.push(response.clone());
+        let _ = self.moved_at(response.object.as_deref().unwrap_or("rail"));
+        Ok(Received::Recorded {
+            id: response.id.clone(),
+        })
+    }
+}
+
+impl Store {
+    /// The status view, without the trait in scope.
+    pub fn status_view(&self) -> flywheel_atoms::StatusView {
+        StateStore::status(self).expect("the status view is derived, never fallible")
+    }
+
+    /// A lease whose holder stopped renewing it past the expiry is free to
+    /// take (128, 163). The window is the engine's, read from the manifest at
+    /// load; the release's default is 24 hours.
+    pub fn lease_expired(&self, lease: &LeaseRecord) -> bool {
+        self.now - lease.renewed_at > chrono::Duration::hours(24)
+    }
+}

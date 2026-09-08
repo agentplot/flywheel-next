@@ -1,0 +1,20 @@
+# The toy machine the contract scenarios use: no atom of the flywheel.
+machine: lamp
+version: 1
+kind: object
+object: lamp
+parent: null
+record: {flips: int}
+regions:
+  power:
+    initial: "off"
+    states:
+      "off":
+        decision: {kind: lamp-off, group: decide, answers: ["on"], satisfies: [9]}
+        transitions:
+          - {when: {response: "on"}, to: "on", effects: [{do: light}], bump: flips}
+          - {when: {ev: lamp.switch, is: up}, to: "on", effects: [{do: light}]}
+      "on":
+        tail: done
+        transitions:
+          - {when: {ev: lamp.switch, is: down}, to: "off", effects: [{do: dark}]}

@@ -1,0 +1,29 @@
+scenario: S8
+title: twenty signals from a transcript; curation attaches six, drops nine, joins five into two proposed intents; two decisions; every signal has a move
+profiles: [all]
+satisfies: [106, 107, 108, 109, 110, 116]
+given:
+  objects:
+    - {id: curation/willdan, machine: curation, state: {run: idle}, record: {threshold: 12}}
+    - {id: capture/meeting-2026-09-02-willdan-weekly, machine: capture, state: {reading: read}}
+    - {id: intent/atlas-provider-limits, machine: intent, state: {life: open, line: current, open.material: settled, open.close: not-offered}}
+  files: {"blueprints signals/meeting-2026-09-02-willdan-weekly/": "20 signal records, no move records"}
+  evidence: {curation.unmoved_count: {curation/willdan: 20}, signal.move: {"*": none}}
+when:
+  - tick: {}
+  - evidence: {place.ready: {"*": true}, session.pane: {"*": present}}
+  - tick: {}
+  - tick: {}
+  - script: {"curation/willdan/curator/1": [{after: "0", exit: done, deliverables: [moves, intents], commits: ["moves: 6 attach intent/atlas-provider-limits, 9 drop, 5 join (3 -> intent/retry-jitter challenges providers/one-writer@3, 2 -> intent/status-copy)"]}]}
+  - tick: {}
+  - tick: {}
+  - tick: {}
+then:
+  transitions:
+    - {object: curation/willdan, from: idle, to: running}
+    - {object: curation/willdan, from: running, to: applying}
+    - {object: curation/willdan, from: applying, to: idle}
+  effects: [{do: record_moves, count: 1}, {do: propose_intents, count: 1}, {do: open_intent, count: 0}]
+  decisions: [{after_step: 9, present: [intent-proposed, intent-proposed], count: 2}]
+  records: {intent/retry-jitter: {challenges: [providers/one-writer@3], signals_count: 3}, intent/status-copy: {signals_count: 2}}
+  state_store: {signal_moves_stored: 20, signals_with_move: 20, unmoved_after: 0}

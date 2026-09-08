@@ -1,0 +1,13 @@
+format: flywheel-atoms/1
+evidence:
+  state: {of: any, type: state}
+  entered_at: {of: any, type: time}
+  seq: {of: any, type: int}
+  applied_responses: {of: any, type: list}
+  now: {of: any, type: time}
+  lamp.switch: {of: lamp, type: enum, values: [up, down]}
+  lamp.lit: {of: lamp, type: bool, proof_of: light}
+  lamp.unlit: {of: lamp, type: bool, proof_of: dark}
+effects:
+  light: {of: lamp, args: [], proof: lamp.lit}
+  dark: {of: lamp, args: [], proof: lamp.unlit}

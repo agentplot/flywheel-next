@@ -1,0 +1,22 @@
+scenario: S11
+title: forty commits in a week, no claim changed; no verdict recomputed; the rail did not change
+profiles: [all]
+satisfies: [101]
+invariants: [I10]
+given:
+  objects:
+    - {id: planning/atlas, machine: planning, state: {run: current}, record: {planned_fingerprint: f0}}
+    - {id: ledger-cell/atlas/c1, machine: ledger-cell, state: {freshness: judged, judged.value: satisfied}, record: {claim_version: 3}}
+  evidence: {planning.fingerprint: {planning/atlas: f0}, planning.planned_fingerprint: {planning/atlas: f0}, cell.verdict: {"*": satisfied}, cell.verdict_claim_version: {"*": 3}, cell.claim_version: {"*": 3}, cell.evidence_present: {"*": true}}
+  marks: {chat: now, page: now}
+when:
+  - tick: {}
+  - files: {"repo atlas": "40 commits over 7 days; evidence paths still present"}
+  - clock: {advance: 7d}
+  - tick: {}
+then:
+  no_transitions: [planning/atlas, ledger-cell/atlas/c1]
+  effects: []
+  effects_closed: true
+  writes: {total: 0}
+  decisions: [{after_step: 4, count: 0}]

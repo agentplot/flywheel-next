@@ -1,0 +1,36 @@
+scenario: S32
+title: two units build side by side; the first merges; the second's place is untouched while working, rebased when idle, told what moved; one conflict resolved in place; the merge retries and lands
+profiles: [all]
+requires: [real-workspace]     # a merge, a rebase of an idle place, and a conflict resolved in the place
+satisfies: [51, 52]
+invariants: [I16]
+given:
+  objects:
+    - {id: bolt/atlas/plan-rows, machine: bolt, state: {life: open, line: current, place: ready, open.citations: current, open.close: not-offered}, record: {repository: atlas}}
+    - {id: unit/atlas/a, machine: unit, parent: bolt/atlas/plan-rows, state: {life: in-flight}, record: {type: fast, type_version: 1}}
+    - {id: unit/atlas/b, machine: unit, parent: bolt/atlas/plan-rows, state: {life: in-flight}, record: {type: fast, type_version: 1}}
+    - {id: work-item/atlas/a/1, machine: work-item, parent: unit/atlas/a, state: {life: merging, merging.place: merging}, record: {ordinal: 1}}
+    - {id: work-item/atlas/b/1, machine: work-item, parent: unit/atlas/b, state: {life: in-type, in-type.stages: build, build.run: sessions, session.life: alive, alive.activity: working, placing.place: ready}, record: {ordinal: 2}}
+  evidence: {place.merge_slot: {work-item/atlas/a/1: true}, place.contains_line: {"*": true}, session.activity: {"work-item/atlas/b/1/build/1": working}, session.pane: {"*": present}}
+when:
+  - evidence: {place.merged: {work-item/atlas/a/1: true}, place.contains_line: {work-item/atlas/b/1: false}}
+  - tick: {}
+  - tick: {}
+  - evidence: {session.activity: {"work-item/atlas/b/1/build/1": idle}}
+  - tick: {}
+  - evidence: {place.conflicted: {work-item/atlas/b/1: true}}
+  - tick: {}
+  - evidence: {session.exit: {"work-item/atlas/b/1/build/1": done}, place.conflicted: {work-item/atlas/b/1: false}}
+  - tick: {}
+  - tick: {}
+  - evidence: {place.contains_line: {work-item/atlas/b/1: true}}
+  - tick: {}
+then:
+  transitions:
+    - {object: work-item/atlas/a/1, from: merging, to: merged}
+    - {object: work-item/atlas/b/1, from: ready, to: behind}
+    - {object: work-item/atlas/b/1, from: behind, to: conflict}
+    - {object: work-item/atlas/b/1, from: conflict, to: behind}
+    - {object: work-item/atlas/b/1, from: behind, to: ready}
+  effects: [{do: merge_place, count: 1}, {do: rebase_place, count: 2}, {do: seed_conflict_job, count: 1}, {do: tell_moved, count: 1}]
+  state_store: {rebase_attempted_while_working: 0, conflict_retries_after: 1}

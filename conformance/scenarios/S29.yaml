@@ -1,0 +1,34 @@
+scenario: S29
+title: three items, two independent and one dependent; a bound of two; the third waits, starts when merges land and a slot frees; nothing twice across a restart
+profiles: [all]
+requires: [real-workspace]     # the two independent items merge, and in ordinal order
+satisfies: [31, 32]
+given:
+  objects:
+    - {id: bolt/atlas/plan-rows, machine: bolt, state: {life: open, line: current, place: ready, open.citations: current, open.close: not-offered}, record: {repository: atlas}}
+    - {id: unit/atlas/u, machine: unit, parent: bolt/atlas/plan-rows, state: {life: in-flight}, record: {type: fast, type_version: 1}}
+    - {id: work-item/atlas/u/1, machine: work-item, parent: unit/atlas/u, state: {life: waiting}, record: {ordinal: 1, depends_on: []}}
+    - {id: work-item/atlas/u/2, machine: work-item, parent: unit/atlas/u, state: {life: waiting}, record: {ordinal: 2, depends_on: []}}
+    - {id: work-item/atlas/u/3, machine: work-item, parent: unit/atlas/u, state: {life: waiting}, record: {ordinal: 3, depends_on: [work-item/atlas/u/1, work-item/atlas/u/2]}}
+  hosts: [{name: mac-mini, bound: 2}]
+  evidence: {item.deps_merged: {work-item/atlas/u/1: true, work-item/atlas/u/2: true, work-item/atlas/u/3: false}, host.running: {mac-mini: 0}}
+when:
+  - tick: {}
+  - tick: {}
+  - evidence: {place.ready: {"*": true}, session.pane: {"*": present}, host.running: {mac-mini: 2}}
+  - tick: {}
+  - restart: {}
+  - tick: {}
+  - evidence: {session.exit: {"*": done}, stage.join_met: {"*": true}, stage.verdict: {"*": pass}, place.merge_slot: {"*": true}, place.merged: {"*": true}}
+  - tick: {}
+  - tick: {}
+  - tick: {}
+  - evidence: {item.deps_merged: {work-item/atlas/u/3: true}, host.running: {mac-mini: 0}}
+  - tick: {}
+  - restart: {}
+  - tick: {}
+  - tick: {}
+then:
+  states: {work-item/atlas/u/1: {life: merged}, work-item/atlas/u/2: {life: merged}, work-item/atlas/u/3: {life: placing}}
+  effects: [{do: start_session, count: 2}, {do: prepare_place, count: 3}]
+  state_store: {sessions_running_max: 2, duplicate_session_names: 0, merges_in_ordinal_order: true}

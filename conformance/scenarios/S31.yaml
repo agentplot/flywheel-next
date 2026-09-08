@@ -1,0 +1,32 @@
+scenario: S31
+title: yes at 07:40, look again at 16:00; nothing nudged; the tail shows built, archived, merged since; the only new decision is the bolt's close
+profiles: [all]
+requires: [real-workspace]     # the unit's items build, archive and merge unattended
+satisfies: [13, 14]
+given:
+  objects:
+    - {id: bolt/atlas/plan-rows, machine: bolt, state: {life: open, line: current, place: ready, open.citations: current, open.close: not-offered}, record: {repository: atlas}}
+    - {id: unit/atlas/u, machine: unit, parent: bolt/atlas/plan-rows, state: {life: proposed}, record: {type: fast, type_version: 3, target: bolt/atlas/plan-rows}}
+  register: {unit/atlas/u/unit-proposed: 57, next: 58}
+  marks: {chat: "2026-09-04T07:40:00Z", page: "2026-09-04T07:40:00Z"}
+  evidence: {unit.deps_merged: {"*": true}, item.deps_merged: {"*": true}, item.slot_free: {"*": true}, line.contains_parent: {"*": true}}
+when:
+  - response: {number: 57, answer: "yes", id: discord/11001}    # "yes 57" in chat; the same number on the page
+  - tick: {}
+  - tick: {}
+  - evidence: {place.ready: {"*": true}, session.pane: {"*": present}, stage.agents: {"*": [builder]}}
+  - tick: {}
+  - evidence: {session.exit: {"*": done}, stage.join_met: {"*": true}, stage.verdict: {"*": pass}, item.change_archived: {"*": true}}
+  - tick: {}
+  - tick: {}
+  - tick: {}
+  - tick: {}
+  - evidence: {place.merge_slot: {"*": true}, place.merged: {"*": true}, place.absent: {"*": true}}
+  - tick: {}
+  - tick: {}
+  - tick: {}
+  - clock: {advance: 8h}
+  - tick: {}
+then:
+  decisions: [{after_step: 16, present: [bolt-close], count: 1, tail: [merged, merged]}]
+  state_store: {responses_after_yes: 0, tail_since: "2026-09-04T07:40:00Z", bolt_close_number_is_new: true, number_57_reused: false, renderings_stored: 0}

@@ -1,0 +1,26 @@
+scenario: T1
+title: the operator moves a unit's board item to Approved on the tracker from the phone; the next read treats it as the response; signals and verdicts were never items
+profiles: [tracker]
+satisfies: [3, 156, 157, 158, 159]
+given:
+  objects:
+    - {id: bolt/atlas/plan-rows, machine: bolt, state: {life: open, line: current, place: ready, open.citations: current, open.close: not-offered}, record: {repository: atlas}}
+    - {id: unit/atlas/status-writer, machine: unit, parent: bolt/atlas/plan-rows, state: {life: proposed}, record: {type: default, type_version: 5, target: bolt/atlas/plan-rows, document: "openspec/changes/status-writer/proposal.md"}}
+    - {id: ledger-cell/atlas/c1, machine: ledger-cell, state: {freshness: judged, judged.value: satisfied}}
+  register: {unit/atlas/status-writer/unit-proposed: 12, next: 13}
+  hosts: [{name: mac-mini, bound: 3}]
+when:
+  - tick: {}
+  - direct: {do: board, issue: "unit unit/atlas/status-writer", column: Approved, event_id: "timeline/7781", by: chuck}
+  - tick: {}
+  - tick: {}
+then:
+  transitions: [{object: unit/atlas/status-writer, from: proposed, to: approved, response: tracker/timeline/7781}]
+  applied_responses: {unit/atlas/status-writer: [tracker/timeline/7781]}
+  effects: [{do: create_items, count: 1}]
+  state_store:
+    response_comment_written_before_transition: true
+    items_in_tracker: [intent, elaboration, bolt, unit, work-item, decision]
+    files_in_blueprints_never_items: [signal, move, claim, verdict, definition]
+    state_proven_by: "the issue body's record block"
+    board_column_is_projection: true

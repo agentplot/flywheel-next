@@ -1,0 +1,46 @@
+scenario: S3
+title: a construction session offers a stale-instruction fix as a chore; one response; one agent fixes it in place; no bolt, no change directory
+profiles: [all]
+requires: [real-workspace]     # the chore's fix merges into the line it belongs on
+satisfies: [59, 60, 61, 63]
+invariants: [I8]
+given:
+  objects:
+    - {id: bolt/atlas/plan-rows, machine: bolt, state: {life: open, line: current, place: ready, open.citations: current, open.close: not-offered}, record: {repository: atlas}}
+    - {id: unit/atlas/status-writer, machine: unit, parent: bolt/atlas/plan-rows, state: {life: in-flight}, record: {type: default, type_version: 5}}
+    - {id: work-item/atlas/wi-418, machine: work-item, parent: unit/atlas/status-writer, state: {life: in-type, in-type.stages: build, build.run: sessions, session.life: alive, alive.activity: working}}
+  evidence:
+    session.pane: {"*": present}
+  script:
+    "work-item/atlas/wi-418/build/1":
+      - {after: "0", offers: [{kind: chore, document: "openspec/changes/status-writer/chores/agents-md.md", about: "AGENTS.md cites a removed section", scope: bolt-line}]}
+when:
+  - tick: {}
+  - tick: {}
+  - response: {decision: unit/atlas/chore-1/unit-proposed, answer: "yes", id: discord/2001}
+  - tick: {}
+  - tick: {}
+  - evidence: {place.ready: {"*": true}, item.deps_merged: {"*": true}, item.slot_free: {"*": true}}
+  - tick: {}
+  - tick: {}
+  - script: {"work-item/atlas/chore-1/1/fix/1": [{after: "0", pane: present, exit: done, deliverables: [commits], commits: [AGENTS.md]}]}
+  - evidence: {stage.agents: {"*": [chore-fixer]}, stage.join_met: {"*": true}, stage.verdict: {"*": pass}}
+  - tick: {}
+  - tick: {}
+  - tick: {}
+  - evidence: {place.merge_slot: {"*": true}, place.merged: {"*": true}}
+  - tick: {}
+  - tick: {}
+then:
+  effects:
+    - {do: record_offers, count: 1}
+    - {do: create_bolt, count: 0}
+    - {do: create_items, count: 1}
+    - {do: start_session, count: 1}
+    - {do: merge_place, count: 1}
+  decisions:
+    - {after_step: 1, present: [unit-proposed], count: 1}
+    - {after_step: 4, absent: [unit-proposed]}
+  records: {unit/atlas/chore-1: {type: chore, batch: bolt/atlas/plan-rows, scope: bolt-line, document: "openspec/changes/status-writer/chores/agents-md.md", approval: discord/2001}}
+  state_store: {chore_record_holds_text: false, change_directories_created: 0}
+  states: {work-item/atlas/chore-1/1: {life: merged}, work-item/atlas/wi-418: {life: in-type}}

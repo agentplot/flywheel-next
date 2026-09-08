@@ -1,0 +1,20 @@
+scenario: B.1.132-status
+title: the status view is served from the same state the engine reads and is readable with no machinery running
+profiles: [all]
+satisfies: [132, 141, 142, 145]
+machines: ./contract/lamp
+given:
+  objects: [{id: lamp/1, machine: lamp, state: {power: "off"}}, {id: lamp/2, machine: lamp, state: {power: "on"}}]
+  evidence: {lamp.switch: {"*": down}}
+  hosts: [{name: a, bound: 1}]
+when:
+  - tick: {}
+  - host: {name: none}
+  - clock: {advance: 6h}
+then:
+  status:
+    readable_with_no_host: true
+    groups: {waiting on the operator: [lamp/1], done: [lamp/2]}
+    holder_shown: true
+    as_of_stated: true
+    as_of_is_last_write: true

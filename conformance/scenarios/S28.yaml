@@ -1,0 +1,31 @@
+scenario: S28
+title: a bolt open three weeks; a bug dictated straight to it; a finding routed to it as a proposal; both become units with dependencies; the operator closes it
+profiles: [all]
+satisfies: [12, 33, 34, 44]
+given:
+  objects:
+    - {id: bolt/atlas/plan-rows, machine: bolt, state: {life: open, line: current, place: ready, open.citations: current, open.close: held}, record: {repository: atlas, held_at: now}}
+    - {id: unit/atlas/u0, machine: unit, parent: bolt/atlas/plan-rows, state: {life: merged}}
+    - {id: planning/atlas, machine: planning, state: {run: current}, record: {planned_fingerprint: a0}}
+  evidence: {planning.fingerprint: {planning/atlas: a0}, line.contains_parent: {"*": true}}
+when:
+  - clock: {advance: 21d}
+  - tick: {}
+  - direct: {do: dictation, text: "unit plan-rows: status rows lose their numbers after a merge", by: chuck}
+  - tick: {}
+  - clock: {advance: 1d}
+  - evidence: {planning.fingerprint: {planning/atlas: a1}}
+  - tick: {}
+  - evidence: {place.ready: {"*": true}, place.endpoints_served: {bolt/atlas/plan-rows: ["https://plan-rows.atlas.portless:4413"]}}
+  - script: {"planning/atlas/planner/1": [{after: "0", pane: present, exit: done, deliverables: [units], commits: ["unit u2 target bolt/atlas/plan-rows depends_on [u1] from ask 'finding from wi-511 on bolt other'"]}]}
+  - tick: {}
+  - tick: {}
+  - response: {decision: unit/atlas/u2/unit-proposed, answer: "yes", id: discord/10001}
+  - tick: {}
+then:
+  states: {unit/atlas/u1: {life: in-flight}, unit/atlas/u2: {life: waiting}}
+  records: {unit/atlas/u1: {approval: "chat dictation", target: bolt/atlas/plan-rows}, unit/atlas/u2: {depends_on: [unit/atlas/u1]}}
+  effects: [{do: create_bolt, count: 0}, {do: remove_place, count: 0}, {do: record_endpoints, count: 1}]
+  records: {bolt/atlas/plan-rows: {endpoints: ["https://plan-rows.atlas.portless:4413"]}}
+  decisions: [{after_step: 2, count: 0}, {after_step: 11, present: [unit-proposed], count: 1}]
+  state_store: {bolt_aged_out: false, operator_place_present_throughout: true, endpoint_shown_beside_bolt_on_page: true}

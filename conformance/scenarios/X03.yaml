@@ -1,0 +1,38 @@
+scenario: X3
+title: a bolt's morning take conflicts; a chore on the bolt's line appears in approved with the cadence as its approval; its session resolves it; the take retries and lands; no decision was asked
+profiles: [all]
+requires: [real-workspace]     # the take conflicts and the conflict chore merges up
+satisfies: [50, 52, 60]
+invariants: [I1, I12]
+given:
+  objects:
+    - {id: bolt/atlas/plan-rows, machine: bolt, state: {life: open, line: current, place: ready, open.citations: current, open.close: not-offered}, record: {repository: atlas}}
+  files: {"blueprints flywheel.yaml": "atlas: take_cadence 0 6 * * *"}
+  evidence: {line.contains_parent: {"*": true}, line.take_due: {"*": false}, line.retries: {"*": 0}}
+when:
+  - clock: {advance: 1d, at: "06:00"}
+  - evidence: {line.take_due: {"*": true}, line.contains_parent: {"*": false}, line.take_conflicts: {"*": true}}
+  - tick: {}
+  - tick: {}
+  - evidence: {line.conflict_job_seeded: {"*": true}, place.ready: {"*": true}, item.deps_merged: {"*": true}, item.slot_free: {"*": true}, stage.agents: {"*": [chore-fixer]}}
+  - tick: {}
+  - tick: {}
+  - script: {"work-item/atlas/take-conflict-1/1/fix/1": [{after: "0", pane: present, exit: done, deliverables: [commits], commits: ["src/merge-resolved.rs"]}]}
+  - evidence: {stage.join_met: {"*": true}, stage.verdict: {"*": pass}, place.merge_slot: {"*": true}, place.merged: {"*": true}}
+  - tick: {}
+  - tick: {}
+  - tick: {}
+  - evidence: {line.conflict_job_done: {"*": true}, line.take_conflicts: {"*": false}}
+  - tick: {}
+  - evidence: {line.contains_parent: {"*": true}}
+  - tick: {}
+then:
+  transitions:
+    - {object: bolt/atlas/plan-rows, from: current, to: taking}
+    - {object: bolt/atlas/plan-rows, from: taking, to: conflict}
+    - {object: bolt/atlas/plan-rows, from: conflict, to: taking}
+    - {object: bolt/atlas/plan-rows, from: taking, to: current}
+  effects: [{do: seed_take_conflict, count: 1}, {do: take_parent, count: 2}, {do: create_bolt, count: 0}, {do: merge_place, count: 1}]
+  records: {unit/atlas/take-conflict-1: {type: chore, approval: "cadence 0 6 * * *", scope: bolt-line, batch: bolt/atlas/plan-rows}}
+  decisions: [{after_step: 4, count: 0}, {after_step: 16, count: 0}]
+  state_store: {half_done_tree_seen: false, session_touched_a_ref: 0}

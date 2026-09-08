@@ -1,0 +1,36 @@
+scenario: X8
+title: the operator drops an in-flight unit by dictation; its sessions are retired and its places released; a dictation asserting an item done is refused and reported; a pane killed by hand is a session gone, never a response
+profiles: [all]
+requires: [real-workspace]     # the fresh attempt merges after the hand-run stop
+satisfies: [4, 12, 66, 74]
+invariants: [I1, I6]
+given:
+  objects:
+    - {id: bolt/atlas/plan-rows, machine: bolt, state: {life: open, line: current, place: ready, open.citations: current, open.close: not-offered}, record: {repository: atlas}}
+    - {id: unit/atlas/u, machine: unit, parent: bolt/atlas/plan-rows, state: {life: in-flight}, record: {type: fast, type_version: 1}}
+    - {id: work-item/atlas/u/1, machine: work-item, parent: unit/atlas/u, state: {life: in-type, in-type.stages: build, build.run: sessions, session.life: alive, alive.activity: working, placing.place: ready}, record: {ordinal: 1}}
+    - {id: unit/atlas/v, machine: unit, parent: bolt/atlas/plan-rows, state: {life: in-flight}, record: {type: fast, type_version: 1}}
+    - {id: work-item/atlas/v/1, machine: work-item, parent: unit/atlas/v, state: {life: in-type, in-type.stages: build, build.run: sessions, session.life: alive, alive.activity: working, placing.place: ready}, record: {ordinal: 2}}
+  evidence: {session.pane: {"*": present}, session.activity: {"*": working}, place.held: {"*": false}}
+when:
+  - direct: {do: dictation, text: "drop unit/atlas/u", by: chuck}
+  - tick: {}
+  - tick: {}
+  - evidence: {session.pane_absent: {"work-item/atlas/u/1/build/1": true}, place.absent: {work-item/atlas/u/1: true}}
+  - tick: {}
+  - direct: {do: dictation, text: "done work-item/atlas/v/1", by: chuck}
+  - tick: {}
+  - tick: {}
+  - direct: {do: shell, command: "herdr agent stop work-item/atlas/v/1/build/1", by: chuck}
+  - evidence: {session.pane: {"work-item/atlas/v/1/build/1": absent}}
+  - tick: {}
+  - tick: {}
+then:
+  transitions:
+    - {object: unit/atlas/u, from: in-flight, to: dropped, response: discord/dictation-1}
+    - {object: work-item/atlas/u/1, from: in-type, to: dropped}
+    - {object: work-item/atlas/v/1, from: alive, to: lost}
+  effects: [{do: end_session, count: 1}, {do: remove_place, count: 1}, {do: start_session, count: 1}, {do: merge_place, count: 0}]
+  decisions: [{after_step: 5, count: 0, tail: [dropped]}, {after_step: 8, present: [response-unapplicable], count: 0}]
+  states: {work-item/atlas/v/1: {life: in-type}, unit/atlas/v: {life: in-flight}}
+  state_store: {dictation_asserting_done_applied: false, dictation_asserting_done_reported: true, hand_killed_pane_read_as_response: false, fresh_attempt_for_v: 2}

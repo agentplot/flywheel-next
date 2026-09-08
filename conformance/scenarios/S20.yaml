@@ -1,0 +1,14 @@
+scenario: S20
+title: the status page from the phone six hours after the last host stopped shows the state as of the last landed commit and says so
+profiles: [git-only]
+satisfies: [145, 160, 167]
+given:
+  objects:
+    - {id: bolt/atlas/plan-rows, machine: bolt, state: {life: open, line: current, place: ready, open.citations: current, open.close: not-offered}, record: {repository: atlas}}
+  hosts: [{name: mac-mini, bound: 3}]
+when:
+  - tick: {}
+  - host: {name: none}
+  - clock: {advance: 6h}
+then:
+  status: {readable_with_no_host: true, as_of_stated: true, as_of_is_last_write: true, source: "status.html on main"}

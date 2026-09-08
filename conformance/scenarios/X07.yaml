@@ -1,0 +1,28 @@
+scenario: X7
+title: a session blocks on a construction host; the host is silent; the question reaches the chat, the page and the bell on the named surface the manifest routes it to, and nothing is visible only on the host that noticed it
+profiles: [all]
+satisfies: [68, 70, 82]
+given:
+  objects:
+    - {id: bolt/atlas/plan-rows, machine: bolt, state: {life: open, line: current, place: ready, open.citations: current, open.close: not-offered}, record: {repository: atlas}}
+    - {id: unit/atlas/u, machine: unit, parent: bolt/atlas/plan-rows, state: {life: in-flight}, record: {type: default, type_version: 5}}
+    - {id: work-item/atlas/wi-418, machine: work-item, parent: unit/atlas/u, state: {life: in-type, in-type.stages: build, build.run: sessions, session.life: alive, alive.activity: working}}
+  hosts: [{name: studio, bound: 2, declares: {kinds: [all], repositories: [atlas], presents: []}}, {name: mac-mini, bound: 3, declares: {kinds: [all], presents: [chat, page, bell]}}]
+  sinks:
+    - {id: sink/chat, kind: chat, surface: "#flywheel", routes: [approve, decide, answer, attention]}
+    - {id: sink/page, kind: page, surface: /rail, routes: [approve, decide, answer, attention]}
+    - {id: sink/bell, kind: bell, surface: "herdr:operator-desk", routes: [answer, attention, land-failed]}
+  leases: [{object: work-item/atlas/wi-418, holder: studio, renewed_at: now}]
+  evidence: {session.pane: {"*": present}}
+when:
+  - host: {name: studio}
+  - script: {"work-item/atlas/wi-418/build/1": [{after: "0", exit: blocked, question: "which reading of the claim?"}]}
+  - tick: {}
+  - host: {name: mac-mini}
+  - tick: {}
+  - tick: {}
+then:
+  transitions: [{object: work-item/atlas/wi-418, from: working, to: blocked}, {object: sink/chat, from: idle, to: delivering}, {object: sink/page, from: idle, to: delivering}, {object: sink/bell, from: idle, to: delivering}]
+  effects: [{do: deliver_rail, count: 3}]
+  decisions: [{after_step: 3, present: [question], count: 1}]
+  state_store: {local_output_by_host: {studio: none}, bell_rung_on: "herdr:operator-desk", question_answerable_from: [chat, page], pane_required: false}

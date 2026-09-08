@@ -1,0 +1,159 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "flywheel-next/statechart/scenario.schema.json",
+  "title": "Flywheel scenario",
+  "description": "One scenario as data (94): given this evidence, when these ticks, responses and events, then these transitions, effects and decisions. Every scenario states the requirements it satisfies by number. Every vocabulary here is closed, so a typo fails validation rather than being ignored.",
+  "type": "object",
+  "required": ["scenario", "title", "profiles", "satisfies", "given", "when", "then"],
+  "additionalProperties": false,
+  "properties": {
+    "scenario": {"type": "string"},
+    "title": {"type": "string"},
+    "profiles": {"type": "array", "items": {"enum": ["all", "stand-in", "git-only", "tracker"]}, "description": "the state store bindings this scenario runs on, and nothing else; the recorded-versus-real axis is `requires`"},
+    "requires": {
+      "type": "array",
+      "items": {"enum": ["real-workspace", "real-sessions"]},
+      "uniqueItems": true,
+      "description": "what the run must provide beyond the store binding (93a). `real-workspace`: the scenario asserts a real take, merge, rebase, conflict or landing, so the recorded workspace stand-in cannot serve it. `real-sessions`: it asserts a real agent session rather than a scripted one. A run whose bound implementations do not provide a requirement skips the scenario, prints it as skipped with the reason, and names it in the run record; a scenario the phase's acceptance table lists but every configuration skips is a failure, never a silent pass."
+    },
+    "hooks": {
+      "type": "array",
+      "items": {"enum": ["bypass_lease", "interrupt_write"]},
+      "uniqueItems": true,
+      "description": "in-process fault injection the runner honours only when it holds the engine itself, which is the mode without `--hosts real`. Allowed only under `contract/`: these force a race the machinery is built to prevent, so they prove the guarantee rather than exercise the domain. `bypass_lease`: the acting hosts attempt their writes without taking the lease first (B.2.134). `interrupt_write`: the acting host's write is cut off midway (B.2.135)."
+    },
+    "satisfies": {"type": "array", "items": {"type": "integer", "minimum": 1}, "minItems": 1, "description": "requirement numbers this scenario exercises"},
+    "invariants": {"type": "array", "items": {"type": "string", "pattern": "^I\\d+$"}, "description": "invariants of section 7 the scenario checks"},
+    "machines": {"type": "string", "description": "machines directory to load; default ../machines; contract scenarios use ./contract/lamp"},
+    "given": {
+      "type": "object", "additionalProperties": false,
+      "properties": {
+        "objects": {"type": "array", "items": {"$ref": "#/$defs/object"}},
+        "evidence": {"$ref": "#/$defs/evidence"},
+        "leases": {"type": "array", "items": {"type": "object"}},
+        "hosts": {"type": "array", "items": {"type": "object"}},
+        "sinks": {"type": "array", "items": {"type": "object"}},
+        "responses": {"type": "array", "items": {"type": "object"}},
+        "register": {"type": "object", "description": "the rail's decision register: decision id -> number, and the counter"},
+        "marks": {"type": "object", "description": "sink -> delivery mark"},
+        "files": {"$ref": "#/$defs/files"},
+        "script": {"$ref": "#/$defs/script"}
+      }
+    },
+    "when": {"type": "array", "minItems": 1, "items": {"$ref": "#/$defs/step"}},
+    "then": {
+      "type": "object", "additionalProperties": false,
+      "properties": {
+        "transitions": {"type": "array", "items": {"type": "object", "required": ["object", "to"]}},
+        "no_transitions": {"type": "array", "items": {"type": "string"}},
+        "effects": {"type": "array", "items": {"type": "object", "required": ["do", "count"]}},
+        "effects_closed": {"type": "boolean"},
+        "decisions": {"type": "array", "items": {"type": "object", "properties": {"after_step": {"type": "integer"}, "present": {"type": "array"}, "absent": {"type": "array"}, "count": {"type": "integer"}, "tail": {"type": "array"}, "numbers": {"type": "object"}}}},
+        "states": {"type": "object", "additionalProperties": {"type": "object"}},
+        "records": {"type": "object"},
+        "applied_responses": {"type": "object"},
+        "writes": {"type": "object"},
+        "reports": {"type": "array", "items": {"type": "string"}},
+        "leases": {"type": "object"},
+        "status": {"type": "object"},
+        "state_store": {
+          "type": "object",
+          "description": "assertions on the profile's own behaviour (rejections, ids, as-of). Every key is bound in `observations.yaml`, which names its meaning and the profiles that answer it; `machines/check.py` fails a key that file does not bind, so an invented key can no longer pass silently.",
+          "propertyNames": {"pattern": "^[a-z][a-z0-9_]*$"}
+        }
+      }
+    }
+  },
+  "$defs": {
+    "object": {"type": "object", "required": ["id", "machine", "state"], "properties": {"id": {"type": "string"}, "machine": {"type": "string"}, "parent": {"type": "string"}, "state": {"type": "object"}, "record": {"type": "object"}, "applied_responses": {"type": "array"}}},
+    "evidence": {"type": "object", "additionalProperties": {"type": "object"}, "description": "evidence name -> {object id -> value}; '*' for every object"},
+    "files": {
+      "type": "object",
+      "additionalProperties": {"type": "string"},
+      "description": "what the world reports on disk, as path -> content or path -> a description of the content. Every path is resolved against `conformance/fixtures/`; a path that names a file there is materialized into the scenario's temporary checkout, and a value that is not a fixture path is taken as inline content for it. A path resolving to no fixture and to no inline content is invalid (exit 2)."
+    },
+    "script": {
+      "type": "object",
+      "description": "what the stand-in session binding plays, per session id (93): the exits and offers a real session would report through the command, and the pane and activity the multiplexer would show. Only the session binding is faked; every other binding is real.",
+      "additionalProperties": {"type": "array", "items": {"type": "object", "additionalProperties": false, "properties": {
+        "after": {"type": "string", "pattern": "^[0-9]+$", "description": "the step number to play at, counting from 0. A script entry never carries a duration: the clock moves only through a `clock` step and the tick interval, so a delay is written as a `clock` step in `when`."},
+        "pane": {"enum": ["present", "absent"]},
+        "activity": {"enum": ["working", "idle"]},
+        "keystroke": {"type": "boolean", "description": "the operator typed in the pane"},
+        "exit": {"enum": ["done", "blocked", "stalled", "invalid"]},
+        "deliverables": {"type": "array"},
+        "question": {"type": "string"},
+        "offers": {"type": "array", "items": {"type": "object", "required": ["kind", "document"]}},
+        "refusal": {"type": "string"},
+        "service": {"type": "object", "description": "the session runs `flywheel service start|stop <name>` on its bolt's declared service (48): {start: <name>} or {stop: <name>}", "properties": {"start": {"type": "string"}, "stop": {"type": "string"}}, "minProperties": 1, "maxProperties": 1, "additionalProperties": false},
+        "commits": {"type": "array", "description": "files the session commits in its place"}
+      }}}
+    },
+    "step": {"type": "object", "minProperties": 1, "maxProperties": 1, "additionalProperties": false, "properties": {
+      "tick": {
+        "type": "object", "additionalProperties": false,
+        "properties": {
+          "concurrent_hosts": {"type": "array", "items": {"type": "string"}, "minItems": 2, "uniqueItems": true, "description": "these hosts tick at the same moment against the same store, which is how a race is written. Without it the tick runs as the acting host alone."},
+          "interval": {"type": "string", "description": "how far this tick moves the virtual clock; the run's declared interval otherwise, which defaults to the profile's sweep."},
+          "run": {"type": "string", "description": "run the named scenario file to completion in place of ticking this one, which is how a scenario asserts that the scenario tool runs a scenario (95)."}
+        }
+      },
+      "response": {"type": "object", "required": ["answer", "id"], "additionalProperties": false, "properties": {"decision": {"type": "string", "description": "<object id>/<decision kind>, resolved through the register at the moment the step runs; a scenario naming no standing decision fails"}, "number": {"type": "integer", "description": "the number the register gave, for answering the same decision again (15)"}, "object": {"type": "string", "description": "for a dictation: the object it names"}, "answer": {"type": "string"}, "id": {"type": "string"}, "by": {"type": "string"}}},
+      "evidence": {"$ref": "#/$defs/evidence"},
+      "notify": {"type": "object"},
+      "restart": {"type": "object"},
+      "disconnect": {"type": "object"},
+      "reconnect": {"type": "object"},
+      "host": {
+        "type": "object", "required": ["name"], "additionalProperties": false,
+        "description": "the following steps run as this host until the next host step, and at most one transition is performed on it. `name: none` means no host is acting.",
+        "properties": {
+          "name": {"type": "string"},
+          "start": {"type": "boolean", "description": "a host that was not running joins and starts fresh"},
+          "lose": {"type": "boolean", "description": "the host is lost without warning: no shutdown, no release"},
+          "disconnect": {"type": "boolean", "description": "the host keeps running and cannot reach the state store"},
+          "return": {"type": "boolean", "description": "a lost or disconnected host comes back"}
+        },
+        "dependentSchemas": {
+          "start": {"not": {"anyOf": [{"required": ["lose"]}, {"required": ["disconnect"]}, {"required": ["return"]}]}},
+          "lose": {"not": {"anyOf": [{"required": ["start"]}, {"required": ["disconnect"]}, {"required": ["return"]}]}},
+          "disconnect": {"not": {"anyOf": [{"required": ["start"]}, {"required": ["lose"]}, {"required": ["return"]}]}},
+          "return": {"not": {"anyOf": [{"required": ["start"]}, {"required": ["lose"]}, {"required": ["disconnect"]}]}}
+        }
+      },
+      "clock": {"type": "object", "required": ["advance"], "additionalProperties": false, "properties": {
+        "advance": {"type": "string", "description": "how far the virtual clock moves: 30s, 6m, 1d. With the tick interval this is the only thing that moves time; real wall-clock time never reaches a guard."},
+        "at": {"type": "string", "description": "the time of day the clock lands on after advancing, for a cadence a scenario must hit exactly"}
+      }},
+      "direct": {"$ref": "#/$defs/direct"},
+      "files": {"$ref": "#/$defs/files"},
+      "script": {"$ref": "#/$defs/script", "description": "seed or extend the stand-in's script mid-scenario"}
+    }},
+    "direct": {
+      "type": "object",
+      "required": ["do"],
+      "description": "something acts outside the machinery's own loop and the machinery must read it as it finds it. `do` names which, and each arm carries its own fields, so a misspelled key fails validation.",
+      "properties": {"do": {"enum": ["dictation", "adapter", "commit", "board", "close", "page", "shell", "projection", "store"]}, "by": {"type": "string", "description": "the identity that acted; the operator unless stated"}},
+      "allOf": [
+        {"if": {"properties": {"do": {"const": "dictation"}}, "required": ["do"]},
+         "then": {"required": ["text"], "properties": {"do": true, "by": true, "text": {"type": "string", "description": "what the operator said in chat; the host's agent proposes the tool call and the operator's confirmation is the response (194)"}}, "additionalProperties": false}},
+        {"if": {"properties": {"do": {"const": "adapter"}}, "required": ["do"]},
+         "then": {"required": ["command"], "properties": {"do": true, "by": true, "command": {"type": "string", "description": "the adapter's own binary writing a capture, from any machine (217g); a path in it resolves against `fixtures/`"}}, "additionalProperties": false}},
+        {"if": {"properties": {"do": {"const": "commit"}}, "required": ["do"]},
+         "then": {"required": ["file"], "properties": {"do": true, "by": true, "file": {"type": "string"}, "set": {"type": "object"}, "sha": {"type": "string"}}, "additionalProperties": false}},
+        {"if": {"properties": {"do": {"const": "board"}}, "required": ["do"]},
+         "then": {"required": ["issue", "column"], "properties": {"do": true, "by": true, "issue": {"type": "string"}, "column": {"type": "string"}, "event_id": {"type": "string"}}, "additionalProperties": false}},
+        {"if": {"properties": {"do": {"const": "close"}}, "required": ["do"]},
+         "then": {"required": ["issue"], "properties": {"do": true, "by": true, "issue": {"type": "string"}, "event_id": {"type": "string"}}, "additionalProperties": false}},
+        {"if": {"properties": {"do": {"const": "page"}}, "required": ["do"]},
+         "then": {"required": ["path"], "properties": {"do": true, "by": true, "path": {"type": "string", "description": "the page route the operator opened"}}, "additionalProperties": false}},
+        {"if": {"properties": {"do": {"const": "shell"}}, "required": ["do"]},
+         "then": {"required": ["command"], "properties": {"do": true, "by": true, "command": {"type": "string", "description": "the operator ran this by hand, outside every tool (S15, X08)"}}, "additionalProperties": false}},
+        {"if": {"properties": {"do": {"const": "projection"}}, "required": ["do"]},
+         "then": {"required": ["object", "set"], "properties": {"do": true, "by": true, "object": {"type": "string"}, "set": {"type": "object"}}, "additionalProperties": false}},
+        {"if": {"properties": {"do": {"const": "store"}}, "required": ["do"]},
+         "then": {"required": ["object", "set"], "properties": {"do": true, "by": true, "object": {"type": "string"}, "set": {"type": "object"}}, "additionalProperties": false}}
+      ]
+    }
+  }
+}

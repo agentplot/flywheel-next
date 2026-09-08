@@ -1,0 +1,22 @@
+scenario: B.1.131-list
+title: an engine that remembers nothing finds everything it must act on
+profiles: [all]
+satisfies: [75, 131, 136]
+invariants: [I7]
+machines: ./contract/lamp
+given:
+  objects:
+    - {id: lamp/1, machine: lamp, state: {power: "off"}}
+    - {id: lamp/2, machine: lamp, state: {power: "on"}}
+    - {id: lamp/3, machine: lamp, state: {power: "off"}}
+  evidence: {lamp.switch: {lamp/1: up, lamp/2: down, lamp/3: down}}
+when:
+  - restart: {}
+  - tick: {}
+  - restart: {}
+  - tick: {}
+then:
+  transitions: [{object: lamp/1, from: "off", to: "on"}, {object: lamp/2, from: "on", to: "off"}]
+  effects: [{do: light, count: 1}, {do: dark, count: 1}]
+  decisions: [{after_step: 4, present: [lamp-off, lamp-off], count: 2}]
+  state_store: {list_returned: [lamp/1, lamp/2, lamp/3], second_tick_writes: 0}

@@ -1,0 +1,38 @@
+scenario: S33
+title: a bolt takes the shared line every morning and before landing; the pull request is opened and then closed unmerged; the bolt stays open with the failure; no session asked anything
+profiles: [all]
+requires: [real-workspace]     # the morning take, the pull-request landing and its failed gates
+satisfies: [40, 50, 53, 175]
+given:
+  objects:
+    - {id: bolt/atlas/plan-rows, machine: bolt, state: {life: open, line: current, place: ready, open.citations: current, open.close: offered}, record: {repository: atlas}}
+    - {id: unit/atlas/u, machine: unit, parent: bolt/atlas/plan-rows, state: {life: merged}}
+  files: {"blueprints flywheel.yaml": "atlas: landing pull-request, take_cadence 0 6 * * *"}
+  evidence: {line.contains_parent: {"*": true}, line.take_due: {"*": false}, line.policy: {"*": pull-request}, line.landing: {"*": none}, line.request: {"*": none}, line.request_review_pending: {"*": false}}
+when:
+  - clock: {advance: 1d, at: "06:00"}
+  - evidence: {line.take_due: {"*": true}, line.contains_parent: {"*": false}}
+  - tick: {}
+  - evidence: {line.contains_parent: {"*": true}, line.take_due: {"*": false}}
+  - tick: {}
+  - response: {decision: bolt/atlas/plan-rows/bolt-close, answer: "yes", id: discord/12001}
+  - evidence: {line.contains_parent: {"*": false}}
+  - tick: {}
+  - evidence: {line.contains_parent: {"*": true}}
+  - tick: {}
+  - evidence: {line.request: {"*": open}, line.landing: {"*": pending}}
+  - tick: {}
+  - evidence: {line.request: {"*": closed}, line.landing: {"*": failed}}
+  - tick: {}
+  - tick: {}
+then:
+  transitions:
+    - {object: bolt/atlas/plan-rows, from: current, to: taking}
+    - {object: bolt/atlas/plan-rows, from: taking, to: current}
+    - {object: bolt/atlas/plan-rows, from: open, to: landing, response: discord/12001}
+    - {object: bolt/atlas/plan-rows, from: landing, to: request-open}
+    - {object: bolt/atlas/plan-rows, from: request-open, to: land-failed}
+    - {object: bolt/atlas/plan-rows, from: landing, to: land-failed}
+  effects: [{do: take_parent, count: 2}, {do: open_request, count: 1}, {do: land_line, count: 0}, {do: start_session, count: 0}]
+  decisions: [{after_step: 15, present: [land-failed], count: 1}]
+  states: {bolt/atlas/plan-rows: {life: land-failed}}

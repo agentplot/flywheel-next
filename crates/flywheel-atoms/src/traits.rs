@@ -37,7 +37,7 @@ pub enum Scope {
 }
 
 /// An entry on an object's thread.
-#[derive(Debug, Clone, Serialize, Deserialize)]
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
 pub struct ThreadEntry {
     pub at: DateTime<Utc>,
     pub kind: String,
@@ -83,9 +83,9 @@ pub struct HostRecord {
 pub trait Records {
     fn get(&self, id: &str) -> Result<Option<Object>>;
 
-    fn put(&self, id: &str, record: &Object, base_seq: u64) -> Result<PutOutcome>;
+    fn put(&mut self, id: &str, record: &Object, base_seq: u64) -> Result<PutOutcome>;
 
-    fn append(&self, id: &str, entry: &ThreadEntry) -> Result<()>;
+    fn append(&mut self, id: &str, entry: &ThreadEntry) -> Result<()>;
 
     /// `record-derived.yaml`'s `list(scope)`; the contract's `list` is served
     /// over it.
@@ -196,22 +196,22 @@ pub trait StateStore: Records {
 
     /// Write an effect with an identity of its own; a repeat changes nothing
     /// and is not a second write (127).
-    fn write_effect(&self, write: &EffectWrite) -> Result<WriteOutcome>;
+    fn write_effect(&mut self, write: &EffectWrite) -> Result<WriteOutcome>;
 
     /// Take, renew, release — and expire by the profile's stated rule (128).
-    fn lease(&self, op: &LeaseOp) -> Result<LeaseOutcome>;
+    fn lease(&mut self, op: &LeaseOp) -> Result<LeaseOutcome>;
 
     /// Tell a host what moved since a point, within a bound the profile states
     /// (130).
     fn notify(&self, since: &ReadPoint) -> Result<Notice>;
 
     /// Present the rail's decisions to a sink (129).
-    fn present(&self, presentation: &Presentation) -> Result<()>;
+    fn present(&mut self, presentation: &Presentation) -> Result<()>;
 
     /// Receive the operator's responses, attributed to the decisions they
     /// answer; one that cannot be applied is handed back and never dropped
     /// (129, 6).
-    fn receive(&self, response: &Response) -> Result<Received>;
+    fn receive(&mut self, response: &Response) -> Result<Received>;
 }
 
 /// What became of a received response (129, 137, 6).
@@ -251,7 +251,7 @@ pub trait World {
 
     /// Clone what the manifest names bare under the root, checking out each
     /// shared line once; a repeat adds only what is missing (205).
-    fn clone_repositories(&self) -> Result<()>;
+    fn clone_repositories(&mut self) -> Result<()>;
 
     /// The address the host's router gives a name on the operator's private
     /// network (191, 205a, D10a).
@@ -278,34 +278,34 @@ pub enum LandingPolicy {
 /// Lines, places, merges and landings: the effects of 42. Recorded in phase 1
 /// (93a, D8), over `wt` and git in phase 2.
 pub trait Workspace {
-    fn create_line(&self, line: &str, parent: &str) -> Result<()>;
+    fn create_line(&mut self, line: &str, parent: &str) -> Result<()>;
 
     /// Merge the parent line into this line, never a rebase; aborted whole on
     /// conflict (42, 50, 179).
-    fn take_parent(&self, line: &str) -> Result<TakeOutcome>;
+    fn take_parent(&mut self, line: &str) -> Result<TakeOutcome>;
 
-    fn remove_line(&self, line: &str) -> Result<()>;
+    fn remove_line(&mut self, line: &str) -> Result<()>;
 
-    fn land_line(&self, line: &str, policy: LandingPolicy) -> Result<()>;
+    fn land_line(&mut self, line: &str, policy: LandingPolicy) -> Result<()>;
 
     /// Write the acceptance file beside the as-built, before the landing (172,
     /// 181, 192, 203).
-    fn write_acceptance(&self, line: &str, body: &str) -> Result<()>;
+    fn write_acceptance(&mut self, line: &str, body: &str) -> Result<()>;
 
     /// Worktree at the line's head with the closed set of inputs written in
     /// (42, 43, 45, 88, 89).
-    fn prepare_place(&self, place: &str, line: &str, work_order: &str) -> Result<()>;
+    fn prepare_place(&mut self, place: &str, line: &str, work_order: &str) -> Result<()>;
 
     /// Rebase the place onto its line while no session works in it; aborted
     /// whole on conflict (42, 51, 179).
-    fn rebase_place(&self, place: &str) -> Result<TakeOutcome>;
+    fn rebase_place(&mut self, place: &str) -> Result<TakeOutcome>;
 
     /// Merge the place into its line, one place at a time in the fixed order
     /// (38, 42, 54, 179, 227).
-    fn merge_place(&self, place: &str) -> Result<TakeOutcome>;
+    fn merge_place(&mut self, place: &str) -> Result<TakeOutcome>;
 
     /// Remove the worktree; never while the operator holds it (42, 45, 55).
-    fn remove_place(&self, place: &str) -> Result<()>;
+    fn remove_place(&mut self, place: &str) -> Result<()>;
 
     /// The endpoints the place's processes serve (46).
     fn endpoints(&self, place: &str) -> Result<Vec<Endpoint>>;

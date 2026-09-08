@@ -1,0 +1,21 @@
+scenario: B.3.140-binding
+title: the same machine files run unchanged against every profile; a binding that leaves a name unbound is not a profile; a profile is admitted by passing this suite
+profiles: [all]
+satisfies: [84, 92, 125, 138, 139, 140, 168, 169, 170]
+machines: ./contract/lamp
+given:
+  objects: [{id: lamp/1, machine: lamp, state: {power: "off"}}]
+  evidence: {lamp.switch: {lamp/1: up}}
+  files: {"profiles/<profile>.yaml": "the binding under test, with its inherited partial bindings"}
+when:
+  - tick: {}
+then:
+  transitions: [{object: lamp/1, from: "off", to: "on"}]
+  state_store:
+    machine_files_hash_equals_repository: true
+    binding_covers_every_evidence_name: true
+    binding_covers_every_effect_name: true
+    binding_names_no_evidence_outside_atoms: true
+    operations_used_by_engine: [read, write_effect, lease, present, receive, notify, list, status]
+    guarantee_mechanisms_named_for: [durable, single_writer, atomic, derivable, response_once]
+    profile_rejected_when_a_guarantee_is_missing: true

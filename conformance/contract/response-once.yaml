@@ -1,0 +1,26 @@
+scenario: B.2.137-response-once
+title: an operator's response takes effect once however many times it is delivered and whatever restarts happen between
+profiles: [all]
+satisfies: [1, 6, 137]
+invariants: [I2]
+machines: ./contract/lamp
+given:
+  objects: [{id: lamp/1, machine: lamp, state: {power: "off"}, record: {flips: 0}}]
+  evidence: {lamp.switch: {"*": down}}
+when:
+  - tick: {}
+  - response: {decision: lamp/1/lamp-off, answer: "on", id: chat/7}
+  - restart: {}
+  - response: {decision: lamp/1/lamp-off, answer: "on", id: chat/7}
+  - tick: {}
+  - restart: {}
+  - response: {decision: lamp/1/lamp-off, answer: "on", id: chat/7}
+  - tick: {}
+  - evidence: {lamp.switch: {lamp/1: down}}
+  - tick: {}
+  - tick: {}
+then:
+  transitions: [{object: lamp/1, from: "off", to: "on", response: chat/7}, {object: lamp/1, from: "on", to: "off"}]
+  records: {lamp/1: {flips: 1}}
+  applied_responses: {lamp/1: [chat/7]}
+  decisions: [{after_step: 11, present: [lamp-off], count: 1}]

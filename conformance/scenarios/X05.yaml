@@ -1,0 +1,27 @@
+scenario: X5
+title: an approved unit of a type no host declares is a decision under attention, not a silent wait; when the manifest covers it, a host takes it
+profiles: [all]
+satisfies: [149, 150]
+invariants: [I11]
+given:
+  objects:
+    - {id: bolt/atlas/plan-rows, machine: bolt, state: {life: open, line: current, place: ready, open.citations: current, open.close: not-offered}, record: {repository: atlas}}
+    - {id: unit/atlas/u, machine: unit, parent: bolt/atlas/plan-rows, state: {life: approved}, record: {type: persona-test, type_version: 3}}
+  hosts: [{name: mac-mini, bound: 3, declares: {kinds: [all], repositories: [atlas], unit_types: [default, fast, chore]}}]
+  evidence: {unit.deps_merged: {"*": true}, lease.coverable: {unit/atlas/u: false}}
+when:
+  - tick: {}
+  - tick: {}
+  - files: {"blueprints flywheel.yaml": "hosts: mac-mini takes unit types default, fast, chore, persona-test"}
+  - evidence: {lease.coverable: {unit/atlas/u: true}}
+  - tick: {}
+  - tick: {}
+then:
+  transitions:
+    - {object: lease/unit/atlas/u, from: free, to: uncovered}
+    - {object: lease/unit/atlas/u, from: uncovered, to: free}
+    - {object: lease/unit/atlas/u, from: free, to: held}
+    - {object: unit/atlas/u, from: approved, to: in-flight}
+  decisions: [{after_step: 2, present: [uncovered], count: 0}, {after_step: 6, absent: [uncovered]}]
+  leases: {unit/atlas/u: {holder_after_step_6: mac-mini}}
+  state_store: {lease_taken_outside_declaration: 0}

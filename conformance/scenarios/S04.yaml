@@ -1,0 +1,25 @@
+scenario: S4
+title: a session offers a finding on its own intent; the rail shows a proposed elaboration; the operator drops it; nothing was created
+profiles: [all]
+satisfies: [5, 58]
+invariants: [I1]
+given:
+  objects:
+    - {id: intent/atlas-provider-limits, machine: intent, state: {life: open, line: current, open.material: settled, open.close: not-offered}}
+    - {id: elaboration/atlas-provider-limits/research-1, machine: elaboration, parent: intent/atlas-provider-limits, state: {life: working, working.work: session, session.life: alive, alive.activity: working}, record: {type: self-closing, type_version: 1}}
+  evidence:
+    session.pane: {"*": present}
+  script:
+    "elaboration/atlas-provider-limits/research-1/self-closing/1":
+      - {after: "0", offers: [{kind: finding, document: "openspec/changes/atlas-provider-limits/findings/backoff.md", about: intent/atlas-provider-limits}]}
+when:
+  - tick: {}
+  - tick: {}
+  - response: {decision: elaboration/atlas-provider-limits/finding-1/elaboration-proposed, answer: drop, id: discord/3001}
+  - tick: {}
+then:
+  effects: [{do: record_offers, count: 1}, {do: prepare_place, count: 0}, {do: start_session, count: 0}, {do: create_line, count: 0}]
+  decisions: [{after_step: 2, present: [elaboration-proposed], count: 1}, {after_step: 4, count: 0, tail: [dropped]}]
+  states: {elaboration/atlas-provider-limits/finding-1: {life: dropped}, elaboration/atlas-provider-limits/research-1: {life: working}}
+  records: {elaboration/atlas-provider-limits/finding-1: {document: "openspec/changes/atlas-provider-limits/findings/backoff.md"}}
+  state_store: {finding_record_holds_text: false, session_interrupted: false}

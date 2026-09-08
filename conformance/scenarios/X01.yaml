@@ -1,0 +1,31 @@
+scenario: X1
+title: the operator opens a session of their own by dictation; no decision is ever raised about it; it ends by dictation and its place goes
+profiles: [all]
+satisfies: [12, 25, 68, 69]
+invariants: [I5, I6]
+given:
+  objects: []
+  evidence: {session.pane: {"*": absent}}
+when:
+  - direct: {do: dictation, text: "session: look at the blueprints", by: chuck}
+  - tick: {}
+  - evidence: {place.exists: {"*": true}, place.contains_line: {"*": true}, place.ready: {"*": true}}
+  - tick: {}
+  - script: {"operator-session/chuck-1/with-operator/1": [{after: "0", pane: present, activity: idle, keystroke: true}]}
+  - tick: {}
+  - clock: {advance: 3d}
+  - tick: {}
+  - direct: {do: dictation, text: "end session chuck-1", by: chuck}
+  - tick: {}
+  - evidence: {session.pane_absent: {"*": true}, place.absent: {"*": true}}
+  - tick: {}
+  - tick: {}
+then:
+  transitions:
+    - {object: operator-session/chuck-1, from: placing, to: open}
+    - {object: operator-session/chuck-1, from: session, to: finished, response: discord/dictation-2}
+    - {object: operator-session/chuck-1, from: open, to: ended}
+  effects: [{do: prepare_place, count: 1}, {do: start_session, count: 1}, {do: end_session, count: 1}, {do: remove_place, count: 1}]
+  decisions: [{after_step: 8, count: 0}, {after_step: 13, count: 0}]
+  records: {operator-session/chuck-1: {opened_by: chuck}}
+  state_store: {thread_behind_session: none, idle_offered: false, presence_read_as: "keystroke within the profile's window"}

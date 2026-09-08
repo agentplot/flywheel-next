@@ -1,0 +1,30 @@
+scenario: S2
+title: a standing prototype goes idle; it keeps running; the rail offers finish or keep; next morning it is still there
+profiles: [all]
+requires: [real-workspace]     # the standing prototype's place is rebased onto the line while idle
+satisfies: [25, 26]
+invariants: [I5, I6]
+given:
+  objects:
+    - {id: intent/atlas-provider-limits, machine: intent, state: {life: open, line: current, open.material: settled, open.close: not-offered}}
+    - {id: elaboration/atlas-provider-limits/prototype, machine: elaboration, parent: intent/atlas-provider-limits, state: {life: working, working.work: session, session.life: alive, alive.activity: working, alive.presence: unknown}, record: {type: standing, type_version: 1}}
+  evidence:
+    session.pane: {"*": present}
+    session.activity: {"*": working}
+    place.contains_line: {"*": true}
+when:
+  - evidence: {session.activity: {"*": idle}, session.idle_since: {"*": now}}
+  - tick: {}
+  - clock: {advance: 31m}
+  - tick: {}
+  - clock: {advance: 14h}
+  - tick: {}
+  - restart: {}
+  - tick: {}
+then:
+  transitions:
+    - {object: elaboration/atlas-provider-limits/prototype, from: session, to: idle-offered}
+  effects: [{do: end_session, count: 0}, {do: remove_place, count: 0}, {do: rebase_place, count: 0}]
+  effects_closed: true
+  decisions: [{after_step: 4, present: [idle], count: 1}, {after_step: 8, present: [idle], count: 1}]
+  states: {elaboration/atlas-provider-limits/prototype: {life: working, session.life: alive}}

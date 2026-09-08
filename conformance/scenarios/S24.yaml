@@ -1,0 +1,17 @@
+scenario: S24
+title: the operator revives a dropped signal by dictation; its move is replaced and the next run clusters it
+profiles: [all]
+satisfies: [12, 107]
+given:
+  objects:
+    - {id: "signal/s3", machine: signal, state: {move: dropped}}
+    - {id: curation/willdan, machine: curation, state: {run: idle}, record: {threshold: 1}}
+  evidence: {signal.move: {"signal/s3": drop}, curation.unmoved_count: {curation/willdan: 0}}
+when:
+  - direct: {do: dictation, text: "revive s3", by: chuck}
+  - evidence: {signal.move: {"signal/s3": none}, curation.unmoved_count: {curation/willdan: 1}}
+  - tick: {}
+  - tick: {}
+then:
+  transitions: [{object: "signal/s3", from: dropped, to: unmoved}, {object: curation/willdan, from: idle, to: running}]
+  state_store: {dictation_bypassed_plan: true, decisions_created_by_dictation: 0}

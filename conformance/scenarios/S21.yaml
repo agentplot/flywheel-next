@@ -1,0 +1,19 @@
+scenario: S21
+title: the operator forwards a chat message with one response; a capture and one signal exist with a link back; nothing else happened
+profiles: [all]
+satisfies: [111, 112, 115]
+given:
+  objects: [{id: curation/willdan, machine: curation, state: {run: idle}, record: {threshold: 12}}]
+  evidence: {curation.unmoved_count: {curation/willdan: 0}}
+when:
+  - direct: {do: dictation, text: "capture: <forwarded message 1421>", by: chuck}
+  - tick: {}
+  - evidence: {capture.source: {capture/message-1421: forwarded-message}, capture.signals_present: {capture/message-1421: false}}
+  - tick: {}
+  - evidence: {capture.signals_present: {capture/message-1421: true}, curation.unmoved_count: {curation/willdan: 1}}
+  - tick: {}
+then:
+  effects: [{do: ensure_signal, count: 1}, {do: start_session, count: 0}, {do: prepare_place, count: 0}]
+  states: {capture/message-1421: {reading: read}, curation/willdan: {run: idle}}
+  records: {capture/message-1421: {raw: "discord message link 1421"}}
+  state_store: {signals_written: 1, signal_cites_capture: true}

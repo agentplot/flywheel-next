@@ -1,0 +1,17 @@
+scenario: B.1.127-write-effect
+title: an effect is written with an identity; a repeat changes nothing and is not a second write
+profiles: [all]
+satisfies: [73, 79, 127, 167]
+machines: ./contract/lamp
+given:
+  objects: [{id: lamp/1, machine: lamp, state: {power: "off"}}]
+  evidence: {lamp.switch: {lamp/1: up}}
+when:
+  - tick: {}
+  - evidence: {lamp.lit: {lamp/1: false}}    # the proof is lost from the world
+  - restart: {}
+  - tick: {}
+then:
+  transitions: [{object: lamp/1, from: "off", to: "on"}]
+  effects: [{do: light, count: 2}]
+  state_store: {writes_with_effect_id: 2, distinct_effect_ids: 1, second_reported_as_write: false}

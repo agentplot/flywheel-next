@@ -1,0 +1,18 @@
+scenario: S17
+title: two hosts see the same approved unit at once and both try to take it; exactly one does; the other moves on
+profiles: [git-only]
+satisfies: [162, 163]
+invariants: [I15]
+given:
+  objects:
+    - {id: bolt/atlas/plan-rows, machine: bolt, state: {life: open, line: current, place: ready, open.citations: current, open.close: not-offered}, record: {repository: atlas}}
+    - {id: unit/atlas/status-writer, machine: unit, parent: bolt/atlas/plan-rows, state: {life: approved}}
+  hosts: [{name: mac-mini, bound: 3}, {name: studio, bound: 2}]
+  evidence: {unit.deps_merged: {"*": true}}
+when:
+  - tick: {concurrent_hosts: [mac-mini, studio]}
+  - tick: {}
+then:
+  transitions: [{object: unit/atlas/status-writer, from: approved, to: in-flight}]
+  leases: {unit/atlas/status-writer: {holders_ever: 1}}
+  state_store: {lease_pushes_attempted: 2, lease_pushes_accepted: 1, loser_fetched_and_read_holder: true, items_created_once: true}

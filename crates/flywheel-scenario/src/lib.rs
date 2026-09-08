@@ -2,8 +2,12 @@
 //! Sessions are played from a script; the engine, the register, the tail and
 //! the effects run for real.
 
+pub mod bindings;
+pub mod conformance;
 pub mod runner;
 pub mod scenario;
+pub mod sessions;
+pub mod statestore;
 pub mod store;
 pub mod world;
 

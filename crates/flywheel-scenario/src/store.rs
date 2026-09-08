@@ -53,6 +53,9 @@ pub struct World {
     pub declarations: BTreeMap<String, Vec<ServiceDecl>>,
     /// Service facts per service object id.
     pub services: BTreeMap<String, ServiceFact>,
+    /// What the world reports on disk: path -> content, materialized from
+    /// `conformance/fixtures/` or given inline.
+    pub files: BTreeMap<String, String>,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -84,6 +87,71 @@ pub struct Store {
     /// Decision ids standing after the last derive; used for response.decision_present.
     pub standing: Vec<String>,
     pub scenario: Option<String>,
+    // ---- the state store's own durable shapes (125)
+    /// Object id -> its thread, in order.
+    #[serde(default)]
+    pub threads: BTreeMap<String, Vec<flywheel_atoms::ThreadEntry>>,
+    /// Every effect written, by its identity; a repeat finds itself here (127).
+    #[serde(default)]
+    pub effects_written: Vec<EffectRecord>,
+    /// Object id -> the lease on it (128).
+    #[serde(default)]
+    pub leases: BTreeMap<String, flywheel_atoms::LeaseRecord>,
+    /// Host id -> its heartbeat (147, 163).
+    #[serde(default)]
+    pub heartbeats: BTreeMap<String, flywheel_atoms::HostRecord>,
+    /// The write sequence: the point a read is as of (126).
+    #[serde(default)]
+    pub writes: u64,
+    /// (write sequence, object) for every write, so a notice names what moved (130).
+    #[serde(default)]
+    pub moved: Vec<(u64, String)>,
+    /// What each sink has been presented with (129).
+    #[serde(default)]
+    pub presented: Vec<PresentedRecord>,
+    /// The acting host, which a `host` step sets; `local` with no host step.
+    #[serde(default)]
+    pub acting_host: Option<String>,
+    /// Hosts that cannot reach the store (151, D4a).
+    #[serde(default)]
+    pub disconnected: Vec<String>,
+    /// Numbers a scenario gave a decision by its readable name,
+    /// `<object id>/<decision kind>`. The register itself is keyed by the
+    /// engine's decision id, which also carries the point the decision was
+    /// raised; this is how `given.register` reaches it.
+    #[serde(default)]
+    pub register_aliases: BTreeMap<String, u32>,
+    /// Every decision seen, by its readable name, with the number the register
+    /// gave it. A number is never reused, so this only grows; it is what lets a
+    /// repeat delivery name a decision that has since been retracted (15, 137).
+    #[serde(default)]
+    pub decision_numbers: BTreeMap<String, u32>,
+}
+
+/// One effect written, with its identity, its reason and the evidence the
+/// guard read (79, 127, 167).
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct EffectRecord {
+    pub effect_id: String,
+    pub object: String,
+    pub effect: String,
+    pub reason: String,
+    pub evidence: BTreeMap<String, Value>,
+    pub at: DateTime<Utc>,
+    /// The host that wrote it, or `local`.
+    pub by: String,
+    /// A write made while disconnected is an intention until its push lands
+    /// (161, D4a).
+    pub pending: bool,
+}
+
+/// One delivery of the rail's decisions to a sink (129).
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct PresentedRecord {
+    pub sink: String,
+    pub at: DateTime<Utc>,
+    pub numbers: Vec<u32>,
+    pub decisions: Vec<String>,
 }
 
 impl Default for Store {
@@ -105,6 +173,17 @@ impl Default for Store {
             marks: BTreeMap::new(),
             standing: vec![],
             scenario: None,
+            threads: BTreeMap::new(),
+            effects_written: vec![],
+            leases: BTreeMap::new(),
+            heartbeats: BTreeMap::new(),
+            writes: 0,
+            moved: vec![],
+            presented: vec![],
+            acting_host: None,
+            disconnected: vec![],
+            register_aliases: BTreeMap::new(),
+            decision_numbers: BTreeMap::new(),
         }
     }
 }

@@ -1,0 +1,22 @@
+scenario: S23
+title: the operator drops a proposed intent carrying five signals; the next curation does not propose it again; each signal has a move naming the drop
+profiles: [all]
+satisfies: [107, 117]
+given:
+  objects:
+    - {id: intent/status-copy, machine: intent, state: {life: proposed}, record: {signals: [s1, s2, s3, s4, s5]}}
+    - {id: curation/willdan, machine: curation, state: {run: idle}, record: {threshold: 1}}
+  evidence: {signal.move: {"signal/s1": join, "signal/s2": join, "signal/s3": join, "signal/s4": join, "signal/s5": join}, curation.unmoved_count: {curation/willdan: 0}}
+when:
+  - tick: {}
+  - response: {decision: intent/status-copy/intent-proposed, answer: drop, id: discord/8001}
+  - tick: {}
+  - evidence: {signal.move: {"*": drop}, intent.signals_dropped: {intent/status-copy: true}}
+  - tick: {}
+  - clock: {advance: 1d}
+  - tick: {}
+then:
+  transitions: [{object: intent/status-copy, from: proposed, to: dropped, response: discord/8001}]
+  effects: [{do: drop_signals, count: 1}]
+  states: {"signal/s1": {move: dropped}, "signal/s5": {move: dropped}, curation/willdan: {run: idle}}
+  state_store: {moves_naming_drop: 5, unmoved_after: 0}

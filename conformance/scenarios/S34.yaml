@@ -1,0 +1,47 @@
+scenario: S34
+title: research exits done and its place merges into the intent's line and is removed; the standing prototype's place is rebased and kept; the archive lands the line; two claims stand
+profiles: [all]
+requires: [real-workspace]     # the research place merges, the prototype's place is rebased, the intent's line lands
+satisfies: [49, 54, 98]
+given:
+  objects:
+    - {id: intent/i, machine: intent, state: {life: open, line: current, open.material: settled, open.close: not-offered}}
+    - {id: elaboration/i/research, machine: elaboration, parent: intent/i, state: {life: working, working.work: session, session.life: alive, alive.activity: working, placing.place: ready}, record: {type: self-closing, type_version: 1}}
+    - {id: elaboration/i/prototype, machine: elaboration, parent: intent/i, state: {life: working, working.work: session, session.life: alive, alive.activity: idle, placing.place: ready}, record: {type: standing, type_version: 1, kept_at: now}}
+    - {id: claim/c1, machine: claim, state: {standing: proposed}}
+    - {id: claim/c2, machine: claim, state: {standing: proposed}}
+  evidence: {session.pane: {"*": present}, place.contains_line: {"*": true}, line.contains_parent: {"*": true}, claim.on_shared_line: {"*": false}, claim.on_intent_line: {"*": true}}
+when:
+  - evidence: {session.exit: {"elaboration/i/research/self-closing/1": done}}
+  - tick: {}
+  - tick: {}
+  - evidence: {place.merge_slot: {"*": true}, place.merged: {elaboration/i/research: true}, place.contains_line: {elaboration/i/prototype: false}}
+  - tick: {}
+  - evidence: {place.absent: {elaboration/i/research: true}}
+  - tick: {}
+  - tick: {}
+  - evidence: {place.contains_line: {elaboration/i/prototype: true}}
+  - tick: {}
+  - response: {decision: elaboration/i/prototype/idle, answer: finish, id: discord/13001}
+  - tick: {}
+  - evidence: {session.pane_absent: {"*": true}, place.merged: {"*": true}, place.absent: {"*": true}}
+  - tick: {}
+  - tick: {}
+  - tick: {}
+  - response: {decision: intent/i/intent-close, answer: close, id: discord/13002}
+  - tick: {}
+  - evidence: {intent.archived: {"*": true}, line.landed: {"*": true}, line.absent: {"*": true}, claim.on_shared_line: {"*": true}}
+  - tick: {}
+  - tick: {}
+then:
+  transitions:
+    - {object: elaboration/i/research, from: working, to: finishing}
+    - {object: elaboration/i/research, from: finishing, to: done}
+    - {object: elaboration/i/prototype, from: ready, to: behind}
+    - {object: elaboration/i/prototype, from: behind, to: ready}
+    - {object: intent/i, from: open, to: archiving, response: discord/13002}
+    - {object: intent/i, from: archiving, to: closed}
+    - {object: claim/c1, from: proposed, to: standing}
+    - {object: claim/c2, from: proposed, to: standing}
+  effects: [{do: merge_place, count: 2}, {do: remove_place, count: 2}, {do: rebase_place, count: 1}, {do: archive_intent, count: 1}, {do: land_line, count: 1}, {do: remove_line, count: 1}]
+  state_store: {prototype_place_kept_until_finish: true, branches_of_intent_after_close: 0}

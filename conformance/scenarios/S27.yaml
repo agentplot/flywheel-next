@@ -1,0 +1,27 @@
+scenario: S27
+title: an intent archives; two claims stand for two repositories; planning runs once per repository; a new bolt and a joined unit; rename and reroute both apply; no order between bolts
+profiles: [all]
+satisfies: [16, 28, 29, 30]
+given:
+  objects:
+    - {id: planning/atlas, machine: planning, state: {run: current}, record: {planned_fingerprint: a0}}
+    - {id: planning/switchboard, machine: planning, state: {run: current}, record: {planned_fingerprint: s0}}
+    - {id: bolt/switchboard/plan-rows, machine: bolt, state: {life: open, line: current, place: ready, open.citations: current, open.close: not-offered}, record: {repository: switchboard}}
+  evidence: {planning.fingerprint: {planning/atlas: a1, planning/switchboard: s1}, planning.planned_fingerprint: {planning/atlas: a0, planning/switchboard: s0}}
+when:
+  - tick: {}
+  - evidence: {place.ready: {"*": true}}
+  - script: {"planning/atlas/planner/1": [{after: "0", pane: present, exit: done, deliverables: [units], commits: ["units u1,u2 target new: atlas-retry-behaviour-and-jitter-limits"]}], "planning/switchboard/planner/1": [{after: "0", pane: present, exit: done, deliverables: [units], commits: ["unit u3 target bolt/switchboard/plan-rows"]}]}
+  - tick: {}
+  - tick: {}
+  - tick: {}
+  - response: {decision: unit/atlas/u1/unit-proposed, answer: "rename retry", id: discord/9001}
+  - response: {decision: unit/switchboard/u3/unit-proposed, answer: "new bolt other", id: discord/9002}
+  - tick: {}
+  - response: {decision: unit/atlas/u1/unit-proposed, answer: "yes", id: discord/9003}
+  - response: {decision: unit/switchboard/u3/unit-proposed, answer: "yes", id: plannotator/9004}    # the annotation on the reviewed document is the response (17)
+  - tick: {}
+then:
+  effects: [{do: propose_units, count: 2}, {do: rename_bolt, count: 1}, {do: route_unit, count: 1}, {do: create_bolt, count: 2}]
+  records: {unit/atlas/u1: {target_name: retry}, unit/switchboard/u3: {target_name: other}}
+  state_store: {planning_runs: 2, bolt_records_with_predecessor_field: 0}

@@ -1,0 +1,27 @@
+scenario: S26
+title: an operator-added unit type runs one test session per persona in the repository; three or five as found; recorded; a unit in flight is untouched
+profiles: [all]
+satisfies: [56, 57, 85]
+given:
+  objects:
+    - {id: bolt/atlas/plan-rows, machine: bolt, state: {life: open, line: current, place: ready, open.citations: current, open.close: not-offered}, record: {repository: atlas}}
+    - {id: unit/atlas/old, machine: unit, parent: bolt/atlas/plan-rows, state: {life: in-flight}, record: {type: default, type_version: 5}}
+    - {id: work-item/atlas/old-1, machine: work-item, parent: unit/atlas/old, state: {life: in-type, in-type.stages: build, build.run: sessions}}
+    - {id: unit/atlas/new, machine: unit, parent: bolt/atlas/plan-rows, state: {life: in-flight}, record: {type: persona-test, type_version: 3}}
+    - {id: work-item/atlas/new-1, machine: work-item, parent: unit/atlas/new, state: {life: in-type, in-type.stages: test, test.run: resolving}}
+    - {id: bolt/five/b, machine: bolt, state: {life: open, line: current, place: ready, open.citations: current, open.close: not-offered}, record: {repository: five}}
+    - {id: unit/five/new, machine: unit, parent: bolt/five/b, state: {life: in-flight}, record: {type: persona-test, type_version: 3}}
+    - {id: work-item/five/new-1, machine: work-item, parent: unit/five/new, state: {life: in-type, in-type.stages: test, test.run: resolving}}
+  files: {"blueprints flywheel/types/units/persona-test@3.yaml": "as machines/unit-types/persona-test@3.yaml, committed by the operator and registered; no engine change", "repo atlas personas/": "3 files", "repo five personas/": "5 files"}
+  evidence: {stage.agents: {"work-item/atlas/new-1": [p1, p2, p3], "work-item/five/new-1": [p1, p2, p3, p4, p5]}, session.pane: {"*": absent}}
+when:
+  - tick: {}
+  - tick: {}
+  - evidence: {session.pane: {"*": present}, session.exit: {"*": done}, session.offers_pending: {"work-item/five/new-1/test/1/p2": true}, stage.join_met: {"*": true}, stage.verdict: {"*": pass}}
+  - tick: {}
+  - tick: {}
+then:
+  effects: [{do: start_session, count: 8}, {do: record_offers, count: 1}]
+  records: {work-item/atlas/new-1: {sessions_at_test: [p1, p2, p3]}, work-item/five/new-1: {sessions_at_test: [p1, p2, p3, p4, p5]}}
+  states: {work-item/atlas/old-1: {in-type.stages: build}, unit/atlas/old: {type_version: 5}}
+  state_store: {engine_code_changed: false}

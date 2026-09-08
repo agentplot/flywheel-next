@@ -1,0 +1,173 @@
+# The observation registry: every key a scenario may assert under `then.state_store`.
+#
+# `state_store` is where a scenario asserts something about the profile's own
+# behaviour rather than about a machine — a rejection, an effect id, an as-of
+# point, what a host did while it could not reach the store. Those are not
+# evidence names, so nothing bound them, and an invented key used to pass in
+# silence. This file binds them: each key names what it means and which
+# profiles answer it, and `machines/check.py` fails a scenario using a key that
+# is not here or a key a profile it runs on does not answer.
+#
+# `profiles:` reads like a scenario's: `all` means every profile answers it,
+# and a named profile means only that one does. A key is host-agnostic: an
+# observation about one host is keyed by host in its value
+# (`{mac-mini: true}`), never by a host's name in the key.
+format: flywheel-observations/1
+name: observations
+observations:
+
+  # ---- B.1, the operations
+  read_as_of_named:            {profiles: [all], doc: "the read stated the point it is as of (126)"}
+  two_reads_equal:             {profiles: [all], doc: "two reads with nothing changed returned the same evidence and wrote nothing (126)"}
+  writes_with_effect_id:       {profiles: [all], doc: "how many writes carried an effect id of their own (127)"}
+  distinct_effect_ids:         {profiles: [all], doc: "how many distinct effect ids the run wrote (127)"}
+  second_reported_as_write:    {profiles: [all], doc: "whether a repeat of an already-written effect was reported as a second write; it must not be (127)"}
+  response_recorded_before_transition: {profiles: [all], doc: "the response record exists before the transition it caused (129, 153)"}
+  response_acknowledged_to_operator:   {profiles: [all], doc: "the operator was told their response was recorded, without asking anyone (129, 154)"}
+  unapplicable_response_returned_to_engine: {profiles: [all], doc: "a response that could not be applied was handed back to the engine rather than dropped (129)"}
+  notify_latency_bound:        {profiles: [all], doc: "the bound the profile states for notification, as a duration (130)"}
+  notified_objects_by_host:    {profiles: [all], doc: "host -> the objects it was notified about (130)"}
+  reads_after_notify_by_host:  {profiles: [all], doc: "host -> how many reads it made on the notification, which must not be a full re-read (130)"}
+  converged_by_sweep_by_host:  {profiles: [all], doc: "host -> whether it converged by reading alone when never notified (130)"}
+  list_returned:               {profiles: [all], doc: "what list returned in the stated scope (131)"}
+  second_tick_writes:          {profiles: [all], doc: "writes made by a second tick over the same state; zero when nothing moved (131, 78)"}
+
+  # ---- B.2, the guarantees
+  reported_written_before_loss: {profiles: [all], doc: "the write was reported written before every host was lost (133)"}
+  read_by_fresh_host:           {profiles: [all], doc: "a host that never saw the write read it after the loss (133)"}
+  writes_attempted:             {profiles: [all], doc: "how many writers attempted the write (134)"}
+  writes_succeeded:             {profiles: [all], doc: "how many succeeded; one, always (134)"}
+  loser_told:                   {profiles: [all], doc: "the losing writer learned that it lost (134)"}
+  loser_reread_before_deciding: {profiles: [all], doc: "the loser read again before deciding anything (134)"}
+  reader_saw_one_of:            {profiles: [all], doc: "the whole states a reader may have seen during an interrupted write; every one is a complete state (135)"}
+  reader_never_saw_mixed:       {profiles: [all], doc: "no reader saw half of a write (135)"}
+  engine_reads_only:            {profiles: [all], doc: "the engine decided from read and list alone (136)"}
+  drift_reported:               {profiles: [all], doc: "a projection that drifted from its source was reported rather than trusted (136, 142)"}
+  projection_rewritten_from_source: {profiles: [all], doc: "the drifted projection was rewritten from the state it projects (142)"}
+
+  # ---- B.3, the binding
+  binding_covers_every_evidence_name: {profiles: [all], doc: "the profile binds every evidence name the machines use (138, 140)"}
+  binding_covers_every_effect_name:   {profiles: [all], doc: "the profile binds every effect name the machines use (138, 140)"}
+  binding_names_no_evidence_outside_atoms: {profiles: [all], doc: "the binding names nothing that is not an atom (138)"}
+  operations_used_by_engine:    {profiles: [all], doc: "the operations the engine actually called; a set within B.1's seven (125)"}
+  guarantee_mechanisms_named_for: {profiles: [all], doc: "the guarantees whose mechanism the binding names (140)"}
+  profile_rejected_when_a_guarantee_is_missing: {profiles: [all], doc: "a binding missing a guarantee is refused rather than admitted (140, exit 3)"}
+  machine_files_hash_equals_repository: {profiles: [all], doc: "the machine files the run loaded hash to the repository's, so the profile was tested against the model (92-95)"}
+
+  # ---- the rail, its register and its delivery
+  page_numbers:                 {profiles: [all], doc: "the decision numbers the page showed (15)"}
+  chat_numbers:                 {profiles: [all], doc: "the decision numbers the chat showed; the same list as the page's (15, 18)"}
+  chat_lines:                   {profiles: [all], doc: "how many lines the chat rendering carried, one per decision (18)"}
+  chat_links_page:              {profiles: [all], doc: "the chat rendering carried a link to the page (18)"}
+  bell_rung_on:                 {profiles: [all], doc: "the multiplexer surface the bell rang on (82)"}
+  tail_since:                   {profiles: [all], doc: "what the tail listed since the sink's mark, outside the count (14)"}
+  number_57_reused:             {profiles: [all], doc: "whether a retired number came back; it never does (15)"}
+  bolt_close_number_is_new:     {profiles: [all], doc: "the bolt's close took a new number rather than an earlier one (15)"}
+  renderings_stored:            {profiles: [all], doc: "how many renderings of the rail were stored; zero (15)"}
+  responses_after_yes:          {profiles: [all], doc: "responses the operator gave after the one yes; the unattended run asserts none (13)"}
+  idle_offered:                 {profiles: [all], doc: "the idle decision was offered on the standing session (26)"}
+  presence_read_as:             {profiles: [all], doc: "what the multiplexer's presence and activity were read as (73)"}
+  question_answerable_from:     {profiles: [all], doc: "the surfaces a session's question could be answered from (68, 70)"}
+  question_answered_in_pane:    {profiles: [all], doc: "the answer reached the session in its own pane (70)"}
+  answer_sent_to_same_pane:     {profiles: [all], doc: "the answer went to the session that asked, not a fresh one (70)"}
+  pane_required:                {profiles: [all], doc: "whether the operator had to open a pane; never (68)"}
+  local_output_by_host:         {profiles: [all], doc: "host -> what it printed locally; the machinery speaks through sinks, not stdout (68)"}
+  thread_behind_session:        {profiles: [all], doc: "what the session's thread held behind it (144)"}
+  decisions_created_by_dictation: {profiles: [all], doc: "decisions a dictation created; a dictation is applied, never proposed (12)"}
+  dictation_bypassed_plan:      {profiles: [all], doc: "the dictation went straight to the object without entering the rail (12)"}
+  dictation_asserting_done_applied:  {profiles: [all], doc: "a dictation asserting work was done was applied; never (4)"}
+  dictation_asserting_done_reported: {profiles: [all], doc: "it was reported as unapplicable instead (4, 6)"}
+  hand_killed_pane_read_as_response: {profiles: [all], doc: "a pane killed by hand was read as a response; never, it is a session gone (4)"}
+
+  # ---- sessions, places and the multiplexer
+  distinct_session_names_started: {profiles: [all], doc: "how many distinct session names the machinery started (72)"}
+  duplicate_session_names:      {profiles: [all], doc: "sessions started twice under one name; zero (72, 111)"}
+  multiplexer_refused_duplicates: {profiles: [all], doc: "the multiplexer refused a duplicate name and the machinery read the refusal (72)"}
+  reported_failed:              {profiles: [all], doc: "what the run reported as failed (79)"}
+  sessions_running_at_end:      {profiles: [all], doc: "sessions still running when the scenario ended"}
+  sessions_running_max:         {profiles: [all], doc: "the most sessions running at once; never above the host's bound (149)"}
+  attempts_started_by_host:     {profiles: [all], doc: "host -> how many starts it attempted"}
+  ended_own_pane_on_return:     {profiles: [all], doc: "host -> on returning it ended only panes it owned (150)"}
+  session_interrupted:          {profiles: [all], doc: "a running session was interrupted by something else's decision; never (13)"}
+  exit_written_through_command: {profiles: [all], doc: "the exit was written through the reporting command, not by setting evidence (67)"}
+  state_read_from_place_disk:   {profiles: [all], doc: "state read from the place's disk; zero, the disk is work (67)"}
+  repository_refs_changed_by_session: {profiles: [all], doc: "refs a session changed; zero, the machinery owns the lines (43)"}
+  session_touched_a_ref:        {profiles: [all], doc: "a session touched a ref of the repository; never (43)"}
+  place_prepared_by:            {profiles: [all], doc: "who prepared the place; the machinery, never the session (42)"}
+  operator_place_present_throughout: {profiles: [all], doc: "the operator's own place on the bolt stayed through the run (44)"}
+  prototype_place_kept_until_finish: {profiles: [all], doc: "a standing prototype's place was kept until it finished (26, 34)"}
+  held_place_removed_while_held: {profiles: [all], doc: "a held place was removed while the hold stood; never (55)"}
+  removals_recorded_with_reason: {profiles: [all], doc: "every place removed was recorded with why (55)"}
+  tethered_processes_after_removal: {profiles: [all], doc: "processes still tethered after the worktree went; zero (48)"}
+  processes_ended_by_the_worktree_removal: {profiles: [all], doc: "the processes the worktree's removal ended (48)"}
+  services_never_started_by_declaration_alone: {profiles: [all], doc: "a declared service started without a response; never (47)"}
+  worker_endpoint_absent_because_it_serves_no_url: {profiles: [all], doc: "a service serving no URL has no endpoint, rather than an empty one (46)"}
+  endpoint_shown_beside_bolt_on_page: {profiles: [all], doc: "the place's endpoint was shown beside its bolt (46)"}
+  session_command_and_dictation_write_the_same_record_shape: {profiles: [all], doc: "a session's `flywheel service` and the operator's dictation wrote one record shape (48)"}
+  ran_without_live_service:     {profiles: [stand-in], doc: "the scenario ran with no live service behind it (93)"}
+
+  # ---- construction, bolts, units and items
+  items_created_once:           {profiles: [git-only], doc: "the approved unit's items were created once across racing hosts (17, 134)"}
+  merges_in_ordinal_order:      {profiles: [all], doc: "items merged into the bolt's line in their ordinal order (57)"}
+  conflict_retries_after:       {profiles: [all], doc: "how many times a conflicting merge was retried (180)"}
+  rebase_attempted_while_working: {profiles: [all], doc: "a place was rebased while its session worked; never, only while idle (56)"}
+  half_done_tree_seen:          {profiles: [all], doc: "a half-done tree was ever visible; never (135)"}
+  fresh_attempt_for_v:          {profiles: [all], doc: "a fresh attempt was made for the item after the hand-run stop (4)"}
+  change_directories_created:   {profiles: [all], doc: "the OpenSpec change directories the run created (37)"}
+  chore_record_holds_text:      {profiles: [all], doc: "the chore's record holds the text the session offered (60)"}
+  finding_record_holds_text:    {profiles: [all], doc: "the finding's record holds the text the session offered (58)"}
+  bolt_aged_out:                {profiles: [all], doc: "the bolt was closed by age rather than by the operator; never (39)"}
+  bolt_records_with_predecessor_field: {profiles: [all], doc: "bolt records naming a predecessor; a bolt is never ordered before another (27)"}
+  planning_runs:                {profiles: [all], doc: "how many planning runs the scenario charged, one per repository (28)"}
+  proposal_replaced_without_response: {profiles: [all], doc: "a proposed unit was replaced silently by the next proposal (35)"}
+  superseded_in_tail:           {profiles: [all], doc: "a silently superseded proposal appeared in the tail; never (35)"}
+  branches_of_intent_after_close: {profiles: [all], doc: "branches left behind after the intent closed (49)"}
+
+  # ---- claims, the ledger and the map
+  backlog_after:                {profiles: [all], doc: "the claims still in the repository's backlog (102)"}
+  verdicts_recomputed_after_commits: {profiles: [all], doc: "verdicts recomputed because code moved; zero, only a claim version or an attachment moves one (101)"}
+  one_commit_touched:           {profiles: [all], doc: "the files one commit touched, when a chapter, its requirement and the map move together (120)"}
+  map_check_passed:             {profiles: [all], doc: "the blueprints' map check passed on the commit (121, 198)"}
+  review_view_derived_from_history: {profiles: [all], doc: "the review view was derived from history, never written by hand (122, 142)"}
+  review_view_points_to:        {profiles: [all], doc: "what the review view took the operator to (122)"}
+  previous_version_shown:       {profiles: [all], doc: "the previous version was shown beside the amended one (122)"}
+  hand_written_files_for_view:  {profiles: [all], doc: "files written by hand to make the view look right; zero (142)"}
+
+  # ---- captures, signals and curation
+  captures_existing:            {profiles: [all], doc: "how many capture records exist for the source event; one, however many imports (111)"}
+  capture_files_written_on_second_import: {profiles: [all], doc: "capture files a repeat import wrote; zero (111)"}
+  signal_files_written_on_second_import: {profiles: [all], doc: "signal files a repeat import wrote; zero (111)"}
+  signals_written:              {profiles: [all], doc: "how many signals the capture yielded (113)"}
+  signal_cites_capture:         {profiles: [all], doc: "each signal cites the capture it came from (113)"}
+  signal_moves_stored:          {profiles: [all], doc: "how many moves curation stored (110)"}
+  signals_with_move:            {profiles: [all], doc: "how many signals carry a standing move (110)"}
+  moves_naming_drop:            {profiles: [all], doc: "moves naming the drop, one per signal of the dropped intent (118)"}
+  unmoved_after:                {profiles: [all], doc: "signals still unmoved when the scenario ended (110)"}
+
+  # ---- hosts, leases and the disconnected host
+  lease_pushes_attempted:       {profiles: [git-only], doc: "lease pushes attempted across racing hosts (128, 162)"}
+  lease_pushes_accepted:        {profiles: [git-only], doc: "lease pushes the git host accepted; one (128, 162)"}
+  loser_fetched_and_read_holder: {profiles: [git-only], doc: "the loser fetched and read who holds it (134, 162)"}
+  lease_taken_outside_declaration: {profiles: [all], doc: "a lease taken on an object the host's declaration does not cover; never (149)"}
+  dispatcher_took_object_leases: {profiles: [all], doc: "object leases the dispatcher took; zero, it presents and takes nothing (217)"}
+  local_commits_while_offline:  {profiles: [git-only], doc: "host -> commits it made locally while it could not reach the store (151)"}
+  leases_taken_while_offline:   {profiles: [git-only], doc: "host -> leases it took while offline; zero (151)"}
+  sessions_started_while_offline: {profiles: [git-only], doc: "host -> sessions it started while offline; zero (151)"}
+  commits_present_after_reconnect: {profiles: [git-only], doc: "host -> its commits are present after the reconnect, nothing lost either way (151)"}
+  status_as_of_after_reconnect: {profiles: [git-only], doc: "what the status view is as of once the host reconnected (145)"}
+  hosts_agreeing:               {profiles: [git-only], doc: "how many hosts read the hand-made state the same way (159, 165)"}
+  processes_told:               {profiles: [git-only], doc: "processes that had to be told about the hand-made change; zero (159)"}
+  response_derived_from_fetch:  {profiles: [git-only], doc: "the response was derived from the fetch rather than delivered to a process (159, 165)"}
+
+  # ---- the tracker profile
+  items_in_tracker:             {profiles: [tracker], doc: "the objects the tracker holds as issues (156, 157)"}
+  state_proven_by:              {profiles: [tracker], doc: "what proves an object's state; the tracker's own record (158)"}
+  board_column_is_projection:   {profiles: [tracker], doc: "the board column is a projection, never the source (157)"}
+  files_in_blueprints_never_items: {profiles: [tracker], doc: "files in the blueprints that stand in for items; none (156)"}
+  response_comment_written_before_transition: {profiles: [tracker], doc: "the response comment was written before the transition (153, 158)"}
+
+  # ---- the machinery about itself
+  engine_code_changed:          {profiles: [all], doc: "engine code changed to admit a new type; zero, a type is data (85, 87)"}
+  scenario_valid:               {profiles: [stand-in], doc: "the scenario a dictation produced validates against this schema (94)"}
+  trace_written:                {profiles: [stand-in], doc: "where the trace was written: `target/flywheel-trace/<profile>/<scenario>.trace.json` and the markdown rendered from it (95)"}
+  trace_lists:                  {profiles: [stand-in], doc: "what the trace lists: the transitions, the effects and the decisions the run asserts (95)"}

@@ -1,0 +1,20 @@
+scenario: B.2.133-durable
+title: what a write reports as written survives the loss of every host at once
+profiles: [all]
+satisfies: [133, 161]
+machines: ./contract/lamp
+given:
+  objects: [{id: lamp/1, machine: lamp, state: {power: "off"}}]
+  evidence: {lamp.switch: {lamp/1: up}}
+  hosts: [{name: a, bound: 1}, {name: b, bound: 1}]
+when:
+  - host: {name: a}
+  - tick: {}
+  - host: {name: a, lose: true}
+  - host: {name: b, lose: true}
+  - host: {name: c, start: true}
+  - tick: {}
+then:
+  states: {lamp/1: {power: "on"}}
+  effects: [{do: light, count: 1}]
+  state_store: {reported_written_before_loss: true, read_by_fresh_host: true}

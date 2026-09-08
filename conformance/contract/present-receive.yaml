@@ -1,0 +1,29 @@
+scenario: B.1.129-present-receive
+title: decisions are presented, the response comes back attributed to its decision, twice is once, an unapplicable response is handed back
+profiles: [all]
+satisfies: [1, 6, 129, 137, 153, 154]
+invariants: [I2]
+machines: ./contract/lamp
+given:
+  objects: [{id: lamp/1, machine: lamp, state: {power: "off"}}, {id: lamp/2, machine: lamp, state: {power: "off"}}]
+  evidence: {lamp.switch: {"*": down}}
+when:
+  - tick: {}                                                      # delivery 1: decisions 1 and 2
+  - response: {decision: lamp/1/lamp-off, answer: "on", id: chat/100}
+  - response: {decision: lamp/1/lamp-off, answer: "on", id: chat/100}      # delivered twice
+  - tick: {}
+  - evidence: {lamp.switch: {lamp/2: up}}
+  - tick: {}                                                      # lamp/2 turns on by evidence; its decision is gone
+  - response: {decision: lamp/2/lamp-off, answer: "on", id: chat/101}      # a response for a decision that is gone
+  - tick: {}
+  - tick: {}
+then:
+  decisions:
+    - {after_step: 1, present: [lamp-off, lamp-off], count: 2}
+    - {after_step: 4, present: [lamp-off], count: 1}
+    - {after_step: 8, present: [response-unapplicable], count: 1}
+    - {after_step: 9, absent: [response-unapplicable]}
+  transitions: [{object: lamp/1, from: "off", to: "on", response: chat/100}, {object: lamp/2, from: "off", to: "on"}]
+  applied_responses: {lamp/1: [chat/100], lamp/2: []}
+  records: {lamp/1: {flips: 1}}
+  state_store: {response_recorded_before_transition: true, response_acknowledged_to_operator: true, unapplicable_response_returned_to_engine: chat/101}

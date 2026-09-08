@@ -1,0 +1,37 @@
+scenario: X6
+title: a bolt lands; its place is removed and its tethered server ends; a stray worktree from a crashed session is found by reconciliation and removed; a place the operator holds by dictation stays; every removal is recorded
+profiles: [all]
+requires: [real-workspace]     # the landing, the place's removal, and a stray worktree found by reconciling
+satisfies: [45, 55, 74]
+invariants: [I12]
+given:
+  objects:
+    - {id: bolt/atlas/plan-rows, machine: bolt, state: {life: landing, line: landing, place: ready, open.citations: current, open.close: offered}, record: {repository: atlas}}
+    - {id: bolt/atlas/other, machine: bolt, state: {life: landing, line: landing, place: ready, open.citations: current, open.close: offered}, record: {repository: atlas}}
+  hosts: [{name: mac-mini, bound: 3}]
+  files: {"host mac-mini places/": "bolt/atlas/plan-rows, bolt/atlas/other, work-item/atlas/wi-300 (its item was dropped last week)"}
+  evidence: {line.landed: {"*": true}, line.absent: {"*": true}, place.held: {"*": false}, host.stray_places: {host/mac-mini: true}}
+when:
+  - direct: {do: dictation, text: "hold place bolt/atlas/other", by: chuck}
+  - evidence: {place.held: {bolt/atlas/other: true}}
+  - tick: {}
+  - tick: {}
+  - tick: {}
+  - evidence: {place.absent: {bolt/atlas/plan-rows: true}, host.stray_places: {host/mac-mini: false}}
+  - tick: {}
+  - direct: {do: dictation, text: "release place bolt/atlas/other", by: chuck}
+  - evidence: {place.held: {bolt/atlas/other: false}}
+  - tick: {}
+  - evidence: {place.absent: {bolt/atlas/other: true}}
+  - tick: {}
+then:
+  transitions:
+    - {object: bolt/atlas/plan-rows, from: landing, to: landed}
+    - {object: bolt/atlas/plan-rows, from: ready, to: removing}
+    - {object: bolt/atlas/plan-rows, from: removing, to: removed}
+    - {object: bolt/atlas/other, from: ready, to: removing}
+    - {object: bolt/atlas/other, from: removing, to: held}
+    - {object: bolt/atlas/other, from: held, to: removing}
+    - {object: bolt/atlas/other, from: removing, to: removed}
+  effects: [{do: remove_place, count: 2}, {do: remove_stray_places, count: 1}, {do: remove_line, count: 2}]
+  state_store: {tethered_processes_after_removal: 0, removals_recorded_with_reason: 3, held_place_removed_while_held: false}
