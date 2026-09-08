@@ -24,7 +24,10 @@
 # implies — one function per tier, one invocation per organization's tick
 # under a tagged role, an encrypted warm cache, a managed capture queue, one
 # one-shot scheduler entry per organization, and microVM pool hosts
-# terminated at retire (A.33, A.34).
+# terminated at retire (A.33, A.34). The dispatcher runs the interpreter and
+# the triage of self-contained captures in-process; raw-material triage and
+# every elaboration and construction session stay on a machine of the
+# operator's own or on a pool host.
 format: flywheel-profile/1
 name: host
 complete: false
@@ -109,18 +112,23 @@ tier:
     tick (269): it assumes the tier's role under a session tag naming that
     organization (259), downloads the warm cache, fetches, evaluates, pushes
     by compare-and-swap, delivers the plan, uploads the cache, wipes its
-    scratch and exits, retaining nothing between invocations (217a). It never
-    reads raw material a capture points at (263) and never holds code (264):
-    its declaration takes no object kind, no repository and no unit type
-    (217). It answers chat and triages a capture whose whole content is in
-    hand within its own tick (217b, 217e), and hands everything else to a
-    host that serves one organization. A failure in one
+    scratch and exits, retaining nothing between invocations (217a). It runs a
+    model: the interpreter, one bounded call per message on the `inproc`
+    runner (216, 217b, 217c, sessions.yaml runners), and the triage of a
+    self-contained capture whose whole content is already in the queue —
+    a chat message, a webhook body — beside it (217e), both bounded per tick
+    with the remainder carried to the next. Two things never run in it:
+    triage over raw material a capture points at (263) and every elaboration
+    and construction session, which run on a machine of the operator's own or
+    on a pool host. It never holds code (264): its declaration takes no
+    object kind, no repository and no unit type (217). A failure in one
     organization's tick ends that tick and no other (218).
   invocation: "the tick is invoked, not looped (270): a clock, a notification, an arriving capture, a chat event and a request for the page are invokers of the same tick, and a run nothing invoked is caught up by the next one under the idempotent key (111). This is 231 read as `nothing but the tick keeps time`, not as `a process stands`"
   cache: "one encrypted object per organization (256) holding a bundle of two sparse shallow clones — the state repository, and the blueprints restricted to the manifest, the claims and the machinery's prefix (203, 262) — downloaded to scratch per tick and uploaded back, mounted nowhere and shared with nothing; evicted when the organization has been idle past the stated time, its next tick re-cloning (258, 272)"
   receiver: "the capture endpoint on a hosted tier is a managed queue per organization with no compute of the machinery's in the acknowledgement path (271): the platform answers the caller and the item waits for a tick; the queue is the caller's retry buffer and not state, and every body it holds is encrypted under the organization's key (256)"
   scheduling: "one named one-shot entry per organization, upserted at the end of every tick with the due time the machines computed and deleted when it completes (273); the name is the organization's, so an interim tick replaces it, at most one entry per organization exists, an entry that fires with nothing due is one idempotent tick that reschedules or deletes (111), and a daily sweep is the backstop. The set of entries is a projection: ticking rebuilds it and its loss costs a sweep, never a decision (136)"
   notify: "notification is primary and the poll is the backstop (274, 166): seconds where a live push reaches the host, a named interval where none does; no unconditional poll is the floor"
+  model: "model access on a hosted tier is the service's, carried by the tier role and metered into the plan (279, identity.yaml plans.limits), unless the organization places a model key of its own instead (207); which model provider sees plan text and messages is named in the tier statement (261)"
   key: "the organization's key is unwrapped only for the duration of a tick and only by the role that runs it (257); a key the host cannot reach fails closed with one attention line naming the key and since when, running work uninterrupted and nothing kept unencrypted as a fallback (260)"
   away: "an intermittent host keeps its place on a hosted tier (150a, 278): a laptop closed past its stale window is away, its leases stand and its sessions' clocks pause, and the cloud agent keeps ticking everything else, so only the work that host alone covers waits for the lid"
   add_form: "adding a cloud agent asks nothing about routers or runners — the tier fixes both, the platform router at the served name and the in-process runner at bound 0 (191, 217c, 283). One screen asks the chat platform, the meeting source and the capture sources, with presets beside the selectors (284); a router or a runner is chosen only for a machine of the operator's own or an adopted host, under the advanced disclosure"

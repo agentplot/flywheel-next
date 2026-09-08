@@ -170,7 +170,7 @@ definitions:
       not.
     ladder:
       free:       {tier: 0, unlocks: [], doc: "the binary, its sign-in, the organization's own App and bot, every package and every surface, nothing on the service side"}
-      hobby:      {tier: 1, unlocks: [fw.ff.cloud-agent], doc: "the service's App and bot, captures read and chat answered while the operator's machines sleep, the plan in the organization's chat, the page at a served name"}
+      hobby:      {tier: 1, unlocks: [fw.ff.cloud-agent], doc: "the service's App and bot, with the interpreter and the triage of self-contained captures running in the cloud (269), so chat is fully usable with the laptop closed: a decision answered by button or by free text, a capture written as text, the query tools answered; the plan in the organization's chat and the page at a served name. What waits for the operator's own machine or a pool host is raw-material triage, elaboration and construction"}
       pro:        {tier: 2, unlocks: [fw.ff.cloud-agent, fw.ff.pools, fw.ff.store], doc: "pools with an included allowance and metered overage, the package store, the book view and the presets"}
       team:       {tier: 2, unlocks: [fw.ff.cloud-agent, fw.ff.pools, fw.ff.store, fw.ff.members, fw.ff.management-console], doc: "members with roles, ownership and assignment (237), identity administration (255), the management console, a higher ceiling on a pool host"}
       enterprise: {tier: 3, unlocks: [fw.ff.cloud-agent, fw.ff.pools, fw.ff.store, fw.ff.members, fw.ff.management-console, fw.ff.federation, fw.ff.sso, fw.ff.dedicated-dispatcher], doc: "federation into the organization's own account (276), enterprise sign-in and provisioning through its own directory, a dispatcher function of its own, audit export, a private pool image"}
@@ -180,4 +180,5 @@ definitions:
       members:            "how many users the Application may be assigned to on the account"
       pool_hours_included: "pool host-hours the plan includes before metered overage (242 cost:)"
       pool_memory_max:    "the largest pool host the plan admits (275)"
+      model_usage:        "the model usage the plan includes on a hosted tier, where the tier role carries the service's model access (269, host.yaml tier.model); an organization that places its own model key is metered on none of it (207)"
   retire: []

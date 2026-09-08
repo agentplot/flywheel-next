@@ -10,9 +10,11 @@
 # and not state, and its bodies are encrypted under the organization's key
 # (271). Raw material a capture points at is never read on a host serving more
 # than one organization (263): triage that must follow a pointer into the raw
-# store runs on the operator's own machine or on a pool host, while a capture
-# whose whole content is in hand carries no pointer and may be triaged in the
-# tick that took it. The binary's own instrumentation writes captures
+# store runs on the operator's own machine or on a pool host, while a
+# self-contained capture — one whose whole content is already in the queue,
+# a chat message or a webhook body — is triaged in the dispatcher's own tick
+# beside the interpreter, bounded per tick with the remainder carried to the
+# next (269). The binary's own instrumentation writes captures
 # about its operation — stalls, refusals, runway readings — to the agentplot
 # organization's flywheel, carrying no organization content (288).
 machine: capture
