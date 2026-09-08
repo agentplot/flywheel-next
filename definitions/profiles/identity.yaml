@@ -1,0 +1,115 @@
+# The identity binding (A.32, 243–255): one provider, Frontegg, through its
+# SDK — the page runs the React SDK and the tool server verifies the token it
+# carries; nothing else vouches for an operator. GitHub stays the git host and
+# the App that reaches the repositories (207, 207a). Membership is the
+# assignment of the flywheel Application to the organization's account;
+# roles and permissions are read from the token; feature flags are
+# entitlement features per account. The definitions below ship in the binary
+# with the set version (208, 224, 252). Not a profile on its own; every
+# profile inherits it, since it binds no evidence and no effect.
+format: flywheel-profile/1
+name: identity
+complete: false
+version: 1
+provider:
+  doc: |
+    Frontegg, one provider (243). One Application for the whole flywheel,
+    with the page and the tool server as its surfaces, assigned to each
+    organization's account. Sign-in is Frontegg's hosted login (244): the
+    SDK builds `redirect_uri` from the origin the page is served on, so a
+    host's served name is the only per-host fact, registered once on the
+    environment's redirect list and never per organization. A host
+    declares the environment, not a sign-in kind: `flywheel.yaml`
+    hosts.<host>.identity: {environment, client_id} — a self-managed host
+    uses the flywheel's Production environment; the hosted service's hosts
+    use the service's (252, 253).
+  local_name: "a host serving the page on the operator's own computer serves it under a name, not a port (245): `https://<host>.flywheel.localhost`, served by the flywheel's own per-computer proxy (host.yaml router.local), the proxy a place's services already need (191); one wildcard entry `https://*.localhost/oauth/callback` on the environment admits every host on every operator's machine, and the flywheel adds no redirect entry at run time"
+  identity: "the Frontegg user (246); GitHub is one social connection on it, and the GitHub username the connection carries is what authorship uses — commit trailers, pull requests, the git host's view of who did the work; a user with no GitHub connection may respond and may not be an author, and the page asks for the connection at first sign-in"
+  agents: "no session, host process or dispatch agent holds a Frontegg user credential (251): a session acts with the identity token the machinery issued (surfaces.yaml tools.identity) and reaches the git host with the App's installation token (207)"
+accounts:
+  doc: |
+    The organization is a Frontegg account (247): a top-level account for
+    an organization a self-managed operator creates, except that the
+    hosted service creates its tenants as sub-accounts of the service's
+    own account, so a role assigned on the service's account applies down
+    the branch (248). Membership is the assignment of the Application to
+    the account, and assignment is the whole of "may respond in it" (233).
+    An organization created on a self-managed host is created as an
+    account whose creating user holds `owner`, so a fresh organization is
+    never locked out (253).
+  operators: "derived, never authored: the account's assigned users, read at every fetch and rendered read-only on the settings form; adding or removing a member is an act on the account through the identity tools (255), never a commit. What stays authored is each member's chat addresses (236a): `flywheel.yaml` addresses: keyed by Frontegg user id (blueprints.yaml manifest)"
+  roles: "held per account and carried in the JWT (248); the manifest's `roles:` is derived from the definitions below, not authored; a decision's owner names a member or a role (237)"
+permissions:
+  doc: |
+    Read from the token by the tool server (249): before any op-response is
+    written the server checks the caller's token for the permission the
+    tool declares, on the organization's account; a call without it is
+    refused, no response is recorded, and the refusal is written to the
+    run record with the identity, the tool and the object (79, 153), shown
+    under attention on the next delivery. Membership admits the identity
+    to the organization; the permission authorizes the tool. A tool whose
+    permission the host's environment lacks — a binary newer than the
+    environment's definitions — is refused with that reason (252).
+  by_tool:
+    fw.read:             [status view, book, map, the query tools, artifact views, the instrument]
+    fw.plan.answer:      [answer, yes all, drop, later, hold, release, finish, end, close, send-back, retire, takeover, revive, take, start, stop, filter]
+    fw.plan.assign:      [assign]
+    fw.capture.write:    [capture, mark-intent, ask, propose-unit, propose-chore, explore, open-session]
+    fw.proposal.edit:    [the per-unit answers on a proposal before its yes]
+    fw.map.edit:         [map-edit, set-home, set-status, attach, detach, add-repository, create-repository, adopt-repository]
+    fw.review.mark:      [mark-reviewed]
+    fw.packages.manage:  [add-package, configure-package, enable-package, disable-package, remove-package]
+    fw.secrets.place:    [placing a secret on a host; the value never travels through the page]
+    fw.hosts.manage:     [add-host, repair, retry, reissue, takeover on a host, join-host]
+    fw.org.configure:    [configure-organization, switch-organization]
+    fw.org.remove:       [remove-organization]
+    fw.identity.admin:   [invite-member, assign-application, revoke-application, set-role, target-flag]
+flags:
+  doc: "entitlement features, one flag per feature, keyed `fw.ff.*`, evaluated in the page and on the tool server, targeted per account only (250); a flag hides a surface and never authorizes — the tool behind a hidden surface is still guarded by its permission"
+degraded:
+  doc: "a host degrades rather than fails when the provider is unreachable (254): a token already issued is honoured until it expires; past that the page is read-only — the status view, the book and the map render, the rail shows its decisions with every writing control absent — with one attention line saying identity is unreachable and since when; unbounded for the page, and irrelevant to work: hosts cover work with the App token, not with an identity, so the loops keep running and nothing that needs a response is answered; flags fall back to their last-seen values, then to the definitions' defaults"
+sync:
+  doc: "the definitions below ship in the binary and are synced to the environment by the hosted service's release alone (252): the sync reads the environment's current definitions and writes only the difference, respecting the provider's write ceiling on features, plans and flags, deletes nothing not named in `retire:`, and never writes a hostname; a self-managed host never syncs — it uses the flywheel's Production environment as released, and a binary naming a permission the environment lacks refuses that tool with the reason"
+admin:
+  doc: "identity administration is a surface of the flywheel (255): the account item lists the organization's members with their roles and their chat addresses, invites a user to the account, grants and revokes the Application, sets a role and targets a flag on the account; each is a tool under `fw.identity.admin`, recorded like any response (153)"
+definitions:
+  provider: frontegg
+  application:
+    surfaces: [page, tool-server]        # one Application for the whole flywheel (243)
+  permissions:
+    - fw.read                            # status view, book, map, the query tools
+    - fw.plan.answer                     # respond to a decision, including yes-all
+    - fw.plan.assign                     # set a decision's owner (237)
+    - fw.capture.write                   # the capture box (19)
+    - fw.proposal.edit                   # edit a proposal before answering it
+    - fw.map.edit                        # map-edit, set-home, set-status, attach, detach, add-repository
+    - fw.review.mark                     # mark reviewed (122)
+    - fw.packages.manage                 # add, configure, enable, disable, remove a package (228, 229)
+    - fw.secrets.place                   # place a secret on a host (207)
+    - fw.hosts.manage                    # add a host, enrol, repair, takeover (222, 230)
+    - fw.org.configure                   # the manifest as a form (233)
+    - fw.org.remove                      # retire an organization (221)
+    - fw.identity.admin                  # invite, assign the Application, roles, flag targeting (255)
+  roles:
+    viewer:   [fw.read]
+    reviewer: [fw.read, fw.capture.write, fw.review.mark, fw.proposal.edit]
+    operator: [fw.read, fw.capture.write, fw.review.mark, fw.proposal.edit,
+               fw.plan.answer, fw.plan.assign, fw.map.edit,
+               fw.packages.manage, fw.hosts.manage, fw.org.configure]
+    identity-admin: [fw.read, fw.identity.admin]
+    owner:    [fw.read, fw.capture.write, fw.review.mark, fw.proposal.edit,
+               fw.plan.answer, fw.plan.assign, fw.map.edit,
+               fw.packages.manage, fw.hosts.manage, fw.org.configure,
+               fw.secrets.place, fw.org.remove, fw.identity.admin]
+  features:
+    - key: fw.ff.pools
+      flag: {default: off, on: []}       # host pools (240–242); per account
+    - key: fw.ff.management-console
+      flag: {default: off, on: []}       # the hosts and setup surfaces beyond one host
+    - key: fw.ff.book-view
+      flag: {default: on,  on: []}       # the board's book view
+    - key: fw.ff.explore
+      flag: {default: on,  on: []}       # explore over intents
+    - key: fw.ff.store
+      flag: {default: off, on: []}       # the package store (228)
+  retire: []

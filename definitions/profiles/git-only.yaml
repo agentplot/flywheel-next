@@ -12,7 +12,7 @@
 format: flywheel-profile/1
 name: git-only
 complete: true
-inherits: [host, sessions, blueprints, record-derived, surfaces]
+inherits: [host, sessions, blueprints, record-derived, surfaces, identity]
 
 layout:
   repository: "`<org>/flywheel-state`; branch `main` is the shared line and the only branch hosts read state from"

@@ -16,6 +16,8 @@
 # git repositories left on disk, numbers never reused (221). Packages of the
 # organization scope are owned here (228), and so is a pool: a pool serves
 # one organization and shares nothing with another but the platform (241).
+# The organization is its identity account (247): membership is the
+# Application's assignment to it, administered from the account item (255).
 machine: organization
 version: 2
 kind: object
@@ -24,7 +26,7 @@ object: organization
 parent: null
 singleton: organization
 owns: [repository, package, pool]
-satisfies: [15, 204, 207, 208, 218, 219, 220, 221, 241]
+satisfies: [15, 204, 207, 208, 218, 219, 220, 221, 241, 247, 255]
 record:
   name: string           # the operator's name for it; may but need not coincide with a git-host organization (219)
   blueprints: string          # <org>/<blueprints repository>

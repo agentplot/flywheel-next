@@ -114,19 +114,25 @@ packages:
     names the package declares; a name with no value is package.secrets_placed
     false, the package-secret decision under attention.
   index: "`flywheel-index/1`: one entry per package — name, kind, scope, repository URL, tag, set version, a one-line doc"
-  sign_in: "authentication is the host's (233): a host serving the page has one sign-in kind, declared on the host — `flywheel.yaml` hosts.<host>.sign_in, or the host's own configuration under its root — default `{kind: github}` (234): the page signs in with GitHub's OAuth web flow behind a host on the private network, and with GitHub's device flow on a page served on the operator's own computer, so the identity is the GitHub username everywhere and there is no local-user case; other kinds `{kind: tailnet}` (the network is the identity), `{kind: oauth, provider, org}`, `{kind: oidc, issuer, audience}`, whose identities appear in `operators:` as the kind renders them. The kind fronts the page and the tool server the host serves (155, 217j) and is the same for every organization the host serves, so switching organizations never changes the signed-in identity. A sign-in kind is a per-host package (228), never an organization package; the github kind ships in the binary. Every op-response the page writes carries the identity as given_by (153). Authorization is the organization's: its manifest's `operators:` (blueprints.yaml manifest) lists the identities allowed to respond in it, and the tool server refuses a call from any other (surfaces.yaml tools.identity)"
+  identity: "one provider, Frontegg, bound in profiles/identity.yaml (243): a host declares the environment it serves the page under — `flywheel.yaml` hosts.<host>.identity: {environment, client_id}; a self-managed host names the flywheel's Production environment and never syncs definitions (252), the hosted service's hosts name the service's — not a sign-in kind; there is no sign-in package. The host's served name is its one per-host fact, registered once on the environment's redirect list (244); on the operator's own computer the name is `https://<host>.flywheel.localhost`, served by the flywheel's own proxy (router.local, 245). The identity is the same for every organization the host serves, so switching never changes it; every op-response the page writes carries it as given_by (153); the tool server checks the token's permission per tool (249, surfaces.yaml tools.identity). Sign-in kinds tailnet, oauth and oidc are gone: an organization that needs its directory connects it to its Frontegg account, never to a host"
+  address: "one address per host, the organization in the path (205a): `https://<served name>/<org>/...` for every organization the host has a root for; a link names the organization it opens; the host's own screen is `/host/` and the settings form links to it for the host's keys"
   add_host: "`add-host` provisions with the operator's own platform credentials carried in the call and held only for its duration — a container on the platform, a VM, or nothing when adopting — installs the launcher entry with the binary, and writes the host record in enrolment proposed with platform and parts; place_secrets hands the chosen parts' secrets to the platform's secret store on the yes; issue_enrolment_token mints a token valid 24h, shown once on the setup surface; `flywheel host join --token <t>` on the host presents it, the record's first heartbeat is the proof, and the token is spent (230)"
 app:
   doc: |
-    One GitHub App is the connection (207). The manifest names its id
-    (`flywheel.yaml` app.id); the private key is the operator's secret,
-    placed on each host outside every repository (`<root>/<org>/app.pem`,
-    mode 600) and never by an agent. The installation on the organization
+    One GitHub App is the connection (207). A self-managed organization
+    uses its own App: the manifest names its id (`flywheel.yaml` app.id)
+    and the private key is the operator's secret, placed on each host
+    outside every repository (`<root>/<org>/app.pem`, mode 600) and never
+    by an agent (207a). The hosted tiers use the service's App: its key
+    never leaves the service, and a pool host (240) or any host the service
+    runs asks the service for its installation tokens instead of minting
+    them, scoped as 207 scopes them. The installation on the organization
     must cover every repository the manifest lists; `extend_installation`
     adds a new repository where the App's permissions allow, and where they
     do not the repository's `uncovered` decision under attention asks the
-    operator. No host or session uses a personal token.
-  host_token: "the host mints an installation token from the key for its own git-host calls (pushes, the tracker's items, request reads), refreshed before expiry, held in memory only"
+    operator. No host or session uses a personal token, and no host or
+    session holds an identity-provider user credential (251).
+  host_token: "self-managed: the host mints an installation token from the key for its own git-host calls (pushes, the tracker's items, request reads), refreshed before expiry, held in memory only; hosted: the host presents its enrolment identity to the service's token endpoint and receives an installation token scoped to the organization's repositories, refreshed the same way, the key never on the host (207a)"
   place_token: "prepare_place mints a short-lived installation token scoped to the place's repository alone and writes it to `.flywheel/token` in the place (untracked, mode 600) with a git credential helper that reads it; it serves reads — fetching the organization's repositories, reading the item's context at the git host — and never a push: a session commits in its place and the machinery merges, and the `pre-push` hook refuses every push (43, context.yaml ruling 17); the token is written nowhere else and expires with the hour (207)"
 templates:
   doc: |
@@ -172,9 +178,15 @@ router:
     operator's private network is published unless the operator says so
     there. A reverse proxy owned by the flywheel binary is not required by
     any of the three (gaps.md).
+  local:
+    where: the operator's own computer; the flywheel's own per-computer proxy, one process shared by every host on the computer (232), the default there (245)
+    bind: "127.0.0.1"
+    port: "hashed from the place's path within the host's port_range"
+    endpoint: "`https://<place>-<service>.flywheel.localhost` for a service, and `https://<host>.flywheel.localhost` for each host's page and tool server (244, 245); the proxy holds a locally trusted certificate for `*.flywheel.localhost` and answers `*.localhost` on 443, so one wildcard redirect entry admits every host on every operator's machine; the flywheel needs no outside tool for it"
+    served: "the proxy's route table for the host's port range"
   port_range: "`flywheel.yaml` hosts.<host>.port_range: [lo, hi], default a 1000-port block chosen from the host id's hash; the place-path hash is folded into the host's range, so two hosts on one computer never derive the same port (191, 232)"
   portless:
-    where: the operator's own machine; the place is named, the host is implicit
+    where: the operator's own machine, when the operator prefers portless to the flywheel's own proxy (router.local); portless cannot serve the host's page name, so a host under portless still runs the local proxy for `<host>.flywheel.localhost` (245)
     bind: "127.0.0.1"
     port: "`portless port <name>` for the worktree, hashed from the place's path"
     endpoint: "`https://<place>.localhost` as `portless list` names it for the service in this worktree; `<place>` is the worktree name portless derives, so `https://atlas-plan-rows-web.localhost` for service `web` of bolt `plan-rows` of repository `atlas`"

@@ -15,7 +15,7 @@ machine: session
 version: 4
 kind: template
 tier: core
-satisfies: [4, 24, 65, 66, 67, 70, 71, 72, 73, 80, 93, 171, 173, 174, 190, 196, 197, 226]
+satisfies: [4, 24, 65, 66, 67, 70, 71, 72, 73, 80, 93, 171, 173, 174, 190, 196, 197, 226, 251]
 params:
   agent: the agent definition to start
   kind: the agent program that runs it — claude, codex or opencode; default claude; started through the one command whatever the kind (173)

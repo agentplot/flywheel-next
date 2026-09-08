@@ -23,7 +23,7 @@
 format: flywheel-profile/1
 name: tracker
 complete: true
-inherits: [host, sessions, blueprints, record-derived, surfaces]
+inherits: [host, sessions, blueprints, record-derived, surfaces, identity]
 
 records:
   where: "issue in `<org>/flywheel-state`, title `<kind> <id>`, body = one fenced ```flywheel block holding the record (the envelope of model.md 3.4); labels `kind:<kind>` and `state:<leaf>` and the board column are projections written after the body. Objects: intent, elaboration, bolt, unit, work-item, operator-session, curation, planning, plan, sink, host; and one issue per numbered decision (below)"

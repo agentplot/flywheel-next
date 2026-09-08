@@ -24,13 +24,15 @@ manifest:
     capabilities are derived from the map elements and contexts that name it as
     home, and the entry's name is what a node's `home` names:
 
-      operators:                                   # authorization is the organization's (233): the identities allowed to respond in it, GitHub usernames by default (234), or as another sign-in kind bound on a host renders them; a response from any other identity is refused and recorded as refused; edited on the account item's settings form, one response per save
-        - cswanberg                                # a bare identity: a page sink only (236a)
-        - identity: dana                           # an entry with addresses per chat kind (236a): one chat sink per address, presented by the host running that kind's package and holding the lease; the sink is added or removed in the same write as this list
+      # operators: and roles: are not authored (247, 248): the members are the
+      # users assigned to the organization's identity account and the roles
+      # the token carries, derived at every fetch and shown read-only on the
+      # settings form (identity.yaml accounts); a member is added or removed
+      # on the account (255), never here.
+      addresses:                                   # authored (236a): each member's address per chat kind, keyed by user id; one chat sink per address, presented by the host running that kind's package and holding the lease; a member with no entry has a page sink only; the sink is added or removed in the same write as this list
+        "usr_01H8X…":                              # Frontegg user id
           discord: "118230000000000001"
           slack: U0123ABCD
-      roles:                                       # named roles a decision may be owned by (237): a role maps to members
-        reviewer: [cswanberg]
       pools:                                       # host pools (240–242, host.yaml pool:)
         burst: {platform: fly, image: auto, bound: 4, cost: {per_host_hour: 0.10, ceiling_per_day: 5}, retire_after: 20m, covers: {kinds: [unit, work-item], repositories: [atlas], unit_types: [default, fast]}}
       repositories:
