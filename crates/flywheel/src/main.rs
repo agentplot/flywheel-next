@@ -1,5 +1,6 @@
 use anyhow::{Context, Result};
 use clap::{Parser, Subcommand};
+use flywheel::console;
 use flywheel::report::{self, Report, Reported, SESSION_ENV};
 use flywheel_scenario::{conformance, scenario, Runtime, Store};
 use std::path::PathBuf;
@@ -136,8 +137,67 @@ fn open(cli: &Cli) -> Result<Runtime> {
     Ok(Runtime::new(defs, store))
 }
 
-fn print_rail(rt: &mut Runtime) {
-    let d = rt.decisions();
+/// One tick as this host runs it: the stand-in's own world moves first — the
+/// heartbeats, the scripted sessions, the tethered processes — and then the
+/// engine's pass goes through the store's operations (D7, 125). Group 6 gives
+/// this a home of its own in `flywheel host`.
+fn host_tick(rt: &mut Runtime) -> Result<usize> {
+    use flywheel_atoms::Scope;
+    rt.store.tick += 1;
+    let now = rt.store.now;
+    let hosts: Vec<String> = rt
+        .store
+        .objects
+        .values()
+        .filter(|o| o.machine == "host" && o.record.get("alive").and_then(|v| v.as_bool()).unwrap_or(true))
+        .map(|o| o.id.clone())
+        .collect();
+    for h in hosts {
+        rt.store.set_given(&h, "host.last_seen", serde_json::json!(now.to_rfc3339()));
+    }
+    rt.store.play_scripts();
+    rt.store.play_services();
+
+    let defs = rt.defs.clone();
+    let ticked = console::tick(
+        &mut rt.store,
+        &defs,
+        &Scope::All,
+        |store, object, region, effect| flywheel_scenario::world::perform(&defs, store, object, region, effect),
+        |store, fired, tail| {
+            store.log(
+                "transition",
+                &fired.object,
+                format!(
+                    "{}: {} → {}{}",
+                    fired.region,
+                    fired.from,
+                    fired.to,
+                    fired.note.as_ref().map(|n| format!(" — {n}")).unwrap_or_default()
+                ),
+            );
+            store.tail.extend(tail);
+        },
+    )?;
+    rt.store.now = rt.store.now + chrono::Duration::seconds(rt.store.tick_seconds);
+    Ok(ticked.transitions)
+}
+
+/// Tick until nothing fires, so one response cascades as far as it can.
+fn settle(rt: &mut Runtime, max: usize) -> Result<usize> {
+    let mut total = 0;
+    for _ in 0..max {
+        let n = host_tick(rt)?;
+        total += n;
+        if n == 0 { break; }
+    }
+    Ok(total)
+}
+
+fn print_rail(rt: &mut Runtime) -> Result<()> {
+    // Through the trait surface: the objects from `list`, the numbers from the
+    // rail record (15, 131).
+    let d = console::rail(&mut rt.store, &rt.defs)?;
     let count = d.iter().filter(|x| x.group != "attention").count();
     println!("PLAN · {} · tick {} · {} decisions", rt.store.now.format("%Y-%m-%d %H:%M"), rt.store.tick, count);
     for g in ["approve", "decide", "answer", "attention"] {
@@ -154,6 +214,7 @@ fn print_rail(rt: &mut Runtime) {
             println!("        {:<8} {:<40} {}", t.kind, t.object, t.at.format("%H:%M"));
         }
     }
+    Ok(())
 }
 
 #[tokio::main]
@@ -173,35 +234,43 @@ async fn main() -> Result<()> {
             let defs = flywheel_engine::load::load_dir(&cli.defs)?;
             let sc = scenario::load(path)?;
             let mut rt = scenario::seed(defs, &sc);
+            // The described world is the stand-in's (93); the objects and the
+            // register reach the store through its own operations (125, 131).
+            let objects: Vec<_> = rt.store.objects.values().cloned().collect();
+            let start = console::register(&rt.store)?.next_number;
+            let defs = rt.defs.clone();
+            console::seed(&mut rt.store, &defs, &objects, Some(start))?;
             if *drive { scenario::drive(&mut rt, &sc); }
             flywheel_scenario::save(&rt.store, &cli.state)?;
             println!("seeded {} · {} objects", sc.scenario, rt.store.objects.len());
-            print_rail(&mut rt);
+            print_rail(&mut rt)?;
         }
         Cmd::Tick { n } => {
             let mut rt = open(&cli)?;
-            let fired = if *n == 0 { rt.settle(50) } else { (0..*n).map(|_| rt.tick()).sum() };
+            let fired = if *n == 0 { settle(&mut rt, 50)? } else { let mut total = 0; for _ in 0..*n { total += host_tick(&mut rt)?; } total };
             flywheel_scenario::save(&rt.store, &cli.state)?;
             println!("{fired} transitions");
-            print_rail(&mut rt);
+            print_rail(&mut rt)?;
         }
         Cmd::Respond { number, answer } => {
             let mut rt = open(&cli)?;
-            rt.respond(*number, &answer.join(" "), "cli");
-            let fired = rt.settle(50);
+            let (_, journal) = console::respond(&mut rt.store, &rt.defs, *number, &answer.join(" "), "cli")?;
+            for n in journal { rt.store.log(&n.kind, &n.object, n.text); }
+            let fired = settle(&mut rt, 50)?;
             flywheel_scenario::save(&rt.store, &cli.state)?;
             println!("{fired} transitions");
-            print_rail(&mut rt);
+            print_rail(&mut rt)?;
         }
         Cmd::Dictate { object, answer } => {
             let mut rt = open(&cli)?;
-            rt.dictate(object, &answer.join(" "), "cli");
-            let fired = rt.settle(50);
+            let (_, journal) = console::dictate(&mut rt.store, &rt.defs, object, &answer.join(" "), "cli")?;
+            for n in journal { rt.store.log(&n.kind, &n.object, n.text); }
+            let fired = settle(&mut rt, 50)?;
             flywheel_scenario::save(&rt.store, &cli.state)?;
             println!("{fired} transitions");
-            print_rail(&mut rt);
+            print_rail(&mut rt)?;
         }
-        Cmd::Rail => { let mut rt = open(&cli)?; print_rail(&mut rt); }
+        Cmd::Rail => { let mut rt = open(&cli)?; print_rail(&mut rt)?; }
         Cmd::Log { n } => {
             let rt = open(&cli)?;
             for l in rt.store.log.iter().rev().take(*n).collect::<Vec<_>>().into_iter().rev() {

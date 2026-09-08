@@ -1,0 +1,130 @@
+$ flywheel seed scenarios/rail-mockup.yaml
+seeded rail-mockup · 27 objects
+PLAN · 2026-09-04 14:40 · tick 0 · 9 decisions
+  APPROVE
+     412  intent-proposed        intent/atlas-provider-limits             → yes · drop · split
+     413  elaboration-proposed   elaboration/atlas-provider-limits/research → yes · drop · type <name> · pick <intents> · <intent>: drop
+     414  elaboration-proposed   elaboration/atlas-provider-limits/prototype → yes · drop · type <name> · pick <intents> · <intent>: drop
+     416  unit-proposed          unit/atlas/status-writer                 → yes · drop · redo: <notes> · bolt <name> · new bolt <name> · rename <name> · type <name> · pick <letters> · later
+     418  unit-proposed          unit/atlas/retry-jitter                  → yes · drop · redo: <notes> · bolt <name> · new bolt <name> · rename <name> · type <name> · pick <letters> · later
+     419  unit-proposed          unit/atlas/chores-1                      → yes · drop · redo: <notes> · bolt <name> · new bolt <name> · rename <name> · type <name> · pick <letters> · later
+     420  unit-proposed          unit/new-repo/baseline-1                 → yes · drop · redo: <notes> · bolt <name> · new bolt <name> · rename <name> · type <name> · pick <letters> · later
+  DECIDE
+     415  claim-moved            bolt/atlas/plan-rows                     → amend bolt · land and follow
+  ANSWER
+     417  question               unit/atlas/rail-tail/wi-1                → <text>
+  SINCE
+        dropped  unit/atlas/chore-2b                      06:10
+        closed   intent/host-liveness                     06:10
+        landed   bolt/switchboard/idle-timeout            13:52
+
+$ flywheel rail
+PLAN · 2026-09-04 14:40 · tick 0 · 9 decisions
+  APPROVE
+     412  intent-proposed        intent/atlas-provider-limits             → yes · drop · split
+     413  elaboration-proposed   elaboration/atlas-provider-limits/research → yes · drop · type <name> · pick <intents> · <intent>: drop
+     414  elaboration-proposed   elaboration/atlas-provider-limits/prototype → yes · drop · type <name> · pick <intents> · <intent>: drop
+     416  unit-proposed          unit/atlas/status-writer                 → yes · drop · redo: <notes> · bolt <name> · new bolt <name> · rename <name> · type <name> · pick <letters> · later
+     418  unit-proposed          unit/atlas/retry-jitter                  → yes · drop · redo: <notes> · bolt <name> · new bolt <name> · rename <name> · type <name> · pick <letters> · later
+     419  unit-proposed          unit/atlas/chores-1                      → yes · drop · redo: <notes> · bolt <name> · new bolt <name> · rename <name> · type <name> · pick <letters> · later
+     420  unit-proposed          unit/new-repo/baseline-1                 → yes · drop · redo: <notes> · bolt <name> · new bolt <name> · rename <name> · type <name> · pick <letters> · later
+  DECIDE
+     415  claim-moved            bolt/atlas/plan-rows                     → amend bolt · land and follow
+  ANSWER
+     417  question               unit/atlas/rail-tail/wi-1                → <text>
+  SINCE
+        dropped  unit/atlas/chore-2b                      06:10
+        closed   intent/host-liveness                     06:10
+        landed   bolt/switchboard/idle-timeout            13:52
+
+$ flywheel tick 1
+8 transitions
+PLAN · 2026-09-04 14:41 · tick 1 · 12 decisions
+  APPROVE
+     412  intent-proposed        intent/atlas-provider-limits             → yes · drop · split
+     413  elaboration-proposed   elaboration/atlas-provider-limits/research → yes · drop · type <name> · pick <intents> · <intent>: drop
+     414  elaboration-proposed   elaboration/atlas-provider-limits/prototype → yes · drop · type <name> · pick <intents> · <intent>: drop
+     416  unit-proposed          unit/atlas/status-writer                 → yes · drop · redo: <notes> · bolt <name> · new bolt <name> · rename <name> · type <name> · pick <letters> · later
+     418  unit-proposed          unit/atlas/retry-jitter                  → yes · drop · redo: <notes> · bolt <name> · new bolt <name> · rename <name> · type <name> · pick <letters> · later
+     419  unit-proposed          unit/atlas/chores-1                      → yes · drop · redo: <notes> · bolt <name> · new bolt <name> · rename <name> · type <name> · pick <letters> · later
+     420  unit-proposed          unit/new-repo/baseline-1                 → yes · drop · redo: <notes> · bolt <name> · new bolt <name> · rename <name> · type <name> · pick <letters> · later
+     421  bolt-close             bolt/switchboard/plan-rows               → yes · hold
+  DECIDE
+     415  claim-moved            bolt/atlas/plan-rows                     → amend bolt · land and follow
+     422  intent-close           intent/loop-granularity                  → close · keep open
+     423  idle                   elaboration/rail-derivation/prototype    → finish · keep
+  ANSWER
+     417  question               unit/atlas/rail-tail/wi-1                → <text>
+  ATTENTION
+     424  response-unapplicable  response/lost-1                          → ok
+  SINCE
+        dropped  unit/atlas/chore-2b                      06:10
+        closed   intent/host-liveness                     06:10
+        landed   bolt/switchboard/idle-timeout            13:52
+
+$ flywheel respond 412 yes
+18 transitions
+PLAN · 2026-09-04 14:57 · tick 17 · 11 decisions
+  APPROVE
+     413  elaboration-proposed   elaboration/atlas-provider-limits/research → yes · drop · type <name> · pick <intents> · <intent>: drop
+     414  elaboration-proposed   elaboration/atlas-provider-limits/prototype → yes · drop · type <name> · pick <intents> · <intent>: drop
+     416  unit-proposed          unit/atlas/status-writer                 → yes · drop · redo: <notes> · bolt <name> · new bolt <name> · rename <name> · type <name> · pick <letters> · later
+     418  unit-proposed          unit/atlas/retry-jitter                  → yes · drop · redo: <notes> · bolt <name> · new bolt <name> · rename <name> · type <name> · pick <letters> · later
+     419  unit-proposed          unit/atlas/chores-1                      → yes · drop · redo: <notes> · bolt <name> · new bolt <name> · rename <name> · type <name> · pick <letters> · later
+     420  unit-proposed          unit/new-repo/baseline-1                 → yes · drop · redo: <notes> · bolt <name> · new bolt <name> · rename <name> · type <name> · pick <letters> · later
+     421  bolt-close             bolt/switchboard/plan-rows               → yes · hold
+  DECIDE
+     415  claim-moved            bolt/atlas/plan-rows                     → amend bolt · land and follow
+     422  intent-close           intent/loop-granularity                  → close · keep open
+     423  idle                   elaboration/rail-derivation/prototype    → finish · keep
+  ANSWER
+     417  question               unit/atlas/rail-tail/wi-1                → <text>
+  ATTENTION
+     424  response-unapplicable  response/lost-1                          → ok
+     425  host-gone              host/mac-mini                            → takeover · wait
+  SINCE
+        merged   unit/atlas/rail-tail/wi-2                14:55
+        dropped  unit/atlas/chore-2b                      06:10
+        closed   intent/host-liveness                     06:10
+        landed   bolt/switchboard/idle-timeout            13:52
+
+$ flywheel dictate bolt/atlas/plan-rows land and follow
+3 transitions
+PLAN · 2026-09-04 15:00 · tick 20 · 11 decisions
+  APPROVE
+     413  elaboration-proposed   elaboration/atlas-provider-limits/research → yes · drop · type <name> · pick <intents> · <intent>: drop
+     414  elaboration-proposed   elaboration/atlas-provider-limits/prototype → yes · drop · type <name> · pick <intents> · <intent>: drop
+     416  unit-proposed          unit/atlas/status-writer                 → yes · drop · redo: <notes> · bolt <name> · new bolt <name> · rename <name> · type <name> · pick <letters> · later
+     418  unit-proposed          unit/atlas/retry-jitter                  → yes · drop · redo: <notes> · bolt <name> · new bolt <name> · rename <name> · type <name> · pick <letters> · later
+     419  unit-proposed          unit/atlas/chores-1                      → yes · drop · redo: <notes> · bolt <name> · new bolt <name> · rename <name> · type <name> · pick <letters> · later
+     420  unit-proposed          unit/new-repo/baseline-1                 → yes · drop · redo: <notes> · bolt <name> · new bolt <name> · rename <name> · type <name> · pick <letters> · later
+     421  bolt-close             bolt/switchboard/plan-rows               → yes · hold
+  DECIDE
+     422  intent-close           intent/loop-granularity                  → close · keep open
+     423  idle                   elaboration/rail-derivation/prototype    → finish · keep
+     426  claim-moved            bolt/atlas/plan-rows                     → amend bolt · land and follow
+  ANSWER
+     417  question               unit/atlas/rail-tail/wi-1                → <text>
+  ATTENTION
+     424  response-unapplicable  response/lost-1                          → ok
+     425  host-gone              host/mac-mini                            → takeover · wait
+  SINCE
+        merged   unit/atlas/rail-tail/wi-2                14:55
+        dropped  unit/atlas/chore-2b                      06:10
+        closed   intent/host-liveness                     06:10
+        landed   bolt/switchboard/idle-timeout            13:52
+
+$ flywheel log 12
+t12   transition unit/atlas/rail-tail/wi-2                place.place.life: merging → merging
+t12   effect     unit/atlas/rail-tail/wi-2                merge_place
+t13   transition unit/atlas/rail-tail/wi-2                place.place.life: merging → merged
+t14   transition unit/atlas/rail-tail/wi-2                place.place.life: merged → removing
+t15   transition unit/atlas/rail-tail/wi-2                place.place.life: removing → removed
+t16   transition unit/atlas/rail-tail/wi-2                life: merging → merged
+t17   create     response/page-2                          response created
+t17   dictation  bolt/atlas/plan-rows                     land and follow
+t18   transition bolt/atlas/plan-rows                     life.open.citations: moved → current
+t18   effect     bolt/atlas/plan-rows                     record_citation_choice — the bolt proceeds on the version it cites; the ledger cell is stale, so planning follows
+t19   transition bolt/atlas/plan-rows                     life.open.citations: current → moved
+t19   transition response/page-2                          life: given → applied
+

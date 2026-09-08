@@ -64,12 +64,66 @@ impl Store {
     }
 }
 
+/// The rail's own record id. The register — decision id to number, and the
+/// counter — is the rail record, reachable through `get` like any other
+/// (`profiles/record-derived.yaml`), so nothing needs a seventh operation to
+/// read or write it.
+pub const RAIL: &str = "rail";
+
+impl Store {
+    /// The rail record: the register and the decisions standing after the last
+    /// derive, as an object.
+    fn rail_record(&self) -> Object {
+        let mut record: BTreeMap<String, serde_json::Value> = BTreeMap::new();
+        record.insert("next".into(), serde_json::json!(self.register.next_number));
+        record.insert("numbers".into(), serde_json::json!(self.register.numbers));
+        record.insert("standing".into(), serde_json::json!(self.standing));
+        Object {
+            id: RAIL.to_string(),
+            machine: "rail".into(),
+            parent: None,
+            config: Default::default(),
+            entered_at: Default::default(),
+            record,
+            counters: Default::default(),
+            applied_responses: vec![],
+            seq: self.writes,
+            created: 0,
+        }
+    }
+
+    /// Take a written rail record back into the register it projects.
+    fn set_rail_record(&mut self, record: &Object) {
+        if let Some(n) = record.record.get("next").and_then(|v| v.as_u64()) {
+            self.register.next_number = n as u32;
+        }
+        if let Some(numbers) = record.record.get("numbers") {
+            if let Ok(numbers) = serde_json::from_value(numbers.clone()) {
+                self.register.numbers = numbers;
+            }
+        }
+        if let Some(standing) = record.record.get("standing") {
+            if let Ok(standing) = serde_json::from_value(standing.clone()) {
+                self.standing = standing;
+            }
+        }
+    }
+}
+
 impl Records for Store {
     fn get(&self, id: &str) -> Result<Option<Object>> {
+        if id == RAIL {
+            return Ok(Some(self.rail_record()));
+        }
         Ok(self.objects.get(id).cloned())
     }
 
     fn put(&mut self, id: &str, record: &Object, base_seq: u64) -> Result<PutOutcome> {
+        if id == RAIL {
+            self.set_rail_record(record);
+            let seq = self.moved_at(id);
+            return Ok(PutOutcome::Written { seq });
+        }
         let held = self.objects.get(id).map(|o| o.seq).unwrap_or(0);
         if held != base_seq {
             // The loser learns that it lost and reads again before deciding
@@ -78,6 +132,12 @@ impl Records for Store {
         }
         let mut next = record.clone();
         next.seq = held + 1;
+        // An object the store has not seen takes the next creation ordinal;
+        // the ordinal is the store's to give, not the caller's.
+        if next.created == 0 && !self.objects.contains_key(id) {
+            next.created = self.next_created;
+            self.next_created += 1;
+        }
         self.objects.insert(id.to_string(), next);
         let _ = self.moved_at(id);
         Ok(PutOutcome::Written { seq: held + 1 })
@@ -106,6 +166,11 @@ impl Records for Store {
     }
 
     fn responses(&self, id: &str) -> Result<Vec<Response>> {
+        // Responses arrive at the rail, so the rail's responses are the ones in
+        // hand — which is what a tick reads before it decides anything.
+        if id == RAIL {
+            return Ok(self.responses.clone());
+        }
         let numbers: Vec<u32> = self
             .register
             .numbers

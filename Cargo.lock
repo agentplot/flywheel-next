@@ -428,6 +428,19 @@ dependencies = [
 ]
 
 [[package]]
+name = "flywheel-store-git"
+version = "0.1.0"
+dependencies = [
+ "anyhow",
+ "chrono",
+ "flywheel-atoms",
+ "flywheel-domain",
+ "flywheel-engine",
+ "serde",
+ "serde_json",
+]
+
+[[package]]
 name = "flywheel-surface"
 version = "0.1.0"
 dependencies = [
