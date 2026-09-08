@@ -1,6 +1,12 @@
 # One verdict slot: a standing claim × a repository in its scope (A.14). The
 # verdict is a session's judgment, recorded by the machinery from a planning
-# or test exit; the machine only says when it is fresh and when it is stale:
+# or test exit. Two of the inputs handed to the judging session are mechanical
+# and the machinery reads them for it: whether the repository's standing
+# specifications hold a requirement naming this claim, and whether the version
+# that requirement names equals the claim's current version (99, 192). A
+# naming requirement whose version matches, with its scenarios passing, is
+# strong evidence and is not the verdict (100). The machine only says when the
+# verdict is fresh and when it is stale:
 # the claim's version moved, the cited evidence is gone, or a challenge move
 # stands against the claim since the verdict was judged (101, 116). The
 # backlog is derived: every cell not in judged.satisfied or
@@ -23,7 +29,7 @@ record:
   claim: string
   repository: string
   verdict: enum
-  claim_version: int
+  claim_version: hash    # the version judged: the content hash of the claim's requirement block (97)
   revision: revision
   evidence: list
   judged_at: time

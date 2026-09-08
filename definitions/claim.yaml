@@ -1,15 +1,22 @@
-# One statement in the design book of what is true at the destination (A.14).
-# The claim's state is where its text is: on an intent's line it is proposed,
-# on the blueprints' shared line it is standing. The machine writes nothing but an
-# attachment or a detachment; it is the index planning, curation and the
-# ledger read. A claim attaches to any id on the context map — a context, an
-# element, a relationship or a link — and the attachment lives with the claim
-# in its chapter block (97); its scope is the set of repositories homing what
-# it attaches to, both ends of a relationship or a link, computed from the
-# target map and never chosen; a claim attached to nothing is not planned
-# against (105, 198, 200). Only the attach and detach tools move an
-# attachment; a session moves one only in a writeback that also writes the
-# chapter, never for its own work (211).
+# One statement of what is true at the destination (A.14), written as an
+# OpenSpec requirement block in the blueprints' specifications:
+# `### Requirement: <name>` in `openspec/specs/<capability>/spec.md`, with its
+# `#### Scenario:` blocks under it. The claim's name is `<capability>/<name>`
+# and the chapter that explains it includes it by anchor, so the text has one
+# home and the two cannot drift (97). The claim's state is which tree holds
+# the requirement: an intent's delta (`openspec/changes/<intent>/specs/...`)
+# holds it while it is proposed, `openspec/specs/` on the blueprints' shared
+# line while it is standing, and the intent's landing is what moves it there
+# (49, 187). The machine writes nothing but an attachment or a detachment; it
+# is the index planning, curation and the ledger read. A claim attaches to any
+# id on the context map — a context, an element, a relationship or a link. The
+# specification's capability directory is one attachment and the requirement's
+# `Attaches:` line holds any more (97, 105); its scope is the set of
+# repositories homing what it attaches to, both ends of a relationship or a
+# link, computed from the target map and never chosen, and a claim attached to
+# nothing is not planned against (105, 198, 200). Only the attach and detach
+# tools move an attachment; a session moves one only in a writeback that also
+# writes the chapter, never for its own work (211).
 machine: claim
 version: 4
 kind: object
@@ -19,9 +26,9 @@ object: claim
 parent: null
 record:
   name: string
-  version: int           # moves only when the text moves; a lock hash proves it
-  attachments: list      # the map ids it attaches to — context, element, relationship or link — kept in the claim's block (97); the block's scope line is rendered from them; moved by the attach and detach tools, which do not move the version (105, 195, 200, 211)
-  scenarios: list
+  version: hash          # the content hash of the requirement block: its heading, its prose and its scenarios, and not the `Attaches:` line. It moves only when the text moves because it is the text; nothing checks it
+  attachments: list      # the map ids it attaches to — context, element, relationship or link. The specification's capability directory is one; the requirement's `Attaches:` line holds the rest (97, 105). The rendered scope comes from them; the attach and detach tools move them and never the version, because the line is outside the hash (105, 195, 200, 211)
+  scenarios: list        # the requirement's `#### Scenario:` blocks; OpenSpec refuses a requirement with none, so the format carries 112's rule
 regions:
   standing:
     initial: proposed
@@ -38,7 +45,7 @@ regions:
             to: retired
           - when: {response: "attach <element>"}
             to: standing
-            effects: [{do: attach_claim, args: {element: $response}, note: "the attach tool (193, 211); the attachment in the block and the rendered scope line move, the text and the version do not (97, 105, 200)"}]
+            effects: [{do: attach_claim, args: {element: $response}, note: "the attach tool (193, 211); the requirement's `Attaches:` line and the rendered scope move, the text and the version do not, because the line is outside the hash (97, 105, 200)"}]
           - when: {response: "detach <element>"}
             to: standing
             effects: [{do: detach_claim, args: {element: $response}, note: "the detach tool (211); cells leaving scope read as not-applicable (101)"}]

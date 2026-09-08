@@ -28,7 +28,7 @@ regions:
                          {all: [{ev: curation.unmoved_count, gte: 1}, {ev: curation.cadence_due, is: true}]}]}
             to: running
       running:
-        doc: one session, bounded job, fixed exits; it reads the unmoved signals against the claims index and the open intents
+        doc: one session, bounded job, fixed exits; it reads the unmoved signals against the standing claims in the blueprints' `openspec/specs/` and the open intents
         regions:
           place:
             initial: place

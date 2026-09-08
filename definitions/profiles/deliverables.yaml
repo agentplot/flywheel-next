@@ -23,7 +23,7 @@ version: 2
 stores:
   doc: "every entry names the store the machinery carries it into and the session types that are fed it (227); the carrying is an effect with a proof, the feeding is the session type's row in context.yaml and nothing else (89)"
   book:            "the book `src/` on the intent's line, then the shared line at the archive — merge_place (54), archive_intent (49)"
-  claims-index:    "the claim block in its chapter, rendered into `flywheel/claims.json` — the chapter's commit (120)"
+  specifications:  "the intent's requirement delta, `openspec/changes/<intent>/specs/<capability>/spec.md` on the intent's line, archived into `openspec/specs/` on the shared line at the landing — merge_place (54), archive_intent (49); written in the same commit as the chapter that includes it (97, 120)"
   target-map:      "`context-map/target.yaml` (or current.yaml in a landing writeback), rendered into `flywheel/map/*.json` — map_edit, attach_claim, set_home (211)"
   change-records:  "the intent's change directory, one per covered intent — merge_place, record_per_intent (187, 188)"
   state-document:  "the state store beside the proposal record — record_proposal (187)"
@@ -33,7 +33,7 @@ stores:
   intents:         "the state store: an intent in proposed — propose_intents (109)"
 shipped:
   book-chapter:       {producer: flywheel/skills/producers/book-chapter/SKILL.md,       schema: flywheel/schemas/book-chapter.md,       surface: review-view,  store: book,           feeds: [self-closing, standing, with-operator, explore-or-gathered, default, fast, chore, persona-test, planning], doc: "a chapter of the book in destination voice; the review view of 122 shows what changed"}
-  claim:              {producer: flywheel/skills/producers/claim/SKILL.md,              schema: flywheel/schemas/claim.md,              surface: review-view,  store: claims-index,   feeds: [curation, planning, capture-reader, default, fast, chore, persona-test, explore-or-gathered], doc: "a fenced claim block in the chapter that explains it, hash-locked (8.1); written in the same commit as the chapter (120)"}
+  claim:              {producer: flywheel/skills/producers/claim/SKILL.md,              schema: flywheel/schemas/claim.md,              surface: review-view,  store: specifications, feeds: [curation, planning, capture-reader, default, fast, chore, persona-test, explore-or-gathered], doc: "an OpenSpec requirement block with its scenarios, in the intent's delta; the chapter that explains it includes it by anchor and its version is the hash of the block (8.1, 97); written in the same commit as the chapter (120)"}
   context-map:        {producer: flywheel/skills/producers/context-map/SKILL.md,        schema: flywheel/schemas/context-map.md,        surface: review-view,  store: target-map,     feeds: [planning, default, fast, persona-test], doc: "the system context map, moved whenever a claim is written or amended (120, 121)"}
   conceptual-diagram: {producer: flywheel/skills/producers/conceptual-diagram/SKILL.md, schema: flywheel/schemas/diagram-conceptual.md, surface: review-view,  store: book,           feeds: [default, fast, persona-test], doc: "a conceptual diagram in the house style the schema fixes: palette, shapes, labelling"}
   logical-diagram:    {producer: flywheel/skills/producers/logical-diagram/SKILL.md,    schema: flywheel/schemas/diagram-logical.md,    surface: review-view,  store: book,           feeds: [default, fast, persona-test], doc: "a logical diagram in the same house style"}

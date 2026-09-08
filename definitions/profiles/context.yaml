@@ -11,7 +11,8 @@
 # in `rulings:` at the end so a response on this file can reverse it.
 #
 # Two facts shape every row. A design session's place is a worktree of the
-# blueprints at the intent's line: the book, the claim blocks, both maps, the
+# blueprints at the intent's line: the book, the standing specifications the
+# claims live in, both maps, the
 # vocabulary, the instructions and the intent's change directory are on its
 # disk. A construction, planning or chore session's place is a worktree of a
 # built repository: nothing of the blueprints is on its disk, so what it needs from
@@ -33,9 +34,9 @@ sessions:
     charged_by: curation.running (110, 171)
     schema_instruction: "the exit schema; `flywheel/schemas/move.md`, `flywheel/schemas/intent-proposal.md` through the deliverables binding (deliverables.yaml move, intent-proposal)"
     type_skill: "`flywheel/skills/curator/SKILL.md`"
-    work_order: "the unmoved signals (each with excerpt, kind, subject tags, argues_with); `flywheel/claims.json`; the open intents with their subjects and attached signals; the elaboration type names in the registry, for a gathering (188); the manifest's repository list, for a route offer (116, 182) (ruling 4)"
+    work_order: "the unmoved signals (each with excerpt, kind, subject tags, argues_with); the standing claims, read from the blueprints' `openspec/specs/`; the open intents with their subjects and attached signals; the elaboration type names in the registry, for a gathering (188); the manifest's repository list, for a route offer (116, 182) (ruling 4)"
     change_artifacts: "none; the place is off the blueprints' shared line and commits nothing (inputs: work-order, keep: false)"
-    chapters_and_claims: "the claims index in the order; the chapters are on disk and the order names, for each claim a signal argues with, its chapter path, so the curator reads the chapter behind the claim (ruling 4)"
+    chapters_and_claims: "the standing claims in the order; the chapters are on disk and the order names, for each claim a signal argues with, its chapter path, so the curator reads the chapter behind the claim (ruling 4)"
     map: "on disk; not in the order — subject tags are not matched against map elements (ruling 4)"
     surface_specification: "no"
     deliverables: "move, intent-proposal (deliverables.yaml); recorded as expected and compared with the exit (80)"
@@ -47,7 +48,7 @@ sessions:
     type_skill: "`flywheel/skills/planner/SKILL.md`; the producers `proposal-document` and `verdict`"
     work_order: "the backlog — every cell in scope not satisfied or not-applicable, with claim version and freshness (102); the as-built statements; every open bolt of the repository with its units, states, cited claim versions and citation choices (29, 103, 172); the challenge signals each stale cell rests on, which the proposal must cite (101); unconsumed asks naming the repository; redo notes; the unit type names in the registry it may name (37); the repository's derived kinds and capabilities (199); the actuals by unit type from every acceptance file of this repository, for calibrating the size estimates (172) (ruling 5)"
     change_artifacts: "the built repository at its shared line: the code, `openspec/specs` (the as-built), `flywheel/services.yaml`, `openspec/acceptance.yaml` of landed bolts; no line of its own"
-    chapters_and_claims: "the standing claim blocks in scope at their versions with scenarios, and the chapters that hold them, copied into `.flywheel/blueprints/` at the header's commit (97, 100; ruling 1)"
+    chapters_and_claims: "the standing claims in scope at their versions with scenarios, as the requirement blocks they are, and the chapters that include them, copied into `.flywheel/blueprints/` at the header's commit (97, 100; ruling 1)"
     map: "the map section for the repository: every element and context homed there with kind and effective home, and the claims attached to each with versions, from `flywheel/map/target.json` (199, 211; ruling 5)"
     surface_specification: "no"
     deliverables: "proposal-document, verdict (planning.yaml session params; ruling 6)"
@@ -57,9 +58,9 @@ sessions:
     charged_by: capture.reading (115)
     schema_instruction: "the exit schema; `flywheel/schemas/signal.md` (113, 114), the versioned signal record format (ruling 7)"
     type_skill: "`flywheel/skills/capture-reader/SKILL.md`"
-    work_order: "the capture record: source, event key, event time, who captured it, the pointer to the raw material (111); `flywheel/claims.json`, so a signal names the claims it argues with (113); the subject-tag vocabulary `flywheel/signal-tags.yaml` (ruling 7)"
+    work_order: "the capture record: source, event key, event time, who captured it, the pointer to the raw material (111); the standing claims from `openspec/specs/`, so a signal names the ones it argues with (113); the subject-tag vocabulary `flywheel/signal-tags.yaml` (ruling 7)"
     change_artifacts: "none; the place is off the blueprints' shared line and is removed on exit"
-    chapters_and_claims: "the claims index in the order; the chapters on disk"
+    chapters_and_claims: "the standing claims in the order; the chapters on disk"
     map: "no; the map view's one-gesture capture arrives as a forwarded message and needs no reader (201)"
     surface_specification: "no"
     deliverables: "signal (deliverables.yaml; capture.yaml session params)"
@@ -71,7 +72,7 @@ sessions:
     type_skill: "`flywheel/skills/chore-fixer/SKILL.md`"
     work_order: "the job: the line, the parent head the take tried, the approval (the cadence or the response, I1); the units whose commits conflict with the take, with the items and the claims they serve, so the fix keeps both sides' intent (ruling 8); for a request-review chore, the review's or check's text copied into the order beside its URL and id, since the session cannot reach the git host (176; ruling 9)"
     change_artifacts: "the place off the line with `git merge <parent>` left conflicted in it; for a review chore a clean place off the bolt's line; no change directory (60)"
-    chapters_and_claims: "for a conflict chore, the claim blocks the conflicting units cite, copied in (ruling 8); for a review chore, none unless the chore names a claim (64; ruling 19)"
+    chapters_and_claims: "for a conflict chore, the requirements the conflicting units cite, copied in (ruling 8); for a review chore, none unless the chore names a claim (64; ruling 19)"
     map: "no"
     surface_specification: "no"
     deliverables: "commits; verdict only when the chore names a claim — an entry that judges a claim is dropped from expected for a unit whose claims are empty (deliverables.yaml resolution; ruling 8)"
@@ -132,7 +133,7 @@ sessions:
     type_skill: "keyed by the agent name: `flywheel/skills/spec-writer/SKILL.md`, `builder`, `verifier`; the verify stage also the producer `verdict` (ruling 3)"
     work_order: "the unit document copied into `.flywheel/`; the unit's claims (name@version), depends_on, the target bolt; the item's ordinal and task; the type version in force in the header (57; ruling 16); after a rebase a `moved` entry (51); for a fresh session after a block, the answer at the top (70); for the verify stage what the verdict must judge: the named claims at their versions and their scenarios (99, 100) — not the send-back bound, which is the machinery's (41; ruling 16)"
     change_artifacts: "the built repository at the item's place off the bolt's line; the change directory the spec stage writes (`openspec/changes/<unit>/`); each later stage sees the earlier stage's commits on disk"
-    chapters_and_claims: "the cited chapters and their claim blocks at the header's blueprints commit, copied into `.flywheel/blueprints/` (97; ruling 1)"
+    chapters_and_claims: "the cited chapters and the requirements they include, at the header's blueprints commit, copied into `.flywheel/blueprints/` (97; ruling 1)"
     map: "the map section prepare_place writes from `flywheel/map/target.json`: the elements the unit builds — the ids its claims attach to, and those homed in the repository that the chapters name — each with context, kind and effective home, and the claims attached to each with versions (211)"
     surface_specification: "the chapter in force at the header's commit when a claim the unit cites is about a surface — attached to an element of a surface kind, or stated in a surface-specification chapter (212; gaps.md 212; ruling 2)"
     deliverables: "spec: change-directory, spec; build: commits, as-built-statements-naming-claims; verify: verify-report, verdict (default@5)"
@@ -147,7 +148,7 @@ sessions:
     charged_by: "work-item.in-type under chore@2: fix (chore-fixer)"
     schema_instruction: "by-type; no change directory (60)"
     type_skill: "`flywheel/skills/chore-fixer/SKILL.md`"
-    work_order: "the chore document (62), about, scope (bolt-line, intent-line, shared-line), the approval; every accepted chore of the same bolt gathered into the one session (63) with each document; a document that lives in another repository's change directory is copied into `.flywheel/chore/<offer id>.md` (ruling 19); when the chore names a claim (64), the claim block and its scenarios as a construction stage gets them (ruling 19)"
+    work_order: "the chore document (62), about, scope (bolt-line, intent-line, shared-line), the approval; every accepted chore of the same bolt gathered into the one session (63) with each document; a document that lives in another repository's change directory is copied into `.flywheel/chore/<offer id>.md` (ruling 19); when the chore names a claim (64), the requirement block and its scenarios as a construction stage gets them (ruling 19)"
     change_artifacts: "the place off the line the fix belongs on: a bolt's line, an intent's line (a blueprints worktree) or a repository's shared line"
     chapters_and_claims: "none unless the chore names a claim (ruling 19)"
     map: "no"
@@ -172,7 +173,7 @@ sessions:
     never: "a write without the operator's confirmation (194); context from a previous message (217a)"
 rulings:
   doc: "machines-and-context.md section 5, each point resolved with the recommended default or the most conservative reading; a response on this file reverses one"
-  1: "chapters and claim blocks reach a built-repository place by copy: prepare_place writes them under `.flywheel/blueprints/` at the header's blueprints commit, for planning, construction and chore sessions (host.yaml prepare_place)"
+  1: "chapters and the claims their specifications hold reach a built-repository place by copy: prepare_place writes them under `.flywheel/blueprints/` at the header's blueprints commit, for planning, construction and chore sessions (host.yaml prepare_place)"
   2: "a claim is about a surface when it attaches to an element of a surface kind or is stated in a surface-specification chapter; no field on the claim (gaps.md 212)"
   3: "skills and agent definitions are keyed by the agent name a machine or stage names; an elaboration type's by-type agent is the type name"
   4: "curation's order carries the type catalogue's names and the manifest's repository list, and the chapter paths behind the claims its signals argue with; not the map"

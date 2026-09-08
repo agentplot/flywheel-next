@@ -1,17 +1,21 @@
 # The part of every profile's binding that reads and writes the blueprints
-# repository: claims, the ledger, captures, signals and moves, the manifest,
+# repository: the standing specifications that hold the claims, the ledger,
+# captures, signals and moves, the manifest,
 # the type catalogue. The same in every profile; not a profile on its own.
 #
 # Tools: the blueprints repository is a git repository holding an mdBook; recutils
 # files (`recsel`, `recins`, `recset` through the `recutils` binary, or the
 # crate's own parser) for the ledger and the signal records; OpenSpec change
-# directories for intents; `flywheel claims check` as the blueprints' pre-commit
-# hook verifying every fenced claim block's lock hash.
+# directories for intents, whose `openspec/specs/<capability>/spec.md` files
+# hold the claims as requirement blocks (97). No hook checks a claim: its
+# version is the content hash of its requirement block, so it moves when and
+# only when the text moves.
 #
 # An intent is an OpenSpec change (`openspec/changes/<intent id>/`): its
 # elaborations' records — research notes, session records, prototype notes,
 # an interactive page — live in that change directory, and what they conclude
-# is written to the book's chapters and claims. A bolt has no change
+# is written to the book's chapters and to the requirement deltas the landing
+# archives into `openspec/specs/`. A bolt has no change
 # directory in the blueprints; a proposal's document sits beside its record in the
 # state store (187).
 format: flywheel-profile/1
@@ -43,8 +47,8 @@ manifest:
           item_merge: squash | merge               # 179
           personas: "personas/*.md"                # 56
 
-    `flywheel map check` (the blueprints' pre-commit hook, with `flywheel claims
-    check`) fails a commit in which a node's home names no manifest entry or
+    `flywheel map check` (the blueprints' pre-commit hook) fails a commit in
+    which a node's home names no manifest entry or
     a manifest entry is the home of no node (199). A repository's commit
     types are its own declaration, `flywheel/commit-types.yaml` in the built
     repository (185, 203).
@@ -88,10 +92,13 @@ context_map:
     121) and fails a map or vocabulary whose N the installed flywheel does
     not read; upgrading N is a chore (123).
 
-    Attachments live with the claim (97, 200): the claim's fenced block in
-    its chapter carries `attaches: [<ids>]`, outside the lock hash, and the
-    map carries no claims; `flywheel/claims.json` (rendered) joins claim to
-    map by id. Scope is computed from the target map through homes by the
+    Attachments live with the claim (97, 200): the specification's capability
+    directory is one attachment, and the requirement carries an `Attaches:`
+    line for any more. That line is outside the content hash, so an
+    attachment never moves the version (105). The map carries no claims; a
+    claim is joined to the map by the ids on those two, read from
+    `openspec/specs/` directly, with nothing rendered beside it. Scope is
+    computed from the target map through homes by the
     schema's scope table — a context: its home ∪ its elements' effective
     homes; an element: its effective home; a relationship: both contexts'
     scope ∪ the kernel's homes; a link: both elements' scope; nothing: empty,
@@ -107,7 +114,7 @@ context_map:
     Changing the table or either vocabulary re-derives kinds and
     capabilities only.
 
-    The ledger invariant (model.md 4.8): a verdict is keyed by claim, claim
+    The ledger invariant (model.md 8.2): a verdict is keyed by claim, claim
     version and repository; the verdicts a repository is due for are the
     claims attached to what it homes. Only a home moved, an element added to
     or removed from a home, a re-attachment, or a claim version moves a
@@ -168,14 +175,16 @@ map_edit_trailer:
 layout:
   doc: |
     The blueprints repository is the organization's (203). People and sessions
-    write the book (`src/`), the claim blocks in it, the context map
+    write the book (`src/`), whose chapters include their claims by anchor,
+    the standing specifications those claims live in
+    (`openspec/specs/<capability>/spec.md`), the context map
     (`context-map/current.yaml`, `context-map/target.yaml`) and the
     organization's map vocabulary (`flywheel/map-vocabulary.yaml`), the manifest (`flywheel.yaml`), the OpenSpec changes
     for intents (`openspec/changes/<intent id>/`) and the elaboration records
     inside them, under the book's own layout. The machinery writes only
     under `flywheel/` — `flywheel/signals/` (captures, signals, moves),
     `flywheel/ledger/`, `flywheel/map/` (the rendered maps),
-    `flywheel/claims.json` (the rendered claims index), `flywheel/packages/`
+    `flywheel/packages/`
     (organization packages of every kind — renderer, adapter, chat sink,
     runner, router, unit type, elaboration type, deliverable producer, map
     vocabulary, template, scenario pack, bundle — 228, 287; a **bundle** is a
