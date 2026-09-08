@@ -19,6 +19,11 @@
 # writes the record in `proposed`; the enrolment decision's yes places the
 # chosen parts' secrets and issues a one-time expiring token that admits the
 # host, a host already running the binary being adopted by the token alone.
+# An intermittent host — a laptop by default — past its stale window is away,
+# not gone (150a): shown with since-when and no attention line, its leases
+# standing and its sessions' clocks paused; the takeover decision is raised
+# only when a numbered decision or approved work waits on it or the long
+# bound passes, and its next heartbeat makes it alive with nothing to answer.
 # Several hosts run on one computer as separate processes, each with its own
 # id, root, multiplexer session, port range, heartbeat and leases, sharing
 # nothing but the git host (232); the scenario tool starts, stops and
@@ -37,6 +42,7 @@ record:
   platform: string      # the platform picked when the host was added, or none for the first host (230)
   parts: list           # the packages chosen for it at enrolment (229, 230)
   pool: string          # the pool that provisioned it, or none (240); a pool host is ephemeral and holds no place past its life
+  intermittent: bool    # a laptop by default, a cloud or pool host not (150a); past the stale window it is away rather than gone
   provider: string      # the environment provider bound on this host — devenv, devcontainer, nix, image (238)
 regions:
   enrolment:
@@ -160,11 +166,24 @@ regions:
         transitions:
           - when: {not: {ev: host.last_seen, older: 5m}}
             to: alive
+          - when: {all: [{ev: host.last_seen, older: 30m}, {ev: host.intermittent, is: true}]}
+            to: away
           - when: {ev: host.last_seen, older: 30m}
             to: gone
           - when: {response: takeover}
             to: released
             effects: [{do: expire_leases, note: "dictation takes over a stale host before the 30m bound (4)"}]
+      away:
+        doc: an intermittent host past its stale window (150a); shown as away with since-when and no attention line; its leases stand, its sessions are neither stalled nor lost and their clocks pause; it becomes the takeover decision only when a decision or approved work waits on it, or at the long bound
+        transitions:
+          - when: {not: {ev: host.last_seen, older: 5m}}
+            to: alive
+            note: back, with nothing to answer
+          - when: {any: [{ev: host.work_waiting, is: true}, {ev: host.last_seen, older: 24h}]}
+            to: gone
+          - when: {response: takeover}
+            to: released
+            effects: [{do: expire_leases, note: "dictation takes over an away host (4)"}]
       gone:
         doc: an attention line offers takeover; the leases expire only by the operator's response or the long bound
         decision: {kind: host-gone, group: attention, answers: [takeover, wait], shows: [host.last_seen], satisfies: [82, 150]}

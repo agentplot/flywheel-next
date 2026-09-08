@@ -160,6 +160,8 @@ members:
     member's page rail and chat filter to their own with `filter own`,
     the count staying the organization's; ownership changes nothing about
     what a decision is, whether it counts, or who may answer it.
+away:
+  doc: "an intermittent host past its stale window shows as away with since-when on the status view and the hosts surface (150a) — no attention line, its leases standing, its sessions shown as they were last reported with their clocks paused; the takeover decision appears only when a decision or approved work waits on it, or at the long bound, and its next heartbeat clears everything"
 hosts_surface:
   doc: "the hosts surface (229, 230) also shows each pool — its platform, bound, live hosts and image, and whether the image is behind the declarations (239) — with pool hosts listed under it (240); a host's environment provider and the host-environment decision when it cannot satisfy a repository (238); adding a pool host is never the operator's, retiring never asked"
   stores: "the organization's store (its packages under the blueprints' prefix) and a host's store (its per-host packages) are separate surfaces, reached from the account item and from the host respectively; neither lists the other's"

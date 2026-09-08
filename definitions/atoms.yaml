@@ -36,6 +36,8 @@ evidence:
   host.environment_satisfied: {of: host, type: bool, doc: the host's environment provider can activate the environment every repository it declares needs, at the declared versions (238); false is the host-environment decision and the host covers none of that work (149)}
   host.environment_difference: {of: host, type: string, doc: the first repository and tool the host cannot satisfy, for the decision (238)}
   host.pool:          {of: host, type: string, doc: the pool that provisioned this host, or none for a host the operator added (240)}
+  host.intermittent:  {of: host, type: bool, doc: declared intermittent — a laptop by default, a cloud or pool host not (150a); past its stale window it is away, not gone}
+  host.work_waiting:  {of: host, type: bool, doc: a numbered decision stands on an object this host holds, or approved work waits that only this host covers or whose lease it holds (150a); what turns an away host into the takeover decision}
   host.idle_since:    {of: host, type: time, doc: when the host last ran a session or held a lease that could fire; for a pool host's retirement (240)}
   place.environment:  {of: place, type: string, doc: the environment version activated in the place by prepare_place — the declaration's hash and the provider — recorded with the place (238)}
   # ---- pools (240–242)

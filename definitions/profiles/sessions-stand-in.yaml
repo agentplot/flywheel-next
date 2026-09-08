@@ -15,7 +15,7 @@ complete: false
 hosts:
   doc: "a scenario's `host:` step names the host the following steps run as and may start, stop, disconnect or return one by name (232, 95): `{name, start: true}` starts `flywheel host --name <name>` as a process of its own with its own root, multiplexer session and port range (host.yaml several_on_one_computer); `{name, lose: true}` stops the process without a farewell, so its heartbeat stops and its leases go stale (S13); `{name, disconnect: true}` cuts the process's route to the git host and nothing else, so it keeps ticking what it owns and commits locally (S18); `{name, return: true}` restores the route or restarts the process. Every host scenario — lost, takeover, bound reached, disconnected reconciling, several organizations — therefore runs on one laptop, and `flywheel scenario run` does the same with real processes when asked (`--hosts real`)"
 evidence:
-  session.pane:        {read: "present once the script's start has played for this session id and no stop has; absent otherwise"}
+  session.pane:        {read: "present once the script's start has played for this session id and no stop has; absent otherwise; while the holding host is away (150a) the last value stands"}
   session.activity:    {read: "the script's current activity for the id (working | idle); none when absent"}
   session.idle_since:  {read: "the scenario clock at the script's last activity change"}
   session.operator_present: {read: "a script entry with keystroke: true played within the last 30 minutes of scenario time"}

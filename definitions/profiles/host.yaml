@@ -243,6 +243,8 @@ evidence:
   host.environment_satisfied: {read: "for every repository the host's declaration covers: the provider in force can activate `flywheel/environment.yaml` (or the named devcontainer or devenv file) at the repository's shared head — `devenv` or `nix` evaluate it, `devcontainer` resolves its features, `image` holds the declarations' hash — checked at every fetch that moved a declaration (238)"}
   host.environment_difference: {read: "the first repository and tool the provider cannot produce, with the version asked"}
   host.pool:           {read: "get(host).pool"}
+  host.intermittent:   {read: "get(host).intermittent, from `flywheel.yaml` hosts.<host>.intermittent; default true for a host added with platform none (a laptop), false for a platform or pool host (150a)"}
+  host.work_waiting:   {read: "a register entry names a decision on an object whose lease this host holds; or a unit or item is approved or ready and unplaced and every other host covering it is not alive or holds its lease; false otherwise (150a)"}
   host.idle_since:     {read: "the newest of: the host's last session exit, its last lease release; now when it runs a session or holds a lease that could fire"}
   place.environment:   {read: "the place's record: the declaration's hash and the provider prepare_place activated"}
   pool.image_current:  {read: "the platform lists an image tagged with the hash of the current environment declarations of every repository the pool covers"}

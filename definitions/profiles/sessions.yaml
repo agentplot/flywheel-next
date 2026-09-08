@@ -78,8 +78,8 @@ identity:
     (173).
 evidence:
   session.pane:        {read: "`herdr agent status <session-id>`; present when the multiplexer lists the pane by that name"}
-  session.activity:    {read: "`herdr agent status`: the agent-aware state (working | idle); none when absent"}
-  session.idle_since:  {read: "`herdr agent status` last-activity time"}
+  session.activity:    {read: "`herdr agent status`: the agent-aware state (working | idle); none when absent. While the holding host is away (150a) the value the host last wrote on the session record stands"}
+  session.idle_since:  {read: "`herdr agent status` last-activity time. While the holding host is away (150a) the clock pauses: on the host's return the recorded idle_since is advanced by the time it was away before any `older` guard reads it, so a stall bound never counts absence"}
   session.operator_present: {read: "`herdr agent status` last human keystroke within the presence window: 30 minutes, a setting of this binding (24)"}
   session.pane_absent: {read: "`herdr agent status` reports no pane by that name"}
   session.exit:        {read: "the newest `exit` entry on the session's thread, written by `flywheel exit` (kind done | blocked | stalled with deliverables, question, note); none when there is no entry; invalid when the entry fails the exit schema in force"}
