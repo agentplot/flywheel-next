@@ -77,7 +77,7 @@ answered, route or drop — stored with the signal id, the target, the reason an
 the date (107). Curation SHALL run over signals with no move and SHALL NOT
 re-judge one that has a move; only the operator's response SHALL replace a move
 (107). Every move SHALL have a stated consequence (116). A challenge move SHALL record
-the name of the claim it argues with as text; the consequence that stales that
+the claim it argues with by name and version; the consequence that stales that
 claim's verdicts (101) belongs to the phase that has a ledger.
 
 #### Scenario: Twenty signals, every one moved — mirrors S08
