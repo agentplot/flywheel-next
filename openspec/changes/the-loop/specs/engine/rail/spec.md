@@ -6,23 +6,23 @@ tail shows since each sink last looked.
 
 ## ADDED Requirements
 
-### Requirement: The plan is derived, never stored
+### Requirement: The rail is derived, never stored
 
-The plan's content SHALL be a function of the current state of the system and
-not of what any process remembers, so that the same plan results after a restart
-(7, I7). The plan SHALL always be current: new material joins the standing plan
-and nothing waits for a next one (8). No rendering of the plan SHALL be stored
+The rail's content SHALL be a function of the current state of the system and
+not of what any process remembers, so that the same rail results after a restart
+(7, I7). The rail SHALL always be current: new material joins the standing rail
+and nothing waits for a next one (8). No rendering of the rail SHALL be stored
 (15).
 
-#### Scenario: The plan survives a restart unchanged — mirrors S05
+#### Scenario: The rail survives a restart unchanged — mirrors S05
 - **WHEN** the machinery restarts
-- **THEN** the plan derived after the restart is identical to the one before it,
+- **THEN** the rail derived after the restart is identical to the one before it,
   with the same decisions and the same numbers (7, I7)
 
-#### Scenario: New material joins the standing plan
+#### Scenario: New material joins the standing rail
 - **WHEN** a decision becomes the operator's while the operator is not looking
-- **THEN** it stands on the plan at once, and the operator who next opens the
-  plan sees everything that stands (8)
+- **THEN** it stands on the rail at once, and the operator who next opens the
+  rail sees everything that stands (8)
 
 ### Requirement: A decision exists exactly while its state is active
 
@@ -34,11 +34,11 @@ kind SHALL have exactly one creating condition and one retracting condition
 #### Scenario: A decision is retracted when its choice is gone
 - **WHEN** the condition that raised a decision no longer holds, without any
   response
-- **THEN** the decision disappears from the plan and its register entry records
+- **THEN** the decision disappears from the rail and its register entry records
   that it was retracted by the machinery (9, I3)
 
 #### Scenario: A proposal creates no work — mirrors S04
-- **WHEN** a session offers a finding on its own intent, the plan shows it as a
+- **WHEN** a session offers a finding on its own intent, the rail shows it as a
   proposed elaboration, and the operator drops it
 - **THEN** nothing was created before the response and nothing remains after it
   (5, 58, I1); the record points at the finding's document and never holds its
@@ -48,13 +48,13 @@ kind SHALL have exactly one creating condition and one retracting condition
 #### Scenario: A standing session is offered, never ended — mirrors S02
 - **WHEN** a standing elaboration's session goes idle and the machinery is then
   restarted
-- **THEN** the plan offers finish or keep, the offer still stands after the
+- **THEN** the rail offers finish or keep, the offer still stands after the
   restart, the session is alive, its place is neither removed nor rebased, and
   only the operator's response ends it (25, 26, I6, I7)
 
 #### Scenario: A thread whose work is done is offered for closing — mirrors S07
 - **WHEN** every elaboration of an intent is done and the operator answers close
-- **THEN** the plan offered the close and only the response closed it (22); the
+- **THEN** the rail offered the close and only the response closed it (22); the
   intent is archived and its line landed and removed as recorded effects, one
   each (49, 54, 93a); the tail shows it closed (14); and no other object moved
 
@@ -98,7 +98,7 @@ that has changed (15; the register's rule, model.md §5.2).
 ### Requirement: Decisions group, and any one can be answered alone
 
 Decisions SHALL be grouped so that "yes to all" is a meaningful answer for a
-simple plan, and any single decision SHALL be answerable on its own (11).
+simple rail, and any single decision SHALL be answerable on its own (11).
 
 #### Scenario: Yes to all expands into one response per decision
 - **WHEN** the operator answers "yes all" against a delivery carrying three
@@ -130,7 +130,7 @@ wait SHALL be a session's work and the next decision that is the operator's (13)
 
 ### Requirement: The tail is derived from one mark per sink
 
-The plan SHALL show, outside its count of decisions, what has reached done,
+The rail SHALL show, outside its count of decisions, what has reached done,
 landed, closed or dropped since the last delivery to the sink the operator is
 reading (14). One delivery mark per sink SHALL be the only recorded state behind
 the tail, which SHALL be derived like the decisions (14).

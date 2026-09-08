@@ -111,7 +111,7 @@ records by hand SHALL be curation (110).
 
 #### Scenario: Curation proposes, the operator opens
 - **WHEN** curation clusters signals into a proposed intent
-- **THEN** the intent stands as a proposal on the plan and becomes work only on
+- **THEN** the intent stands as a proposal on the rail and becomes work only on
   the operator's response (20, 110, 5)
 
 #### Scenario: A proposed intent shows its weight

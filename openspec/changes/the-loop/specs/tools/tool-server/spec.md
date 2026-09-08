@@ -49,9 +49,9 @@ and never as a response (4).
 - **THEN** the object takes the same transition the decision would have taken,
   with the same effects, and the act is recorded like any response (4, 12)
 
-### Requirement: A dictation skips the plan and is applied directly
+### Requirement: A dictation skips the rail and is applied directly
 
-The operator's own dictation SHALL skip the plan and be applied directly (12).
+The operator's own dictation SHALL skip the rail and be applied directly (12).
 A dictation SHALL name the object it acts on, and an approval it creates SHALL
 be a response that can be pointed to (12, I1).
 

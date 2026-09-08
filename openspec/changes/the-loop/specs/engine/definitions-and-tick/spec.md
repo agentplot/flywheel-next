@@ -97,10 +97,10 @@ SHALL produce the same conclusion and no writes (78).
 - **WHEN** a tick runs and no evidence has moved since the last
 - **THEN** no transition fires, no effect is performed and no write is made (78)
 
-#### Scenario: A restart changes no state and no plan — mirrors S05
+#### Scenario: A restart changes no state and no rail — mirrors S05
 - **WHEN** the machinery is stopped and started again mid-day
 - **THEN** every object is in the state it was, every running session is still
-  read as running from evidence rather than memory, and the plan is identical
+  read as running from evidence rather than memory, and the rail is identical
   (7, 75, I7, I14)
 
 ### Requirement: The tick is the only clock

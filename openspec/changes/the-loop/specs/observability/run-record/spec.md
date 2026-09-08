@@ -112,5 +112,5 @@ write that reached the central service, and SHALL say as of when (145).
 
 #### Scenario: Only one writer keeps the projection from racing
 - **WHEN** more than one host could write the status projection
-- **THEN** the host holding the plan's lease writes it and the others do not, so
+- **THEN** the host holding the rail's lease writes it and the others do not, so
   the projection never conflicts with itself (142, 148)

@@ -77,7 +77,7 @@ phase is named.
   an organization's own types and packages are read from the blueprints
   repository at the shared line, so a type composed of existing atoms is added
   with no code change and no host is rebuilt for one (57, 85, 228). The engine
-  evaluates predicates over evidence, chooses transitions, runs effects idempotently and derives the plan's
+  evaluates predicates over evidence, chooses transitions, runs effects idempotently and derives the rail's
   decisions, and holds no name of any object it drives (86, 87). Every evidence
   and effect name is abstract in the definition and bound by the profile
   (138–140, I13).
@@ -89,7 +89,7 @@ phase is named.
   included — is a guard on that tick and nothing else keeps time; a run missed
   while the host was down is caught up on the next tick, and the idempotent key
   makes the catch-up write nothing twice (231). Reading twice with nothing
-  changed writes nothing (78, 126); a restart changes no state and no plan
+  changed writes nothing (78, 126); a restart changes no state and no rail
   (7, 75, I7, I14).
 - **Notify, and what a laptop defaults to.** Hosts learn of new state without
   reading the whole history each time, within a stated latency bound (130, 166).
@@ -127,7 +127,7 @@ phase is named.
   machinery because it went idle, because its items closed, or because a restart
   forgot it (25, 26, I6); the type is chosen when the elaboration is proposed and
   correctable by the operator's response (27).
-- **Decisions are raised, numbered, and delivered.** The plan is derivable from
+- **Decisions are raised, numbered, and delivered.** The rail is derivable from
   current state and nothing a process remembers (7), always current (8), and a
   decision appears exactly when the choice becomes the operator's and disappears
   when it is made or can no longer be made (9, I3). Every decision carries a
@@ -145,7 +145,7 @@ phase is named.
   the desktop (306, 307, 2, 155). The phone is that same served
   bundle under 760px and never a second application: two tabs, Decisions and
   Board, with the dock full screen and a back control — the desktop's metaphor at
-  a smaller size (307). Every chat rendering, every notification and every plan
+  a smaller size (307). Every chat rendering, every notification and every rail
   line carries a link to the object on the page at the host's address with the
   organization in the path, opening that object in the dock with its answer
   controls in reach, and a link to a host that is away says so rather than
@@ -167,7 +167,7 @@ phase is named.
   never dropped (6, 129). Nothing the operator has not approved exists as work
   (5, I1). The operator may invoke by dictation any transition that undoes or
   defers work and none that asserts work was done, and a session ended by hand
-  is read as a session gone (4); their own dictation skips the plan (12).
+  is read as a session gone (4); their own dictation skips the rail (12).
 - **Every operator operation is a tool.** Capture, mark as intent, answer a
   decision, drop, later, hold, rename, finish a session, and every other
   transition clause 4 grants is exposed by the state store as a tool with a
@@ -190,7 +190,7 @@ phase is named.
   a session that is not the operator's to keep is retired when the work it
   serves is retired (74).
 - **Findings.** A session may offer a finding at any time; a finding about its
-  own intent is a proposal on the plan for that thread, and a finding about
+  own intent is a proposal on the rail for that thread, and a finding about
   anything else is a signal, neither work until the operator says so and neither
   interrupting the session that offered it (58). The machinery keeps one record
   in state pointing at the document, and the record never holds the text (62).
@@ -273,7 +273,7 @@ Every section of the roadmap's phase-1 row, and where it stands:
 | section | phase 1 |
 |---|---|
 | A.1 the operator's response (1–6) | real |
-| A.2 the plan (7–19) | real |
+| A.2 the rail (7–19) | real |
 | A.3 intents and curation (20–22) | real; the design book of 23 is phase 3 |
 | A.4 elaborations and their types (24–27) | real |
 | A.5 planning and construction (28–57) | the machines tick, unit types included, with the effects of 42 as store facts; the host binding of those effects and the pane runner are phase 2 |
@@ -362,7 +362,7 @@ profile, and it is the heart of the gate.
 | S01 approve an elaboration from the phone | both | one response starts work, nothing re-asks, at 390px (1, 6, 13, 306, 314) |
 | S02 standing prototype idle | both | finish-or-keep, never ended by the machinery (25, 26, I6) |
 | S04 a finding on its own intent, dropped | both | nothing was created (58, 5, I1) |
-| S05 restart mid-day | both | the plan is identical, no object moved (7, 75, I7) |
+| S05 restart mid-day | both | the rail is identical, no object moved (7, 75, I7) |
 | S06 a slow start | both | slow is not failed; it starts once (72, 73) |
 | S07 the intent's close | both | the close decision and its one response; the line's archive is a store fact until phase 2 (22, 13) |
 | S08 twenty signals curated | both | every signal has exactly one move; two decisions, not twenty (107, 109, 116) |
@@ -414,7 +414,7 @@ X07 proves when the bell's surface exists.
   binary, the organization's types read from the blueprints, guards, regions,
   submachines, effects with proofs, idempotent repeat, the tick as the only
   clock, and the engine/domain line (57, 83–87, 138–140, 75–78, 228, 231).
-- `engine/plan`: decision derivation from active states, the register and its
+- `engine/rail`: decision derivation from active states, the register and its
   numbers, grouping and folding, the decision kinds, the tail and the sinks'
   marks (7–19).
 - `state-store/contract`: the operations of 125 and the guarantees of 133–137 as
@@ -428,8 +428,8 @@ X07 proves when the bell's surface exists.
 - `tools/tool-server`: the tool catalogue — one tool per operator operation,
   arguments by object id — served over HTTP as the single write path for every
   caller (193, 194, 4, 12).
-- `surfaces/plan-page`: the page sink as one bundle that is the phone under
-  760px — the plan, the capture box, the status view, the object forms, the
+- `surfaces/page`: the page sink as one bundle that is the phone under
+  760px — the rail, the capture box, the status view, the object forms, the
   elaboration surface, one-request status, one-tap answers, no client state a
   reload loses — served on the operator's private network (19, 141–146, 155,
   209, 210, 306, 307, 310, 311).
@@ -491,7 +491,7 @@ Phase 1 is the seed for four more phases, so these hold from day one:
   and list return (136, 217a), and every timed behaviour is a guard on the tick
   (231). That is what lets phase 5's control plane invoke this binary in tick
   mode — organization, tier, queue messages, scheduler entry, scratch directory
-  with a budget, returning the plan delivered, the shared lines pushed by
+  with a budget, returning the rail delivered, the shared lines pushed by
   compare-and-swap, the messages acknowledged, one next due time and the run
   record — without the binary changing (297, 298).
 - **One bundle, and the page's data is a projection.** One bundle is built and

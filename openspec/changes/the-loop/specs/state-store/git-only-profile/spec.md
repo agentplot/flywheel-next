@@ -171,10 +171,10 @@ anyone (154).
 ### Requirement: The status view is a file on the shared line, written by one host
 
 The status view SHALL be a file committed on the shared line, rebuilt from list
-and read alone by the holder of the plan's lease, stating the commit and the
+and read alone by the holder of the rail's lease, stating the commit and the
 time it is as of (132, 145, 146, 148). Any running host SHALL serve it and, with
 none running, the operator SHALL read the committed file (132, 145). No
-rendering of the plan SHALL be committed (15).
+rendering of the rail SHALL be committed (15).
 
 #### Scenario: The status page six hours after the last host stopped — mirrors S20
 - **WHEN** no host has run for six hours and the operator opens the status view
@@ -184,10 +184,10 @@ rendering of the plan SHALL be committed (15).
 
 #### Scenario: One host writes it
 - **WHEN** more than one host could rebuild the status view
-- **THEN** the holder of the plan's lease writes it and the others do not, so
+- **THEN** the holder of the rail's lease writes it and the others do not, so
   the file never conflicts with itself (148, 142)
 
-#### Scenario: The plan is served and never stored
-- **WHEN** the plan is shown on any surface
+#### Scenario: The rail is served and never stored
+- **WHEN** the rail is shown on any surface
 - **THEN** it is derived from the state at that moment and no rendering of it
   exists in the repository (15)

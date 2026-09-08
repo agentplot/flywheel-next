@@ -8,13 +8,13 @@ notification that reaches a phone.
 
 ### Requirement: The chat carries the same decisions and numbers as the page
 
-A chat rendering of the plan SHALL carry the same decisions and numbers as the
+A chat rendering of the rail SHALL carry the same decisions and numbers as the
 page, one line each, and a link to the page (18). It SHALL keep each kind's form
 in one line, so that a decision line is answerable and no other line is (18,
 209).
 
 #### Scenario: One line per decision, same numbers
-- **WHEN** the plan is delivered to the chat sink and to the page
+- **WHEN** the rail is delivered to the chat sink and to the page
 - **THEN** each decision appears once in the chat as one line carrying the same
   number the page shows, with a link to that object on the page (18, 15)
 
@@ -65,7 +65,7 @@ nothing, because the machinery never parses free text (194).
 A decision raised SHALL reach the operator's phone through the chat sink's own
 notification, carrying the answer controls the platform provides and a link to
 the object on the page (309). The page SHALL send no push of its own (309).
-Every chat rendering, notification and plan line SHALL carry a link at the
+Every chat rendering, notification and rail line SHALL carry a link at the
 host's address with the organization in the path, opening that object in the
 dock with its answer controls in reach; a link to a host that is away SHALL say
 so rather than failing silently (308, 205a, 150a).

@@ -1,6 +1,6 @@
 ## Purpose
 
-The served page: one bundle that is the plan, the capture box and the status
+The served page: one bundle that is the rail, the capture box and the status
 view, answerable on a phone under 760px and on the desktop from the same build,
 on the operator's private network.
 

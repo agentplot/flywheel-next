@@ -10,7 +10,7 @@ profile is admitted only by binding every one of them.
 
 The state store SHALL offer exactly these operations and the engine SHALL need
 no others: read an object's evidence; write an effect; take, renew and release a
-lease on an object; present the plan's decisions and receive the operator's
+lease on an object; present the rail's decisions and receive the operator's
 response; notify a host that state has changed; list the objects in a scope;
 serve the status view (125). An engine that needs a further operation SHALL be a
 change to this contract, stated as one.

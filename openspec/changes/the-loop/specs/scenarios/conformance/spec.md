@@ -41,7 +41,7 @@ afterwards as a trace a person reads (95).
 
 The whole machinery SHALL run with sessions replaced by a stand-in that plays a
 scenario's scripted exits, so that seeding a scenario exercises the stores, the
-engine, the git effects, the plan and the page with no agent running (93). The
+engine, the git effects, the rail and the page with no agent running (93). The
 stand-in SHALL play every exit, offer and refusal by running the same command a
 session reports through, so the state store sees the same records (67, 93).
 While the phase performs no construction, the line-and-place effects MAY also be

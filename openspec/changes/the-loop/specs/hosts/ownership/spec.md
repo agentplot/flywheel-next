@@ -77,7 +77,7 @@ again with nothing to answer (150a).
 A host MAY declare the operator as its session binding in the manifest, and a
 host so bound SHALL start no agent (93b, 69). Under it the machinery SHALL
 charge a session as it always does — a place prepared, a work order rendered,
-the session recorded — and the plan and the status view SHALL show the session
+the session recorded — and the rail and the status view SHALL show the session
 as the operator's to run (93b, 89). The operator SHALL report through the same
 command a session reports through, and the exits, offers and refusals SHALL be
 the same records, so nothing downstream tells the two apart (93b, 67). A session
@@ -92,7 +92,7 @@ offering a chore, stalled — with anything else refused (65, 66).
 - **WHEN** an elaboration is approved on a host whose manifest names the
   operator as its session binding
 - **THEN** the place is prepared and the work order rendered, the session record
-  names its place and work order, the plan shows it as the operator's to run, no
+  names its place and work order, the rail shows it as the operator's to run, no
   agent process is started, and the session reads present and working until the
   operator reports (93b, 89)
 
@@ -116,13 +116,13 @@ offering a chore, stalled — with anything else refused (65, 66).
 
 More than one host MAY run the machinery for one organization at once, every one
 working from the same shared line of every repository and the same central state
-(147). There SHALL be one plan per organization, derived from the shared state,
+(147). There SHALL be one rail per organization, derived from the shared state,
 and any host SHALL be able to serve it; exactly one presenter SHALL deliver it to
 each sink at a time (148).
 
-#### Scenario: Two hosts, one plan
+#### Scenario: Two hosts, one rail
 - **WHEN** two hosts run for one organization
-- **THEN** both derive the same plan with the same numbers, and each sink is
+- **THEN** both derive the same rail with the same numbers, and each sink is
   delivered to by exactly one of them (147, 148, 15)
 
 ### Requirement: A disconnected host keeps what it owns and reconciles

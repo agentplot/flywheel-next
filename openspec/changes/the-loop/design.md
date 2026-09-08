@@ -65,7 +65,7 @@ model.md §13 lays them out.
 | `flywheel-domain` | the shipped machines embedded, the organization's type catalogue loader, the object envelope and the domain's record schemas, the work order renderer |
 | `flywheel-world-host` | `World` over git, the manifest and the host's router; `profiles/host.yaml` is its specification |
 | `flywheel-workspace-recorded` | `Workspace` as records: each line, place, merge and landing effect written as a fact in the state store (D8) |
-| `flywheel-sessions-operator` | `Sessions` with the operator as the session: the work shown on the plan, reported through `flywheel exit` (D8) |
+| `flywheel-sessions-operator` | `Sessions` with the operator as the session: the work shown on the rail, reported through `flywheel exit` (D8) |
 | `flywheel-store-git` | `StateStore` over the state repository; `profiles/git-only.yaml` is its specification |
 | `flywheel-surface` | the sinks (page, chat), the tool catalogue and its HTTP server, the reply grammar; `profiles/surfaces.yaml` |
 | `flywheel-scenario` | the stand-in `StateStore`, `World` and `Workspace`, the scripted `Sessions`, the conformance runner and its 390px driver, the trace renderer |
@@ -73,7 +73,7 @@ model.md §13 lays them out.
 
 **The grep rule, stated so it can pass.** model.md §2.5 says the engine names
 nothing from `atoms.yaml` and no name from the requirements' section 3, but
-section 3 also defines plan, decision, response, host, lease, sink and tick,
+section 3 also defines rail, decision, response, host, lease, sink and tick,
 which the engine must name because it owns the register, the decision
 derivation and the five engine machines (§2.5). The rule the test enforces is
 86's: the seven object names — intent, elaboration, bolt, unit, work item,
@@ -303,7 +303,7 @@ crate a real host loads rather than a property of the test harness.
 (`profiles/sessions-stand-in.yaml`), so an approved elaboration reaching
 `placing` must charge a session against something real. In phase 1 that
 something is the operator (69, 110): `start_session` records the session with
-its place and its work order, the plan and the status view show it as the
+its place and its work order, the rail and the status view show it as the
 operator's to run, and the operator does the work and reports through
 `flywheel exit | offer | note | refuse` — the same command the stand-in plays
 and the same one the phase-2 runner will call (67, 93). The machinery's own
@@ -428,7 +428,7 @@ such publication.
   platform's own keyboard (311, 15). The decision card is the only answerable
   form; every other kind keeps the form the status view gives it (209), and an
   elaboration is a surface of its own reached from its intent (210).
-- Every chat line, notification and plan line carries a link at the host's
+- Every chat line, notification and rail line carries a link at the host's
   address — its private-network name, D10a — with the organization in the path,
   opening that object in the dock with its answer controls in reach (308, 205a).
   A link to a host that is away says so rather than failing silently (308,
@@ -441,17 +441,17 @@ such publication.
 310 (no client state a reload loses, one request, no external dependency) and by
 15 (no rendering stored).
 
-### D12. `status.html` is committed; the plan page is not
+### D12. `status.html` is committed; the rail is not
 
-`render_status` is an effect of the `plan` object (`machines/engine/plan.yaml`,
-`status` region), so the holder of the plan's lease is its only writer. That
+`render_status` is an effect of the `rail` object (`machines/engine/rail.yaml`,
+`status` region), so the holder of the rail's lease is its only writer. That
 matters for D4: `status.html` is the one file every host would otherwise write,
 and it is the single-writer rule, not the one-file-per-object rule, that keeps
 it from conflicting on content. It writes the status projection from `list` and
 `get` alone and commits it on `main`, stating the commit and time it is as of;
 any running host serves it, and with no host running the operator reads the
-committed file (132, 141–146, S20). The plan page is served and never committed,
-because no rendering of the plan is stored (15). Drift between a projection and
+committed file (132, 141–146, S20). The rail is served and never committed,
+because no rendering of the rail is stored (15). Drift between a projection and
 its source is rewritten from the source on the next tick and reported to the run
 record with both values (77, model.md §3.3).
 
@@ -598,7 +598,7 @@ the profile that satisfies it.
   `flywheel-workspace-recorded` implements (D8).
 - **93b — a host may declare the operator as its session binding.** The
   machinery charges the session as it always does — place prepared, work order
-  rendered (89), session recorded — the plan shows it as the operator's to run,
+  rendered (89), session recorded — the rail shows it as the operator's to run,
   and the operator reports through the same command a session reports through
   (67); the exits, offers and refusals are the same records, and the session is
   with-operator for every rule that turns on the type (25). The machinery's own
