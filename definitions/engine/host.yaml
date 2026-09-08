@@ -71,13 +71,16 @@
 # The same binary bytes run on a laptop and on a hosted host (299), and a
 # control plane an enterprise customer installed is indistinguishable from the
 # service's own to this machine (305).
+# The tool server's clients include the Claude mobile app and voice through
+# it, checked by the same membership and permission rules as every other
+# client (313, 248, 249, 293).
 machine: host
 version: 5
 kind: engine
 tier: core
 object: host
 parent: null
-satisfies: [4, 32, 55, 96, 147, 149, 150, 151, 186, 196, 205, 215, 217, 222, 230, 231, 232, 238, 240, 256, 257, 258, 259, 260, 262, 268, 269, 270, 272, 273, 274, 283, 291, 292, 293, 295, 296, 297, 298, 299, 300, 305]
+satisfies: [4, 32, 55, 96, 147, 149, 150, 151, 186, 196, 205, 215, 217, 222, 230, 231, 232, 238, 240, 256, 257, 258, 259, 260, 262, 268, 269, 270, 272, 273, 274, 283, 291, 292, 293, 295, 296, 297, 298, 299, 300, 305, 313]
 record:
   bound: int            # sessions this host may run at once (a setting of the host)
   last_seen: time       # its heartbeat

@@ -27,13 +27,27 @@
 # names who responded (277). On an installed control plane those applications
 # are the installer's own, with their ids, tokens and signing secrets, and the
 # two shared components are still exactly two (303, 290).
+# The page sink is read on a phone as readily as on a desktop: the same
+# served bundle under 760px, two tabs with a full-screen dock, every
+# decision answerable and every control and form present there, nothing
+# reachable only by hover or keyboard and every answer one tap or one
+# short reply (306, 307, 311, S38, S39, S61). The status view it renders
+# comes from one request and holds no client state a reload loses, so a
+# reload after an answer shows the answer recorded (310, 154). Every
+# rendering, notification and plan line this sink delivers carries a link
+# to the object on the page at the host's address with the organization in
+# the path, which opens that object in the dock with its answer controls
+# in reach and says so when the host is away (308, 205a, 150a). A decision
+# raised reaches the phone through the chat sink's own notification with
+# the platform's answer controls; the page pushes nothing of its own and
+# the short reply grammar always works beside them (309).
 machine: sink
 version: 1
 kind: engine
 tier: core
 object: sink
 parent: null
-satisfies: [2, 8, 14, 18, 68, 82, 148, 152, 155, 216, 217, 218, 233, 236, 243, 244, 245, 247, 253, 254, 277, 303]
+satisfies: [2, 8, 14, 18, 68, 82, 148, 152, 153, 154, 155, 216, 217, 218, 233, 236, 243, 244, 245, 247, 253, 254, 277, 303, 306, 307, 308, 309, 310, 311]
 record:
   kind: enum                    # chat | page | bell
   member: string                # the member this sink belongs to, or none for a shared channel or surface (236)

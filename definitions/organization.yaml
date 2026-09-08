@@ -38,7 +38,12 @@
 # nothing (302). Such a control plane is tier 3's third shape and Enterprise's
 # fourth flavour — not marketed, not offered in the console, sold and
 # installed by us, with nothing of the service's running in it (304,
-# host.yaml tier.installed).
+# host.yaml tier.installed). The management console this machine's
+# surfaces are read on renders on a phone with its tables as cards, and
+# the managed add-host journeys, the cloud agent with its presets among
+# them, complete there, which is what Hobby promises an operator with no
+# computer of their own to run; a journey that needs one says so on its
+# card (312, 281, 283, 295).
 machine: organization
 version: 2
 kind: object
@@ -47,7 +52,7 @@ object: organization
 parent: null
 singleton: organization
 owns: [repository, package, pool]
-satisfies: [15, 204, 207, 208, 218, 219, 220, 221, 241, 247, 255, 261, 265, 266, 267, 276, 279, 281, 282, 294, 302, 304]
+satisfies: [15, 204, 207, 208, 218, 219, 220, 221, 241, 247, 255, 261, 265, 266, 267, 276, 279, 281, 282, 294, 302, 304, 312]
 record:
   name: string           # the operator's name for it; may but need not coincide with a git-host organization (219)
   blueprints: string          # <org>/<blueprints repository>

@@ -106,6 +106,24 @@ host_agent:
   none: "a control — a button, a board move, a checklist tick, a plannotator annotation — is already one tool call; nothing is interpreted"
 organizations:
   doc: "the page serves one organization at a time and switches with `switch-organization` (218); each organization has its own sinks and presenters, its own register and its own state; nothing on a surface names two"
+phone:
+  doc: |
+    The phone is a requirement and not a variant (306-314). Every decision
+    is answerable there and every control and every form the page carries
+    is available there; nothing the page offers is reachable only on a
+    desktop and nothing the phone answers is missing on the desktop (306,
+    2, 155, S39). It is the same served bundle under 760px and never a
+    second application: two tabs, Decisions and Board, with the dock full
+    screen and a back control, the desktop's metaphor at a smaller size
+    (307, S38, S60). One bundle is built and its version is the binary's
+    (291).
+  links: "every chat rendering, every notification and every plan line carries a link to the object on the page at the host's address with the organization in the path (308, 205a); the link opens that object in the dock with its answer controls in reach, and works whether the page is served on a localhost port of the operator's own computer, over their private network, or at a hosted served name (245, 291); a link to a host that is away says so rather than failing silently (150a, away)"
+  notification: "a decision raised reaches the operator's phone through the chat sink's own notification, with the answer controls the platform provides and the link above (309, 155); the page pushes nothing of its own on any tier, and the short reply grammar always works beside the controls (194)"
+  one_request: "the status view renders from one request, which on a hosted tier is the page projection and its one decrypt (310, 291); the page holds no client state a reload loses, so a reload after an answer shows the answer recorded with who gave it and when (153, 154); the bundle carries no dependency the phone must fetch from anywhere else"
+  touch: "every answer is one tap or one short reply; nothing is reachable only by hover or by a keyboard, and anything a hover reveals on the desktop is reachable by tap (311, S61); a long-form answer, a proposal edit for one unit among several, is given on the phone with the platform's own keyboard"
+  console: "the management console renders on a phone with its tables as cards, and the managed add-host journeys complete there, the cloud agent with its presets among them (312, 283, 295, hosts_surface.add_offers), which is what Hobby promises an operator with no computer of their own to run (281); a journey that needs a computer of the operator's says so on its card rather than failing part way through"
+  clients: "the tool server's clients include the Claude mobile app and voice through it, under the same membership and permission checks as every other client (313, 248, 249, 293, tools.identity)"
+  conformance: "every scenario of the requirements' section 11 that carries an operator's response runs at a 390px viewport as well as at the desktop's, and the mockups render at 390px (314)"
 account:
   doc: |
     The page carries one account item (233): who the operator is and how
