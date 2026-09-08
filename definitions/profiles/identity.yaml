@@ -52,7 +52,14 @@ provider:
     served on, so a host's served name is the only per-host fact,
     registered once on the environment's redirect list and never per
     organization; the hosted service's hosts name the service's
-    environment (252).
+    environment (252). That served name is where the page and the tool
+    server are served, by the same function on request under the caller's
+    token (291): the page a static bundle, the tool server the binary's
+    own tool catalogue (193) reached over HTTP with the token by the page
+    and over stdio or in-process, in the shape of the model context
+    protocol, by sessions and by the interpreter. On a hosted host the
+    token is the boundary the private network is on a self-managed one
+    (46, 191, 217c), and a request is a read and never a tick (270).
   identity: "the Frontegg user (246); GitHub is one social connection on it, and the GitHub username the connection carries is what authorship uses — commit trailers, pull requests, the git host's view of who did the work; a user with no GitHub connection may respond and may not be an author, and the page asks for the connection at first sign-in"
   agents: "no session, host process or dispatch agent holds a Frontegg user credential (251): a session acts with the identity token the machinery issued (surfaces.yaml tools.identity) and reaches the git host with the App's installation token (207)"
 accounts:
@@ -152,7 +159,7 @@ definitions:
     - key: fw.ff.sso
       flag: {default: off, on: []}       # enterprise sign-in and provisioning through the organization's directory; Enterprise
     - key: fw.ff.dedicated-dispatcher
-      flag: {default: off, on: []}       # a dispatcher function of its own (269); Enterprise
+      flag: {default: off, on: []}       # a dispatcher function of its own in the service account (269, 281); Enterprise
     - key: fw.ff.scenario-packs
       flag: {default: off, on: []}       # scenario packs, development-time only and never in the production index (286)
   plans:
@@ -170,10 +177,10 @@ definitions:
       not.
     ladder:
       free:       {tier: 0, unlocks: [], doc: "the binary, its sign-in, the organization's own App and bot, every package and every surface, nothing on the service side"}
-      hobby:      {tier: 1, unlocks: [fw.ff.cloud-agent], doc: "the service's App and bot, with the interpreter and the triage of self-contained captures running in the cloud (269), so chat is fully usable with the laptop closed: a decision answered by button or by free text, a capture written as text, the query tools answered; the plan in the organization's chat and the page at a served name. What waits for the operator's own machine or a pool host is raw-material triage, elaboration and construction"}
+      hobby:      {tier: 1, unlocks: [fw.ff.cloud-agent], doc: "the service's App and bot, with the interpreter and the triage of self-contained captures running in the cloud (269), so chat is fully usable with the laptop closed: a decision answered by button, by slash command, and in Slack by free text (277), a capture written as text, the query tools answered; the plan in the organization's chat and the page and the tool server at a served name (291). What waits for the operator's own machine or a pool host is raw-material triage, elaboration and construction"}
       pro:        {tier: 2, unlocks: [fw.ff.cloud-agent, fw.ff.pools, fw.ff.store], doc: "pools with an included allowance and metered overage, the package store, the book view and the presets"}
       team:       {tier: 2, unlocks: [fw.ff.cloud-agent, fw.ff.pools, fw.ff.store, fw.ff.members, fw.ff.management-console], doc: "members with roles, ownership and assignment (237), identity administration (255), the management console, a higher ceiling on a pool host"}
-      enterprise: {tier: 3, unlocks: [fw.ff.cloud-agent, fw.ff.pools, fw.ff.store, fw.ff.members, fw.ff.management-console, fw.ff.federation, fw.ff.sso, fw.ff.dedicated-dispatcher], doc: "federation into the organization's own account (276), enterprise sign-in and provisioning through its own directory, a dispatcher function of its own, audit export, a private pool image"}
+      enterprise: {tier: 3, unlocks: [fw.ff.cloud-agent, fw.ff.pools, fw.ff.store, fw.ff.members, fw.ff.management-console, fw.ff.federation, fw.ff.sso, fw.ff.dedicated-dispatcher], doc: "federation into the organization's own account (276), enterprise sign-in and provisioning through its own directory, a dispatcher function of its own in the service account, audit export, a private pool image"}
     limits:
       doc: "plan metadata, never flags (282); the tool server reads them beside the flags and refuses the add that would exceed one, with the reason"
       organizations:      "how many organizations the account may hold"

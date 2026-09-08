@@ -5,10 +5,15 @@
 # own excerpt and needs no judgment (S21). The reader is charged by the tick
 # of the host that declares the capture's source (217e); the capture endpoint
 # for callers that cannot reach any host's binary is dispatch's (216).
-# On the hosted tiers the endpoint is a managed queue per organization with no
-# compute in the acknowledgement path: the queue is the caller's retry buffer
+# On the hosted tiers the endpoint is a managed queue per organization behind
+# one stateless receiver, which verifies the caller's signature, answers the
+# platform's liveness check, acknowledges inside the platform's deadline and
+# routes by workspace to the organization's queue, encrypting what it
+# enqueues and never decrypting (271). The queue is the caller's retry buffer
 # and not state, and its bodies are encrypted under the organization's key
-# (271). Raw material a capture points at is never read on a host serving more
+# (256). That receiver and the chat application are the two shared components
+# of the hosted tiers, each seeing a payload once in transit and keeping
+# nothing (290). Raw material a capture points at is never read on a host serving more
 # than one organization (263): triage that must follow a pointer into the raw
 # store runs on the operator's own machine or on a pool host, while a
 # self-contained capture — one whose whole content is already in the queue,
@@ -21,7 +26,7 @@ machine: capture
 version: 2
 kind: object
 tier: core
-satisfies: [4, 19, 106, 111, 112, 114, 115, 178, 181, 215, 216, 263, 271, 288]
+satisfies: [4, 19, 106, 111, 112, 114, 115, 178, 181, 215, 216, 263, 271, 288, 290]
 object: capture
 parent: null
 owns: [signal]

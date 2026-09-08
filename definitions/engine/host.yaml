@@ -36,9 +36,17 @@
 # encrypted object holding a bundle of two sparse shallow clones downloaded
 # per tick and evicted when idle (256, 258, 262, 272). The tick is invoked
 # and not looped: a clock, a notification, an arriving capture, a chat event
-# and a page request are all invokers of the same tick (270), and each tick
+# and a page request are all invokers of the same tick (270); every invoker
+# enqueues on the organization's queue, which admits one tick of an
+# organization at a time, and a page request is a read under the caller's
+# identity and no invoker at all (291). Each tick
 # upserts one named one-shot scheduler entry for the organization with the
-# due time the machines computed, a daily sweep the backstop (273). Notify is
+# due time the machines computed, a daily sweep the backstop (273). An
+# invoked host is alive while that entry stands or its queue holds items, so
+# its stale window is the due time it wrote plus the grace and not five
+# minutes from a heartbeat (292, record-derived.yaml host.last_seen). The
+# page and the tool server are served at the tier's name by the same
+# function on request, under the caller's token (291). Notify is
 # primary and the poll is the backstop (274). The organization's key is
 # unwrapped only for the tick (257), and a key it cannot reach fails closed
 # with one attention line and never a fallback (260). Adding a cloud agent
@@ -49,7 +57,7 @@ kind: engine
 tier: core
 object: host
 parent: null
-satisfies: [4, 32, 55, 96, 147, 149, 150, 151, 186, 196, 205, 215, 217, 222, 230, 231, 232, 238, 240, 256, 257, 258, 259, 260, 262, 268, 269, 270, 272, 273, 274, 283]
+satisfies: [4, 32, 55, 96, 147, 149, 150, 151, 186, 196, 205, 215, 217, 222, 230, 231, 232, 238, 240, 256, 257, 258, 259, 260, 262, 268, 269, 270, 272, 273, 274, 283, 291, 292]
 record:
   bound: int            # sessions this host may run at once (a setting of the host)
   last_seen: time       # its heartbeat
