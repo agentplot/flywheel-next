@@ -56,14 +56,19 @@
 # primary and the poll is the backstop (274). The organization's key is
 # unwrapped only for the tick (257), and a key it cannot reach fails closed
 # with one attention line and never a fallback (260). Adding a cloud agent
-# asks nothing about routers or runners: the tier fixes both (283).
+# asks nothing about routers or runners: the tier fixes both (283). What
+# `+ host` offers at all is the identity kind and the plan together (295):
+# a self-managed host offers only hosts the operator controls, with one
+# line to move the organization to the hosted service in place of the
+# managed options; a hosted host offers the managed ones beside them,
+# each gated by its plan flag (247a, 279–282, host.yaml tier.add_offers).
 machine: host
 version: 5
 kind: engine
 tier: core
 object: host
 parent: null
-satisfies: [4, 32, 55, 96, 147, 149, 150, 151, 186, 196, 205, 215, 217, 222, 230, 231, 232, 238, 240, 256, 257, 258, 259, 260, 262, 268, 269, 270, 272, 273, 274, 283, 291, 292, 293]
+satisfies: [4, 32, 55, 96, 147, 149, 150, 151, 186, 196, 205, 215, 217, 222, 230, 231, 232, 238, 240, 256, 257, 258, 259, 260, 262, 268, 269, 270, 272, 273, 274, 283, 291, 292, 293, 295]
 record:
   bound: int            # sessions this host may run at once (a setting of the host)
   last_seen: time       # its heartbeat
