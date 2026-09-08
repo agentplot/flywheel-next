@@ -319,6 +319,15 @@ offer | note | refuse` is built in phase 1 and writes through
 command wrote and never the script's internals. When the phase-2 runner arrives
 the command does not change.
 
+**How a played exit reaches that command.** The stand-in does not call the
+command's function; it runs the binary. A scripted exit is a subprocess of
+`std::env::current_exe()`, its working directory the session's place, its
+session id in the environment under the same name the rendered work order tells
+a real session to use (89). One path serves the in-process runner and
+`--hosts real` alike, and the operator's own hand-run command under 93b is the
+same invocation, so the phase-2 runner changes nothing about it. Every
+assertion reads the thread entry the command wrote and never the script.
+
 **Both bindings are granted, not assumed.** Clause 93 admits one stand-in, the
 session binding. Recording `Workspace` is a second, and the operator standing in
 for an agent is a reading of 69 and 110 that 93 did not grant; 93a and 93b now
@@ -482,28 +491,95 @@ touches nothing in it. The scope is disjoint and explicit because it is a
 different repository, not a filter (96). The old flywheel keeps serving willdan
 unmodified until phase 2 (roadmap).
 
-### D15. The conformance runner starts a real second host
+### D15. The conformance runner, specified
 
-`flywheel scenario run [--profile git-only] <dir>` runs the suite as data
-(`conformance/README.md`). A scenario's `host:` step names the host the following
-steps run as and may start, lose, disconnect or return one; `--hosts real`
-starts a second `flywheel host` as its own process with its own root and port
-range (`profiles/sessions-stand-in.yaml` `hosts`). That is how S13, S17 and S18
-run on one laptop, which is what proves the single-writer guarantee the whole
-profile rests on (134, 162, I15). S17 and S18 are `git-only` scenarios; S13 is
-`profiles: [all]` and runs on both paths.
+`flywheel scenario run` is the phase gate: it loads the definitions, seeds a
+described state of the stores, plays a scenario's `when` steps against the real
+engine and asserts the `then` clauses (94). The same runner and the same files,
+byte-identical, run against the stand-in store and against the git-only
+profile; only the store binding, the session binding (93) and the
+line-and-place binding (93a) differ. Twelve things the suite left open are
+settled here, because the runner must be specified before it is built.
 
-**The 390px pass needs a driver.** `flywheel scenario run` runs data over the
-engine and the traits; nothing in it renders a page, taps a control or reads
-back a record, so 314 has no mechanism without one. Phase 1 adds a headless
-browser the runner drives — one script per scenario carrying an operator's
-response — asserting three things at a 390px viewport: the decision's number and
-its answers are visible and reachable by tap, with nothing behind a hover or a
-keyboard (311); the answer posts through the same tool the reply grammar calls
-(193); and a reload shows the answer recorded with `given_by` and `given_at`
-(310, 153, 154). The same script at the desktop viewport is the second half of
-314. The driver is a test dependency of `flywheel-scenario` and of no shipped
-crate.
+**Flags.** `--profile <stand-in | git-only>` chooses the `StateStore` binding,
+default stand-in, git-only running against a temporary bare repository with no
+network; `--hosts real` makes every host a process; `--definitions <dir>` loads
+machine files from a directory instead of the embedded set (D2); `--trace [dir]`
+renders the run.
+
+1. **The host step's vocabulary is closed in the schema.** `{name}` alone sets
+   the acting host; at most one of `start | lose | disconnect | return`
+   performs a transition. Concurrency moves off the host step to
+   `tick: {concurrent_hosts: [a, b]}`, and `bypass_lease` becomes a declared
+   contract-only hook the runner honours in process alone. A scenario with no
+   host step runs as a single host named `local` (232).
+2. **The clock is virtual and moves for exactly two reasons:** a `clock` step,
+   and each `tick` step by one tick interval, declared per run and defaulting to
+   D7's 60-second sweep. Wall-clock time never reaches a guard. Under
+   `--hosts real` the child hosts take the same virtual clock through an
+   injected clock source and their sweep is triggered by the runner, so a
+   two-host run is deterministic.
+3. **A scripted exit is a subprocess of the real command** — see D8.
+4. **Traces go to `target/flywheel-trace/<profile>/`, never beside the scenario
+   files,** which are the model's copy. Each run writes
+   `<scenario>.trace.json`, the structured record the assertions themselves
+   evaluate, and renders `<scenario>.trace.md` from it, so the document a person
+   reads and the evidence a failure cites cannot diverge (95).
+5. **The 390px pass selects its own set:** every scenario with a `response`
+   step, so no list is kept by hand. The runner serves the page from the process
+   that just ticked, opens the rail at 390×844 and again at 1440×900 in a
+   headless Chromium held as a dev-dependency, finds the decision by the number
+   the register gave it, and asserts the three things of 314 — reachable by tap
+   with nothing behind a hover or a keyboard (311), the answer posted through
+   the same tool the reply grammar calls (193), and a reload showing `given_by`
+   and `given_at` (310, 153, 154). A scenario adds a selector only if it needs
+   one.
+6. **Profile observations are a named registry, like evidence.** Each profile
+   file gains an `observations:` block binding every `then.state_store` key it
+   answers; the schema constrains those keys to the registry, and the model's
+   check fails a scenario using a key some profile it applies to does not bind.
+   A key naming one scenario's host is renamed to a parameterized form. An
+   unbound key is an error, never a silent pass.
+7. **Exit codes and the report.** 0 all passed; 1 an assertion failed; 2 a
+   scenario is invalid against the schema or uses an unbound name; 3 the profile
+   was refused, its binding incomplete or the definitions hash unmatched. One
+   line per scenario then a summary, and a run record written through the store
+   holding the profile, the definitions hash, the scenarios that ran, the subset
+   skipped with its reason (93a) and the failures (79–82, 167). A failure prints
+   the scenario and step, the clause numbers from `satisfies:`, expected against
+   actual, and the trace path.
+8. **Requirements are data, not a list held outside it.** `profiles:` keeps
+   meaning the store binding alone; the schema gains
+   `requires: [real-workspace | real-sessions]`, set on exactly the scenarios
+   asserting a real take, merge, rebase, conflict or landing. The runner skips a
+   scenario whose requirements the bound implementations do not provide, prints
+   it skipped with the reason, and names the skipped set in the run record
+   (93a). A scenario the acceptance table lists that every configuration skips
+   is a failure, not a silent pass.
+9. **Under `--hosts real` every host is a child process** of
+   `std::env::current_exe()` with `--root <tmp>/<name>` and a port range from
+   the router; the runner holds no engine and asserts only through the store,
+   which is what lets two writers race on one object (134, 162, I15). Without
+   the flag the runner ticks one in-process engine per host name over a shared
+   stand-in store, and that is the only mode where `bypass_lease` is honoured.
+10. **Fixtures live in `conformance/fixtures/`.** Every path in `given.files`,
+    in a `files` step and in a `direct` argument resolves relative to it; a
+    short file may be given inline as path-to-content and is materialized into
+    the scenario's temporary checkout.
+11. **A `direct` step carries one discriminator:**
+    `direct: {do: adapter | commit | board | close, …}`, each arm with its own
+    required fields, so a typo fails the schema rather than being ignored.
+12. **`response.decision` resolves through the register** at the moment the step
+    runs, and the scenario fails when it names no standing decision. The id form
+    is the readable default; the `number` form stays for the answer-it-again
+    assertions (15).
+
+**What the suite is for, in this phase.** The thirteen `contract/` files over
+the toy `lamp` machine, on both paths, are what admit the git-only profile
+(168); the twenty-one scenarios run on the stand-in and then against git-only,
+with S13, S17 and S18 as two real host processes and the 390px pass on every
+scenario carrying a response; and the run record's definitions hash is compared
+with `definitions/`, which is itself byte-identical to the model (83, D2).
 
 ## Risks / Trade-offs
 
