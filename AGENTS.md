@@ -37,7 +37,7 @@ this repository.
 ## How work is done here
 
 - Work is OpenSpec changes under `openspec/changes/`, one per phase of the
-  roadmap (`stage1` is phase 1, the loop). Artifacts are written in order:
+  roadmap, named for the phase (`the-loop` is phase 1; then construction, context, dispatch, scale). Artifacts are written in order:
   proposal, design, specs, tasks; each artifact is reviewed before the next is
   started; `apply` runs only after the review of the tasks.
 - Every claim in a proposal or design cites the requirement clause it satisfies.
