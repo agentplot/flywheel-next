@@ -391,7 +391,8 @@ return it (`profiles/sessions-stand-in.yaml`).
 | scenarios | waits for |
 |---|---|
 | S03, S28, S30, S31 | a session that reads a document, answers a question or reports work done — the pane runner, phase 2 |
-| S12, S14, S15, S26, S32, S33, S34, X03, X06, X09 | assertions about real merges, rebases, conflicts, landings, panes or operator-added types — phase 2 |
+| S15, S32, S33, S34, X03, X06, X09 | assertions on the repository itself: refs, a real conflict, a pull request, the tree, stray worktrees, tethered processes (`requires: [real-workspace]`) — phase 2 |
+| S12, S14, S26 | construction on a real bolt line, the status view of it and the persona set of a real work order; the recorded workspace could play them, and they are deferred with construction (A.5) — phase 2 |
 | X07 | the bell on a named surface needs the multiplexer — phase 2 |
 | T01 | the tracker profile — phase 2 |
 | S09, S10, S11, S25, S27, X02 | claims, the ledger, planning and the map — phase 3 |
