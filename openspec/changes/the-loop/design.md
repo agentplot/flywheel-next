@@ -157,8 +157,11 @@ the two profiles' bindings diverge where the requirements say they must not.
 
 - **Effect id** = `<object>/<transition>/<proof evidence>/<evidence hash>`, in
   the commit message with the transition's reason and the evidence values the
-  guard read (79, 127, 167). Before performing an effect the host looks for that
-  id on the fetched main; found, it does nothing and reports nothing (127).
+  guard read (79, 127, 167). The id governs the *write*, not the act: whether
+  the act runs is its proof's question (73), and when it runs again the write it
+  makes carries the same id, changes nothing, and is not reported as a second
+  write (127). `contract/write-effect.yaml` is the case — the proof is taken out
+  of the world, the act runs twice, and one write stands.
 - **State write**: the new state, `entered_at`, counters and the consumed
   response's id in `applied_responses`, in one commit — the same commit — so a
   response takes effect exactly once whatever is delivered twice or restarts in

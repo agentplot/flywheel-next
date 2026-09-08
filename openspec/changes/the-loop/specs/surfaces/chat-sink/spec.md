@@ -38,9 +38,10 @@ SHALL be able to tell it was recorded (154).
   154)
 
 #### Scenario: Platform controls and the grammar stand together
-- **WHEN** the platform offers a control for answering
-- **THEN** it is used as the platform provides it, and the numbered grammar
-  still works beside it (155, 309)
+- **WHEN** a decision is delivered to a chat platform that offers answer
+  controls
+- **THEN** the posted message carries those controls, and a numbered reply to
+  the same decision answers it as well (155, 309, 194)
 
 ### Requirement: The chat accepts two shapes of message and refuses to guess at the rest
 
@@ -51,8 +52,8 @@ nothing, because the machinery never parses free text (194).
 
 #### Scenario: A forwarded message becomes a capture — mirrors S21
 - **WHEN** the operator forwards a chat message with one response
-- **THEN** one capture and one signal exist with a link back to the source, and
-  nothing else happens (112, 215)
+- **THEN** one capture exists with a pointer back to the source, one signal
+  exists naming that capture, and nothing else happens (111, 112, 215)
 
 #### Scenario: Free text writes nothing
 - **WHEN** a message arrives that is neither the reply grammar nor a forward
@@ -71,8 +72,9 @@ so rather than failing silently (308, 205a, 150a).
 
 #### Scenario: A new decision reaches the phone
 - **WHEN** a decision is numbered and routed to the chat sink
-- **THEN** the notification the platform raises carries the number, whatever
-  controls the platform provides, and the link to the object (309, 308)
+- **THEN** the message posted to the channel carries the number, the platform's
+  answer controls and the link to the object, which is what the platform's own
+  notification raises; the page posts nothing of its own (309, 308)
 
 #### Scenario: A link to a host that is away
 - **WHEN** the operator opens a link to an object held by a host past its stale
@@ -83,7 +85,7 @@ so rather than failing silently (308, 205a, 150a).
 ### Requirement: One presenter per sink, one mark per sink
 
 Exactly one presenter SHALL deliver to each sink at a time, held by lease or
-pinned by the manifest (148). Each sink SHALL carry its own delivery mark, so
+pinned by the manifest — "pinned" being 148's own word (148). Each sink SHALL carry its own delivery mark, so
 the tail since the last look is that sink's (14, 148, 236). Sinks SHALL be per
 member, and a shared channel SHALL be a sink of its own with one mark (236).
 
@@ -96,20 +98,13 @@ member, and a shared channel SHALL be a sink of its own with one mark (236).
 - **WHEN** the chat sink and the page sink have different marks
 - **THEN** each delivery carries the tail since that sink's own mark (14, 236)
 
-### Requirement: Notifications are routed by kind to the sinks the operator sets
+### Requirement: The chat is one of the sinks routing by kind reaches
 
-Notifications SHALL be routed by kind — a blocked session, a stalled session, a
-lost host, a failed landing, new decisions — to sinks the operator sets per kind
-(82). A host running construction SHALL be silent by default, and nothing the
-machinery notices SHALL be visible only on the host that noticed it (82).
+The chat SHALL be one of the sinks the operator may set per kind for the routing
+stated in the run record's spec (82).
 
-#### Scenario: A kind routed to the chat and the page
-- **WHEN** the operator routes a kind to both sinks and an event of that kind
-  occurs on a host that presents neither
-- **THEN** both sinks carry it, and the noticing host shows it nowhere of its
+#### Scenario: A kind routed to the chat
+- **WHEN** the operator routes a kind to the chat sink and an event of that kind
+  occurs on a host that presents no sink
+- **THEN** the chat carries it, and the noticing host shows it nowhere of its
   own (82)
-
-#### Scenario: A kind the operator routed nowhere
-- **WHEN** an event of a kind occurs whose routing names no sink
-- **THEN** it is still recorded in the run record and is reachable from the
-  status view, so nothing is lost (79, 82)

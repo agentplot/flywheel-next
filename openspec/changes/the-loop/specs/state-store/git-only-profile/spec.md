@@ -18,11 +18,11 @@ exist for people, and the machinery SHALL neither read nor write them (C.2).
   and no issue, milestone, board or review of the git host (C.2, 160)
 
 #### Scenario: The git host is depended on for three things only
-- **WHEN** the profile runs
-- **THEN** it uses the git host to accept one update to a branch at a time, to
-  reject an update whose base is stale, and, when the operator has configured
-  one, to call a URL when a branch moves; it depends on no other service of the
-  host (160, 162, 166)
+- **WHEN** the whole conformance suite is run against a local bare repository
+  with no API of any kind beside it
+- **THEN** it passes, so the profile needs only that the host accept one update
+  to a branch at a time and reject an update whose base is stale; the call when
+  a branch moves is the operator's option and not a dependency (160, 162, 166)
 
 ### Requirement: A change of state is a commit that carries its reason and evidence
 
@@ -32,10 +32,12 @@ commit the machinery makes SHALL carry the effect's identity, its reason and the
 evidence it was based on, and history SHALL be the audit record with nothing
 else kept for that purpose (167, 79, 127).
 
-#### Scenario: A repeat is recognised before it is written
-- **WHEN** the machinery would perform an effect whose identity already appears
-  in the shared line's history
-- **THEN** no commit is made and no second write is reported (127, 167)
+#### Scenario: A repeat is recognised before it is written — mirrors contract/write-effect
+- **WHEN** an effect whose identity already appears in the shared line's history
+  is written again
+- **THEN** the write with that identity changes nothing, no second commit is
+  made and no second write is reported; whether the act is performed again is
+  the proof's question (73, 127, 167)
 
 #### Scenario: The state write carries the response that caused it
 - **WHEN** a transition fires on the operator's response
@@ -65,16 +67,24 @@ rejections it SHALL report and re-read (162, 134).
 ### Requirement: A lease is a branch of its own, taken by a landing commit
 
 A lease SHALL be taken by a commit that lands, renewed while the host works, and
-expired by a stated rule (163). Leases and heartbeats SHALL be kept off the
-shared line, so that renewals add nothing to its history and history stays the
-audit record (163, 167). The expiry rule SHALL be that the lease's renewal is
+expired by a stated rule (163). Leases and heartbeats SHALL live on branches of
+their own, off the shared line, so that renewals add nothing to its history and
+history stays the audit record (163, 167). A lease whose renewal is older than
+the stale window SHALL be shown stale, while its holder may still renew and
+continue (150, 163). The expiry rule SHALL be that the lease's renewal is
 older than 24 hours, or that the holder's host decision was answered takeover
 (128, 163, 150).
 
 #### Scenario: Renewals do not grow the audit history
 - **WHEN** a host renews its leases every minute for a month
-- **THEN** the shared line's history holds no commit for any of those renewals
-  (163, 167)
+- **THEN** reading the shared line's history shows no commit for any of those
+  renewals, because each lease is a branch of its own (163, 167)
+
+#### Scenario: A stale lease is shown, not seized — mirrors contract/lease
+- **WHEN** a lease's renewal is older than the stale window but inside the
+  expiry
+- **THEN** it is shown stale with its holder, and the holder may renew it and
+  continue (150, 163)
 
 #### Scenario: A lease expires by the stated rule
 - **WHEN** a lease's renewal is older than 24 hours, or the operator answers
@@ -95,8 +105,9 @@ SHALL then rebase and push its remaining commits (165).
 #### Scenario: A host's network drops for an hour — mirrors S18
 - **WHEN** a host loses its route, finishes the work it owned and commits
   locally, then reconnects
-- **THEN** its renewals land, its commits land after them, and nothing of
-  another host's is lost (151, 165)
+- **THEN** its renewals land, its commits land after them, nothing of another
+  host's is lost, and the status view's as-of point after the reconnect is the
+  latest write (151, 165, 145)
 
 #### Scenario: A write made while disconnected is an intention
 - **WHEN** an effect is written while the host has no route
@@ -123,8 +134,14 @@ latency bound (166).
 - **WHEN** a host runs on the operator's own computer with no address reachable
   from outside
 - **THEN** it learns of new state by a bounded poll of the shared line's head
-  within the stated bound, and the git host's call is used only when the
-  operator has chosen to publish an address for it (46, 130, 166)
+  within 30 seconds, and the git host's call is used only when the operator has
+  chosen to publish an address for it (46, 130, 166)
+
+#### Scenario: A local cause does not wait for the poll
+- **WHEN** the cause is on the host itself — a response given on its page, a
+  message its chat sink received, a session's report through the exit command
+- **THEN** the object is ticked at once, without waiting for the poll's interval
+  (130)
 
 #### Scenario: A fetch names what moved
 - **WHEN** a fetch brings new commits
@@ -142,24 +159,33 @@ anyone (154).
 #### Scenario: The operator edits a state file by hand — mirrors S19
 - **WHEN** the operator commits an edit to an object's state file
 - **THEN** the next pass on every host treats it as the response, applies it
-  once, and records who gave it and when (3, 153, 164)
+  once, records who gave it and when, and takes the commit itself as the
+  response's identity; no host was told by anything but its own fetch (3, 153,
+  164, 165)
 
 #### Scenario: The operator can tell the response landed
 - **WHEN** a response is given from a phone or the page
 - **THEN** the operator is shown that it was recorded, without asking anyone,
   once the write has landed (154)
 
-### Requirement: The status view is readable with no host running
+### Requirement: The status view is a file on the shared line, written by one host
 
-The status view SHALL be served from the same state the engine reads and SHALL
-be readable with no machinery running anywhere, stating as of when (132, 145).
-No rendering of the plan SHALL be committed (15).
+The status view SHALL be a file committed on the shared line, rebuilt from list
+and read alone by the holder of the plan's lease, stating the commit and the
+time it is as of (132, 145, 146, 148). Any running host SHALL serve it and, with
+none running, the operator SHALL read the committed file (132, 145). No
+rendering of the plan SHALL be committed (15).
 
 #### Scenario: The status page six hours after the last host stopped — mirrors S20
 - **WHEN** no host has run for six hours and the operator opens the status view
-  from a phone
-- **THEN** it shows the state as of the last landed commit and says so (132,
-  145)
+- **THEN** the committed file on the shared line is readable from the state
+  repository alone, states the commit it is as of, and that commit is the last
+  that landed (132, 145)
+
+#### Scenario: One host writes it
+- **WHEN** more than one host could rebuild the status view
+- **THEN** the holder of the plan's lease writes it and the others do not, so
+  the file never conflicts with itself (148, 142)
 
 #### Scenario: The plan is served and never stored
 - **WHEN** the plan is shown on any surface

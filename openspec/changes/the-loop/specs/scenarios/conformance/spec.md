@@ -27,8 +27,10 @@ afterwards as a trace a person reads (95).
 
 #### Scenario: A scenario runs and renders — mirrors S16
 - **WHEN** a scenario file is run
-- **THEN** its transitions, effects and decisions are asserted in order, and it
-  renders afterwards as a trace a person can read (94, 95)
+- **THEN** it validates against the scenario schema, it runs with no live
+  service, its transitions, effects and decisions are asserted in order, and a
+  trace file named for it is written listing the ticks, the guards, the
+  transitions, the effects, the decisions and their numbers (94, 95)
 
 #### Scenario: A scenario states what it exercises
 - **WHEN** a scenario is added
@@ -56,16 +58,32 @@ real take, merge, rebase, conflict or landing SHALL NOT be run against it (93a).
 - **THEN** the scenarios asserting a real take, merge, rebase, conflict or
   landing are excluded, and the run record names the subset that ran (93a)
 
-### Requirement: A prompt can be rendered without starting a session
+### Requirement: Instructions are data, and a prompt can be rendered without starting a session
 
-A test SHALL be able to render the exact prompt a given scenario would produce,
-without starting a session (90). A test SHALL be able to show, for a given
-instruction version and a scenario, what a session would be asked to write (124).
+The schemas an artifact must satisfy, the instructions for writing each
+artifact, and the skill for each session type SHALL be data, versioned like
+anything else, and a session SHALL be given the versions in force when it starts
+(88). A session's inputs SHALL be enumerable and closed — the schema
+instruction, the type skill, its work order, and the artifacts of the change it
+works — and nothing else SHALL reach it (89). No instruction text SHALL exist in
+the engine and no engine behaviour SHALL depend on an instruction's wording
+(119). Each instruction SHALL be versioned so a session started before a change
+and one started after can be told apart (123), and the instructions SHALL live
+in the shipped set and reach every host with it (91). A test SHALL be able to
+render the exact prompt a given scenario would produce, without starting a
+session (90), and to show, for a given instruction version and a scenario, what
+a session would be asked to write (124).
 
 #### Scenario: The prompt for a scenario and an instruction version
 - **WHEN** a session type, an instruction version and a scenario are named
 - **THEN** the work order that would be handed in is rendered whole, with no
-  session started (90, 124)
+  session started, and it holds the schema instruction, the type skill, the work
+  order and the change's artifacts and nothing else (88, 89, 90, 124)
+
+#### Scenario: Two instruction versions are told apart
+- **WHEN** an instruction is changed and the prompt is rendered before and after
+- **THEN** the two renderings name different instruction versions, so a session
+  started before the change and one started after can be told apart (123, 91)
 
 ### Requirement: The suite runs against the stand-in and against the real profile
 
@@ -79,7 +97,8 @@ every scenario that applies to it passes and its binding is found complete (140,
 - **WHEN** the suite is run against the stand-in and then against a local
   sandbox of the real profile
 - **THEN** the same scenario files and the same machine files are used, their
-  hash is recorded, and both runs pass (168)
+  hash is recorded and equals the hash of the definitions directory the binary
+  was built from, and both runs pass (168)
 
 #### Scenario: The contract set runs before the domain loads
 - **WHEN** the operations and guarantees of the state store contract are

@@ -33,10 +33,11 @@ page's capture box (19), the chat forward (112, 215) and the meeting transcript
 turning a capture into signals SHALL be a judgment and SHALL NOT run unattended
 (115).
 
-#### Scenario: An adapter runs unattended on the tick
-- **WHEN** a source the host declares has a new event
-- **THEN** the enumerator writes one keyed capture on the host's tick, with no
-  session started and no judgment made (115, 231)
+#### Scenario: An enumerator writes a capture and starts nothing
+- **WHEN** a source event arrives — a transcript named to the capture command, a
+  message forwarded to the chat sink, or a submission of the page's box
+- **THEN** one keyed capture is written, no session is started, and no judgment
+  about the material is made (115, 215)
 
 #### Scenario: The page's box writes its one signal directly
 - **WHEN** the operator submits the capture box
@@ -60,9 +61,9 @@ it argues with when any exist (113). A signal SHALL be immutable once written
 captures made before the flywheel existed SHALL be read without conversion (114).
 
 #### Scenario: A signal is not edited
-- **WHEN** a signal has been written
-- **THEN** no later act changes it; a correction is a new signal or a change of
-  move, never an edit (113)
+- **WHEN** the tool catalogue is enumerated and a signal's history is read
+- **THEN** no tool edits a signal, and the signal's record is never rewritten in
+  history; a correction is a new signal or a change of move (113, 193)
 
 #### Scenario: An older record reads without conversion
 - **WHEN** a capture or signal written under an earlier version of the format is
@@ -75,7 +76,9 @@ Every signal SHALL have exactly one standing move — attach, challenge, join,
 answered, route or drop — stored with the signal id, the target, the reason and
 the date (107). Curation SHALL run over signals with no move and SHALL NOT
 re-judge one that has a move; only the operator's response SHALL replace a move
-(107). Every move SHALL have a stated consequence (116).
+(107). Every move SHALL have a stated consequence (116). A challenge move SHALL record
+the name of the claim it argues with as text; the consequence that stales that
+claim's verdicts (101) belongs to the phase that has a ledger.
 
 #### Scenario: Twenty signals, every one moved — mirrors S08
 - **WHEN** curation runs over twenty unmoved signals from one transcript
@@ -95,7 +98,8 @@ re-judge one that has a move; only the operator's response SHALL replace a move
 
 #### Scenario: A revived signal is clustered again — mirrors S24
 - **WHEN** the operator revives a dropped signal
-- **THEN** its move is cleared and the next curation run clusters it (107)
+- **THEN** the drop move is removed, the signal is unmoved again, and the next
+  curation run clusters it (107)
 
 ### Requirement: Curation is a bounded judgment the operator may make by hand
 

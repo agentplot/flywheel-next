@@ -42,8 +42,8 @@ runs under, and a type change SHALL NOT move an object already in flight (57,
 
 #### Scenario: A type version does not move work in flight
 - **WHEN** a type file's version moves while a unit of that type is in flight
-- **THEN** the unit continues under the version recorded when it started, and
-  the new version applies only to units approved after it (57)
+- **THEN** that unit continues under the version its record holds, and the
+  record still names that version after the change (57, 224)
 
 ### Requirement: The engine names nothing of the domain
 
@@ -54,8 +54,9 @@ definition SHALL name a store, a service, a path or a field (138, I13).
 
 #### Scenario: The domain boundary is checkable
 - **WHEN** the engine's sources and tests are searched for those seven names as
-  whole words, or for any atom name
-- **THEN** no match is found (86, I13)
+  whole words, for any atom name, and for any instruction text
+- **THEN** no match is found, so no instruction text exists in the engine and no
+  engine behaviour depends on an instruction's wording (86, 119, I13)
 
 #### Scenario: The engine runs a machine that shares no atom with the flywheel
 - **WHEN** the engine is given a toy machine naming none of the flywheel's atoms
@@ -74,14 +75,16 @@ write (127).
 - **WHEN** starting a session takes two minutes and the command that started it
   has already returned
 - **THEN** the machinery judges the start by evidence that the session exists,
-  retries under the same deterministic name, starts it exactly once, and
-  reports nothing failed (72, 73)
+  retries under the same deterministic name, has the second and third starts
+  refused as duplicates of that name, ends with one session, and reports nothing
+  failed (72, 73)
 
-#### Scenario: A repeated effect writes nothing
-- **WHEN** a tick would perform an effect whose identity is already present in
-  the state store
-- **THEN** the effect is not performed, no write is made, and no second write is
-  reported (127)
+#### Scenario: A repeat is a no-op write, not a skipped act — mirrors contract/write-effect
+- **WHEN** the proof of a performed effect is lost from the world and the next
+  tick performs the act again
+- **THEN** the act is performed a second time because its proof is absent, the
+  write it makes carries the same identity, the state store changes nothing for
+  it, and the run record reports one write and not two (73, 127)
 
 ### Requirement: Reading twice with nothing changed writes nothing
 
@@ -108,16 +111,18 @@ nothing else SHALL keep time (231). A run missed while the host was down SHALL
 be caught up on the next tick, and the idempotent key SHALL make the catch-up
 write nothing twice (231, 111).
 
-#### Scenario: A missed run is caught up once
-- **WHEN** a host is shut for a day and started again, with a cadence that
-  should have fired three times
-- **THEN** the next tick performs the due work once, under the idempotent key,
-  and nothing is written twice (231, 111)
+#### Scenario: A missed cadence is caught up once
+- **WHEN** a host is shut for a day and started again, and curation's cadence
+  should have fired three times while it was down (110)
+- **THEN** the next tick charges curation once, under the idempotent key, and
+  nothing is written twice (231, 111)
 
-#### Scenario: Nothing outside the tick keeps time
-- **WHEN** a behaviour must happen after a stated interval
-- **THEN** it is expressed as a guard on the tick and no timer, cron or
-  scheduler of the machinery's own fires it (231)
+#### Scenario: Nothing happens between ticks
+- **WHEN** the clock is advanced past the interval of a timed behaviour and no
+  tick is run
+- **THEN** nothing happens: no transition fires and no effect is performed
+- **WHEN** the next tick runs
+- **THEN** the behaviour fires once (231)
 
 ### Requirement: Line and place effects may be recorded while no construction runs
 
@@ -134,6 +139,6 @@ the manifest like any other binding (93a, 139).
 
 #### Scenario: The binding is named, not inferred
 - **WHEN** a host starts
-- **THEN** it reads which binding it runs from the manifest and records it, and
-  a host whose manifest names the performing binding performs the effects
-  instead (93a, 139)
+- **THEN** it reads which binding it runs from the manifest and records it in
+  the run record, so a reader can tell a recorded effect from a performed one
+  (93a, 139)

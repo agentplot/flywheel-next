@@ -41,17 +41,40 @@ kind SHALL have exactly one creating condition and one retracting condition
 - **WHEN** a session offers a finding on its own intent, the plan shows it as a
   proposed elaboration, and the operator drops it
 - **THEN** nothing was created before the response and nothing remains after it
-  (5, 58, I1)
+  (5, 58, I1); the record points at the finding's document and never holds its
+  text (62); the session that offered it is still working and was not
+  interrupted (58, 71, I5); and the tail shows it dropped (14)
 
 #### Scenario: A standing session is offered, never ended — mirrors S02
-- **WHEN** a standing elaboration's session goes idle
-- **THEN** the plan offers finish or keep, the session keeps running, and only
-  the operator's response ends it (25, 26, I6)
+- **WHEN** a standing elaboration's session goes idle and the machinery is then
+  restarted
+- **THEN** the plan offers finish or keep, the offer still stands after the
+  restart, the session is alive, its place is neither removed nor rebased, and
+  only the operator's response ends it (25, 26, I6, I7)
 
 #### Scenario: A thread whose work is done is offered for closing — mirrors S07
-- **WHEN** every elaboration of an intent is done
-- **THEN** the plan offers the intent's close, and only the operator's response
-  closes it (22)
+- **WHEN** every elaboration of an intent is done and the operator answers close
+- **THEN** the plan offered the close and only the response closed it (22); the
+  intent is archived and its line landed and removed as recorded effects, one
+  each (49, 54, 93a); the tail shows it closed (14); and no other object moved
+
+### Requirement: An intent carries at most one proposal, and its type is the operator's to correct
+
+An intent SHALL carry at most one elaboration awaiting approval at a time, and
+new material for the intent SHALL join that proposal (21). The type of an
+elaboration SHALL be chosen when it is proposed and SHALL be correctable by the
+operator's response (27).
+
+#### Scenario: New material joins the standing proposal
+- **WHEN** a second elaboration would be proposed on an intent that already has
+  one awaiting approval
+- **THEN** the new material joins that proposal and one decision stands on the
+  intent, not two (21)
+
+#### Scenario: The operator corrects the type in the answer
+- **WHEN** the operator answers a proposed elaboration naming another type
+- **THEN** the elaboration is approved under the type the response named and its
+  record says so (27)
 
 ### Requirement: Every decision carries a number, given once and never reused
 
@@ -59,7 +82,7 @@ Every decision SHALL carry a short number unique in the organization, given once
 and never reused (15). The page and the chat SHALL show the same number, and a
 response SHALL name it (15, 18). A decision state left and re-entered SHALL be a
 new decision with a new number, so an earlier reply cannot land on a question
-that has changed (15).
+that has changed (15; the register's rule, model.md §5.2).
 
 #### Scenario: The same number on both surfaces
 - **WHEN** a decision is delivered to the page and to the chat sink

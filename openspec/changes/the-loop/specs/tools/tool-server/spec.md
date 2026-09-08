@@ -21,9 +21,10 @@ tools, and no caller SHALL have an operation the others lack (193).
   is the same in either case (193)
 
 #### Scenario: Every call is recorded once
-- **WHEN** a tool is called
+- **WHEN** a tool is called, from the page or from the chat
 - **THEN** one response record is written, carrying the tool, the object, who
-  gave it and when, and applied exactly once (153, 137)
+  gave it and when, applied exactly once, and the identity it names is the same
+  operators-list entry either way (153, 137, 236a)
 
 ### Requirement: A tool that asserts work was done does not exist
 
@@ -35,11 +36,13 @@ and never as a response (4).
 
 #### Scenario: An in-flight unit dropped, a claim of done refused — mirrors X08
 - **WHEN** the operator drops an in-flight unit by dictation, then dictates that
-  a work item is done, then kills a pane by hand
+  a work item is done, then ends a session by hand outside the machinery's
+  command so its presence evidence goes absent
 - **THEN** the unit is dropped with its sessions retired and its places
-  released; the claim of done is refused, recorded unapplicable and reported;
-  and the killed pane is read as a session gone, with a fresh attempt started
-  rather than a response recorded (4, 12, 66, 74)
+  released, and the tail shows it dropped; the claim of done is refused,
+  recorded unapplicable and reported; the ended session is read as a session
+  gone and a fresh attempt is started rather than a response recorded; and
+  nothing is merged (4, 12, 14, 66, 74)
 
 #### Scenario: An undo tool takes the decision's own transition
 - **WHEN** the operator invokes an undo-or-defer tool outside a decision
@@ -54,13 +57,14 @@ be a response that can be pointed to (12, I1).
 
 #### Scenario: The operator's own session — mirrors X01
 - **WHEN** the operator opens a session of their own by dictation, on no thread
-- **THEN** the session exists, no decision is ever raised about it, and it ends
-  by dictation, its place going with it (69, 12)
+- **THEN** the session exists and its record names who opened it, present means
+  a keystroke within the window the profile states, no decision is ever raised
+  about it, and it ends by dictation with its place going with it (69, 25, 12)
 
 #### Scenario: A dropped signal revived — mirrors S24
 - **WHEN** the operator revives a dropped signal by dictation
-- **THEN** the signal's move is replaced and the next curation run clusters it
-  (107, 12)
+- **THEN** the drop move is removed, the signal is unmoved again, no decision is
+  raised for it, and the next curation run clusters it (107, 12)
 
 ### Requirement: The machinery never parses free text
 
@@ -88,12 +92,14 @@ The tool catalogue SHALL be one object with one definition per tool, and the
 transport SHALL be a transport and never a second write path (193). This phase
 SHALL serve it over HTTP for the page and call it in-process for the
 machinery's own commands; further transports SHALL add clients and not
-operations (193, 291, 293).
+operations (193; proposal, What must not be foreclosed).
 
-#### Scenario: A new transport adds no operation
-- **WHEN** a further transport is added later
-- **THEN** it serves the same catalogue, and no tool exists that the earlier
-  transports lacked (193)
+#### Scenario: Both callers see one catalogue
+- **WHEN** the in-process caller and the HTTP caller each enumerate the
+  catalogue
+- **THEN** they list the same tools with the same schemas, so a further
+  transport adds a client and not an operation (193; proposal, What must not be
+  foreclosed)
 
 #### Scenario: The machinery's own commands go through the catalogue
 - **WHEN** the machinery performs an operation the operator could also invoke

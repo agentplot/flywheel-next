@@ -23,10 +23,11 @@ served, and its version SHALL be the binary's (307).
   the response is recorded, and the work starts (306, 314, 1, 13)
 
 #### Scenario: Nothing is desktop-only
-- **WHEN** any control or form the page carries is compared between the desktop
-  and the 390px viewport
-- **THEN** each is reachable in both, with the phone's layout the same bundle
-  under 760px (306, 307)
+- **WHEN** the driver enumerates a fixed list at both viewports — a decision's
+  answer controls, the capture box, the mark-as-intent control, the dock's back
+  control, and one instance of each kind's form
+- **THEN** every one is reachable at both, with the phone's layout the same
+  bundle under 760px (306, 307)
 
 ### Requirement: Every answer is one tap or one short reply
 
@@ -57,15 +58,14 @@ dependency the phone must fetch from anywhere else (310).
 - **THEN** it renders whole, fetching no script, font or style from anywhere
   else (310)
 
-### Requirement: The page shows the whole and gives each kind one form
+### Requirement: The page carries the status view and gives each kind one form
 
-The page SHALL show every intent, elaboration, bolt, unit, work item and session
-with its current state, grouped by state, and for each which host holds it, which
-runs it and whether that host is alive (141). Every kind of object SHALL have one
-form of its own and no two kinds SHALL share one; the phase an object is in SHALL
-be shown by where it sits and never by its form (209). An elaboration SHALL be a
-surface of its own, reached from its intent, and the intent's surface SHALL list
-its elaborations in order (210).
+The page SHALL carry the status view, whose contents are stated in the run
+record's spec (141). Every kind of object SHALL have one form of its own and no
+two kinds SHALL share one; the phase an object is in SHALL be shown by where it
+sits and never by its form (209). An elaboration SHALL be a surface of its own,
+reached from its intent, and the intent's surface SHALL list its elaborations in
+order (210).
 
 #### Scenario: A decision is the only answerable form
 - **WHEN** the page renders a decision, a proposal, an intent, a bolt and a
@@ -78,6 +78,31 @@ its elaborations in order (210).
 - **THEN** its elaborations are listed in order and each opens its own surface,
   showing its type, its state, its decision when one is pending, and its
   session's last activity (210)
+
+### Requirement: A single-operator host on a private network serves the page unsigned-in, and every response names that operator
+
+Until the organization's operators list holds more than one entry, a
+self-managed host MAY serve the page on the operator's private network with no
+sign-in (253a). The single entry SHALL be the identity every response records as
+given by, with when (253a, 153, 236a). The host SHALL refuse to serve
+unsigned-in as soon as a second operator is listed or the page is reached at any
+address but that network's (253a). The exception SHALL close when the account
+item exists (253a, 233).
+
+#### Scenario: A response names the manifest's operator
+- **WHEN** the operator answers a decision on the unsigned-in page
+- **THEN** the response record's given-by field is the operators list's single
+  entry and its given-at is set (153, 236a, 253a)
+
+#### Scenario: A second operator closes the exception
+- **WHEN** a second entry is added to the operators list and the page is
+  requested unsigned-in
+- **THEN** the host refuses to serve it and says why (253a)
+
+#### Scenario: An address off the private network is refused
+- **WHEN** the page is requested at an address that is not the host's
+  private-network address
+- **THEN** the host refuses to serve it unsigned-in (253a)
 
 ### Requirement: The page is a capture surface
 
@@ -100,9 +125,12 @@ response (19).
 ### Requirement: The page is served at the host's private-network address
 
 The page SHALL be served on the operator's private network and SHALL work on a
-phone (155). The host SHALL have one address with the organization in the path,
-and a link SHALL name the organization it opens (205a). Nothing SHALL be
-published beyond the operator's private network unless the operator says so (46).
+phone (155). The manifest SHALL name the router per host, and this phase's host
+address SHALL be the private-network router's name for the host (191, 205a). The
+host SHALL have one address with the organization in the path, a link SHALL name
+the organization it opens, and a link SHALL never name a localhost port (205a,
+308). Nothing SHALL be published beyond the operator's private network unless
+the operator says so (46).
 
 #### Scenario: A link from a phone opens the object
 - **WHEN** the operator taps a link carried by a chat rendering or a
@@ -110,7 +138,8 @@ published beyond the operator's private network unless the operator says so (46)
 - **THEN** the page opens that object in the dock with its answer controls in
   reach (308, 205a, 155)
 
-#### Scenario: Nothing is published without the operator's word
-- **WHEN** the page is served
-- **THEN** it is reachable on the operator's private network and at no address
-  beyond it, unless the operator has chosen to publish one (46, 155)
+#### Scenario: The host binds two addresses and no more
+- **WHEN** the host is serving
+- **THEN** it is bound to its private-network address and to a localhost port
+  for the operator at the machine, to no other address, and the manifest names
+  no publication (46, 155, 191, 245)

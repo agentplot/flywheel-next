@@ -32,11 +32,14 @@ rule, never by racing (150). The rule MAY name the operator's response for work
 that has a session behind it (150).
 
 #### Scenario: A host loses power mid-work — mirrors S13
-- **WHEN** one of two hosts loses power while holding an object with a session
-  behind it
-- **THEN** the object is shown as stale with its holder, the other host does not
-  touch it, and takeover happens either on the holder's return or by the stated
-  rule — never twice and never by racing (150, I11)
+- **WHEN** one of two hosts, not declared intermittent, loses power while
+  holding an object with a session behind it, and work waits on that object
+- **THEN** the status view shows the object and its host stale; past the long
+  bound the host-gone decision is raised; on the operator's takeover the other
+  host starts a fresh attempt; the returning host reads that its lease was
+  replaced, ends its own session for that object and reports; and one session is
+  running at the end — never two on one object and never taken by racing (150,
+  150a, I11)
 
 #### Scenario: The owner is on the status view
 - **WHEN** any object is read on the status view
@@ -68,6 +71,46 @@ again with nothing to answer (150a).
 - **WHEN** the away host heartbeats again
 - **THEN** it is alive, its leases and sessions continue, and nothing is asked
   of the operator (150a)
+
+### Requirement: A host may declare the operator as its session binding
+
+A host MAY declare the operator as its session binding in the manifest, and a
+host so bound SHALL start no agent (93b, 69). Under it the machinery SHALL
+charge a session as it always does — a place prepared, a work order rendered,
+the session recorded — and the plan and the status view SHALL show the session
+as the operator's to run (93b, 89). The operator SHALL report through the same
+command a session reports through, and the exits, offers and refusals SHALL be
+the same records, so nothing downstream tells the two apart (93b, 67). A session
+charged this way SHALL be a with-operator session for every rule that turns on
+the type, and the machinery's own sessions, curation among them, SHALL be the
+operator's under the same rule (93b, 25, 110). A session SHALL be given one job,
+one place and a bounded goal, and its only outputs to the machinery SHALL be the
+fixed exits — done with deliverables, blocked on a question, offering a finding,
+offering a chore, stalled — with anything else refused (65, 66).
+
+#### Scenario: An approved elaboration is the operator's to run
+- **WHEN** an elaboration is approved on a host whose manifest names the
+  operator as its session binding
+- **THEN** the place is prepared and the work order rendered, the session record
+  names its place and work order, the plan shows it as the operator's to run, no
+  agent process is started, and the session reads present and working until the
+  operator reports (93b, 89)
+
+#### Scenario: The operator's exit is a session's exit
+- **WHEN** the operator runs the exit command with deliverables for that session
+- **THEN** the object's thread carries the same exit record a scripted exit
+  would write, and the elaboration advances as after any session's exit (93b,
+  67)
+
+#### Scenario: A report outside the fixed exits is refused
+- **WHEN** a report arrives that is none of the five exits
+- **THEN** it is refused and the refusal is recorded, because the exits are a
+  closed set (65, 66)
+
+#### Scenario: The with-operator rules apply and the binding is recorded
+- **WHEN** a host so bound starts and a session it charged goes idle for a day
+- **THEN** the run record names the operator binding, no finish-or-keep is
+  offered, and the session ends only by the operator's dictation (93b, 25)
 
 ### Requirement: More than one host may run for one organization
 
@@ -103,9 +146,12 @@ of that host (32). At the bound, ready work SHALL wait in a stated order, and
 nothing SHALL be lost or started twice (32).
 
 #### Scenario: Three items, a bound of two — mirrors S29
-- **WHEN** three ready items exist on a host whose bound is two
-- **THEN** two run, the third waits in the stated order, it starts when a slot
-  frees, and nothing is started twice across a restart (32, 73)
+- **WHEN** two independent items and one dependent item are ready on a host
+  whose bound is two
+- **THEN** two run, the third waits in the stated order and starts only when its
+  dependencies are merged and a slot frees, merges are recorded one at a time in
+  ordinal order, and nothing is started twice across a restart (31, 32, 38, 73,
+  93a)
 
 #### Scenario: The bound is the host's own setting
 - **WHEN** the manifest sets a different bound for a host

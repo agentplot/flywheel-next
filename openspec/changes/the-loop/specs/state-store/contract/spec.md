@@ -16,9 +16,9 @@ serve the status view (125). An engine that needs a further operation SHALL be a
 change to this contract, stated as one.
 
 #### Scenario: No caller reaches storage another way
-- **WHEN** any part of the machinery reads or writes durable state
-- **THEN** it does so through one of those operations and through nothing else
-  (125)
+- **WHEN** the crates are searched for a dependency on a storage library
+- **THEN** only the crate implementing the state store has one, so every other
+  part reaches durable state through the contract's operations (125)
 
 #### Scenario: Read names its point and writes nothing
 - **WHEN** an object's evidence is read
@@ -55,10 +55,11 @@ Every effect SHALL be written with an identity of its own. A repeat of an effect
 already written SHALL change nothing, SHALL NOT be an error, and SHALL NOT be
 reported as a second write (127).
 
-#### Scenario: The same effect written twice
+#### Scenario: The same effect written twice — mirrors contract/write-effect
 - **WHEN** an effect with an identity already present is written again
-- **THEN** nothing changes, no error is raised, and the run record shows one
-  write and not two (127)
+- **THEN** the write with that identity changes nothing, no error is raised, and
+  the run record shows one write and not two; whether the act itself is
+  performed again is the proof's question and not this operation's (73, 127)
 
 ### Requirement: A lease is taken, renewed and expired by a stated rule
 
@@ -78,6 +79,12 @@ be applied once, however many times it is delivered and whatever restarts happen
 between its giving and its application (129, 137). A response that cannot be
 applied SHALL be handed back to the engine and never dropped (129, 6).
 
+#### Scenario: A response is recorded before anything follows
+- **WHEN** a response is received
+- **THEN** it is written with the object it concerns, the decision it answers,
+  who gave it and when, before the transition it causes fires, and the operator
+  is acknowledged (129, 153, 154)
+
 #### Scenario: A response delivered twice
 - **WHEN** the same response arrives a second time, before or after a restart
 - **THEN** it takes effect once, and the second delivery changes nothing (137)
@@ -86,11 +93,6 @@ applied SHALL be handed back to the engine and never dropped (129, 6).
 - **WHEN** a response arrives naming a decision that has been retracted
 - **THEN** it is handed back as unapplicable, shown once under attention, and
   never dropped (6, 129)
-
-#### Scenario: A document under review returns its annotation as the response
-- **WHEN** a decision carries a document and the operator annotates it on the
-  review surface the profile names
-- **THEN** the annotation comes back as the response on that decision (129, 17)
 
 ### Requirement: Notify only shortens the wait
 
@@ -123,7 +125,9 @@ behaviour (136).
 
 #### Scenario: The status view with nothing running
 - **WHEN** no host of the operator's is running
-- **THEN** the status view is still readable, and it says as of when (132, 145)
+- **THEN** the status view is still readable, and it says as of when (132, 145);
+  how a profile makes that so is the profile's, and this phase's is mirrored by
+  S20 in the git-only profile's spec
 
 ### Requirement: A profile is admitted only by a complete binding
 
@@ -132,11 +136,26 @@ by abstract name only (138). A profile SHALL supply a binding from every such
 name to the operations of its own storage, reviewable as data, and the
 definitions SHALL NOT change when the profile changes (139). An engine SHALL run
 unchanged against any profile whose binding is complete; a binding that leaves a
-name unsatisfied SHALL NOT be a profile (140).
+name unsatisfied SHALL NOT be a profile (140). A binding SHALL name no evidence
+outside the atoms file, the operations the engine uses SHALL be exactly the
+eight of the contract, and a profile SHALL name the mechanism behind each of the
+five guarantees; one that names none for a guarantee SHALL be refused (139, 140,
+169, 170).
 
 #### Scenario: An incomplete binding is refused
 - **WHEN** a profile leaves one evidence or effect name unbound
 - **THEN** it is refused as a profile and the unbound name is reported (140)
+
+#### Scenario: A guarantee with no mechanism is refused — mirrors contract/binding
+- **WHEN** a profile names no mechanism for one of the five guarantees
+- **THEN** it is refused as a profile and the guarantee it left unprovided is
+  named (169, 170)
+
+#### Scenario: The binding names nothing outside the atoms, and the engine uses eight operations
+- **WHEN** a complete binding is checked
+- **THEN** every evidence name it binds appears in the atoms file, and the
+  operations the engine calls are exactly the eight of the contract (138, 139,
+  140)
 
 #### Scenario: The same machines under a second profile
 - **WHEN** a second profile's binding is complete

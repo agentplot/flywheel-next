@@ -68,11 +68,13 @@ machinery notices SHALL be visible only on the host that noticed it (82).
 The status view SHALL show every intent, elaboration, bolt, unit, work item and
 session with its current state, grouped by state — queued, in progress, waiting
 on the operator, done — and for each, which host holds it, which runs it and
-whether that host is alive (141). It SHALL be a projection of the same state the
-engine reads, never a source of truth and never written by hand to look right
-(142). It SHALL be central, one place for the whole organization, reachable from
-a phone however many hosts run (143). It SHALL be derived from list and read
-alone (146).
+whether that host is alive (141). For every state an object can be in, exactly
+one source of truth SHALL prove it, and anything else showing that state SHALL
+be a projection, written from the source and never read as truth (76, 142). The
+status view SHALL be such a projection, never written by hand to look right
+(142). It SHALL be central, one place for the whole organization, reachable
+from a phone however many hosts run (143). It SHALL be derived from list and
+read alone (146).
 
 #### Scenario: The whole, grouped by state
 - **WHEN** the operator opens the status view
@@ -101,11 +103,12 @@ The status view SHALL be readable with no machinery running anywhere (132, 141).
 A status view read while nothing is running SHALL show the state as of the last
 write that reached the central service, and SHALL say as of when (145).
 
-#### Scenario: Read from a phone with nothing running — mirrors S20
-- **WHEN** the operator opens the status view from a phone hours after the last
-  host stopped
-- **THEN** it renders, shows the state as of the last write that landed, and
-  says as of when (132, 145)
+#### Scenario: Read with nothing running
+- **WHEN** the operator opens the status view while no host is running
+- **THEN** it is readable, shows the state as of the last write that reached the
+  central service, and says as of when; how a profile makes it readable is the
+  profile's, and this phase's is mirrored by S20 in the git-only profile's spec
+  (132, 145)
 
 #### Scenario: Only one writer keeps the projection from racing
 - **WHEN** more than one host could write the status projection
