@@ -282,6 +282,31 @@ dependencies = [
 ]
 
 [[package]]
+name = "flywheel-atoms"
+version = "0.1.0"
+dependencies = [
+ "anyhow",
+ "chrono",
+ "flywheel-engine",
+ "serde",
+ "serde_json",
+ "serde_yaml",
+]
+
+[[package]]
+name = "flywheel-domain"
+version = "0.1.0"
+dependencies = [
+ "anyhow",
+ "chrono",
+ "flywheel-atoms",
+ "flywheel-engine",
+ "serde",
+ "serde_json",
+ "serde_yaml",
+]
+
+[[package]]
 name = "flywheel-engine"
 version = "0.1.0"
 dependencies = [
@@ -299,6 +324,7 @@ version = "0.1.0"
 dependencies = [
  "anyhow",
  "chrono",
+ "flywheel-atoms",
  "flywheel-engine",
  "serde",
  "serde_json",

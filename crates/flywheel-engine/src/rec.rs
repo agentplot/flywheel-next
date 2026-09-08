@@ -87,7 +87,7 @@ mod tests {
     use super::*;
     #[test]
     fn roundtrip() {
-        let text = "%rec: object\n\nid: unit/atlas/x\nstate: life=proposed\nnote: one\n+ two\n\nid: b\n";
+        let text = "%rec: object\n\nid: thing/one/x\nstate: life=proposed\nnote: one\n+ two\n\nid: b\n";
         let recs = parse(text);
         assert_eq!(recs.len(), 2);
         assert_eq!(recs[0].get("note"), Some("one\ntwo"));
@@ -98,20 +98,20 @@ mod tests {
 
     #[test]
     fn repeated_field_appends() {
-        let text = "%rec: object\n\nid: a\nclaim: one\nstate: x\nclaim: two\nclaim: three\n";
+        let text = "%rec: object\n\nid: a\ntag: one\nstate: x\ntag: two\ntag: three\n";
         let recs = parse(text);
         assert_eq!(recs.len(), 1);
         let r = &recs[0];
-        assert_eq!(r.get("claim"), Some("one"), "get reads the first");
-        assert_eq!(r.all("claim"), vec!["one", "two", "three"]);
+        assert_eq!(r.get("tag"), Some("one"), "get reads the first");
+        assert_eq!(r.all("tag"), vec!["one", "two", "three"]);
         assert_eq!(r.fields.len(), 5, "order and repeats are kept");
         assert_eq!(r.fields[2].0, "state");
         // set changes the first occurrence and leaves the rest.
         let mut r2 = r.clone();
-        r2.set("claim", "uno");
-        assert_eq!(r2.all("claim"), vec!["uno", "two", "three"]);
+        r2.set("tag", "uno");
+        assert_eq!(r2.all("tag"), vec!["uno", "two", "three"]);
         // as_map keeps the last repeat; the round trip keeps them all.
-        assert_eq!(r.as_map().get("claim").map(String::as_str), Some("three"));
+        assert_eq!(r.as_map().get("tag").map(String::as_str), Some("three"));
         let again = parse(&write(&recs));
         assert_eq!(recs, again);
     }

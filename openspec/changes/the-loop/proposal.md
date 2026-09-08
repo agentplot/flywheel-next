@@ -534,7 +534,7 @@ Phase 1 is the seed for four more phases, so these hold from day one:
   chat channel that reaches the operator's phone, and a served page on the
   operator's private network (155, 191). Secrets are read from where the
   operator put them and never appear in configuration or code (204, 207).
-- **The prototype.** `scenarios/plan-mockup.yaml` and the stand-in store stay as
+- **The prototype.** `scenarios/rail-mockup.yaml` and the stand-in store stay as
   the test path (93); the stand-in stops being the only path, and
   `state/store.json` stops being where anything durable lives (133, 160).
 - **Not touched.** The existing flywheel keeps running willdan unmodified until

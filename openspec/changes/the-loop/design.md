@@ -634,7 +634,7 @@ The order below is chosen so each step is provable before the next depends on it
    `flywheel-engine` unchanged behind them; the grep test of D1, with the
    fixtures it names renamed.
 2. **Stand-in parity.** `flywheel-scenario` implements the four traits over today's
-   in-memory store; `scenarios/plan-mockup.yaml` and the existing tests pass
+   in-memory store; `scenarios/rail-mockup.yaml` and the existing tests pass
    unchanged. Nothing durable yet, nothing regressed.
 3. **`flywheel-store-git`** (D3, D4, D4a, D5, D6) against a local bare
    repository. The thirteen `contract/` files go green over the `lamp` machine —

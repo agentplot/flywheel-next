@@ -3,6 +3,7 @@
 //! (the engine, the register, the tail, the effects) runs for real.
 
 use chrono::{DateTime, Duration, Utc};
+pub use flywheel_atoms::scenario::{ScriptEntry, ServiceDecl, SessionFact};
 use flywheel_engine::runtime::{EvidenceSource, Object, Register, Response, TailEntry};
 use serde::{Deserialize, Serialize};
 use serde_json::{json, Value};
@@ -26,52 +27,6 @@ pub struct LineFact {
     pub landed: bool,
     pub absent: bool,
     pub landing: String,
-}
-
-#[derive(Debug, Clone, Serialize, Deserialize, Default)]
-#[serde(default)]
-pub struct SessionFact {
-    pub pane: bool,
-    pub activity: String,
-    pub exit: Option<String>,
-    pub question: Option<String>,
-    pub verdict: Option<String>,
-    pub deliverables: Vec<String>,
-    pub ticks_alive: u64,
-    pub idle_since: Option<DateTime<Utc>>,
-    pub inbox: Vec<String>,
-    pub played: Vec<usize>,
-}
-
-/// One thing a scripted session does, at an offset from its start.
-#[derive(Debug, Clone, Serialize, Deserialize, Default)]
-pub struct ScriptEntry {
-    #[serde(default)]
-    pub after: Option<String>,
-    #[serde(default)]
-    pub pane: Option<String>,
-    #[serde(default)]
-    pub activity: Option<String>,
-    #[serde(default)]
-    pub exit: Option<String>,
-    #[serde(default)]
-    pub question: Option<String>,
-    #[serde(default)]
-    pub verdict: Option<String>,
-    #[serde(default)]
-    pub deliverables: Vec<String>,
-}
-
-/// One service declaration a repository carries (`.flywheel/services.yaml` in the host
-/// binding; `given.services` here). `fails: true` scripts a process that exits instead of serving.
-#[derive(Debug, Clone, Serialize, Deserialize, Default)]
-#[serde(default)]
-pub struct ServiceDecl {
-    pub name: String,
-    pub command: String,
-    pub serves: String,
-    pub port: Option<u16>,
-    pub fails: bool,
 }
 
 /// The tethered process behind one service object: what `wt tether` and portless would report.

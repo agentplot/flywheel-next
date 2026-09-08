@@ -1,4 +1,4 @@
-//! Unit tests for the answer matcher and the duration parser in `eval`.
+//! Tests for the answer matcher and the duration parser in `eval`.
 
 use chrono::Duration;
 use flywheel_engine::eval::{match_answer, parse_duration};
@@ -16,16 +16,16 @@ fn bare_word_matches_exactly() {
 
 #[test]
 fn word_with_argument_binds_the_rest() {
-    assert_eq!(match_answer("bolt <name>", "bolt plan-rows"), Some("plan-rows".into()));
-    assert_eq!(match_answer("bolt <name>", "bolt   bolt/atlas/plan-rows  "), Some("bolt/atlas/plan-rows".into()));
-    assert_eq!(match_answer("bolt <name>", "bolt"), Some(String::new()), "the argument may be empty");
-    assert_eq!(match_answer("bolt <name>", "bolts x"), None);
-    assert_eq!(match_answer("bolt <name>", "rename x"), None);
+    assert_eq!(match_answer("route <name>", "route plan-rows"), Some("plan-rows".into()));
+    assert_eq!(match_answer("route <name>", "route   route/one/plan-rows  "), Some("route/one/plan-rows".into()));
+    assert_eq!(match_answer("route <name>", "route"), Some(String::new()), "the argument may be empty");
+    assert_eq!(match_answer("route <name>", "routes x"), None);
+    assert_eq!(match_answer("route <name>", "rename x"), None);
     // A multi-word head matches whole, never by one of its words.
-    assert_eq!(match_answer("new bolt <name>", "new bolt thing"), Some("thing".into()));
-    assert_eq!(match_answer("new bolt <name>", "bolt thing"), None);
-    assert_eq!(match_answer("new bolt <name>", "new thing"), None);
-    assert_eq!(match_answer("bolt <name>", "new bolt thing"), None, "`bolt` is not the first word");
+    assert_eq!(match_answer("new route <name>", "new route thing"), Some("thing".into()));
+    assert_eq!(match_answer("new route <name>", "route thing"), None);
+    assert_eq!(match_answer("new route <name>", "new thing"), None);
+    assert_eq!(match_answer("route <name>", "new route thing"), None, "`route` is not the first word");
     assert_eq!(match_answer("pick <letters>", "pick a b c"), Some("a b c".into()));
     // `<text>` alone has an empty head: the whole answer is the argument.
     assert_eq!(match_answer("<text>", "anything at all"), Some("anything at all".into()));
@@ -43,7 +43,7 @@ fn word_with_colon_binds_the_text_after_it() {
 }
 
 #[test]
-fn durations_parse_by_unit() {
+fn durations_parse_by_suffix() {
     assert_eq!(parse_duration("30s"), Some(Duration::seconds(30)));
     assert_eq!(parse_duration("5m"), Some(Duration::minutes(5)));
     assert_eq!(parse_duration("14h"), Some(Duration::hours(14)));
@@ -56,10 +56,10 @@ fn durations_parse_by_unit() {
 #[test]
 fn malformed_durations_are_none() {
     assert_eq!(parse_duration(""), None);
-    assert_eq!(parse_duration("5"), None, "a unit is required");
+    assert_eq!(parse_duration("5"), None, "a suffix is required");
     assert_eq!(parse_duration("m"), None, "a number is required");
-    assert_eq!(parse_duration("5x"), None, "unknown unit");
-    assert_eq!(parse_duration("5ms"), None, "milliseconds are not a unit");
+    assert_eq!(parse_duration("5x"), None, "unknown suffix");
+    assert_eq!(parse_duration("5ms"), None, "milliseconds are not a suffix");
     assert_eq!(parse_duration("1.5h"), None, "whole numbers only");
     assert_eq!(parse_duration("five m"), None);
 }

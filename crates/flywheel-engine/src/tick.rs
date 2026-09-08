@@ -75,7 +75,7 @@ pub fn submachine<'a>(defs: &'a Definitions, st: &State, obj: &Object) -> Option
 fn resolve_ref(name: &str, obj: &Object) -> String {
     let base = name.split('@').next().unwrap_or(name);
     if let Some(field) = base.strip_prefix('$') {
-        // `$unit.type` → record field `type`
+        // `$object.field` → record field `field`
         let field = field.rsplit('.').next().unwrap_or(field);
         if let Some(Value::String(s)) = obj.record.get(field) {
             return s.clone();

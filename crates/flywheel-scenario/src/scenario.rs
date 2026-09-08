@@ -1,66 +1,14 @@
-//! Scenario files: `given` seeds the store, `when` drives it.
+//! Seeding and driving a scenario. The scenario file's own types live in
+//! `flywheel-atoms` (94); this is the stand-in's way of playing one.
 
-use crate::store::{ScriptEntry, ServiceDecl, SessionFact, Store};
-use crate::world;
 use crate::runner::Runtime;
-use anyhow::{Context, Result};
+use crate::store::Store;
+use crate::world;
 use flywheel_engine::Definitions;
-use serde::Deserialize;
 use serde_json::Value;
 use std::collections::BTreeMap;
 
-#[derive(Debug, Deserialize)]
-pub struct Scenario {
-    pub scenario: String,
-    #[serde(default)]
-    pub title: String,
-    #[serde(default)]
-    pub given: Given,
-    #[serde(default)]
-    pub when: Vec<BTreeMap<String, Value>>,
-}
-
-#[derive(Debug, Deserialize, Default)]
-pub struct Given {
-    #[serde(default)]
-    pub objects: Vec<GivenObject>,
-    #[serde(default)]
-    pub evidence: BTreeMap<String, BTreeMap<String, Value>>,
-    #[serde(default)]
-    pub script: BTreeMap<String, Vec<ScriptEntry>>,
-    #[serde(default)]
-    pub sessions: BTreeMap<String, SessionFact>,
-    /// Service declarations per repository: what `.flywheel/services.yaml` would say.
-    #[serde(default)]
-    pub services: BTreeMap<String, Vec<ServiceDecl>>,
-    #[serde(default)]
-    pub hosts: Vec<BTreeMap<String, Value>>,
-    #[serde(default)]
-    pub tail: Vec<flywheel_engine::TailEntry>,
-    #[serde(default)]
-    pub now: Option<chrono::DateTime<chrono::Utc>>,
-    #[serde(default)]
-    pub register_start: Option<u32>,
-}
-
-#[derive(Debug, Deserialize)]
-pub struct GivenObject {
-    pub id: String,
-    pub machine: String,
-    #[serde(default)]
-    pub parent: Option<String>,
-    #[serde(default)]
-    pub state: BTreeMap<String, String>,
-    #[serde(default)]
-    pub record: BTreeMap<String, Value>,
-    #[serde(default)]
-    pub entered: Option<String>,
-}
-
-pub fn load(path: &std::path::Path) -> Result<Scenario> {
-    let text = std::fs::read_to_string(path).with_context(|| format!("reading {}", path.display()))?;
-    Ok(serde_yaml::from_str(&text).with_context(|| format!("parsing {}", path.display()))?)
-}
+pub use flywheel_atoms::scenario::{load, Given, GivenObject, Scenario};
 
 pub fn seed(defs: Definitions, sc: &Scenario) -> Runtime {
     let mut store = Store::default();

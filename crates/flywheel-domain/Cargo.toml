@@ -1,5 +1,5 @@
 [package]
-name = "flywheel-scenario"
+name = "flywheel-domain"
 version.workspace = true
 edition.workspace = true
 license.workspace = true

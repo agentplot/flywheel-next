@@ -59,7 +59,7 @@ pub fn eval(g: &Guard, cx: &Ctx) -> Hold {
             let prefix = format!("{}.{}.", cx.region, cx.state_name);
             let (want_region, want_state) = match final_state.split_once('.') { Some((r, s)) => (Some(r), s), None => (None, final_state.as_str()) };
             let hit = cx.object.config.iter().any(|(path, st)| {
-                // `final: <region>.X` may also name a sibling region of the object (a bolt's `line`).
+                // `final: <region>.X` may also name a sibling region of the object.
                 if let Some(r) = want_region {
                     if st == want_state && path.split('.').step_by(2).any(|seg| seg == r) { return true; }
                 }
@@ -215,9 +215,9 @@ fn cmp(a: &Value, b: &Value) -> Option<std::cmp::Ordering> {
 /// `5m`, `14h`, `7d`, `30s`.
 pub fn parse_duration(s: &str) -> Option<Duration> {
     let s = s.trim();
-    let (num, unit) = s.split_at(s.trim_end_matches(|c: char| c.is_ascii_alphabetic()).len());
+    let (num, suffix) = s.split_at(s.trim_end_matches(|c: char| c.is_ascii_alphabetic()).len());
     let n: i64 = num.trim().parse().ok()?;
-    Some(match unit {
+    Some(match suffix {
         "s" => Duration::seconds(n),
         "m" => Duration::minutes(n),
         "h" => Duration::hours(n),
@@ -227,12 +227,12 @@ pub fn parse_duration(s: &str) -> Option<Duration> {
     })
 }
 
-/// `{response: "yes"}`, `{response: "bolt <name>"}`, `{response: "redo: <notes>"}`.
+/// `{response: "yes"}`, `{response: "route <name>"}`, `{response: "redo: <notes>"}`.
 /// Holds when an unapplied response answers this object's active decision at this
 /// state, or is a dictation naming this object, and its answer matches the pattern.
 fn eval_response(pattern: &str, cx: &Ctx) -> Hold {
     // The decision a response answers may sit on this state or on any active nested state of the
-    // object (a bolt's close decision is on its `close` region; the transition is on `open`).
+    // object: a decision on one region, the transition it fires on another.
     let mut kinds: Vec<String> = cx.state.decision.as_ref().map(|d| vec![d.kind.clone()]).unwrap_or_default();
     for region in cx.object.config.keys() {
         if let Some((_, st)) = crate::tick::state_def(cx.defs, cx.object, region) {
@@ -272,10 +272,10 @@ pub fn match_answer(pattern: &str, answer: &str) -> Option<String> {
     let p = pattern.trim();
     let a = answer.trim();
     if let Some(head) = p.strip_suffix('>').and_then(|s| s.rsplit_once('<')).map(|(h, _)| h.trim_end()) {
-        // `bolt <name>` → head "bolt"; `redo: <notes>` → head "redo:"
+        // `route <name>` → head "route"; `redo: <notes>` → head "redo:"
         let head_word = head.trim_end_matches(':').trim();
         let colon = head.ends_with(':');
-        // The head may be several words (`new bolt <name>`) or none (`<text>`).
+        // The head may be several words (`new route <name>`) or none (`<text>`).
         let rest = a.strip_prefix(head_word)?;
         if colon {
             return Some(rest.trim_start().strip_prefix(':')?.trim().to_string());
