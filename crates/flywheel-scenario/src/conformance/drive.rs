@@ -5,7 +5,7 @@
 //! guard, so a run is deterministic and a scenario that waits says so in its
 //! own steps (D15).
 
-use super::{Run, RunOptions, Suite};
+use super::{interpreter, Run, RunOptions, Suite};
 use crate::sessions::ScriptedSessions;
 use crate::store::Store;
 use crate::{world, Runtime};
@@ -95,6 +95,7 @@ pub fn play(
         skipped_steps: vec![],
         writes_at_start,
         profile: options.profile.name(),
+        dictations: 0,
     };
     // The script is the scenario's, and entries play at the step they name.
     let script = scenario.given.script.clone();
@@ -466,6 +467,18 @@ fn play_step(
                 run.ticks.push(record);
             }
             run.runtime.store.tick_seconds = was;
+            // A response for an operation no tool carries stands under
+            // attention until a tick has reported it once (4, 6, 129).
+            if run
+                .runtime
+                .store
+                .objects
+                .values()
+                .any(|o| o.machine == "response" && o.top_state().as_deref() == Some("unapplicable"))
+            {
+                run.observations
+                    .insert("dictation_asserting_done_reported".into(), json!(true));
+            }
         }
         Step::Response(response) => play_response(run, response)?,
         Step::Evidence(evidence) => {
@@ -856,10 +869,30 @@ fn play_response(run: &mut Run, step: &ResponseStep) -> Result<()> {
 fn play_direct(run: &mut Run, direct: &Direct, suite: &Suite) -> Result<()> {
     match direct {
         Direct::Dictation { text, by } => {
+            // The operator said this in chat. The host's agent proposes one
+            // call of the catalogue and the operator's confirmation is the
+            // response; the runner stands in for the agent, and the call it
+            // makes is the same tool the page's control calls (12, 193, 194).
             let by = by.clone().unwrap_or_else(|| "operator".into());
+            run.dictations += 1;
+            let delivery = format!("dictation-{}", run.dictations);
+            let objects = run.runtime.store.objects.clone();
+            let call = interpreter::propose(text, &by, "discord", &format!("discord/{delivery}"), &objects)
+                .with_context(|| format!("the dictation `{text}`"))?;
             run.runtime.store.log("dictation", "chat", text.clone());
+            let defs = run.runtime.defs.clone();
+            let outcome = flywheel_surface::catalogue::call(&mut run.runtime.store, &defs, &call)?;
+            // A dictation is applied, never proposed: it raises no decision and
+            // never enters the rail (12).
             run.observations.insert("dictation_bypassed_plan".into(), json!(true));
-            let _ = by;
+            run.observations.insert("decisions_created_by_dictation".into(), json!(0));
+            if !flywheel_domain::commands::is_operation(&call.tool) {
+                // No such tool exists, so the claim was applied by nothing; the
+                // response machine reports it under attention (4, 6).
+                run.observations
+                    .insert("dictation_asserting_done_applied".into(), json!(false));
+            }
+            run.runtime.store.log("response", &outcome.id, format!("{} by {by}", call.tool));
         }
         Direct::Adapter { command, .. } => {
             // A path in the command resolves against `fixtures/`.
@@ -977,7 +1010,14 @@ fn play_direct(run: &mut Run, direct: &Direct, suite: &Suite) -> Result<()> {
             run.runtime.store.log("page", path, "opened");
         }
         Direct::Shell { command, .. } => {
+            // The operator ran this outside every tool, so no response exists
+            // to read it as: a session ended by hand is a session gone (4, 66).
+            let before = run.runtime.store.responses.len();
             run.runtime.store.log("shell", "by hand", command.clone());
+            run.observations.insert(
+                "hand_killed_pane_read_as_response".into(),
+                json!(run.runtime.store.responses.len() > before),
+            );
         }
     }
     Ok(())

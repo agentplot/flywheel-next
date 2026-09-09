@@ -453,7 +453,16 @@ impl Store {
                 let rid = object.strip_prefix("response/").unwrap_or(object);
                 let Some(r) = self.responses.iter().find(|r| r.id == rid) else { return Some(json!(false)) };
                 match r.decision {
-                    None => json!(true),
+                    // A dictation names an operation of the catalogue. One
+                    // that asserts work was done names none — no such tool
+                    // exists — so it is unapplicable and comes back once under
+                    // attention (4, 6, 193).
+                    None => json!(self
+                        .objects
+                        .get(object)
+                        .and_then(|o| o.record.get("tool").and_then(|v| v.as_str()))
+                        .map(flywheel_domain::commands::is_operation)
+                        .unwrap_or(true)),
                     Some(n) => json!(self.register.decision_of(n).map(|d| self.standing.iter().any(|s| s == d)).unwrap_or(false)),
                 }
             }

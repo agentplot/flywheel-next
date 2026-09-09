@@ -365,6 +365,7 @@ name = "flywheel"
 version = "0.1.0"
 dependencies = [
  "anyhow",
+ "axum",
  "chrono",
  "clap",
  "flywheel-atoms",
@@ -376,6 +377,7 @@ dependencies = [
  "flywheel-surface",
  "flywheel-workspace-recorded",
  "flywheel-world-host",
+ "serde",
  "serde_json",
  "serde_yaml",
  "tokio",
@@ -429,6 +431,7 @@ dependencies = [
  "flywheel-domain",
  "flywheel-engine",
  "flywheel-store-git",
+ "flywheel-surface",
  "jsonschema",
  "serde",
  "serde_json",
@@ -468,10 +471,13 @@ dependencies = [
  "anyhow",
  "axum",
  "chrono",
+ "flywheel-atoms",
+ "flywheel-domain",
  "flywheel-engine",
- "flywheel-scenario",
+ "flywheel-store-git",
  "serde",
  "serde_json",
+ "serde_yaml",
  "tokio",
 ]
 

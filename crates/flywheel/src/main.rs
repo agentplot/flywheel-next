@@ -552,7 +552,7 @@ async fn main() -> Result<()> {
         }
         Cmd::Serve { port } => {
             let rt = open(&cli)?;
-            flywheel_surface::serve(rt, cli.state.clone(), *port).await?;
+            flywheel::proto_page::serve(rt, cli.state.clone(), *port).await?;
         }
     }
     Ok(())

@@ -9,6 +9,7 @@ flywheel-engine = { path = "../flywheel-engine" }
 flywheel-atoms = { path = "../flywheel-atoms" }
 flywheel-domain = { path = "../flywheel-domain" }
 flywheel-store-git = { path = "../flywheel-store-git" }
+flywheel-surface = { path = "../flywheel-surface" }
 serde.workspace = true
 serde_json.workspace = true
 serde_yaml.workspace = true

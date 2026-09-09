@@ -8,6 +8,7 @@
 
 pub mod assertions;
 pub mod drive;
+pub mod interpreter;
 pub mod schema;
 pub mod trace;
 
@@ -359,6 +360,9 @@ pub struct Run {
     /// The profile the run bound, which is the binding a scenario about
     /// bindings is asserted against (140).
     pub profile: &'static str,
+    /// How many dictations this scenario has made, so each takes a delivery id
+    /// of its own and a repeat is recognised (137).
+    pub dictations: u32,
 }
 
 /// A scenario that runs against no configuration at all is a failure, never a

@@ -3,6 +3,7 @@
 //! seven objects live here and not in the engine (86, I13).
 
 pub mod blueprints;
+pub mod commands;
 pub mod envelope;
 pub mod profile;
 pub mod set;

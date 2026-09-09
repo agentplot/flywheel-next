@@ -211,7 +211,18 @@ pub fn evidence<S: Records>(
                 return Some(json!(false));
             };
             match response.decision {
-                None => json!(true),
+                // A dictation names an operation of the catalogue. One that
+                // asserts work was done names none — no such tool exists — so
+                // it is unapplicable and comes back once under attention
+                // (4, 6, 193). A dictation recorded before the catalogue
+                // named its tool carries none and stands as it always did.
+                None => json!(store
+                    .get(&format!("response/{id}"))
+                    .ok()
+                    .flatten()
+                    .and_then(|o| o.record.get("tool").and_then(|v| v.as_str().map(String::from)))
+                    .map(|tool| crate::commands::is_operation(&tool))
+                    .unwrap_or(true)),
                 Some(number) => json!(reading
                     .register
                     .decision_of(number)

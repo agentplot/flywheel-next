@@ -104,9 +104,9 @@ or a command.
 
 ## 7. The tool catalogue and the page
 
-- [ ] 7.1 Implement the catalogue mechanism: one registry, a schema per tool naming its arguments by object id, and the same enumeration in-process and over HTTP; verify `cargo test -p flywheel-surface catalogue_is_identical_across_callers` (193, `tools/tool-server`)
-- [ ] 7.2 Implement the tool bodies for the sixteen operations the spec names, each writing through the state store; verify `cargo test -p flywheel-surface every_named_tool_has_a_body` asserting the catalogue and the spec's list agree (193)
-- [ ] 7.3 Record every call once as a response carrying the tool, the object, who gave it and when; verify `cargo test -p flywheel-surface call_recorded_once` with a call delivered twice (153, 137)
+- [x] 7.1 Implement the catalogue mechanism: one registry, a schema per tool naming its arguments by object id, and the same enumeration in-process and over HTTP; verify `cargo test -p flywheel-surface catalogue_is_identical_across_callers` (193, `tools/tool-server`)
+- [x] 7.2 Implement the tool bodies for the sixteen operations the spec names, each writing through the state store; verify `cargo test -p flywheel-surface every_named_tool_has_a_body` asserting the catalogue and the spec's list agree (193)
+- [x] 7.3 Record every call once as a response carrying the tool, the object, who gave it and when; verify `cargo test -p flywheel-surface call_recorded_once` with a call delivered twice (153, 137)
 - [ ] 7.4 Omit every tool that would assert work was done and record an arriving claim as unapplicable under attention; verify `flywheel scenario run conformance/scenarios/X08.yaml` (4, 6)
 - [ ] 7.5 Implement the undo-or-defer dictation verbs plus service start and stop, each taking the transition its decision would; verify `cargo test -p flywheel-surface dictation_takes_the_decisions_transition` (4, 12)
 - [ ] 7.6 Implement `open-session`; verify `flywheel scenario run conformance/scenarios/X01.yaml` (69)
