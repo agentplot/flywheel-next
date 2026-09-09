@@ -421,6 +421,7 @@ dependencies = [
  "chrono",
  "flywheel-atoms",
  "flywheel-engine",
+ "flywheel-store-git",
  "jsonschema",
  "serde",
  "serde_json",

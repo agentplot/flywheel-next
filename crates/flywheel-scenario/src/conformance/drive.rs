@@ -73,6 +73,12 @@ pub fn play(
         scenario.scenario.replace('/', "-"),
         std::process::id()
     ));
+    // `--profile git-only` binds the record operations to a state repository:
+    // one bare repository with no network, and a checkout per host, so the
+    // expected-old push is the real one (D15, 160, 168).
+    if options.profile == super::Profile::GitOnly {
+        bind_git_only(&mut rt, scenario, &places.join("state"))?;
+    }
     let state = places.join("store.json");
     std::fs::create_dir_all(&places)?;
     let sessions = ScriptedSessions::new(&state, places.join("places"));
@@ -108,9 +114,69 @@ pub fn play(
                 .collect(),
         );
     }
+    // What the run is asserted against is what the store holds, read once more
+    // after the last step: a host that never fetched is behind, and being
+    // behind is not a fact about the store (126, 165).
+    run.runtime.fetch();
     take_reading(&mut run);
     let _ = std::fs::remove_dir_all(&places);
     Ok(run)
+}
+
+/// Open a bare state repository and a checkout for every host the scenario
+/// names, then write the seeded objects into it through `put`, so what the run
+/// reads afterwards is what the repository holds and nothing else (160, 168).
+fn bind_git_only(rt: &mut Runtime, scenario: &Scenario, base: &Path) -> Result<()> {
+    std::fs::create_dir_all(base)?;
+    let mut hosts: Vec<String> = vec![rt.store.me()];
+    for host in &scenario.given.hosts {
+        if let Some(id) = host.get("id").or_else(|| host.get("name")).and_then(|v| v.as_str()) {
+            hosts.push(id.to_string());
+        }
+    }
+    for step in scenario.steps()? {
+        if let Step::Host(h) = &step {
+            if h.name != "none" {
+                hosts.push(h.name.clone());
+            }
+        }
+        if let Step::Tick(t) = &step {
+            hosts.extend(t.concurrent_hosts.iter().cloned());
+        }
+    }
+    hosts.sort();
+    hosts.dedup();
+    let now = rt.store.now;
+    for host in hosts {
+        let store = flywheel_store_git::store::sandbox(base, &host, now)
+            .with_context(|| format!("opening the state repository for host {host}"))?;
+        rt.store
+            .durable
+            .insert(host, std::sync::Arc::new(std::sync::Mutex::new(store)));
+    }
+    // What seeding put in the map goes into the repository, in creation order,
+    // so the objects a scenario describes are files on the shared line before
+    // the first step runs.
+    let mut seeded: Vec<flywheel_engine::Object> = rt.store.objects.values().cloned().collect();
+    seeded.sort_by_key(|o| o.created);
+    if let Some(durable) = rt.store.durable() {
+        let mut git = durable
+            .lock()
+            .map_err(|_| anyhow!("the state repository is poisoned"))?;
+        for object in &seeded {
+            git.seed_object(object)?;
+        }
+    }
+    // Every host reads the described state before the first step: a host that
+    // never fetched is behind, and that is not what a scenario describes.
+    for durable in rt.store.durable.values() {
+        if let Ok(mut git) = durable.lock() {
+            let _ = git.fetch();
+        }
+    }
+    rt.store.refresh();
+    rt.decisions();
+    Ok(())
 }
 
 /// Put the described state of the stores in place. Anything the scenario does
@@ -214,7 +280,16 @@ pub fn seed(defs: Definitions, scenario: &Scenario, suite: &Suite) -> Result<Run
             // Top-level first, so nested initialisation follows the given state.
             let mut paths: Vec<(&String, &String)> = given.state.iter().collect();
             paths.sort_by_key(|(k, _)| k.matches('.').count());
-            for (path, state) in paths {
+            // A scenario names a nested region the way the machine file does,
+            // relative to the region that holds it; the object's own paths are
+            // absolute. Resolve against the shape initialisation gave it.
+            let shape: Vec<String> = o.config.keys().cloned().collect();
+            for (given_path, state) in paths {
+                let path = &shape
+                    .iter()
+                    .find(|k| *k == given_path || k.ends_with(&format!(".{given_path}")))
+                    .cloned()
+                    .unwrap_or_else(|| given_path.clone());
                 let prefix = format!("{path}.");
                 let gone: Vec<String> = o
                     .config
@@ -388,6 +463,8 @@ fn play_step(
         }
         Step::Host(host) => {
             play_host(run, host)?;
+            // The host that arrived reads the store for itself.
+            run.runtime.fetch();
             // A host arriving is a reader arriving: what it reads is what the
             // store holds, wholly (135).
             take_reading(run);
@@ -709,12 +786,61 @@ fn play_direct(run: &mut Run, direct: &Direct, suite: &Suite) -> Result<()> {
                 .insert(argument.to_string(), String::from_utf8_lossy(&bytes).to_string());
             run.runtime.store.log("adapter", argument, command.clone());
         }
-        Direct::Commit { file, set, .. } | Direct::Store { object: file, set, .. } => {
-            // The operator edited the state where it is kept; the machinery
-            // reads the change as a response (3, 159).
+        Direct::Commit { file, set, sha, by } => {
+            // The operator edited the state where it is kept and committed it:
+            // one commit on the shared line, by a person, carrying no sequence
+            // of its own. Every host reads it at its next fetch (3, 159, 164).
+            let id = flywheel_store_git::layout::id_of(file).unwrap_or(file.as_str()).to_string();
+            let by = by.clone().unwrap_or_else(|| "operator".into());
+            let delivery = sha.clone().unwrap_or_else(|| "by-hand".into());
+            let Some(mut object) = run.runtime.store.objects.get(&id).cloned() else {
+                bail!("the commit names `{file}`, which is no object of this scenario");
+            };
+            for (key, value) in set {
+                let text = value.as_str().unwrap_or_default();
+                match (key.as_str(), text.split_once('=')) {
+                    // `state: "<region>=<state>"` is how a person writes a move
+                    // into the envelope.
+                    ("state", Some((region, state))) => {
+                        object.config.insert(region.to_string(), state.to_string());
+                    }
+                    _ => {
+                        object.record.insert(key.clone(), value.clone());
+                    }
+                }
+            }
+            match run.runtime.store.durable() {
+                Some(durable) => {
+                    durable
+                        .lock()
+                        .map_err(|_| anyhow!("the state repository is poisoned"))?
+                        .commit_as_operator(&object, &delivery, &by)?;
+                    run.observations
+                        .insert("response_derived_from_fetch".into(), json!(true));
+                    // Nothing was told: the hosts find it by fetching (166, D6).
+                    run.observations.insert("processes_told".into(), json!(0));
+                }
+                // Without a repository behind it the edit is the map itself.
+                None => {
+                    run.runtime.store.objects.insert(id.clone(), object);
+                }
+            }
+            run.runtime.store.log("direct", &id, format!("committed by hand as {delivery}"));
+        }
+        Direct::Store { object: file, set, .. } => {
+            // Someone else changed the object in the store; the machinery reads
+            // it as it finds it (3, 159).
             let since = run.runtime.store.as_of();
             if let Some(o) = run.runtime.store.objects.get_mut(file) {
                 for (k, v) in set {
+                    if k == "state" {
+                        if let Some(map) = v.as_object() {
+                            for (region, state) in map {
+                                o.config.insert(region.clone(), state.as_str().unwrap_or_default().to_string());
+                            }
+                        }
+                        continue;
+                    }
                     o.record.insert(k.clone(), v.clone());
                 }
             }

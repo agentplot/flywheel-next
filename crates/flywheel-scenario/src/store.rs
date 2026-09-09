@@ -58,6 +58,12 @@ pub struct World {
     pub files: BTreeMap<String, String>,
 }
 
+/// One host's checkout of the state repository, behind the record operations.
+/// Each host has its own, so two hosts racing on one object race the way they
+/// do on a real git host: on the expected-old push (134, 162, I15). A restart
+/// drops what the host remembers and not what the store holds (75, I14).
+pub type Durable = std::sync::Arc<std::sync::Mutex<flywheel_store_git::GitStore>>;
+
 /// A response handed back to the engine, and the tick that reported it.
 #[derive(Debug, Clone, Default, Serialize, Deserialize)]
 pub struct Unapplicable {
@@ -116,6 +122,13 @@ pub struct Store {
     /// (write sequence, object) for every write, so a notice names what moved (130).
     #[serde(default)]
     pub moved: Vec<(u64, String)>,
+    /// The durable state binding `--profile git-only` puts behind the record
+    /// operations: a real state repository, whose objects, threads, effect
+    /// commits and leases are files and branches of it. The world, the clock
+    /// and the log stay the runner's either way, which is the only thing the
+    /// two profiles differ in (125, D15).
+    #[serde(skip)]
+    pub durable: BTreeMap<String, Durable>,
     /// A response whose decision was gone when it arrived. It is never
     /// dropped: it stands under attention until a tick has reported it once
     /// (6, 129).
@@ -194,6 +207,7 @@ impl Default for Store {
             heartbeats: BTreeMap::new(),
             writes: 0,
             moved: vec![],
+            durable: BTreeMap::new(),
             unapplicable: vec![],
             presented: vec![],
             acting_host: None,

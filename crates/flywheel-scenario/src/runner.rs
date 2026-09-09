@@ -18,6 +18,8 @@ pub struct Runtime {
     pub store: Store,
     /// The contract's declared hooks, honoured in process alone (D15).
     pub hooks: Vec<Hook>,
+    /// The operator's own commits this run read out of a fetch (164).
+    pub operator_commits: Vec<String>,
     /// The lease traffic of this run, which is what a scenario's `leases:`
     /// clause is asserted against (128, 163).
     pub lease_log: Vec<LeaseEvent>,
@@ -31,6 +33,18 @@ pub struct Runtime {
     pub loser_reread: bool,
     /// `interrupt_write` cuts one write off, once (135, D15).
     pub interrupted: bool,
+}
+
+/// The response name a guard is driven by, wherever it sits in the algebra.
+fn response_of(guard: &flywheel_engine::defs::Guard) -> Option<String> {
+    use flywheel_engine::defs::Guard;
+    match guard {
+        Guard::Response { response } => Some(response.clone()),
+        Guard::All { all } => all.iter().find_map(response_of),
+        Guard::Any { any } => any.iter().find_map(response_of),
+        Guard::Not { not } => response_of(not),
+        _ => None,
+    }
 }
 
 /// One take of a lease, and what the store held at the moment it was asked
@@ -117,6 +131,7 @@ impl Runtime {
             defs,
             store,
             hooks: vec![],
+            operator_commits: vec![],
             lease_log: vec![],
             writes_attempted: 0,
             writes_succeeded: 0,
@@ -323,7 +338,107 @@ impl Runtime {
         for h in hosts { self.store.set_given(&h, "host.last_seen", json!(now.to_rfc3339())); }
         self.store.play_scripts();
         self.store.play_services();
+        // Fetch first, so no host decides on a read older than the bound (165,
+        // D7), and read the operator's own commits out of what came back.
+        self.fetch();
         console::objects(&self.store, &Scope::All).unwrap_or_default()
+    }
+
+    /// Read the store again, and read out of what came back anything a person
+    /// put there. Every fetch goes through here, so no host takes the
+    /// operator's own commit for a write of the machinery's (165, 164).
+    pub fn fetch(&mut self) {
+        let before = self.store.objects.clone();
+        self.store.refresh();
+        self.read_operator_commits(&before);
+    }
+
+    /// An object whose state moved with no sequence of its own was written by
+    /// a person, not by the machinery: the operator edited the state where it
+    /// is kept and committed it. Every host derives the same response from the
+    /// same fetch, with the commit as its delivery, and the machine makes the
+    /// move itself so the record carries what a transition carries (3, 159,
+    /// 164, S19).
+    fn read_operator_commits(&mut self, before: &BTreeMap<String, flywheel_engine::Object>) {
+        let now = self.store.now;
+        let mut found: Vec<(String, String, String, flywheel_engine::Object)> = Vec::new();
+        for (id, after) in &self.store.objects {
+            let Some(was) = before.get(id) else { continue };
+            if was.seq != after.seq || was.config == after.config {
+                continue;
+            }
+            let Some((region, from, to)) = was
+                .config
+                .iter()
+                .find(|(k, v)| after.config.get(*k).is_some_and(|w| w != *v))
+                .map(|(k, v)| (k.clone(), v.clone(), after.config.get(k).cloned().unwrap_or_default()))
+            else {
+                continue;
+            };
+            let Some(answer) = self.answer_for(was, &region, &from, &to) else { continue };
+            let delivery = self
+                .store
+                .durable()
+                .and_then(|d| d.lock().ok().and_then(|g| g.operator_commit_on(id).ok().flatten()))
+                .map(|sha| format!("commit/{sha}"))
+                .unwrap_or_else(|| format!("commit/{id}"));
+            found.push((id.clone(), delivery, answer, was.clone()));
+        }
+        for (id, delivery, answer, was) in found {
+            // The edit is the response, not the move: the object stands where
+            // it stood until the machine applies the transition, which is what
+            // writes the entry time, the counters and the delivery's own id.
+            // It stands so on every fetch until then, however many pass.
+            let applied = was.applied_responses.contains(&delivery);
+            if !applied {
+                self.store.objects.insert(id.clone(), was);
+            }
+            if applied || self.store.responses.iter().any(|r| r.id == delivery) {
+                continue;
+            }
+            let response = Response {
+                id: delivery.clone(),
+                // The operator's own commit names the object, not a number:
+                // it is a dictation, applied and never proposed (4, 159).
+                kind: ResponseKind::Dictation,
+                decision: None,
+                object: Some(id.clone()),
+                answer,
+                given_by: "operator".into(),
+                given_at: now,
+                delivery: delivery.clone(),
+            };
+            if let Ok(flywheel_atoms::Received::Recorded { .. }) = self.store.receive(&response) {
+                self.store.log("response", &id, format!("{delivery} — the operator's own commit"));
+                self.operator_commits.push(delivery);
+            }
+        }
+    }
+
+    /// Whether a transition out of a state the object is in re-issues this
+    /// effect. Where one does, calling the act back is the machine's to say.
+    fn machine_calls_back(&self, object: &str, effect: &str) -> bool {
+        let Ok(Some(o)) = self.store.get(object) else { return false };
+        o.config.keys().any(|region| {
+            tick::state_def(&self.defs, &o, region).is_some_and(|(_, st)| {
+                st.transitions
+                    .iter()
+                    .any(|t| t.effects.iter().any(|e| e.name == effect))
+            })
+        })
+    }
+
+    /// The answer a transition out of this state into that one is guarded by,
+    /// where one is. Nothing is inferred from a transition no response drives.
+    fn answer_for(&self, object: &flywheel_engine::Object, region: &str, from: &str, to: &str) -> Option<String> {
+        let mut probe = object.clone();
+        probe.config.insert(region.to_string(), from.to_string());
+        let (_reg, state) = tick::state_def(&self.defs, &probe, region)?;
+        state
+            .transitions
+            .iter()
+            .filter(|t| t.to == to)
+            .find_map(|t| response_of(&t.when))
     }
 
     /// Decide what fires, from the objects read and nothing else.
@@ -375,11 +490,16 @@ impl Runtime {
             }
         }
         for id in order {
-            // One region of one object moves once per write, and once per
-            // tick however many passes the tick settles over (D4, D7).
+            // A region of an object moves once per tick, however many passes
+            // the tick settles over: what a write implies is the next tick's to
+            // read (D4, D7). A self-transition is not a second move — it is how
+            // a machine calls an unproved effect back — so it still runs.
             let mut here: Vec<&tick::Fired> = Vec::new();
             for f in fired {
-                if f.object != id || moved.contains(&format!("{id}#{}", f.region)) {
+                if f.object != id {
+                    continue;
+                }
+                if f.to != f.from && moved.contains(&format!("{id}#{}", f.region)) {
                     continue;
                 }
                 if here.iter().any(|g| g.region == f.region) {
@@ -594,6 +714,15 @@ impl Runtime {
             })
             .collect();
         for (effect_id, object, effect, region) in outstanding {
+            // A machine that calls an unproved effect back itself has said how
+            // it reconciles: the runner's reconciler is for the effects no
+            // transition of the state the object is in re-issues, and never a
+            // second act on top of one (73, 127).
+            if record.effects.iter().any(|e| e.object == object && e.name == effect)
+                || self.machine_calls_back(&object, &effect)
+            {
+                continue;
+            }
             let planned = PlannedEffect {
                 id: effect_id.clone(),
                 name: effect.clone(),

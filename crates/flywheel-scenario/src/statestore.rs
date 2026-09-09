@@ -6,7 +6,7 @@
 //! operations promise, which is why the same scenarios run against `git-only`
 //! unchanged (168).
 
-use crate::store::{EffectRecord, PresentedRecord, Store};
+use crate::store::{Durable, EffectRecord, PresentedRecord, Store};
 use anyhow::{anyhow, Result};
 use flywheel_atoms::{
     EffectWrite, EvidenceRead, HostRecord, LeaseOp, LeaseOutcome, LeaseRecord, Listing, Notice,
@@ -110,10 +110,44 @@ impl Store {
     }
 }
 
+impl Store {
+    /// The acting host's checkout of the state repository, where a profile
+    /// bound one.
+    pub fn durable(&self) -> Option<Durable> {
+        if self.durable.is_empty() {
+            return None;
+        }
+        self.durable
+            .get(&self.me())
+            .or_else(|| self.durable.values().next())
+            .cloned()
+    }
+
+    /// Read the objects the bound store holds into the map the world's derived
+    /// evidence and the rail are read from. A restart drops this and reads it
+    /// again: nothing the engine decides on is held anywhere else (75, 131).
+    pub fn refresh(&mut self) {
+        let Some(durable) = self.durable() else { return };
+        let now = self.now;
+        let Ok(mut git) = durable.lock() else { return };
+        git.now = now;
+        let _ = git.fetch();
+        let Ok(objects) = Records::list_records(&*git, &Scope::All) else { return };
+        drop(git);
+        self.objects = objects.into_iter().map(|o| (o.id.clone(), o)).collect();
+    }
+}
+
 impl Records for Store {
     fn get(&self, id: &str) -> Result<Option<Object>> {
         if id == RAIL {
             return Ok(Some(self.rail_record()));
+        }
+        if let Some(durable) = self.durable() {
+            return durable
+                .lock()
+                .map_err(|_| anyhow!("the state repository is poisoned"))?
+                .get(id);
         }
         Ok(self.objects.get(id).cloned())
     }
@@ -123,6 +157,21 @@ impl Records for Store {
             self.set_rail_record(record);
             let seq = self.moved_at(id);
             return Ok(PutOutcome::Written { seq });
+        }
+        if let Some(durable) = self.durable() {
+            // One commit on the shared line, written with expected-old; the
+            // map the world reads is the same write, kept in step (D4).
+            let outcome = durable
+                .lock()
+                .map_err(|_| anyhow!("the state repository is poisoned"))?
+                .put(id, record, base_seq)?;
+            if let PutOutcome::Written { seq } = outcome {
+                let mut next = record.clone();
+                next.seq = seq;
+                self.objects.insert(id.to_string(), next);
+                let _ = self.moved_at(id);
+            }
+            return Ok(outcome);
         }
         let held = self.objects.get(id).map(|o| o.seq).unwrap_or(0);
         if held != base_seq {
@@ -144,6 +193,12 @@ impl Records for Store {
     }
 
     fn append(&mut self, id: &str, entry: &ThreadEntry) -> Result<()> {
+        if let Some(durable) = self.durable() {
+            durable
+                .lock()
+                .map_err(|_| anyhow!("the state repository is poisoned"))?
+                .append(id, entry)?;
+        }
         self.threads
             .entry(id.to_string())
             .or_default()
@@ -190,6 +245,12 @@ impl Records for Store {
     }
 
     fn leases(&self, id: &str) -> Result<Option<LeaseRecord>> {
+        if let Some(durable) = self.durable() {
+            return durable
+                .lock()
+                .map_err(|_| anyhow!("the state repository is poisoned"))?
+                .leases(id);
+        }
         Ok(self.leases.get(id).cloned())
     }
 
@@ -249,6 +310,31 @@ impl StateStore for Store {
     }
 
     fn write_effect(&mut self, write: &EffectWrite) -> Result<WriteOutcome> {
+        if let Some(durable) = self.durable() {
+            // One commit per effect, carrying its identity, reason and
+            // evidence; the repeat is found in the fetched history before
+            // anything is committed (127).
+            let outcome = durable
+                .lock()
+                .map_err(|_| anyhow!("the state repository is poisoned"))?
+                .write_effect(write)?;
+            if !matches!(outcome, WriteOutcome::AlreadyWritten { .. }) {
+                let by = self.me();
+                let pending = matches!(outcome, WriteOutcome::Pending { .. });
+                self.effects_written.push(EffectRecord {
+                    effect_id: write.effect_id.clone(),
+                    object: write.object.clone(),
+                    effect: write.effect.clone(),
+                    reason: write.reason.clone(),
+                    evidence: write.evidence.clone(),
+                    at: self.now,
+                    by,
+                    pending,
+                });
+                let _ = self.moved_at(&write.object);
+            }
+            return Ok(outcome);
+        }
         // A repeat of an effect already written changes nothing, is not an
         // error, and is not reported as a second write (127).
         if self
@@ -285,6 +371,24 @@ impl StateStore for Store {
     }
 
     fn lease(&mut self, op: &LeaseOp) -> Result<LeaseOutcome> {
+        if let Some(durable) = self.durable() {
+            // The push to `lease/<object>` with expected-old is the
+            // compare-and-swap: two hosts cannot both land one (128, 163).
+            let outcome = durable
+                .lock()
+                .map_err(|_| anyhow!("the state repository is poisoned"))?
+                .lease(op)?;
+            match (&outcome, op) {
+                (LeaseOutcome::Held(l), _) => {
+                    self.leases.insert(l.object.clone(), l.clone());
+                }
+                (LeaseOutcome::Released, LeaseOp::Release { object, .. }) => {
+                    self.leases.remove(object);
+                }
+                _ => {}
+            }
+            return Ok(outcome);
+        }
         match op {
             LeaseOp::Take { object, holder } => {
                 if let Some(held) = self.leases.get(object) {

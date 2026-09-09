@@ -251,7 +251,9 @@ pub fn check(scenario: &Scenario, run: &Run, suite: &Suite) -> Vec<Failure> {
 
     // ---- record fields
     for (id, want) in &then.records {
-        let object = run.runtime.store.get(id).ok().flatten();
+        // The objects as the store last answered `list`, which the run reads
+        // again after its final step (126, 131).
+        let object = run.runtime.store.objects.get(id).cloned();
         if let Some(fields) = want.as_object() {
             for (field, value) in fields {
                 let got = object.as_ref().and_then(|o| field_of(o, field));
@@ -479,6 +481,15 @@ pub fn observe(run: &Run, key: &str) -> Option<Value> {
             json!(ids.len())
         }
         "notify_latency_bound" => json!(store.notify_bound()),
+        // Every host that fetched read the same commit and derived the same
+        // response from it: they agree because they read, not because anyone
+        // told them (164, 166).
+        "hosts_agreeing" => {
+            if run.runtime.operator_commits.is_empty() {
+                return None;
+            }
+            json!(store.durable.len().max(1))
+        }
         // A host the manifest gives no notification converges by reading alone
         // at the sweep: it ticked, and what it read was the store's own state
         // (130, 166, D6).

@@ -498,7 +498,7 @@ described state of the stores, plays a scenario's `when` steps against the real
 engine and asserts the `then` clauses (94). The same runner and the same files,
 byte-identical, run against the stand-in store and against the git-only
 profile; only the store binding, the session binding (93) and the
-line-and-place binding (93a) differ. Twelve things the suite left open are
+line-and-place binding (93a) differ. Thirteen things the suite left open are
 settled here, because the runner must be specified before it is built.
 
 **Flags.** `--profile <stand-in | git-only>` chooses the `StateStore` binding,
@@ -512,7 +512,9 @@ renders the run.
    performs a transition. Concurrency moves off the host step to
    `tick: {concurrent_hosts: [a, b]}`, and `bypass_lease` becomes a declared
    contract-only hook the runner honours in process alone. A scenario with no
-   host step runs as a single host named `local` (232).
+   host step runs as a single host named `local` (232), and one that declares
+   `given.hosts` acts as the first of them until a host step names another, so
+   no lease is ever taken in a name the scenario did not declare.
 2. **The clock is virtual and moves for exactly two reasons:** a `clock` step,
    and each `tick` step by one tick interval, declared per run and defaulting to
    D7's 60-second sweep. Wall-clock time never reaches a guard. Under
@@ -573,6 +575,9 @@ renders the run.
     runs, and the scenario fails when it names no standing decision. The id form
     is the readable default; the `number` form stays for the answer-it-again
     assertions (15).
+13. **`decisions: {count: n}` counts the kinds `present:` names,** not the whole
+    standing set, so a clause about one kind says nothing about the others; with
+    no `present:` it is the whole set.
 
 **What the suite is for, in this phase.** The thirteen `contract/` files over
 the toy `lamp` machine, on both paths, are what admit the git-only profile

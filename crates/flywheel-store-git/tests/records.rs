@@ -292,3 +292,62 @@ fn the_status_view_is_readable_with_no_host_running() {
     let fresh = sandbox.host("c");
     assert_eq!(fresh.status().unwrap().body, view.body);
 }
+
+/// Two hosts write one object from the same read. The second push is rejected;
+/// the host fetches, sees that the object moved under it, discards its own
+/// commit and reads again rather than rebasing its state over one it never read
+/// (3, 134, 162, 164, I15).
+#[test]
+fn a_write_over_one_this_host_never_read_is_a_loss() {
+    let sandbox = Sandbox::new("loss");
+    let mut a = sandbox.host("a");
+    let mut b = sandbox.host("b");
+
+    let lamp = a_lamp("lamp/1");
+    assert!(matches!(
+        a.put("lamp/1", &lamp, 0).unwrap(),
+        PutOutcome::Written { seq: 1 }
+    ));
+
+    // b read the object before a wrote it, and writes against that read.
+    let mut theirs = lamp.clone();
+    theirs.config.insert("power".into(), "on".into());
+    match b.put("lamp/1", &theirs, 0).unwrap() {
+        PutOutcome::Rejected { held_seq } => assert_eq!(held_seq, 1),
+        other => panic!("the loser's write must be rejected, not {other:?}"),
+    }
+
+    // What stands is a's, whole: nothing of b's landed on top of it.
+    a.fetch().unwrap();
+    let held = a.get("lamp/1").unwrap().expect("the object");
+    assert_eq!(held.seq, 1);
+    assert_eq!(held.config.get("power").map(String::as_str), Some("off"));
+}
+
+/// The operator edits an object's file and commits it by hand: the commit
+/// carries no sequence of its own, and every host reads the same delivery id
+/// out of the same fetch (3, 159, 164).
+#[test]
+fn the_operators_own_commit_is_read_from_the_fetch() {
+    let sandbox = Sandbox::new("operator");
+    let mut a = sandbox.host("a");
+    let mut b = sandbox.host("b");
+
+    let lamp = a_lamp("lamp/1");
+    a.put("lamp/1", &lamp, 0).unwrap();
+    assert_eq!(a.operator_commit_on("lamp/1").unwrap(), None);
+
+    let mut edited = a.get("lamp/1").unwrap().expect("the object");
+    edited.config.insert("power".into(), "on".into());
+    a.commit_as_operator(&edited, "abc123", "chuck").unwrap();
+
+    b.fetch().unwrap();
+    let seen = b.get("lamp/1").unwrap().expect("the object");
+    assert_eq!(seen.config.get("power").map(String::as_str), Some("on"));
+    assert_eq!(seen.seq, edited.seq, "a person's commit takes no sequence");
+    assert_eq!(
+        b.operator_commit_on("lamp/1").unwrap().as_deref(),
+        Some("abc123"),
+        "every host derives the same delivery id from the same fetch"
+    );
+}

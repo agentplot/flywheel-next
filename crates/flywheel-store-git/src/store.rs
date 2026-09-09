@@ -17,11 +17,16 @@ use serde_json::Value;
 use std::collections::BTreeMap;
 use std::path::{Path, PathBuf};
 
+/// What the operator's own commit says of itself in its subject line, so every
+/// host reads the same delivery id out of the same fetched history (164).
+pub const OPERATOR: &str = "operator commit";
+
 /// How many times a rejected push is rebased and retried before the host
 /// reports and re-reads (`git-only.yaml records.put`).
 pub const RETRIES: usize = 3;
 
 /// The state repository as one host sees it.
+#[derive(Debug)]
 pub struct GitStore {
     /// The host's working checkout of the shared line.
     pub repo: Repo,
@@ -139,6 +144,19 @@ impl GitStore {
     /// rejection: fetch, rebase the one-file commit, push again; three
     /// rejections report and re-read (`git-only.yaml records.put`, D4).
     fn commit_and_push(&mut self, message: &str) -> Result<Landed> {
+        self.commit_and_push_guarded(message, None)
+    }
+
+    /// The same, with the object the commit writes and the sequence it was
+    /// written against. On a rejection the host fetches and looks: if the
+    /// object moved under it, another writer got there first and the local
+    /// commit is discarded — a rebase would put this host's state over one it
+    /// never read (134, 162, I15).
+    fn commit_and_push_guarded(
+        &mut self,
+        message: &str,
+        guard: Option<(&str, u64)>,
+    ) -> Result<Landed> {
         let sha = git::commit(&self.repo, message, self.now)?;
         self.writes_attempted += 1;
         if self.disconnected {
@@ -160,10 +178,17 @@ impl GitStore {
             // anything (134).
             self.fetch()?;
             self.reread_after_rejection = true;
+            let onto = self.fetched.clone();
+            if let Some((id, base_seq)) = guard {
+                let held = self.get(id)?.map(|o| o.seq).unwrap_or(0);
+                if held != base_seq {
+                    self.repo.git(&["reset", "--hard", "--quiet", &onto])?;
+                    return Ok(Landed::Lost);
+                }
+            }
             if attempt + 1 == RETRIES {
                 break;
             }
-            let onto = self.fetched.clone();
             if !self.repo.run(&["rebase", "--quiet", &onto])?.ok {
                 let _ = self.repo.run(&["rebase", "--abort"]);
                 // A rebase that conflicts on content is a loss: the host
@@ -290,7 +315,7 @@ impl Records for GitStore {
             &envelope::write_all(std::slice::from_ref(&next)),
         )?;
         let message = format!("{id} seq {}\n\nreason: state written", next.seq);
-        match self.commit_and_push(&message)? {
+        match self.commit_and_push_guarded(&message, Some((id, base_seq)))? {
             Landed::Written { .. } | Landed::Pending { .. } => {
                 Ok(PutOutcome::Written { seq: next.seq })
             }
@@ -724,6 +749,60 @@ impl flywheel_engine::runtime::EvidenceSource for GitStore {
             .and_then(|m| m.get(name))
             .or_else(|| self.given.get("*").and_then(|m| m.get(name)))
             .cloned()
+    }
+}
+
+impl GitStore {
+    /// The operator's own commit on an object's file: written by a person, on
+    /// the shared line, outside anything the machinery put there. It carries no
+    /// sequence of its own, which is how the next fetch tells it from a write
+    /// the machinery made (3, 159, 164).
+    pub fn commit_as_operator(&mut self, object: &Object, delivery: &str, by: &str) -> Result<()> {
+        self.on_fetched_head()?;
+        git::stage(
+            &self.repo,
+            &layout::object(&object.id),
+            &envelope::write_all(std::slice::from_ref(object)),
+        )?;
+        self.commit_and_push(&format!("{OPERATOR} {delivery} by {by}"))?;
+        Ok(())
+    }
+
+    /// The delivery id of the operator's commit that last touched an object's
+    /// file, where the last commit on it was one. Read from the fetched
+    /// history, so every host derives the same id from the same fetch (164).
+    pub fn operator_commit_on(&self, id: &str) -> Result<Option<String>> {
+        if self.fetched.is_empty() || self.fetched == git::ZERO {
+            return Ok(None);
+        }
+        let subject = self.repo.git(&[
+            "log",
+            "-1",
+            "--format=%s",
+            &self.fetched,
+            "--",
+            &layout::object(id),
+        ])?;
+        let subject = subject.trim();
+        let Some(rest) = subject.strip_prefix(OPERATOR) else {
+            return Ok(None);
+        };
+        Ok(rest.split_whitespace().next().map(String::from))
+    }
+
+    /// Put a described state in place: the envelope exactly as given, sequence
+    /// and all. Seeding is not a write the machinery made, so it takes no
+    /// sequence of its own and the first tick's write is the object's first
+    /// (94, D15).
+    pub fn seed_object(&mut self, object: &Object) -> Result<()> {
+        self.on_fetched_head()?;
+        git::stage(
+            &self.repo,
+            &layout::object(&object.id),
+            &envelope::write_all(std::slice::from_ref(object)),
+        )?;
+        self.commit_and_push(&format!("{} seeded\n\nreason: the scenario's given state", object.id))?;
+        Ok(())
     }
 }
 
