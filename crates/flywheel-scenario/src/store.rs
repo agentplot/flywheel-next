@@ -258,7 +258,7 @@ impl Default for Store {
     }
 }
 
-pub use flywheel_domain::regions::{place_key, session_key};
+pub use flywheel_domain::regions::{place_key, session_key, session_key_of};
 
 impl Store {
     pub fn log(&mut self, kind: &str, object: &str, text: impl Into<String>) {
@@ -329,6 +329,16 @@ impl Store {
         bolt.record.get("repository").and_then(|v| v.as_str()).and_then(|r| self.world.declarations.get(r))
     }
 
+    /// The session a region path refers to, at the attempt the object is on: a
+    /// session lost sends its stage round again with the attempt one higher,
+    /// and the fresh session is a session of its own (150, `stage.yaml`).
+    pub fn session_of(&self, object: &str, region: &str) -> String {
+        match self.objects.get(object) {
+            Some(held) => session_key_of(held, region),
+            None => session_key(object, region),
+        }
+    }
+
     /// The bolt's own place exists: its place region is anywhere but absent or removed.
     fn bolt_place_present(bolt: Option<&Object>) -> bool {
         bolt.and_then(|b| b.config.get("place.place.life")).map(|s| s != "removed" && s != "absent").unwrap_or(false)
@@ -348,7 +358,7 @@ impl Store {
 
     fn derived(&self, object: &str, region: &str, name: &str) -> Option<Value> {
         let obj = self.objects.get(object);
-        let skey = session_key(object, region);
+        let skey = self.session_of(object, region);
         let pkey = place_key(object, region);
         let sess = self.world.sessions.get(&skey);
         let place = self.world.places.get(&pkey);
@@ -628,6 +638,8 @@ impl Store {
 pub fn apply_entry_pub(s: &mut SessionFact, e: &ScriptEntry, now: DateTime<Utc>) { apply_entry(s, e, now) }
 
 fn apply_entry(s: &mut SessionFact, e: &ScriptEntry, now: DateTime<Utc>) {
+    // The scenario has spoken for this session by name (see `SessionFact`).
+    s.scripted = true;
     if let Some(p) = &e.pane { s.pane = p == "present"; }
     if let Some(a) = &e.activity {
         if a == "idle" && s.activity != "idle" { s.idle_since = Some(now); }
@@ -652,9 +664,20 @@ impl EvidenceSource for Store {
         if name.starts_with("place.") || name.starts_with("session.") {
             let made = match name.starts_with("place.") {
                 true => self.world.places.contains_key(&place_key(object, region)),
-                false => self.world.sessions.contains_key(&session_key(object, region)),
+                false => self.world.sessions.contains_key(&self.session_of(object, region)),
             };
             if !made {
+                return self.derived(object, region, name);
+            }
+            // A session the scenario scripted by name has been spoken for, and
+            // a wildcard about every session does not overrule it.
+            if name.starts_with("session.")
+                && self
+                    .world
+                    .sessions
+                    .get(&self.session_of(object, region))
+                    .is_some_and(|s| s.scripted)
+            {
                 return self.derived(object, region, name);
             }
         }

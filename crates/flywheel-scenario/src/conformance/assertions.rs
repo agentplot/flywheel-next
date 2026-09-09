@@ -122,10 +122,13 @@ pub fn check(scenario: &Scenario, run: &Run, suite: &Suite) -> Vec<Failure> {
     // ---- effects by atom name, with a count; a repeat must not add
     let performed: Vec<&crate::runner::EffectRecord2> =
         run.ticks.iter().flat_map(|t| t.effects.iter()).collect();
+    // What a scenario counts is acts, not attempts: a retry the world refuses —
+    // a second start of a name the multiplexer already holds — is not a second
+    // act (72, `world::perform`).
     let count_of = |name: &str, object: Option<&String>| -> usize {
         performed
             .iter()
-            .filter(|e| e.name == name && object.is_none_or(|o| &e.object == o))
+            .filter(|e| e.written && e.name == name && object.is_none_or(|o| &e.object == o))
             .count()
     };
     for want in &then.effects {
@@ -623,6 +626,15 @@ pub fn observe(run: &Run, key: &str) -> Option<Value> {
                 .collect();
             json!(ordinals.windows(2).all(|pair| pair[0] <= pair[1]))
         }
+        // The attempt the fresh session took after a lost one sent its stage
+        // round again: the highest any session in the world reached (4, 150).
+        "fresh_attempt_for_v" => json!(store
+            .world
+            .sessions
+            .keys()
+            .filter_map(|id| flywheel_domain::regions::attempt_of(id))
+            .max()
+            .unwrap_or(1)),
         "writes_attempted" => json!(run.runtime.writes_attempted),
         "writes_succeeded" => json!(run.runtime.writes_succeeded),
         "loser_told" => json!(run.runtime.loser_told),

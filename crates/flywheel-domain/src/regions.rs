@@ -48,6 +48,41 @@ pub fn session_key(object: &str, region: &str) -> String {
     session_id(&session_stem(object, region, None), 1)
 }
 
+/// The attempt an object is on: one, and one more for each time `bump:
+/// attempt` has sent the stage round again. The field is the stage's
+/// (`stage.yaml` record.attempt), kept on the object the stage runs under,
+/// because one object carries one record; what the bump counts is the times
+/// round, so the first attempt is the one no bump has happened for.
+pub fn attempt_of_object(object: &flywheel_engine::Object) -> u32 {
+    let times_round = object
+        .record
+        .get("attempt")
+        .and_then(|v| v.as_u64())
+        .or_else(|| object.counters.get("attempt").map(|n| (*n).max(0) as u64))
+        .unwrap_or(0);
+    times_round as u32 + 1
+}
+
+/// The session a region path refers to, at the attempt the object is on. A
+/// session lost sends the stage round again with the attempt one higher, and
+/// that is what makes the fresh session a session of its own rather than the
+/// multiplexer being asked for a name it already holds (150, `stage.yaml`).
+pub fn session_key_of(object: &flywheel_engine::Object, region: &str) -> String {
+    // Where no stage names the session, the type does (`session.yaml` id,
+    // `<owner id>/<stage or type>/<attempt>`). The operator's own session runs
+    // the type its machine fixes and records it, so its sessions are named
+    // under that; an object whose sessions sit in its own regions rather than
+    // in a type's keeps the stem those regions give them.
+    let kind = match object.machine.as_str() {
+        "operator-session" => object.record.get("type").and_then(|v| v.as_str()),
+        _ => None,
+    };
+    session_id(
+        &session_stem(&object.id, region, kind),
+        attempt_of_object(object),
+    )
+}
+
 /// The place a region path refers to: a bolt's own place is `<id>#own`; every
 /// other object has one.
 pub fn place_key(object: &str, region: &str) -> String {

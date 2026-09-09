@@ -1,7 +1,7 @@
 //! Performing effects in the stand-in world. Each effect is bound by name to
 //! a small simulation; an unbound effect is logged and counts as done.
 
-use crate::store::{place_key, session_key, ServiceFact, SessionFact, Store};
+use crate::store::{place_key, ServiceFact, SessionFact, Store};
 use flywheel_atoms::Workspace;
 use flywheel_engine::runtime::Object;
 use flywheel_engine::{Definitions, PlannedEffect};
@@ -17,7 +17,7 @@ pub fn perform(defs: &Definitions, store: &mut Store, object: &str, region: &str
     let text = format!("{}{}", e.name, e.note.as_ref().map(|n| format!(" — {n}")).unwrap_or_default());
     store.log("effect", object, text);
     let mut acted = true;
-    let skey = session_key(object, region);
+    let skey = store.session_of(object, region);
     let pkey = place_key(object, region);
     match e.name.as_str() {
         // The effects of 42 are the recorded workspace's, so there is one

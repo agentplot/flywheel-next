@@ -1,0 +1,219 @@
+# The part of every profile's binding that reads and writes the blueprints
+# repository: the standing specifications that hold the claims, the ledger,
+# captures, signals and moves, the manifest,
+# the type catalogue. The same in every profile; not a profile on its own.
+#
+# Tools: the blueprints repository is a git repository holding an mdBook; recutils
+# files (`recsel`, `recins`, `recset` through the `recutils` binary, or the
+# crate's own parser) for the ledger and the signal records; OpenSpec change
+# directories for intents, whose `openspec/specs/<capability>/spec.md` files
+# hold the claims as requirement blocks (97). No hook checks a claim: its
+# version is the content hash of its requirement block, so it moves when and
+# only when the text moves.
+#
+# An intent is an OpenSpec change (`openspec/changes/<intent id>/`): its
+# elaborations' records — research notes, session records, prototype notes,
+# an interactive page — live in that change directory, and what they conclude
+# is written to the book's chapters and to the requirement deltas the landing
+# archives into `openspec/specs/`. A bolt has no change
+# directory in the blueprints; a proposal's document sits beside its record in the
+# state store (187).
+format: flywheel-profile/1
+name: blueprints
+complete: false
+manifest:
+  doc: |
+    `flywheel.yaml` at the blueprints' root lists the repositories the instance
+    tracks with their git details only (199, 203); a repository's kinds and
+    capabilities are derived from the map elements and contexts that name it as
+    home, and the entry's name is what a node's `home` names:
+
+      operators:                                   # membership (233, 247): on a self-managed host (identity kind github) authored whole — the GitHub usernames allowed to respond, the creating user first (253), every one holding every permission (248), edited on the settings form one response per save; on a hosted tier the identities are derived from the account and shown read-only, only the addresses authored, and a member is added or removed on the account (255)
+        - identity: cswanberg                      # a bare identity: a page sink only (236a)
+        - identity: dana                           # with addresses per chat kind (236a): one chat sink per address, presented by the host running that kind's package and holding the lease; the sink is added or removed in the same write as this list
+          discord: "118230000000000001"
+          slack: U0123ABCD
+      # roles: are not authored: on a hosted tier they are the roles the token
+      # carries (248); a self-managed host has none — every operator holds
+      # every permission. A role authorizes and never owns: a decision's
+      # owner is one identity from `operators:` above, or none (237).
+      pools:                                       # host pools (240–242, host.yaml pool:)
+        burst: {platform: fly, image: auto, bound: 4, cost: {per_host_hour: 0.10, ceiling_per_day: 5}, retire_after: 20m, covers: {kinds: [unit, work-item], repositories: [atlas], unit_types: [default, fast]}}
+      repositories:
+        <name>:                                    # elements and contexts with home: <name> give it its kinds and capabilities (199)
+          repo: <instance>/<name>
+          landing: pull-request | direct           # 175
+          take_cadence: "0 6 * * *"                # 50
+          item_merge: squash | merge               # 179
+          personas: "personas/*.md"                # 56
+
+    `flywheel map check` (the blueprints' pre-commit hook) fails a commit in
+    which a node's home names no manifest entry or
+    a manifest entry is the home of no node (199). A repository's commit
+    types are its own declaration, `flywheel/commit-types.yaml` in the built
+    repository (185, 203).
+context_map:
+  doc: |
+    The system context map is the scope surface (198), bound to the
+    first-principles model in `models/context-map/` (model.md, schema.yaml):
+    the bounded contexts the blueprints describe, in the terms of domain-driven
+    design. Format `flywheel-context-map/2`; two complete YAML maps under the
+    book's own layout, `context-map/current.yaml` (what is built) and
+    `context-map/target.yaml` (what the blueprints say), each declaring
+    `schema: flywheel-map/N` and the same id naming the same thing in both.
+    Four element types, each with the common fields id, name, ref
+    (book/chapter, 120), status (settled | candidate | open, open paired with
+    a question), tags:
+      - context: home (optional default for its elements), external,
+        big_ball_of_mud, language
+      - element: context, kind (from the vocabulary), home (optional; the
+        context's applies)
+      - relationship: pattern — partnership | shared-kernel |
+        customer-supplier | conformist | separate-ways, fixed and never
+        extended — with contexts or upstream/downstream, upstream_offers
+        (open-host-service, published-language), downstream_guards
+        (anticorruption-layer), kernel
+      - link: kind (from the vocabulary), from, to; a link across contexts
+        must cross a relationship that is not separate-ways
+    Lanes, tiers, runtimes and stores are tags or instance kinds, never
+    structure; there is no seam layer, no lane, no runtime on an edge, no
+    seamRow, no configurations companion and no verifiedFiles (model.md 2.5).
+
+    Vocabulary and versioning (208): the flywheel ships the schema, the
+    default vocabulary (element kinds aggregate, domain-event, contract with
+    capability true, service; link kinds uses, implements, emits, handles; no
+    facets) and the derivation table as one thing, `schema: flywheel-map/N`,
+    with the release. The flywheel extends it in
+    `flywheel/map-vocabulary.yaml` (`extends: flywheel-map/N`): element kinds
+    that may extend a shipped kind (`store extends service`), link kinds with
+    end constraints, facets with closed or open values, capability flags; a
+    file that redeclares a shipped kind fails. `flywheel map check` validates
+    both maps against the union on every commit (the blueprints' pre-commit hook,
+    121) and fails a map or vocabulary whose N the installed flywheel does
+    not read; upgrading N is a chore (123).
+
+    Attachments live with the claim (97, 200): the specification's capability
+    directory is one attachment, and the requirement carries an `Attaches:`
+    line for any more. That line is outside the content hash, so an
+    attachment never moves the version (105). The map carries no claims; a
+    claim is joined to the map by the ids on those two, read from
+    `openspec/specs/` directly, with nothing rendered beside it. Scope is
+    computed from the target map through homes by the
+    schema's scope table — a context: its home ∪ its elements' effective
+    homes; an element: its effective home; a relationship: both contexts'
+    scope ∪ the kernel's homes; a link: both elements' scope; nothing: empty,
+    not planned against (98). Scope reads home, context and attachment only.
+
+    Derivation (199): a repository's kinds are the set of kinds, with what
+    each extends, of the elements it homes; its capabilities the ids of the
+    homed elements whose kind has capability true — in the shipped
+    vocabulary the contracts; its contexts the contexts of what it homes. The
+    table reads kind and effective home only, never tags, facets or links,
+    and its outputs are shown on the repository page and read by skills when
+    they choose a template or deliverable (190); scope never reads them.
+    Changing the table or either vocabulary re-derives kinds and
+    capabilities only.
+
+    The ledger invariant (model.md 8.2): a verdict is keyed by claim, claim
+    version and repository; the verdicts a repository is due for are the
+    claims attached to what it homes. Only a home moved, an element added to
+    or removed from a home, a re-attachment, or a claim version moves a
+    verdict; a tag, a kind, a facet, a derivation row or a vocabulary change
+    moves none. The check enforces the shape: derivation may not read tags,
+    scope may not read derivation.
+
+    Difference (121, 122, 201): one engine keyed on id over two maps —
+    added, removed, changed with the fields listed, moved when the only
+    differing field is home — used twice: current → target, the design
+    difference; and target at the operator's last review (the rail's
+    reviewed_at revision, the since-review map rebuilt from git history
+    between the mark and head) → target now. Never stored.
+
+    Home checks (199): a home naming no manifest entry fails; a manifest
+    entry no element or context homes, in target or current, fails; an
+    element with no effective home in a non-external context fails; an
+    element with a home in an external context fails. The manifest entry
+    carries git details only.
+
+    Rendered by the machinery under its prefix (203): `flywheel/map/target.json`
+    and `flywheel/map/current.json`, the evaluated maps with every effective
+    home resolved, each repository's derived kinds, capabilities and
+    contexts, and each claim's computed scope — what every host and the page
+    read. Joining (202): a repository joins the fleet when the target map
+    first homes something in it; its ledger is empty and its first planning's
+    baseline is the claims attached to what it homes. A repository homed only
+    in current is retiring; its verdicts stand until current drops it.
+
+    Moving the map (211): only through the tools — attach and detach, set a
+    home, add or amend an entry (refused without a ref), set a status with
+    its question, capture a question, mark reviewed, add a repository. A
+    session moves the map only in a writeback that also writes the chapter
+    (120); the landing construction session's writeback moves the current
+    map for what it built; no session changes an attachment or a home for
+    work it is doing itself.
+adapters:
+  doc: |
+    The shipped adapters (215), one kind each: an enumerator that writes one
+    keyed capture per source event with a pointer to the raw material (111),
+    run by the tick of whichever host declares the source (231, host.yaml
+    launcher: adapters), never by a process of its own. Triage of the source
+    is charged on that host (217e). The capture endpoint (216) is for a
+    caller that cannot reach any host's binary. An instance adds an
+    adapter as a package of the adapter kind (228).
+  chat-forward:   "`flywheel capture chat-forward`: a message forwarded to the bot; key `message/<id>`; its one signal by ensure_signal (S21)"
+  meeting:        "`flywheel capture meeting <file>`: a transcript in the raw store; key `meeting/<date>/<name>`; read by a capture-reader session"
+  webhook:        "`flywheel capture webhook <source>`: a log or monitor delivery queued in the host's inbox; key `<source>/<delivery id>`"
+  pull-request:   "`flywheel capture pull-request <repo>`: the conversation on a request since the last enumeration; key `pr/<repo>/<number>/<comment id>` (178)"
+  issue-tracker:  "`flywheel capture issues <tracker>`: issues and comments since the mark; key `issue/<tracker>/<id>/<event id>`"
+  folder:         "`flywheel capture folder <path>`: a file dropped in the folder; key `folder/<name>/<file hash>`"
+  page-capture:   "the page's capture box is the capture tool itself (19); key `page/<submission id>`; its one signal by ensure_signal"
+  raw_store:      "`flywheel.yaml` sources.<source>.raw: where the raw material lives so the reading host reaches it (217h)"
+signal_schema:
+  doc: "the signal record format is `flywheel/schemas/signal.md`, versioned and stable (113, 114); subject tags come from `flywheel/signal-tags.yaml`, a vocabulary the flywheel ships and the flywheel extends with open values; the capture reader is handed both in its work order and follows the raw pointer itself — nothing raw is copied into any repository (111, context.yaml ruling 7)"
+map_edit_trailer:
+  doc: "a commit that touches `context-map/current.yaml` or `context-map/target.yaml` must carry the trailer `flywheel-map-edit: <sha256 of the edit>` that `flywheel map edit|attach|detach|home|status` writes; the blueprints' pre-commit hook refuses one without it, so a session's direct edit of the map in its place is told from a tool call and refused (211, context.yaml ruling 12)"
+layout:
+  doc: |
+    The blueprints repository is the instance's (203). People and sessions
+    write the book (`src/`), whose chapters include their claims by anchor,
+    the standing specifications those claims live in
+    (`openspec/specs/<capability>/spec.md`), the context map
+    (`context-map/current.yaml`, `context-map/target.yaml`) and the
+    instance's map vocabulary (`flywheel/map-vocabulary.yaml`), the manifest (`flywheel.yaml`), the OpenSpec changes
+    for intents (`openspec/changes/<intent id>/`) and the elaboration records
+    inside them, under the book's own layout. The machinery writes only
+    under `flywheel/` — `flywheel/signals/` (captures, signals, moves),
+    `flywheel/ledger/`, `flywheel/map/` (the rendered maps),
+    `flywheel/packages/`
+    (instance packages of every kind — renderer, adapter, chat sink,
+    runner, router, unit type, elaboration type, deliverable producer, map
+    vocabulary, template, scenario pack, bundle — 228, 287; a **bundle** is a
+    named set of parts with their configuration defaults installed under one
+    install decision for the set, which is what a preset is, 283, 284),
+    `flywheel/registry.json` (types and packages, 224) — and the OpenSpec change directory it creates when an
+    intent opens (open_intent), plus the archive move at landing. The
+    shipped instructions, schemas, skills and type files live under
+    `flywheel/` too, written by people (chores) and read by the machinery.
+    Every instance has a blueprints repository of its own; nothing in one
+    names another (218).
+  fundamentals_part: "the book's first part is the fundamentals part, `src/fundamentals/` with one page per lettered section and `SUMMARY.md` listing them: a statement of invariants of what the system is and what must always hold, written as clauses numbered in one sequence, each naming no mechanism, with the claim that makes a clause checkable included by anchor immediately after it from `openspec/specs/<capability>/spec.md` (318, 97). The blueprints template ships the skeleton — the directory, its summary entries and the style note — so every book has the part whether or not anything is written into it yet, and it is released with the set (208). It is written by the `fundamentals` elaboration type and by no other (190, fundamentals@1); like every chapter it is written on the intent's line and reaches the shared line at the archive."
+  book_viewer: "the book is read through a standalone read-only viewer served beside the page, built from this repository's shared line and only that: chapters as mdBook, each claim rendered where its chapter includes it by anchor from `openspec/specs/<capability>/spec.md`, with its version, scenarios, attachments, derived scope and one verdict dot per repository in scope read from `flywheel/ledger/` (315, 97, 100, 200, surfaces.yaml viewer). What is in flight — an intent's proposed claims under `openspec/changes/<intent id>/`, a chapter an elaboration has not landed — is not in it, so the viewer is always the standing destination (315, 98, 187). Every chapter and every rendered claim links back to the object on the page at the host's address with the instance in the path (315, 205a, 308); the page links out and embeds no chapter. Its readers are the host's — the private network on a self-managed host, the caller's token on a hosted tier reading to members of that instance alone — and serving a book to readers who are not members is one opt-in per book on the settings form, revocable there (316, 247, 249, 253, 291)"
+evidence:
+  capture.signals_present: {read: "at least one `flywheel/signals/<capture key>/*.rec` exists on the blueprints' shared line (203)"}
+  signal.move:             {read: "`flywheel/signals/moves/<signal id>.rec` target's first word (attach | challenge | join | answered | route | drop); none when the file is absent; a route target is `route <offer entry id>`"}
+  cell.challenged:         {read: "some `flywheel/signals/moves/*.rec` whose target is `challenge <this cell's claim>` has a date newer than the cell's judged_at"}
+  cell.verdict:            {read: "`flywheel/ledger/<repository>.rec` record with this claim: the verdict field; none when absent"}
+  cell.verdict_claim_version: {read: "the same record's claim_version"}
+  cell.verdict_recorded:   {read: "a record with this claim, claim_version, revision and judged_at exists"}
+  curation.unmoved_count:  {read: "count of signal records with no move record, by event date"}
+  curation.threshold:      {read: "`flywheel.yaml` curation.threshold (default 12)"}
+  curation.cadence_due:    {read: "`flywheel.yaml` curation.cadence (cron, default `0 6 * * 1-5`) has fired since the curation record's last run"}
+  curation.moves_recorded: {read: "every move the session delivered exists as a move record"}
+  planning.fingerprint:    {read: "sha256 over: the elements and contexts homed in the repository from `flywheel/map/target.json` with their ids, kinds and effective homes, and the derived kinds and capabilities (199); the attachments whose computed scope reaches the repository (200); standing claims in scope for the repository with versions; every ledger cell of the repository with its freshness; the ids of signals whose standing move challenges a claim in scope (101); open bolts of the repository with their units' cited claim versions and citation choices; unconsumed asks naming the repository; pending redo notes"}
+  planning.ledger_empty:   {read: "`flywheel/ledger/<repository>.rec` is absent or holds no record; a repository joins when a node names it as home (202)"}
+  intent.signals_dropped:  {read: "every signal the intent cites has a move record whose target is `drop <intent id>`"}
+effects:
+  record_verdict:  {do: "recset/recins on `flywheel/ledger/<repository>.rec` (203): replace the record for the claim with verdict, claim_version, revision, evidence, judged_at, judged_by; one commit on the blueprints' shared line whose message carries the effect id; pushed with expected-old, rebased and retried on rejection (the cell's lease makes a content conflict impossible)"}
+  record_moves:    {do: "one `flywheel/signals/moves/<signal id>.rec` per delivered move (203), target `attach <intent>` | `challenge <claim>` | `join <intent>` | `answered <claim or record>` | `route <offer entry id>` | `drop <reason>`; one commit on the blueprints' shared line"}
+  drop_signals:    {do: "for each signal the intent cites, write a move record `drop <intent id>` with the reason; one commit"}
+  ensure_signal:   {do: "for a capture whose source is forwarded-message: write one signal record whose excerpt is the message and whose kind is the operator's response (default ask); one commit"}

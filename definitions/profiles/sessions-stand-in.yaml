@@ -1,0 +1,33 @@
+# The stand-in session binding (93): the same evidence and effect names as
+# sessions.yaml, bound to a scripted player instead of herdr and Claude Code.
+# A scenario seeds it with `given.script` (or a `script` step): per session
+# id, the pane, activity and keystrokes the multiplexer would show and the
+# exits, offers and refusals a real session would report through the
+# `flywheel` command — each played by the stand-in through the very same
+# command path, so the state store, the engine, the git effects, the rail
+# and the page run for real with no agent anywhere. A scenario may also set
+# these evidence names directly with an `evidence` step; the script is the
+# way to say what a session would have done. `flywheel scenario run` swaps
+# this file in for sessions.yaml; `flywheel host` never loads it.
+format: flywheel-profile/1
+name: sessions-stand-in
+complete: false
+hosts:
+  doc: "a scenario's `host:` step names the host the following steps run as and may start, stop, disconnect or return one by name (232, 95): `{name, start: true}` starts `flywheel host --name <name>` as a process of its own with its own root, multiplexer session and port range (host.yaml several_on_one_computer); `{name, lose: true}` stops the process without a farewell, so its heartbeat stops and its leases go stale (S13); `{name, disconnect: true}` cuts the process's route to the git host and nothing else, so it keeps ticking what it owns and commits locally (S18); `{name, return: true}` restores the route or restarts the process. Every host scenario — lost, takeover, bound reached, disconnected reconciling, several instances — therefore runs on one laptop, and `flywheel scenario run` does the same with real processes when asked (`--hosts real`)"
+evidence:
+  session.pane:        {read: "present once the script's start has played for this session id and no stop has; absent otherwise; while the holding host is away (150a) the last value stands"}
+  session.activity:    {read: "the script's current activity for the id (working | idle); none when absent"}
+  session.idle_since:  {read: "the scenario clock at the script's last activity change"}
+  session.operator_present: {read: "a script entry with keystroke: true played within the last 30 minutes of scenario time"}
+  session.pane_absent: {read: "no pane by that name in the stand-in's table"}
+  session.exit:        {read: "the newest exit entry on the session's thread — written by the stand-in running `flywheel exit` exactly as a session would; invalid when the script says so"}
+  session.offers_pending: {read: "as sessions.yaml: offer entries on the thread that no record cites; the stand-in writes them with `flywheel offer` from the script's offers"}
+  session.refusals_pending: {read: "as sessions.yaml; the stand-in writes them with `flywheel refuse` from the script's refusal"}
+  session.delivered:   {read: "the deliverables field of the newest exit entry"}
+commands:
+  service: {do: "a script entry `service: {start: <name>}` or `service: {stop: <name>}` is played by the stand-in running `flywheel service start|stop <name>` in the session's place, exactly as a session would; the op-response it writes is real and the trace shows it (47)"}
+effects:
+  start_session:   {do: "record the start in the stand-in's table by session id, with the kind and the multiplexer session it would have used (173, 174); refuse a second start of the same name, as herdr does; then play the script entries for that id at the step numbers their `after` names, committing any `commits` into the place with git so the git effects see real work; a script entry carries a step number and never a duration, because the scenario clock moves only through a `clock` step and the tick interval (conformance/README.md)"}
+  end_session:     {do: "remove the id from the table; a later script entry for it is ignored and reported to the trace"}
+  deliver_answer:  {do: "append the answer to the id's inbox in the table and mark the thread entry delivered; the script entry that reacts to it names the step the answer was delivered at"}
+  tell_moved:      {do: "append(session thread) the moved entry and mark it delivered; the trace shows it"}

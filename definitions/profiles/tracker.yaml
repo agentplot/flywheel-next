@@ -1,0 +1,53 @@
+# The tracker profile (C.1). State lives in GitHub: one issue per object with a
+# rail-facing lifecycle in the instance's `flywheel-state` repository, a
+# milestone per bolt and per intent, and one Projects v2 board for the
+# flywheel. Signals, moves, claims, verdicts and definitions are files in
+# the blueprints repository, never items (157). The tracker is the central
+# service. Inherits the host, sessions, blueprints, record-derived and surfaces
+# bindings. The instance's dispatch agent, running outside every host,
+# is this profile's binding for signals appended by adapters (106) and for
+# capture in one gesture (112): it is the capture endpoint a delivery system
+# or a chat calls, and it writes the capture and signal records in the blueprints
+# through the blueprints binding; nothing in `machines/` names it (C.1). It is
+# also the host's agent for chat (194, 216): free text in Discord is never
+# parsed by the machinery; dispatch reads and answers with the query tools on
+# its own, and its interpreter turns every write asked for into a proposed
+# tool call with a confirm control — several things asked, several cards —
+# calling the tool on the operator's confirmation, which is the response
+# recorded once. A numbered reply needs no interpreter (surfaces.yaml
+# host_agent).
+#
+# Tools: GitHub REST and GraphQL through the `octocrab` crate with a GitHub
+# App installation token per instance; the chat, page, bell and review
+# surfaces as surfaces.yaml binds them; `gh` is not used.
+format: flywheel-profile/1
+name: tracker
+complete: true
+inherits: [host, sessions, blueprints, record-derived, surfaces, identity]
+
+records:
+  where: "issue in `<instance>/flywheel-state`, title `<kind> <id>`, body = one fenced ```flywheel block holding the record (the envelope of model.md 3.4); labels `kind:<kind>` and `state:<leaf>` and the board column are projections written after the body. Objects: intent, elaboration, bolt, unit, work-item, operator-session, curation, planning, rail, sink, host; and one issue per numbered decision (below)"
+  get:    "GET /repos/{org}/flywheel-state/issues/{n}; the fenced block parsed; the id -> issue number map is the issue title, found by list"
+  put:    "PATCH the body with the new block and seq+1; single writer is the lease (below), so no CAS is needed on the body; after the write the body is read back and its seq compared, a mismatch is a lost lease and is reported"
+  append: "POST a comment on the issue; the comment is the thread entry; comments are the status view's discussion (144). A session's `flywheel exit|offer|note|refuse` writes such a comment through the App token scoped to its own object"
+  list:   "GET /repos/{org}/flywheel-state/issues?labels=kind:<kind>&state=all&since=<last list point>, paged; the board's items are never the source"
+  responses: "comments on the object's issue whose first line is `op-response:`; the response's id is the Discord message id, the page submission id, the plannotator annotation id, or the timeline event id of a direct action on the tracker"
+  leases: "the issue's lease comment (the comment whose first line is `lease:`); hosts() are the issues labelled kind:host; a sink's lease is on the sink's issue"
+  decisions: "one issue per numbered decision, labelled kind:decision, title `#<number> <kind> <object>`, opened by the presenter when the register gains the entry and closed when the register drops it (157). A projection of the object's state, never read as truth (158); answering on it is the response (159)"
+
+contract:
+  read:     "get, comments, milestone and board item of the issue, as of the response's `Last-Modified`; a read writes nothing"
+  write_effect: "the body write, comment or milestone change carries the effect id in a `flywheel-effect:` trailer; a repeat is found by searching the trailer before writing and changes nothing"
+  lease:    "lease by ordered append: a host POSTs a comment `lease: <host> taken <t>`; it then lists the issue's comments and holds the lease only if its comment is the lowest-id lease comment newer than the last `release:` comment; a loser deletes its own comment and reads again. A host attempts a lease only on an object its manifest declaration covers (149). Renewal edits the holder's comment (`renewed <t>`), never a new comment. Release is a `release:` comment by the holder. Expiry: renewed_at older than 24h, or the holder host's gone decision answered `takeover`; an expired lease may be replaced by the same protocol"
+  present:  "as surfaces.yaml: the presenter of each sink delivers the numbered decisions; every decision is also the decision issue above, with the answers as a checklist; a decision with a document (a unit or elaboration proposal) is opened in plannotator from the page and from the decision issue"
+  receive:  "a Discord reply naming a number (`yes 12`, message id = response id), a button press, a page choice (submission id), a plannotator annotation on the reviewed document (annotation id; the annotations are the `redo:` notes, or `yes`), or a direct action on the tracker: closing the decision issue with a checklist item ticked is that answer, moving the object's board item to `Approved` is `yes`, closing the object's issue is `close`/`drop`/`finish`, a comment starting with `op-response:` is any answer (timeline event id = response id). Each becomes an op-response comment on the object's issue before anything follows (153); the bot reacts ✅ on the chat message once the comment exists (154). A response whose decision is gone becomes a response object in `unapplicable` and comes back once under attention"
+  notify:   "GitHub App webhooks (issues, issue_comment, projects_v2_item) delivered to each host's `/hook` over a Tailscale Funnel; without a reachable URL the host polls `issues?since=` every 30s. Bound: 30s. herdr pane events and Discord messages notify locally"
+  list:     "as records.list"
+  status:   "the Projects v2 board (columns = queued, in progress, waiting on operator, done; fields host, owner, alive) is a projection the machinery writes after each body write, readable on GitHub's phone app with no host running; the fuller page (section 4) is served by the page sink's presenter and also committed as `status.html` to the repository so it can be read from GitHub when no host runs"
+
+guarantees:
+  durable:  "GitHub's own durability for issues, comments, milestones and projects"
+  single_writer: "the lease-by-ordered-append protocol above; comment creation is atomic and comment ids are totally ordered, so two hosts observe the same winner. The body write also compares seq on read-back and reports a mismatch"
+  atomic:   "one PATCH of the body is one write; the fenced block is replaced whole; a comment is one POST"
+  derivable: "the body block and comments are the only things read; labels, milestones, decision issues and the board are written from them"
+  response_once: "the response id is the delivery id; the op-response comment is searched by id before posting (a second delivery finds it); the object's applied_responses is written in the same body PATCH as the state change"

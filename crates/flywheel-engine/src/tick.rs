@@ -198,11 +198,15 @@ pub fn apply(defs: &Definitions, obj: &mut Object, f: &Fired, now: DateTime<Utc>
             }
         }
     }
+    // The state is entered afresh, and what ran under the state left goes with
+    // it. That holds for a self-transition too: one is written only when there
+    // is something to do (`plan_tick`), and a state that runs a submachine is
+    // then going round again, with whatever the bump counted. What stops the
+    // second time round doing the work a second time is each effect's own
+    // proof: one already proven is not planned again.
     let prefix = format!("{}.{}.", f.region, f.from);
-    if f.to != f.from {
-        let gone: Vec<String> = obj.config.keys().filter(|k| k.starts_with(&prefix)).cloned().collect();
-        for k in gone { obj.config.remove(&k); obj.entered_at.remove(&k); }
-    }
+    let gone: Vec<String> = obj.config.keys().filter(|k| k.starts_with(&prefix)).cloned().collect();
+    for k in gone { obj.config.remove(&k); obj.entered_at.remove(&k); }
     obj.config.insert(f.region.clone(), f.to.clone());
     if f.to != f.from { obj.entered_at.insert(f.region.clone(), now); }
     // A name the machine declares in its `record:` is a record field, and the
@@ -222,11 +226,14 @@ pub fn apply(defs: &Definitions, obj: &mut Object, f: &Fired, now: DateTime<Utc>
     }
     if let Some((id, _)) = &f.response { if !obj.applied_responses.contains(id) { obj.applied_responses.push(id.clone()); } }
     obj.seq += 1;
-    // Initialise nested regions and submachines of the target.
-    if f.to != f.from {
-        if let Some((_reg, st)) = state_def(defs, obj, &f.region) {
-            let st = st.clone();
-            init_nested(defs, obj, &format!("{}.{}", f.region, f.to), &st, now);
+    // Initialise nested regions and submachines of the target, which the clear
+    // above took away. The SINCE list is not written again for a state that was
+    // already this one: the tail says what the object reached, and it has not
+    // reached anything new.
+    if let Some((_reg, st)) = state_def(defs, obj, &f.region) {
+        let st = st.clone();
+        init_nested(defs, obj, &format!("{}.{}", f.region, f.to), &st, now);
+        if f.to != f.from {
             if let Some(t) = &st.tail {
                 tail.push(TailEntry { at: now, object: obj.id.clone(), kind: t.clone(), state: f.to.clone(), by: f.response.as_ref().map(|(id, _)| id.clone()) });
             }
@@ -259,7 +266,15 @@ pub struct Command { pub path: String, pub target: String }
 /// submachine's machine name.
 pub fn commands(defs: &Definitions, obj: &Object, f: &Fired) -> Vec<Command> {
     let mut out = Vec::new();
-    for (key, target) in &f.enter {
+    // A state may command its children on being entered, and a transition may
+    // command them on being taken; where both name a child the transition is
+    // the nearer word and wins.
+    let mut enter: BTreeMap<String, String> = state_def(defs, obj, &f.region)
+        .and_then(|(reg, _)| reg.states.get(&f.to))
+        .map(|st| st.enter.clone())
+        .unwrap_or_default();
+    enter.extend(f.enter.iter().map(|(k, v)| (k.clone(), v.clone())));
+    for (key, target) in &enter {
         for (path, _cur) in obj.config.iter() {
             let segs: Vec<&str> = path.split('.').collect();
             let last = *segs.last().unwrap_or(&"");

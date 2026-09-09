@@ -1,0 +1,547 @@
+# The part of every profile's binding that is the same everywhere: the world
+# the machinery acts on — git repositories, worktrees, the OpenSpec
+# specifications on both sides (the blueprints' standing specs hold the
+# claims, a built repository's hold the as-built, and nothing is written
+# beside either), and the manifest. Both profiles inherit it. Not a profile on its own
+# (complete: false). The session binding is a partial of its own
+# (sessions.yaml) because it is the one a stand-in replaces (93); the effects
+# that change a line of work or a place to work in are the other, and a build
+# with no construction may bind them to a recorded stand-in that writes the
+# evidence each proof reads and touches no repository (93a). The manifest names
+# which — `flywheel.yaml` hosts.<host>.workspace: {kind: host | recorded},
+# default host — and the machines, their proofs and every name below are the
+# same under either.
+#
+# Tools: git (libgit2 through the `gix` crate for reads, the `git` binary for
+# merges, rebases and pushes so hooks and credentials behave as the operator's
+# do); worktrunk `wt` for places (`wt worktree add/remove`, `wt tether` for
+# the processes bound to a worktree, portless for ports and, under the local
+# router, endpoints; the `router:` section below binds the other routers);
+# mdBook books; OpenSpec change directories;
+# `gh` is not used anywhere in this binding. Nothing a session leaves on the
+# place's disk is read as state (67): the place holds the session's work and
+# the inputs handed in; every report from a session goes through the
+# `flywheel` command, which writes to the state store.
+# Every command below is run with explicit arguments and, for tools that read
+# a configuration file (wt, herdr), a file the machinery writes from
+# flywheel.yaml and passes on the command line; the host's own tool
+# configuration is never read (183).
+#
+# The hosted tiers are bound here too: `tier:` carries the tier per host, 0 to
+# 3 by what exists on the service side, with the placement facts each rung
+# implies — one function per tier, one invocation per instance's tick
+# under a tagged role, an encrypted warm cache, a managed capture queue
+# behind one stateless receiver, one one-shot scheduler entry per
+# instance targeting that queue, the page and the tool server served at
+# the tier's name on request, and microVM pool hosts
+# terminated at retire (A.33, A.34). The dispatcher runs the interpreter and
+# the triage of self-contained captures in-process; raw-material triage and
+# every elaboration and construction session stay on a machine of the
+# operator's own or on a pool host. Every invoker enqueues on the
+# instance's queue, which admits one tick of an instance at a time,
+# and a page request is a read and never a tick (270, 291).
+#
+# What binds a hosted host to a service side at all is the invocation
+# contract (297, `tier.control_plane` below), and nothing else: the binary is
+# one product, open source, and the control plane another, commercial and
+# installable (296, 300). The same binary bytes run on a laptop and on a
+# hosted host (299), and a control plane an enterprise customer installed is
+# indistinguishable from the service's own to everything in this file (305).
+format: flywheel-profile/1
+name: host
+complete: false
+disk:
+  doc: |
+    The layout on disk is this binding's, the same on every host (205). The
+    manifest names one root (`flywheel.yaml` hosts.<host>.root, default
+    `~/flywheel`); a host joins by `flywheel host join <instance>` and never by
+    hand, and a root that holds anything else is refused with what differs
+    (host.disk_layout = differs, the host machine's refused state).
+  root: "`<root>/<instance>/` — one directory per instance the host runs; nothing under one names another (218). `<root>` is per host: `flywheel.yaml` hosts.<host>.root, default `~/flywheel/<host>`, so two hosts on one computer have two roots and share no file (232)"
+  bare: "`<root>/<instance>/<repo>.git` — a bare clone of the state, the blueprints and every tracked built repository; the one remote every worktree shares"
+  shared_line: "`<root>/<instance>/<repo>/main` — one checkout of each repository's shared line, the machinery's own working tree for takes, landings and the blueprints' commits; no session ever runs here"
+  bolt_place: "`<root>/<instance>/<repo>/bolts/<bolt id>` — the operator's place per open bolt (44), a worktree off the bolt's line"
+  places: "`<root>/<instance>/<repo>/places/<owner id>` — a session's place (43), a worktree off its line, made by prepare_place with `wt` and removed by remove_place; nothing else is ever a worktree"
+  untracked: "`.flywheel/` inside any worktree, excluded through `.git/info/exclude` (203): the work order, the handoff, the installation token"
+  check: "`flywheel host doctor` lists every path under the root against this layout; join runs it first and refuses on any difference, naming the path and what was expected (205); every tick runs it again (222): a bare repository or a shared-line checkout missing, moved or changed by hand is host.disk_layout = differs, the host-refused decision shows the difference and the repair, and nothing but a place's worktree is repaired without the response"
+  repair: "the doctor's proposed repair per difference: a missing or moved bare clone — `git clone --bare` from the manifest's remote again; a missing checkout — `git worktree add` from the bare clone; a hand-changed checkout — moved aside to `<path>.aside-<date>` and checked out again; unreadable state (an object file that does not parse) — reported, never rewritten or guessed at (222)"
+  places_repair: "a place's worktree found missing is re-made by prepare_place from its line, since the line is the truth and the worktree only work in progress (49, 222); a place with uncommitted work is never removed by the doctor"
+launcher:
+  doc: |
+    A host is one long-lived process, `flywheel host`, that the platform's
+    own launcher starts and restarts: launchd on a Mac, systemd on Linux, the
+    container's entrypoint on a platform (231). `flywheel host join` installs
+    that one entry and nothing else; there is no cron, no timer and no second
+    process. Every timed behaviour — heartbeats, cadences, adapters, leases —
+    is a guard on the host's tick, and a tick missed while the host was
+    down is caught up by the next one: an adapter's enumeration writes under
+    the source event's key, so twice is once (111).
+  tick: "every 60s, and on every notify (130); the tick reads, evaluates every guard, runs the effects whose proofs are absent, and heartbeats"
+  several_on_one_computer: "several hosts run on one computer as separate processes, `flywheel host --name <id>` each, told apart by id alone (232): each has its own root (disk: above), its own multiplexer sessions (`flywheel-<instance>-<host>-<role>` when the manifest marks the computer shared, sessions.yaml), its own port range (router: port_range), its own heartbeat branch or record and its own leases; they share nothing but the git host. The launcher holds one entry per host id"
+  adapters: "the sources the host declares in `flywheel.yaml` hosts.<host>.sources — chat-forward, meeting, webhook, pull-request, issue-tracker, folder, page-capture (215, blueprints.yaml adapters:) — each with a cadence or a watch; host.adapters_due reads them and run_adapters runs the due ones"
+environment:
+  doc: |
+    Every tracked repository declares the environment its sessions need
+    (238): `flywheel/environment.yaml` under its prefix — tools with their
+    versions — or a pointer to the repository's own definition
+    (`devcontainer: .devcontainer/devcontainer.json`, `devenv: devenv.nix`).
+    The host binds it to a provider, `flywheel.yaml` hosts.<host>.provider:
+    devenv | devcontainer | nix | image. prepare_place activates the
+    environment in the place before start_session — `devenv shell` or a
+    `.envrc` the place's hooks source, the devcontainer's features
+    resolved into the place, a nix shell, or nothing when the host runs
+    from an image that already satisfies it — and records the declaration's
+    hash and the provider on the place as place.environment. A host whose
+    provider cannot satisfy a declaration (a tool or version it cannot
+    produce, no image with it) reads host.environment_satisfied false: the
+    host-environment decision says which repository and tool, and
+    lease.coverable excludes that repository's objects on this host (149).
+  declaration: "`format: flywheel-environment/1`; `tools: [{name, version}]`, or `devcontainer:` / `devenv:` naming the repository's own file; read at the place's line head"
+image:
+  doc: |
+    A platform host is created from an image that satisfies the
+    environments of every repository it will cover (239). build_image
+    renders the declarations into the provider's image — a container
+    image with the tools at their versions, or a nix closure — tags it with
+    the declarations' hash, and registers it with the platform; the same
+    declarations yield the same image, so a repeat builds nothing. The
+    hosts surface shows an image whose hash is behind the current
+    declarations; rebuilding it is a chore (123). add-host on a platform
+    picks the pool's or the instance's image.
+tier:
+  doc: |
+    Every host carries a tier, 0 to 3, named by what exists on the service
+    side (268): `flywheel.yaml` hosts.<host>.tier, default 0. The tier is a
+    binding (217j) and never a second machinery; the same binary runs at
+    every rung.
+
+      0 · your computer      the binary on the operator's own machine, its own
+                             sign-in kind (243), nothing on the service side
+      1 · cloud agent        a capture queue, a key, a role, a warm cache
+                             object and a scheduler entry for the instance;
+                             no pool, so the operator's machines still build
+      2 · pools              tier 1 with pool hosts on demand from the
+                             instance's image (240, 275)
+      3 · your account       three shapes (268, 305). Two are chosen in the
+                             management console: stores only — the key,
+                             queue, cache and pool image in the
+                             customer's own cloud account, the service's compute
+                             assuming the role it grants (276); or stores
+                             and compute — the binary provisioned into that
+                             account through the same role, nothing of the
+                             service's running there but the control plane
+                             (276a). The third is the whole control plane
+                             installed in the customer's own accounts (304,
+                             `tier.control_plane` below): it is not offered
+                             in the console and not shown in marketing, and
+                             under it nothing of the service's runs at all
+
+  control_plane: |
+    There are two products and one line between them (296). The binary is
+    open source under a permissive licence — the machines and profiles, the
+    page bundle with both consoles, the tool server and its endpoint, the
+    adapters, runners and routers, the definitions of permissions, roles,
+    features, flags and plans (252, identity.yaml `definitions`), and the
+    command line — so tier 0 is the whole product with no service side. The
+    control plane is commercial and source-available to enterprise customers
+    for self-hosting: the receiver, the per-tier dispatcher packaging with
+    its roles and tags, the queues, the scheduler, the cache and projection
+    stores and their keys, the page distribution, the registry, the
+    deployer, the identity environment and its sync, the plan and billing
+    integration, the pool image build and provisioning, and the shared chat
+    applications — every one of them bound elsewhere in this `tier:` section.
+
+    The line is the invocation contract, and it is public and documented in
+    the open-source repository, versioned with the set (297, 208). The
+    control plane invokes the binary in two modes. In **tick** it provides
+    the instance and its tier, a role session tagged with that
+    instance (`tier.tagging`), the cache and projection objects
+    (`tier.cache`, `tier.projection`), the instance's queue with the
+    messages on it (`tier.receiver`), the standing scheduler entry
+    (`tier.scheduling`), the environment's issuer with the definitions
+    version it holds (identity.yaml `sync`), a model credential or none
+    (`tier.model`), and a scratch directory with the budget `placement`
+    states; the binary returns the cache uploaded, the projection written,
+    the rail delivered, the shared lines pushed by compare-and-swap, each
+    message acknowledged or left under its idempotent key (111), one next
+    due time or a deletion, the run record, and an exit with the scratch
+    wiped and the data key dropped. In **request** it provides the caller's
+    token, the instance named in the path (205a), a role session tagged
+    with that same instance, the projection object and the definitions
+    version; the binary returns the bundle or the projection, a tool call
+    enqueued on the queue for a write, or a refusal with its reason and run
+    record (`tier.served`, 249). A request is never a tick.
+
+    Five shapes are stated and are what a second control plane must match
+    (298): the queue message, the scheduler entry, the cache object, the
+    projection object and the identity token's claims — each bound in the
+    key of this section that names it. The definitions version is the sixth
+    and couples the two products in time (252, 301).
+
+    Anyone may build a control plane to that contract and the service's is
+    the reference (299). A self-managed host and a hosted host run the same
+    binary bytes: nothing is compiled differently and nothing is gated at
+    build time, so a hosted host differs from a laptop only in the tier, the
+    identity kind and the router this file binds (191, 217j, 243).
+
+  installed: |
+    The control plane is installable and customizable (300): one composition
+    of applications and stacks — receiver, dispatcher, scheduler, stores and
+    keys, page, registry, deployer, identity sync, billing, chat and pools —
+    each holding one part of `control_plane`'s list and taking the tenancy
+    choices as parameters: the tier roles and the tag key with the policy of
+    `tier.tagging` (259), the key homes of 267, and whether the queue, the
+    cache, the projection and the pool image live in the control plane's
+    account or the instance's (276). Installing it is bringing the
+    composition into an environment; customizing it is those parameters and
+    never a fork.
+
+    The identity environment is the installer's own (301, identity.yaml
+    `provider`, `sync`): their environment, or any provider issuing the
+    claims of 298, the named provider being the reference. Billing is
+    optional — where no payment provider is bound the plans are entitlement
+    targets alone, hiding and metering and charging nothing, and the billing
+    stack is the one thing omitted (302, identity.yaml `plans`). The chat
+    applications are the installer's own, with their ids, tokens and signing
+    secrets, and the two shared components are still exactly two (303,
+    `tier.chat`, 277, 290).
+
+    A self-hosted control plane is the third shape of tier 3 and the fourth
+    flavour of Enterprise (304, identity.yaml `plans.ladder.enterprise`).
+    It is not marketed and not offered in the management console; it is sold
+    and installed by us. Nothing of the service's runs in it: no process in
+    the installer's accounts, no traffic of their instances reaching a
+    machine of the service's, no credential of the service's reaching a key
+    of theirs, and none of their instances in the service's registry.
+    What stays the service's is the releases and their set (208, 252), the
+    contract as a document, the source under the customer's agreement, and
+    the record of who holds a grant. The first instance is a willdan-owned
+    control plane deployed in switchboard.
+
+    To this file that instance is invisible (305): a hosted host names an
+    environment and that environment may be any control plane's, and every
+    fact the binary reads about its service side arrives through
+    `control_plane`'s contract and through nothing else.
+
+  placement: |
+    On tiers 1 to 3 the host is not a process the operator's launcher starts.
+    It is the invoked placement, a placement in its own right (217i): one
+    function per tier, and each invocation is one instance's
+    tick (269). It assumes the tier's role under a session tag naming that
+    instance (259), downloads the warm cache, fetches, evaluates, pushes
+    by compare-and-swap, delivers the rail, uploads the cache, wipes its
+    scratch and exits, retaining nothing between invocations (217a). The
+    sandbox is reused across instances, so retaining nothing is the
+    tick's own act: scratch wiped and the data key dropped before exit. A
+    tick has a fixed budget the placement states, fifteen minutes on the
+    function placement, and a short budget carries triage before it carries a
+    reply (269). It runs a
+    model: the interpreter, one bounded call per message on the `inproc`
+    runner (216, 217b, 217c, sessions.yaml runners), and the triage of a
+    self-contained capture whose whole content is already in the queue —
+    a chat message, a webhook body — beside it (217e), both bounded per tick
+    with the remainder carried to the next. Which of the two a tick runs at
+    all, and at which model class, is the plan's fact (294, identity.yaml
+    plans.limits): a plan that buys neither has its free text interpreted in
+    the page by the browser model (216a) and its self-contained captures
+    triaged in one daily batch at the sweep (273, 281). Two things never run in it:
+    triage over raw material a capture points at (263) and every elaboration
+    and construction session, which run on a machine of the operator's own or
+    on a pool host. It never holds code (264): its declaration takes no
+    object kind, no repository and no unit type (217). A failure in one
+    instance's tick ends that tick and no other (218).
+  invocation: "the tick is invoked, not looped (270): a clock, a notification, an arriving capture and a chat event are invokers of the same tick, and a run nothing invoked is caught up by the next one under the idempotent key (111). This is 231 read as `nothing but the tick keeps time`, not as `a process stands`. Every invoker enqueues on the instance's queue and the queue admits one tick of an instance at a time, the instance naming the group it serializes, so the scheduler's target is the queue and never the function. A request for the page is a read under the caller's identity and is not an invoker (291)"
+  cache: "one encrypted object per instance (256) holding a bundle of two sparse shallow clones — the state repository, and the blueprints restricted to the manifest, the claims and the machinery's prefix (203, 262) — downloaded to scratch per tick and uploaded back, mounted nowhere and shared with nothing; evicted when the instance has been idle past the stated time, its next tick re-cloning (258, 272)"
+  projection: "one small page object per instance beside the warm cache, encrypted under the instance's key (256, 291): the status view and the rail as data, with each member's page sink and its mark (14, 148, 236), written by the tick as the page sink's delivery and read by a page request under the tier role tagged with the path's instance (205a, 259). It is a projection and never truth (136): its loss costs the next tick's write, and nothing is decided from it. It holds no code and no raw capture material (263, 264), and no request ever opens the bundle of 272"
+  receiver: "the capture endpoint on a hosted tier is a managed queue per instance behind one stateless receiver of the machinery's (271): it verifies the caller's signature, answers the platform's liveness check, acknowledges inside the platform's deadline and routes by workspace id to the instance's queue, holding no key that decrypts and reading no queue. Its grant on an instance's key is the encrypting one; the tagged session of 259 holds the decrypting one. The item waits for a tick; the queue is the caller's retry buffer and not state, and every body it holds is encrypted under the instance's key (256). The receiver and the chat application are the two shared components of the hosted tiers and the only two, each seeing a payload once in transit and keeping nothing (290)"
+  scheduling: "one named one-shot entry per instance, whose target is the instance's queue and never the function (270), upserted at the end of every tick with the due time the machines computed and deleted when it completes (273); the name is the instance's, so an interim tick replaces it, at most one entry per instance exists, an entry that fires with nothing due is one idempotent tick that reschedules or deletes (111), and a daily sweep is the backstop. The set of entries is a projection: ticking rebuilds it and its loss costs a sweep, never a decision (136)"
+  served: "the page and the tool server on a hosted tier are served at the tier's name by the same function on request, under the caller's token (243, 249, 291). The page is a static bundle at that name; the tool server is the binary's own tool catalogue (193), reached over HTTP with the identity token by the page and over stdio or in-process, in the shape of the model context protocol, by sessions and by the interpreter (sessions.yaml runners), the agent a client of the tools and never their server. The bundle is held in an object store behind a content distribution at the served name, which fronts the store for the bundle and the function for the tool paths, and is uploaded at release so its version is the binary's (208); a self-managed host embeds the same bundle in the binary and serves it itself. The tool server is a remote server of the model context protocol at the host's address (293): the page, the chat application, the interpreter, the machinery's sessions and a member's own client are all clients of it, each checked by membership and by the tool's declared permission (248, 249, surfaces.yaml tools.identity), each signing in against the host's identity kind, and each shown the catalogue filtered by its caller's permissions. A request is never a tick (270) and neither downloads nor decrypts the warm cache (272, tier.cache): the page sink's delivery is the tick writing one small page projection per instance — the status view and the rail as data, carrying each member's page sink and its mark (14, 148, 236) — to an object encrypted under the instance's key (256, tier.projection), and a request names the instance in its path (205a), checks the caller's token for membership of it (247, 249), assumes the tier role tagged with it (259), decrypts that one projection and returns it. So a request costs one small decrypt, reaches neither the git host nor the bundle, and decrypts nothing of another instance, because the tag is the path's flywheel. A write is a tool call enqueued on the instance's queue and decrypts nothing (271), captured and ticked like any other. The instance switcher lists only the instances the caller's token is assigned to. On a hosted host the identity token is the boundary the private network is on a self-managed one (46, 191, 217c)"
+  chat: "on the hosted tiers the chat sink's identity may be the control plane's own Slack or Discord application, scoped to the instance's channel and carrying rail text and interactions and nothing else (277); on an installed control plane those applications are the installer's, with their ids, tokens and signing secrets, and the two shared components are still exactly two (303, 290). Delivery costs no model: a decision carries its answers as buttons and free text is a slash command with its arguments (`/fw yes 412`, `/fw capture <text>`), which is the whole of chat on a plan that buys no in-tick interpretation (281, 294). On the invoked placement Discord free text is the string option of that slash command, plain channel replies needing a gateway socket no function holds — a long-lived dispatcher under tier 3's second shape holds one, so free text in a channel returns there (tier.dedicated, 276a); Slack free text arrives over the events subscription and needs none. The receiver answers an interaction with a deferred acknowledgement inside the platform's deadline (271) and the tick posts the real reply within the interaction token's window or as an ordinary message from the application"
+  federation: "tier 3's first shape, stores only (276): the flywheel registers the service's issuer as an identity provider in its own account and allows the role's session to be tagged, and the token minted per tick carries the instance as a principal tag, because a web-identity session takes its tags only from the token. The only standing grants in that account are the role's trust and the key's grant to that role: the wake from the instance's queue carries the instance's name and nothing else and the tick reads the queue itself under the assumed role, so nothing of the service's stands with a decrypting grant and deleting the role ends every path"
+  dedicated: "tier 3's second shape, stores and compute (276a): the deployer applies the stack into the customer's own cloud account through the same granted role and stamps the binary's version (208), and what stays on the service side is the control plane alone — a registry of instance names, tier, health and counters; the deployer; and the identity environment holding the redirect entry for the host's served name (243, 244, 291). The chat application is still the service's (277, 290). Under this shape the console offers dedicated compute created in that account by the deployer, each option stated with what it changes: the dispatcher invoked as a function (269) or long-lived as a container, on a container service or on an instance of the instance's own; and pools on microVMs, on container tasks or on such instances (275, pool.hosted). A long-lived dispatcher holds the chat platform's gateway socket, so free text in a channel is answered where an invoked function must take a slash command (tier.chat); pool hosts on an instance have no lifetime ceiling, so 275's fallback placement is not needed. `fw.ff.dedicated-compute` gates the options and `fw.ff.federation` covers both shapes (identity.yaml features). Under this shape the control plane that stays on the service side is the product of 296, invoked through the contract of 297; the third shape moves that control plane into the installer's accounts too and is not offered here (304, 305, tier.installed)"
+  tagging: "the session tag of 259 is matched by the tier role's own policy over every key and object of the account, the resource's instance tag equal to the session's, so no key names a role and no role is added for an instance"
+  liveness: "an invoked host is alive while its scheduler entry stands or its queue holds items (292): it heartbeats once per tick, `host.last_seen` reads the later of that heartbeat and the standing entry's due time and reads now while an item is queued (record-derived.yaml), so its stale window is the due time it wrote plus the engine's grace and 150's takeover is raised for it only past that. A host with no entry, no queued item and no heartbeat inside the window is gone"
+  notify: "notification is primary and the poll is the backstop (274, 166): seconds where a live push reaches the host, a named interval where none does; no unconditional poll is the floor"
+  model: "model access on a hosted tier is the service's, carried by the tier role and metered into the plan (279, 294, identity.yaml plans.limits), unless the instance places a model key of its own instead (207) — welcome on every plan and required on none; which model provider sees rail text and messages is named in the tier statement (261). Each plan includes a budget on the small model class for the jobs the dispatcher runs inside a tick, reading a capture and answering a message (217b), and overage is metered through the payment provider (282). The model class per job is the plan's ceiling and the type's choice within it (285, stage.yaml agents). A budget spent is one attention line and a slower cadence, never a stopped loop (280): free text falls to the page's browser model (216a) and self-contained captures to the daily batch at the sweep (273, 281). The runners heading on a host's detail shows which model key that host uses and the month's model spend beside the pool hours (surfaces.md S115)"
+  key: "the instance's key is unwrapped only for the duration of a tick and only by the role that runs it (257); a key the host cannot reach fails closed with one attention line naming the key and since when, running work uninterrupted and nothing kept unencrypted as a fallback (260)"
+  away: "an intermittent host keeps its place on a hosted tier (150a, 278): a laptop closed past its stale window is away, its leases stand and its sessions' clocks pause, and the cloud agent keeps ticking everything else, so only the work that host alone covers waits for the lid"
+  add_offers: "what `+ host` offers depends on the host serving the surface, the identity kind and the plan together (295, 243, surfaces.md S120). On a `github` host the offers are only hosts the operator controls — another computer of theirs, a virtual machine on their own network, a container on a platform of their own reached with their own credentials and their own secret store (230, surfaces.yaml tools.add-host), and `adopt existing`, enrolment by token alone — with no cloud agent and no pool among them and one line in their place offering to move the instance to the hosted service (247a, identity.yaml kinds.github.upgrade). On a `frontegg` host those same offers stand and the managed ones stand beside them, each gated by the plan (279–282, identity.yaml plans): the cloud agent where `fw.ff.cloud-agent` is on (Hobby and up), a pool where `fw.ff.pools` is (Pro and up), and the dedicated compute of tier 3's second shape where `fw.ff.dedicated-compute` is (Enterprise, 276a, tier.dedicated). An offer the plan does not unlock is not shown; the tool behind it is still guarded by its permission (280, 250)"
+  add_form: "adding a cloud agent asks nothing about routers or runners — the tier fixes both, the platform router at the served name and the in-process runner at bound 0 (191, 217c, 283). One screen asks the chat platform, the meeting source and the capture sources, with presets beside the selectors (284); a router or a runner is chosen only for a machine of the operator's own or an adopted host, under the advanced disclosure"
+pool:
+  doc: |
+    A pool (240): `flywheel.yaml` pools.<name>: {platform, image, bound,
+    cost, retire_after, covers: {kinds, repositories, unit_types}}. The
+    machinery asks the platform for a host from the image when approved
+    work the pool covers waits behind the bound of every alive host
+    covering it and the instrument reads drain is the limit, within bound
+    and cost (242); each host joins by an enrolment token as an added host
+    does (230), with the pool's declaration as its own, and retires after
+    retire_after idle with nothing held. A pool host is ephemeral: its root
+    dies with it, and a place it held is re-made from its line on another
+    host by prepare_place (52). A pool serves one instance (241): a
+    service run for many instances gives each its pool, on the same
+    platform and nothing else in common. The hosts surface shows the pool,
+    its bound, its live hosts and its image; a pool host is listed under
+    the pool and never needs the operator's eye.
+  cost: "`cost: {per_host_hour, ceiling_per_day}`: pool.cost_allows is false when one more host-hour would pass the day's ceiling at the platform's price"
+  hosted: "on a hosted tier a pool host is a microVM created from the instance's image (239, 275): no shared network of the service's is required, a container runtime runs inside it so a repository's own environment declaration works unchanged (238), and it is terminated at retire and never suspended, so its disk goes with it (240). The placement states a fixed maximum lifetime and the manifest names a fallback placement for a session that must run longer. Its baseline is up to 8 GB of memory and 4 vCPU, bursting to 32 GB and 16 vCPU above baseline, with 32 GB of disk at the top size. The disk is isolated per host and destroyed at terminate under the platform's own encryption, not under the instance's key; an instance whose tier statement must name its own key on that disk (261) binds its pool to the fallback placement, a container task with a volume under the key. Under tier 3's second shape the pool's placement is one of the console's dedicated compute options in the customer's own cloud account — a microVM, a container task, or an instance, which has no lifetime ceiling and so needs no fallback (276a, tier.dedicated). The image is built on a pool host or the operator's own machine and never on a shared host, because building it reads the repositories' environment declarations (238, 239), and its artifact is written to the instance's prefix under the instance's key"
+  isolation: "code is never on a shared host (264, 289): a built repository is cloned only onto a pool host serving one instance (241), on a disk that host alone holds and that dies with it (275), and raw capture material is read only there or on the operator's own machine (263). This is the code-isolation guarantee the settings form's tier statement names (261)"
+packages:
+  doc: |
+    A package (228) is a git repository at a tag, listed in an index that is
+    a file: the shipped index ships with the binary and `flywheel.yaml`
+    packages.index may add files by URL. A package declares, in
+    `flywheel-package.yaml` at its root: name, kind, scope (instance |
+    host), the set version it needs (208), its configuration schema, the
+    names of its secrets, and what it runs. An instance package is
+    installed as files under `flywheel/packages/<name>/` in the blueprints, one
+    commit on the shared line, and read by every host at the shared line; a
+    per-host package under `<root>/packages/<name>/` on the named host.
+    Installation registers the content hash in `flywheel/registry.json`
+    beside the types (224). Secrets are placed by the operator where the
+    host keeps them — the keychain or a sealed file under the root on a
+    machine, the platform's secret store on a platform (207) — under the
+    names the package declares; a name with no value is package.secrets_placed
+    false, the package-secret decision under attention.
+  kinds: "one kind per package (228, 287): renderer, adapter, chat sink, runner, router, unit type, elaboration type, deliverable producer, map vocabulary, template, scenario pack, and bundle. A **bundle** is a named set of parts with their configuration defaults, installed under one install decision for the whole set and running nothing of its own (284); the cloud-agent presets are bundles (283), and removing one removes what it installed and no more. A scenario pack is development-time only: hidden behind `fw.ff.scenario-packs` and never listed in the production index (286). No package kind contributes a core surface — the rail, the board, the dock, the console ship in the binary (287). A sign-in is not a package: both kinds ship in the binary (identity: below)"
+  index: "`flywheel-index/1`: one entry per package — name, kind, scope, repository URL, tag, set version, a one-line doc"
+  identity: "a host binding with two kinds, bound in profiles/identity.yaml (243): `flywheel.yaml` hosts.<host>.identity: {kind: github} — self-managed hosts, GitHub's device flow, the GitHub username the identity, the manifest's authored operators list the membership, no environment and no sync — or {kind: frontegg, environment, client_id} — the hosted tiers, the served name registered once on the environment's redirect list (244), the hosted service's environment (252). One kind per host, the same for every instance it serves, so switching never changes the identity; every op-response the page writes carries it as given_by (153); the tool server checks every call by the host's kind (249, surfaces.yaml tools.identity). Neither kind is a package; both ship in the binary. Sign-in kinds tailnet, oauth and oidc are gone: an instance that needs its directory connects it to its Frontegg account on a hosted tier, never to a host"
+  address: "one address per host, the instance in the path (205a): `<host address>/<instance>/...` for every instance the host has a root for; a link names the instance it opens; the host's own screen is `/host/` and the settings form links to it for the host's keys. On the operator's own computer the address is a localhost port, any port, no proxy and no name required (245); several hosts on one computer are several ports (232); portless or a proxy may be advised for a stable name and is never required"
+  add_host: "`add-host` provisions with the operator's own platform credentials carried in the call and held only for its duration — a container on the platform, a VM, or nothing when adopting — installs the launcher entry with the binary, and writes the host record in enrolment proposed with platform and parts; place_secrets hands the chosen parts' secrets to the platform's secret store on the yes; issue_enrolment_token mints a token valid 24h, shown once on the setup surface; `flywheel host join --token <t>` on the host presents it, the record's first heartbeat is the proof, and the token is spent (230)"
+app:
+  doc: |
+    One GitHub App is the connection (207). A self-managed instance
+    uses its own App: the manifest names its id (`flywheel.yaml` app.id)
+    and the private key is the operator's secret, placed on each host
+    outside every repository (`<root>/<instance>/app.pem`, mode 600) and never
+    by an agent (207a). The hosted tiers use the service's App: its key
+    never leaves the service, and a pool host (240) or any host the service
+    runs asks the service for its installation tokens instead of minting
+    them, scoped as 207 scopes them. The installation on the instance
+    must cover every repository the manifest lists; `extend_installation`
+    adds a new repository where the App's permissions allow, and where they
+    do not the repository's `uncovered` decision under attention asks the
+    operator. No host or session uses a personal token, and no host or
+    session holds an identity-provider user credential (251).
+  host_token: "self-managed: the host mints an installation token from the key for its own git-host calls (pushes, the tracker's items, request reads), refreshed before expiry, held in memory only; hosted: the host presents its enrolment identity to the service's token endpoint and receives an installation token scoped to the instance's repositories, refreshed the same way, the key never on the host (207a)"
+  place_token: "prepare_place mints a short-lived installation token scoped to the place's repository alone and writes it to `.flywheel/token` in the place (untracked, mode 600) with a git credential helper that reads it; it serves reads — fetching the instance's repositories, reading the item's context at the git host — and never a push: a session commits in its place and the machinery merges, and the `pre-push` hook refuses every push (43, context.yaml ruling 17); the token is written nowhere else and expires with the hour (207)"
+templates:
+  doc: |
+    The blueprints template, the built-repository template, the map schema and
+    the derivation table (198, 199), and the shipped skills and deliverables
+    (190) are one versioned set released with the flywheel binary (208):
+    `flywheel templates version` prints it. create_blueprints and
+    create_repository stamp the version they used into the instance's
+    and the repository's records and into `flywheel/template.yaml` in the
+    repository; upgrading a repository to a newer set is a chore the
+    operator accepts (123), never a side effect of a new binary.
+  blueprints: "`flywheel/` (instructions, schemas, skills, type files, the map schema's copy for editors), `context-map/` (empty current and target maps), `src/SUMMARY.md`, `book.toml` with the claims preprocessor, `flywheel.yaml` skeleton, the pre-commit hooks"
+  built: "`flywheel/services.yaml` (empty), `flywheel/commit-types.yaml` (defaults), `flywheel/template.yaml` (the set version), `openspec/` with the as-built spec layout, the asbuilt check gate"
+declarations:
+  services: |
+    A built repository declares its services as data in `flywheel/services.yaml`,
+    tracked, its owners' declaration to the instance (47, 203),
+    at its root (46). Read at the head of the bolt's place; one record per service.
+    `$PORT`, `$BIND` and `$PLACE` are set by the machinery from the place and
+    the host's router (44, 191): the port derived from the place, the address
+    the router requires the process to bind, the place's path. One record:
+
+      format: flywheel-services/1
+      services:
+        - name: web                                        # the service id within the bolt: service/<bolt>/web
+          command: "uv run fastapi dev app/main.py --host $BIND --port $PORT"
+          serves: "http://$BIND:$PORT/"                    # what it serves; the page shows the routed endpoint (45)
+          ready: "curl -sf http://$BIND:$PORT/health"      # optional; serving when it exits 0, else when the endpoint answers
+
+    The same declaration serves under every router (191). Adding or changing
+    a record is a chore on the repository (47); a session's edit of the file
+    in its own place reaches the bolt's services only when it merges into the
+    bolt's line and the place is refreshed to that head.
+router:
+  doc: |
+    How a place's services are reached is this binding's, never the machinery's
+    (191). The machinery gives each service `$PORT`, derived from the place so
+    two places on one host never collide (45), and `$BIND`, the address the
+    router in force requires; it then asks the router for the URL it records
+    as `service.endpoint` and lists as `place.endpoints_served` (46). The
+    manifest names the router per host — `flywheel.yaml` hosts.<host>.router:
+    {kind: portless | tailnet | platform, ...} — and nothing beyond the
+    operator's private network is published unless the operator says so
+    there. A reverse proxy owned by the flywheel binary is not required by
+    any of the three (gaps.md).
+  port_range: "`flywheel.yaml` hosts.<host>.port_range: [lo, hi], default a 1000-port block chosen from the host id's hash; the place-path hash is folded into the host's range, so two hosts on one computer never derive the same port (191, 232)"
+  portless:
+    where: the operator's own machine; the place is named, the host is implicit; for a place's services only — the host's page serves on its own localhost port and needs no router (245)
+    bind: "127.0.0.1"
+    port: "`portless port <name>` for the worktree, hashed from the place's path"
+    endpoint: "`https://<place>.localhost` as `portless list` names it for the service in this worktree; `<place>` is the worktree name portless derives, so `https://atlas-plan-rows-web.localhost` for service `web` of bolt `plan-rows` of repository `atlas`"
+    served: "`portless list` filtered to the worktree's hash"
+  tailnet:
+    where: a host on the operator's private network, named by its tailnet hostname; each service gets a name on that host
+    bind: "127.0.0.1"
+    port: "hashed from the place's path by the machinery, the same derivation portless uses, so a place moved between routers keeps its port"
+    endpoint: "`https://<host>.<tailnet>.ts.net/<place>/<service>/` when `serve: tailscale` — the machinery runs `tailscale serve --bg --set-path /<place>/<service> 127.0.0.1:$PORT` on start and `tailscale serve --set-path /<place>/<service> off` on stop, and the URL is what `tailscale serve status --json` reports for that path; or `https://<place>-<service>.<host>.<tailnet>.ts.net` when `serve: caddy` — the machinery drives the host's caddy through its admin API (`POST /config/apps/http/servers/flywheel/routes` with a host matcher for `<place>-<service>.<host>.<tailnet>.ts.net` and a reverse_proxy upstream of 127.0.0.1:$PORT, `DELETE` by route id on stop), caddy holding the tailnet certificate; the manifest names which of the two and the proxy's admin endpoint"
+    served: "the routes the serve feature or the proxy reports whose upstream port belongs to the place"
+  platform:
+    where: a managed platform runs the host and exposes it; the platform hands the machinery the hostname or the URL
+    bind: "0.0.0.0"
+    port: "hashed from the place's path by the machinery; the platform's ingress reaches it on every interface"
+    endpoint: "the URL the platform's ingress publishes for the host and port, read from what the platform hands the host — an environment variable or a metadata endpoint the manifest names (`router: {kind: platform, url_from: env:FLYWHEEL_INGRESS_URL}` or `url_from: http://169.254.169.254/...`) — with the port or a path per service as the platform's scheme requires; published within the operator's private network by the platform's own access control, never wider by the machinery"
+    served: "the ingress routes the platform reports for the host whose port belongs to the place, or, when it reports none, the URL template applied to every port the place's tethers listen on"
+evidence:
+  now:                 {read: the host clock, synchronized by the operating system's time service; every duration guard tolerates 60s of skew}
+  session.host_alive:  {read: the host record's heartbeat, as the state profile binds host.last_seen}
+  session.expected:    {read: "the work order's deliverables table — name, producer, schema, surface, each with its version — rendered by the engine and kept on the session record (190)"}
+  place.exists:        {read: "`wt worktree list` names the worktree at the derived path"}
+  place.contains_line: {read: "`git merge-base --is-ancestor <line head> <place head>`"}
+  place.ahead_of_line: {read: "`git rev-list --count <line head>..<place head>` > 0"}
+  place.conflicted:    {read: "`git status --porcelain` in the place shows unmerged paths"}
+  place.merge_slot:    {read: no sibling place of the same line with a lower ordinal is in state merging, from the state profile's list}
+  place.merged:        {read: "`git merge-base --is-ancestor <place head> <line head>`"}
+  place.job_seeded:    {read: "the place's tree holds the conflicted rebase and the session's thread holds the job entry with that rebase's heads"}
+  place.line_moved_told: {read: "the session's thread holds a `moved` entry naming the line's current head with delivered = true"}
+  place.ready:         {read: "exists, contains its line, the work order file and the hooks are present"}
+  place.absent:        {read: "`wt worktree list` does not name it and the directory is gone"}
+  place.endpoints_served: {read: "the router in force's `served` read for this place (router: above): every service the tethered processes of this worktree serve, as URLs on the operator's private network (191)"}
+  service.process:     {read: "`wt tether status service/<name>` in the bolt's place: present while the tethered process runs, exited when the tether records its exit status, absent when no tether by that name exists"}
+  service.serving:     {read: "the declaration's `ready` command exits 0 in the place; without one, a GET on service.endpoint answers within 5s with any status"}
+  service.endpoint:    {read: "the router in force's `endpoint` read for this service's port in this place (router: above): under portless the `portless list` entry for `<name>` in this worktree, under tailnet the serve or proxy route, under platform the ingress URL; always on the operator's private network (191)"}
+  service.failure:     {read: "the tether's exit status and the last 20 lines of its log (`wt tether log service/<name> --tail 20`)"}
+  service.place_present: {read: "as place.exists for the bolt's place"}
+  service.declared:    {read: "`flywheel/services.yaml` at the bolt's place's head holds a record with this name (203)"}
+  service.process_absent: {read: "`wt tether status service/<name>` reports no tether by that name"}
+  bolt.services_declared: {read: "for every record in `flywheel/services.yaml` at the bolt's place's head, a service object with parent = the bolt and that name exists in a state other than gone, from the state profile's list"}
+  host.disk_layout:    {read: "`flywheel host doctor` against disk: above (205): absent when the root has no `<instance>/`, current when every path matches, differs otherwise"}
+  host.layout_difference: {read: "the doctor's first differing path and what was expected"}
+  host.repositories_cloned: {read: "for the state, the blueprints and every manifest repository: `<root>/<instance>/<repo>.git` is a bare clone of the manifest's remote and `<root>/<instance>/<repo>/main` is a checkout of its shared line"}
+  instance.blueprints_ready:     {read: "the blueprints repository exists on the git host and holds every path the blueprints template of the recorded version requires"}
+  instance.state_ready:     {read: "the state repository exists with the profile's layout: for git-only, `main` with `objects/`, `responses/`, `asks/`, `runs/`; for the tracker, the `flywheel-state` repository with its board and the milestone scheme"}
+  instance.app_recorded:    {read: "`flywheel.yaml` app.id is set and the instance record says installation required"}
+  instance.app_installed:   {read: "the git host reports an installation of the App on the instance, reached with the key at `<root>/<instance>/app.pem`"}
+  instance.app_id:          {read: "`flywheel.yaml` app.id"}
+  instance.host_registered: {read: "some host record exists and `flywheel.yaml` hosts lists it"}
+  repository.nodes:    {read: "get(id).nodes"}
+  repository.repo:     {read: "get(id).repo"}
+  repository.exists:   {read: "the git host reports the repository under the instance, or the record is adopted"}
+  repository.registered: {read: "`flywheel.yaml` repositories.<name> exists; the repository's head holds `flywheel/services.yaml`, `flywheel/commit-types.yaml` and `flywheel/template.yaml`; every node in get(id).nodes is in the target map with home = name; a planning record for the repository exists"}
+  repository.covered_by_app: {read: "the App installation's repository list on the git host names the repository"}
+  host.stray_places:   {read: "`wt worktree list` under the places root names a worktree whose derived owner id is no listed object in a live state, or is a listed object whose place region is removed, and whose owner record is not held"}
+  host.layout_repair:  {read: "the doctor's proposed repair for the first differing path (disk: repair above)"}
+  host.layout_repaired: {read: "the doctor reports current after repair_layout ran"}
+  host.adapters_due:   {read: "for a source in `flywheel.yaml` hosts.<host>.sources: its cadence (cron) fired since the run record's last enumeration of it, or a file appeared under its folder, or a webhook delivery is queued in the host's inbox that no capture key names yet (215, 231)"}
+  host.adapters_run:   {read: "every due source has a run-record entry newer than its cadence's last firing, and every waiting file or delivery has a capture under its key"}
+  host.platform:       {read: "get(host).platform and get(host).parts"}
+  host.environment_satisfied: {read: "for every repository the host's declaration covers: the provider in force can activate `flywheel/environment.yaml` (or the named devcontainer or devenv file) at the repository's shared head — `devenv` or `nix` evaluate it, `devcontainer` resolves its features, `image` holds the declarations' hash — checked at every fetch that moved a declaration (238)"}
+  host.environment_difference: {read: "the first repository and tool the provider cannot produce, with the version asked"}
+  host.pool:           {read: "get(host).pool"}
+  host.intermittent:   {read: "get(host).intermittent, from `flywheel.yaml` hosts.<host>.intermittent; default true for a host added with platform none (a laptop), false for a platform or pool host (150a)"}
+  host.work_waiting:   {read: "a register entry names a decision on an object whose lease this host holds; or a unit or item is approved or ready and unplaced and every other host covering it is not alive or holds its lease; false otherwise (150a)"}
+  host.idle_since:     {read: "the newest of: the host's last session exit, its last lease release; now when it runs a session or holds a lease that could fire"}
+  place.environment:   {read: "the place's record: the declaration's hash and the provider prepare_place activated"}
+  pool.image_current:  {read: "the platform lists an image tagged with the hash of the current environment declarations of every repository the pool covers"}
+  pool.demand:         {read: "some unit or item the pool's covers reaches is approved or ready and unplaced, every alive host covering it reads host.running >= host.bound, and the instrument's reading is `drain is the limit` (214, 242)"}
+  pool.live:           {read: "count of hosts with pool = this pool alive or stale"}
+  pool.bound:          {read: "`flywheel.yaml` pools.<name>.bound"}
+  pool.cost_allows:    {read: "cost: above"}
+  pool.idle_host:      {read: "a host with pool = this pool whose host.idle_since is older than retire_after, holding no lease and running no session"}
+  pool.host_added:     {read: "a host record with pool = this pool and the effect id as its provisioning exists in enrolment awaiting-join, enrolled or later"}
+  pool.host_retired:   {read: "the platform no longer lists the host the effect named and its record reads gone"}
+  rail.owner_recorded: {read: "get(the decision's object).owner equals the response's argument"}
+  host.token_issued:   {read: "an enrolment token for the host exists in the state, unexpired (24h) and unspent"}
+  host.secrets_placed: {read: "for every part chosen, every secret name the package declares has a value in the platform's secret store for the host, read through the platform's API with the operator's credentials during add-host and afterwards through the host's own"}
+  instance.retired:         {read: "no session record of the instance is alive, no place under `<root>/<instance>/*/places` or `bolts` exists, the state repository's shared line carries the archive commit and the archive under `<root>/<instance>/archive/` exists; the bare repositories still exist"}
+  package.kind:        {read: "get(package).kind"}
+  package.scope:       {read: "get(package).scope"}
+  package.secrets_placed: {read: "every name in get(package).secrets has a value where the host keeps secrets (packages: above)"}
+  package.installed:   {read: "instance scope: `flywheel/packages/<name>/` at the blueprints' shared head holds the tag's content and `flywheel/registry.json` holds its hash; host scope: `<root>/packages/<name>/` on the named host holds it and the host's registry entry matches; and what the package runs is present under its tether or launcher name"}
+  package.configured:  {read: "the package's config file equals the response's fields, validated against its schema"}
+  package.stopped:     {read: "nothing runs under the package's name; its files exist"}
+  package.absent:      {read: "no files under the package's path and nothing runs under its name"}
+  host.no_stray_places: {read: the same list finds none}
+  line.exists:         {read: "`git ls-remote <repo> refs/heads/<line>` returns the ref"}
+  line.contains_parent: {read: "`git merge-base --is-ancestor <parent head> <line head>` after `git fetch`"}
+  line.take_due:       {read: "the line has no place yet and one is about to be made; or the line is landing; or the manifest's `take_cadence` for the repository (a cron expression) has fired since `last_take`; or a dictation `take <line>` stands unapplied"}
+  line.take_conflicts: {read: "`git merge-tree --write-tree <line head> <parent head>` reports conflicts (no worktree touched)"}
+  line.landed:         {read: "`git merge-base --is-ancestor <line head> <parent head>`"}
+  line.landing:        {read: "policy direct: none until the push, then passed or failed by the push's result; policy pull-request: none while no request exists, then the request's check state through the git host's API (pending | passed | failed)"}
+  line.policy:         {read: "`flywheel.yaml` repositories[<repo>].landing (direct | pull-request), default direct; the blueprints repository is always direct, since the archive is its landing (175)"}
+  line.request:        {read: "the pull request whose head is this line at the git host (GitHub REST `pulls?head=<instance>:<line>`, state all): none when there is none, open, merged, or closed without merging (175)"}
+  line.request_review_pending: {read: "a review on the request with state CHANGES_REQUESTED, or a check run whose conclusion is failure, whose id no finding record on the bolt cites (176)"}
+  line.request_links:  {read: "the request's URL, its check runs' details URLs, its deployment and environment URLs (`deployments` and `statuses` on the head), and any link an integration posted as a check output — read by the adapter, never made (177)"}
+  line.request_opened: {read: "as line.request, not none"}
+  line.request_review_recorded: {read: "every CHANGES_REQUESTED review and failed check run on the request is cited by a finding record on the bolt"}
+  line.retries:        {read: the owner's record counter}
+  line.conflict_job_done: {read: "the chore unit recorded for this line and this take (record field `conflict_chore`) is in state merged"}
+  line.conflict_job_seeded: {read: "a unit record of type chore exists with `line` = this line, `take` = the parent head the take tried, state approved or later"}
+  line.absent:         {read: "`git ls-remote` returns nothing for the ref"}
+  claim.on_shared_line: {read: "the blueprints repository's shared line holds a requirement with this name in its standing specifications: `### Requirement: <name>` in `openspec/specs/<capability>/spec.md`, the claim's name being `<capability>/<name>` (97)"}
+  claim.on_intent_line: {read: "the intent's delta holds the requirement (`openspec/changes/<intent>/specs/<capability>/spec.md`, under ADDED, MODIFIED or REMOVED) and the shared line's standing specifications do not (49, 187)"}
+  claim.version:       {read: "the content hash of the requirement block — its heading, its prose and its scenarios, and not the `Attaches:` line. Nothing checks it and no hook enforces it: the version is the text, so it moves when and only when the text moves (97)"}
+  claim.scope_repos:   {read: "the claim's attachments (the specification's capability directory, plus the requirement's `Attaches:` line, read from `openspec/specs/`) resolved against `flywheel/map/target.json` at the blueprints' shared head by the schema's scope table: a context → its home ∪ its elements' effective homes; an element → its effective home; a relationship → both contexts' scope ∪ the kernel's homes; a link → both elements' scope; empty when the claim attaches to nothing; never reads tags, kinds or derivation (105, 198, 200)"}
+  cell.in_scope:       {read: "the cell's repository is in claim.scope_repos for the cell's claim (195, 200)"}
+  claim.attached:      {read: "the requirement's `Attaches:` line holds the id the response named, or the id is the specification's capability directory, and `flywheel/map/target.json` has that id"}
+  claim.detached:      {read: "the requirement's `Attaches:` line no longer holds the id"}
+  map.home_set:        {read: "`context-map/target.yaml` gives the id the home the response named"}
+  map.edited:          {read: "`context-map/target.yaml` holds the entry as the response gave it and `flywheel map check` passes at that head"}
+  map.status_set:      {read: "the entry's status and question match the response"}
+  rail.review_marked:  {read: "the rail record's reviewed_at revision equals the blueprints head the response was given at"}
+  cell.evidence_present: {read: "every path or spec id the verdict cites exists at the repository's shared head"}
+  cell.claim_version:  {read: as claim.version}
+  stage.agents:        {read: "a fixed list from the type; or the rule's pattern globbed in the place (`personas/*.md`), each match one agent"}
+  capture.source:      {read: the capture record's source field}
+  item.change_archived: {read: "the item's place holds `openspec/changes/archive/<date>-<change>/` for the item's change and no open change of that id in a commit on the place's branch; true without reading when the type's record says needs_change_directory false"}
+  intent.archived:     {read: "the intent's line holds the OpenSpec archive of its change (`openspec/changes/archive/<date>-<id>/`) and no open change of that id"}
+  intent.change_open:  {read: "`openspec/changes/<intent-id>/` exists on the intent's line"}
+  line.acceptance_written: {read: "for a bolt's line: `openspec/acceptance.yaml` at the line's head lists exactly the claims the bolt's units cite (claims field, name@version) with the scenarios the blueprints' standing requirements carry at those versions; for an intent's line: true (192)"}
+  elaboration.records_fanned_out: {read: "for every intent in covers beyond the parent, the place holds nothing under `openspec/changes/<that intent id>/` and that intent's line holds the commit naming this elaboration, or the session left nothing for it"}
+  lease.coverable:     {read: "some host whose disk region is ready (205) in `flywheel.yaml` hosts declares this object's kind, its repository (for a bolt, unit or item) and its unit type (for a unit or item); a sink is coverable when some host or the dispatcher declares it in `presents`"}
+effects:
+  create_line:     {do: "`git push <repo> <parent head>:refs/heads/<line>` with expected-old = zero; the ref exists afterwards"}
+  take_parent:     {do: "in the owner's place (a bolt's operator place, an intent's own place): `git merge --no-ff <parent>`, never a rebase (179); on conflict `git merge --abort`; then push the line with expected-old = the head read"}
+  seed_take_conflict: {do: "put(new unit): type chore, parent = the line's owner, line = this line, take = the parent head, scope = bolt-line or intent-line, approval = `cadence <cron>` when the cadence fired the take or `response <id>` when a dictation ordered it, state approved; its item's place is prepared off the line with `git merge <parent>` left conflicted in that place only, and its work order names the conflict as the job"}
+  land_line:       {do: "policy direct: in the shared line's own checkout `git merge --no-ff <line head>` with a message naming the bolt, then `git push <repo> <parent>` with expected-old = the parent head read; one merge commit, no rewrite (175, 179). Never run under pull-request"}
+  write_acceptance: {do: "in the bolt's operator place at the line's head: write `openspec/acceptance.yaml` (`format: flywheel-acceptance/1`, the bolt id and name, one entry per claim the bolt's units cite — name, version, the chapter path, and the scenarios copied from the requirement at that version in the blueprints' standing specifications — and the units and items that served each); one commit on the bolt's line, message `chore(<bolt>): acceptance` in the Conventional Commits form (185); pushed with expected-old; nothing on an intent's line; a delivery system reads the file from the shared line after the landing and the machinery never runs anything from it (181, 192)"}
+  open_request:    {do: "policy pull-request: open the pull request from the line onto the parent, titled by the bolt's name and bodied with its units and the claims they serve, or reuse the open one with that head; the repository's own merge setting (merge, squash or rebase at the git host) is what lands it, and the machinery sets none (175, 179). Enable the host's auto-merge when the repository allows it"}
+  seed_request_finding: {do: "for each uncited CHANGES_REQUESTED review or failed check on the request: put(new unit, proposed, type = chore, parent = the bolt, batch = bolt id, scope = bolt-line, document = the review's or check's URL, source = the review id); accepted, its session works a place off the bolt line and merge_place updates the request (176)"}
+  remove_line:     {do: "`git push <repo> :refs/heads/<line>`; recorded as an effect with the head it removed"}
+  prepare_place:   {do: "`wt worktree add <path> <line>` (ports hashed from the path, portless routes); `.git/info/exclude` gets `.flywheel/`, the untracked per-place prefix for the work order and handoff, the one place the machinery writes in a built repository's tree outside an OpenSpec change and the acceptance file (203); hooks `pre-push`, `reference-transaction`, `pre-merge-commit` that refuse and run `flywheel refuse <what>` (S15) — the git hooks are what refuse, for every kind of agent; the agent program's own deny list (Claude Code settings, codex or opencode config) is written too when the kind has one, and nothing depends on it (173); `.flywheel/work-order.md` rendered from the closed inputs, its deliverables table resolved through `profiles/deliverables.yaml` and `flywheel.yaml` deliverables.<name> overrides at the blueprints commit in the header (190), and for a construction session a map section read from `flywheel/map/target.json`: the elements the item's unit builds (the ids the unit's claims attach to, and those homed in the repository that the chapters name), each with its context, kind and effective home, and the claims attached to each with their versions (211); and, when a claim the unit cites is about a surface, the surface specification chapter in force at the blueprints commit in the header (212) — handed in, never read back as state"}
+  rebase_place:    {do: "`git rebase <line head>` in the place; on conflict `git rebase --abort`"}
+  seed_conflict_job: {do: "`git rebase <line head>` left conflicted in the place; append(session thread) the job entry naming the heads and the paths; the session is told through the session binding"}
+  archive_change:  {do: "in the item's place, for a type whose record says needs_change_directory true: `openspec archive <change>` — the change directory the spec stage (or the fast type's one stage) wrote, moved into the standing set under `openspec/specs/` — then one commit `chore(<bolt>): archive <change>` on the place's branch; the merge that follows squashes it into the item's commit unless item_merge is `merge`, and the bolt's landing carries the standing specifications onto the shared line (section 9 givens); nothing, and the proof holds, when the type needs no change directory; refused and reported when the place holds no open change of that id"}
+  merge_place:     {do: "from the item's place: `wt merge <bolt line> --config <the wt config the machinery wrote from flywheel.yaml> --no-remove --format json` — squash to one commit, rebase onto the line head, fast-forward the line; the written config names the commit as `<unit>/<item>: <title>` (its commit generation, when enabled there, supplies the title and the generated text is recorded with the effect); `--no-squash --no-ff` when `flywheel.yaml` repositories[<repo>].item_merge is `merge`; push with expected-old = the line head read; the place is removed by the place machine, not by the merge; the bolt's operator place is then reset to the new head (179, 183, 185); the message is Conventional Commits: `<type>(<bolt>): <item title>` with type from the repository's `flywheel/commit-types.yaml` (its own declaration, 203), else the manifest's unit_types.<type>.commit_type and a body naming unit, item and claims"}
+  remove_place:    {do: "`wt worktree remove <path>`; tethered processes end with it (`wt tether`); refused and reported while the owner record is held; recorded with the path and the head it had"}
+  record_endpoints: {do: "put(owner): endpoints = place.endpoints_served; the page renders them as links beside the bolt"}
+  declare_services: {do: "read `flywheel/services.yaml` at the bolt's place's head (203); for each record with no service object in a live state: put(new service, stopped, parent = the bolt, id = service/<bolt>/<name>, name, command, serves from the record); one put per record, each recorded as its own effect"}
+  start_service:   {do: "in the bolt's place: `wt tether start --name service/<name> -- sh -c '<command>'` with PORT from the router in force's `port` (under portless `portless port <name>` for this worktree), BIND from its `bind` (127.0.0.1 under portless and tailnet, 0.0.0.0 under platform) and PLACE = the path; then the router's registration for the port where it needs one (`tailscale serve`, the proxy's admin API), and none under portless or platform (191); the tether binds the process to the worktree so `wt worktree remove` ends it (44, 54); put(service): moved_by = the response id; a tether already present by that name is refused by wt, which is the proof"}
+  stop_service:    {do: "`wt tether stop service/<name>` in the bolt's place, then the router's deregistration where it registered one (191); put(service): moved_by = the response id; nothing when no tether by that name exists"}
+  clone_repositories: {do: "for the state, the blueprints and every manifest repository missing under the root: `git clone --bare <remote> <root>/<instance>/<repo>.git` and `git worktree add <root>/<instance>/<repo>/main <shared line>`; a repeat clones only what is missing; then `flywheel host doctor` (205)"}
+  create_blueprints:    {do: "`gh`-free: through the App's installation token, create `<instance>/<blueprints>` on the git host when absent, then commit the blueprints template at the set's version — adding only missing paths to an adopted repository — with `flywheel/template.yaml` carrying the version; put(instance): template_version (204, 208)"}
+  create_state:    {do: "create `<instance>/flywheel-state` on the git host when absent and commit the profile's layout (git-only: the directories and `status.html`; tracker: the repository, the board and the milestone scheme) (204, C.2)"}
+  register_app:    {do: "write app.id into `flywheel.yaml` and `installation_required: true` into the instance record; nothing is installed here (207)"}
+  register_host:   {do: "put(host, joining) for the host running init and add it to `flywheel.yaml` hosts; the host's own join then clones and checks (204, 205)"}
+  create_repository: {do: "through the App's installation token: create `<instance>/<name>` on the git host under the instance, push the built-repository template at the set's version with `flywheel/template.yaml`; put(repository): template_version; nothing when adopted (206, 208)"}
+  register_repository: {do: "one commit on the blueprints' shared line: `flywheel.yaml` repositories.<name> with repo, landing and cadence from the proposal or the defaults; the proposal's nodes appended to `context-map/maps/target.js` with home = name and status candidate where the proposal said no more; then, on the built repository, `flywheel/services.yaml` and `flywheel/commit-types.yaml` from the template when absent; then put(planning for the repository, current) so its fingerprint differs and the baseline run is due (104, 199, 202, 203, 206)"}
+  extend_installation: {do: "PUT the repository onto the App's installation through the git host's API where the App holds the permission; a 403 writes nothing and leaves the repository's `covering` state to time out into the decision (207)"}
+  remove_stray_places: {do: "for each stray worktree under the places root: `wt worktree remove <path>`; one effect per removal, each recorded with the path and why it was stray"}
+  repair_layout:   {do: "the repair the decision showed (disk: repair above) for the differing path, one effect per path, each recorded with what it found and what it did; then `flywheel host doctor` again (222)"}
+  run_adapters:    {do: "for each due source: `flywheel capture <source>` with the manifest's arguments — the enumerator reads the source, writes one `flywheel/signals/captures/<key>.rec` per source event with the pointer to the raw material in the raw store the manifest names for the source (217h), and pushes to the blueprints' shared line with expected-old; a key that exists writes nothing; the run record notes the source and the time (111, 215, 231)"}
+  place_secrets:   {do: "for each chosen part, each secret name it declares: the value the operator gave in the add-host call goes to the platform's secret store for the host through the platform's API under the operator's credentials, then the credentials are dropped from memory; recorded as placed, never with the value (207, 230)"}
+  issue_enrolment_token: {do: "put(host): a random token, its expiry 24h out, unspent; shown once on the setup surface; `flywheel host join --token` compares and spends it (230)"}
+  build_image:     {do: "image: above — render every covered repository's `flywheel/environment.yaml` into a Dockerfile (or a nix expression) with the tools at their versions and the flywheel binary, build, tag with the declarations' hash, push to the platform's registry; a tag already present builds nothing (239)"}
+  provision_pool_host: {do: "pool: above — put(host, enrolment awaiting-join, pool = name, declares = the pool's covers, platform, provider = image) with a fresh enrolment token, then the platform's create call with the image and the token as the launcher's argument; the host joins by `flywheel host join --token` on first start (230, 240)"}
+  retire_pool_host: {do: "for the idle host: release its leases, remove its places (each re-made elsewhere by the owner's place machine), the platform's delete call, put(host): gone; the record stays for the status view (240)"}
+  assign_owner:    {do: "put(the object the decision's register entry names): owner = the one member named, or none; refused with the reason when the argument is not an identity in the instance's `operators:` — a role name is refused like any other non-member, since a role is never an owner (237)"}
+  retire_instance: {do: "`herdr agent stop` every session of the instance, `wt worktree remove` every place and bolt place, commit an archive marker with the decision counter on the state's shared line and copy the state's checkout to `<root>/<instance>/archive/<date>/`, remove the instance's sinks from every presenter; the bare repositories and `<root>/<instance>/` stay (221)"}
+  install_package: {do: "`git clone --depth 1 --branch <tag> <url>` into a temporary directory; read `flywheel-package.yaml`; refuse and report when its set version is not the installed set's (208, 224) or its hash differs from the index's when the index gives one; instance scope: copy into `flywheel/packages/<name>/` in the blueprints' shared-line checkout, add the hash to `flywheel/registry.json`, one commit `chore(packages): install <name>@<tag>` pushed with expected-old; host scope: copy under `<root>/packages/<name>/` and record the hash in the host's registry; then start what it runs under a tether or launcher entry named by the package; a repeat finds the files and only starts what is not running (229)"}
+  configure_package: {do: "validate the fields against the package's schema, write its config file (under the blueprints' prefix for instance scope, one commit; under the host's root otherwise), restart what it runs"}
+  disable_package: {do: "stop the tether or launcher entry named by the package; files untouched"}
+  remove_package:  {do: "disable_package, then remove the files — one commit `chore(packages): remove <name>` for instance scope — leaving the registry's history and the package record"}
+  archive_intent:  {do: "`openspec archive <intent-id>` in the intent's place, committed on the intent's line"}
+  open_intent:     {do: "`openspec new <intent-id>` from the schema instruction in force, committed on the intent's line"}
+  attach_claim:    {do: "`flywheel map attach <claim> <id>` on the blueprints' shared line: add the id to the requirement's `Attaches:` line in `openspec/specs/<capability>/spec.md` (outside the hash, so the version does not move, 97, 105), leave the text and the version, the rendered scope following from the attachment, one commit `chore(claims): attach <claim>` pushed with expected-old; refused when the id is not in the target map (105, 200, 211)"}
+  detach_claim:    {do: "`flywheel map detach <claim> <id>`: the same path removing the id; one commit `chore(claims): detach <claim>` (200, 211)"}
+  set_home:        {do: "`flywheel map home <id> <repository>` on the blueprints' shared line: set `home:` on the element or context in `context-map/target.yaml`, run `flywheel map check` (a home naming no manifest entry is refused), re-render `flywheel/map/target.json`, one commit `chore(map): home <id>` (199, 211)"}
+  map_edit:        {do: "`flywheel map edit <type> <id> --ref <book/chapter> [fields]` on the blueprints' shared line: add or amend the entry in `context-map/target.yaml` (or `current.yaml` when the caller is the landing construction session's writeback), refused without `--ref` and refused when `flywheel map check` fails — unknown kind or facet, a second relationship on a pair, a conformist with a guard, a link crossing separate ways, an open entry without a question — re-render, one commit `chore(map): <type> <id>` (120, 198, 211)"}
+  set_map_status:  {do: "`flywheel map status <id> settled|candidate|open [--question <text>]`: set status and question in `context-map/target.yaml`, refused for settled or candidate without a ref and for open without a question, one commit (198, 201, 211)"}
+  mark_reviewed:   {do: "put(rail): reviewed_at = the blueprints' shared head revision now; the since-last-review overlay diffs `context-map/target.yaml` at that revision against head (122, 211)"}
+  record_per_intent: {do: "for each intent in covers beyond the parent: the files the session left under `openspec/changes/<that intent id>/` in its place are committed onto that intent's line, into that intent's change directory, one commit naming the elaboration, and removed from the place in a commit of its own, so the place's merge carries only the parent's records and the book; absent files are nothing to do"}

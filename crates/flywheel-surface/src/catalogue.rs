@@ -249,6 +249,7 @@ pub fn call<S: StateStore>(store: &mut S, defs: &Definitions, call: &Call) -> Re
         "answer" => answer(store, defs, call),
         "capture" => capture(store, defs, call),
         "later" => later(store, defs, call),
+        "open-session" => open_session(store, defs, call),
         // Every other tool takes the transition its decision would, on the
         // object its first argument names (4, 12).
         _ => {
@@ -355,13 +356,72 @@ fn dictate<S: StateStore>(
     Ok(record)
 }
 
+
+/// The operator's own session (69): opened by dictation at any time, on no
+/// thread, with no intent behind it. The machinery opens nothing here that the
+/// operator did not ask for, and raises no decision about it (12, 69).
+fn open_session<S: StateStore>(store: &mut S, defs: &Definitions, call: &Call) -> Result<Outcome> {
+    let at = commands::now(store)?;
+    let ordinal = next_of(store, "operator-session", &format!("operator-session/{}-", call.by))?;
+    let id = format!("operator-session/{}-{ordinal}", call.by);
+    let repository = call
+        .text("repository")
+        .filter(|r| !r.is_empty())
+        .unwrap_or_else(|| "blueprints".to_string());
+    let record: BTreeMap<String, Value> = [
+        ("opened_by", json!(call.by)),
+        ("opened_at", json!(at.to_rfc3339())),
+        ("repository", json!(repository)),
+        // The type it runs, which its machine fixes: a with-operator session on
+        // no thread (69, `operator-session.yaml`). Its sessions are named under
+        // that, as every object's are named under the type it runs.
+        ("type", json!("with-operator")),
+    ]
+    .into_iter()
+    .map(|(k, v)| (k.to_string(), v))
+    .collect();
+    commands::put_new(store, defs, &id, "operator-session", None, record, at)?;
+    let mut record = commands::record_call(
+        store,
+        defs,
+        &CallRecord {
+            tool: "open-session",
+            decision: None,
+            object: Some(&id),
+            answer: &call.text("text").unwrap_or_default(),
+            args: Some(Value::Object(call.args.clone().into_iter().collect())),
+            by: &call.by,
+            delivery: &call.delivery,
+            delivery_id: call.delivery_id.as_deref(),
+            proposed_by: call.proposed_by.as_deref(),
+        },
+    )?;
+    record
+        .journal
+        .push(noted("open-session", &id, format!("opened by {}", call.by)));
+    Ok(record)
+}
+
+/// The next ordinal under a prefix. The objects are the count, so it comes from
+/// `list` and never from a counter one store knows about (15).
+fn next_of<S: StateStore>(store: &S, machine: &str, prefix: &str) -> Result<u64> {
+    Ok(store
+        .list(&Scope::Machine(machine.to_string()))?
+        .objects
+        .iter()
+        .filter_map(|o| o.id.strip_prefix(prefix).and_then(|n| n.parse::<u64>().ok()))
+        .max()
+        .unwrap_or(0)
+        + 1)
+}
+
 /// The capture box and the chat forward: the text is captured whole, with one
 /// signal of kind ask, and no part of it is interpreted (19, 194).
 fn capture<S: StateStore>(store: &mut S, defs: &Definitions, call: &Call) -> Result<Outcome> {
     let text = call.text("text").unwrap_or_default();
     let source = call.text("source").unwrap_or_else(|| call.delivery.clone());
     let at = commands::now(store)?;
-    let ordinal = next_capture(store, &call.delivery)?;
+    let ordinal = next_of(store, "capture", &format!("capture/{}-", call.delivery))?;
     let key = format!("{}-{ordinal}", call.delivery);
     let id = format!("capture/{key}");
     let record: BTreeMap<String, Value> = [
@@ -413,20 +473,6 @@ fn capture<S: StateStore>(store: &mut S, defs: &Definitions, call: &Call) -> Res
     )?;
     record.journal.push(noted("capture", &id, text));
     Ok(record)
-}
-
-/// The capture this delivery makes next. Captures are objects, so the ordinal
-/// comes from `list` and never from a counter one store knows about.
-fn next_capture<S: StateStore>(store: &S, delivery: &str) -> Result<u64> {
-    let prefix = format!("capture/{delivery}-");
-    Ok(store
-        .list(&Scope::Machine("capture".into()))?
-        .objects
-        .iter()
-        .filter_map(|o| o.id.strip_prefix(&prefix).and_then(|n| n.parse::<u64>().ok()))
-        .max()
-        .unwrap_or(0)
-        + 1)
 }
 
 fn noted(kind: &str, object: &str, text: impl Into<String>) -> commands::Noted {

@@ -95,6 +95,7 @@ impl ScriptedSessions {
         state_path: &Path,
     ) -> Result<()> {
         let fact = store.world.sessions.entry(session.to_string()).or_default();
+        fact.scripted = true;
         if let Some(pane) = &entry.pane {
             fact.pane = pane == "present";
         }

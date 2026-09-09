@@ -72,6 +72,11 @@ pub struct SessionFact {
     pub idle_since: Option<DateTime<Utc>>,
     pub inbox: Vec<String>,
     pub played: Vec<usize>,
+    /// A script has spoken for this session. What a scenario says about one
+    /// session by name is more particular than what it says about all of them
+    /// at once, so a wildcard does not override it.
+    #[serde(default)]
+    pub scripted: bool,
 }
 
 /// One thing a scripted session does. `after` is a **step number**, never a
