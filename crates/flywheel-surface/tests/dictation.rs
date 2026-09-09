@@ -2,6 +2,7 @@
 //! taken, with the same effects (4, 12).
 
 mod store;
+mod world;
 
 use flywheel_atoms::{Records, StateStore};
 use flywheel_domain::commands;
@@ -103,6 +104,7 @@ fn settle<S: StateStore + flywheel_engine::runtime::EvidenceSource>(
 fn what_happened(answered: bool) -> (Vec<String>, Vec<String>, Object) {
     let sandbox = store::Sandbox::new(if answered { "answered" } else { "dictated" });
     let mut store = sandbox.store();
+    let mut world = world::Files::new();
     let defs = flywheel_domain::set::load().expect("the embedded definitions");
     a_stalled_item(&mut store, &defs);
 
@@ -126,7 +128,7 @@ fn what_happened(answered: bool) -> (Vec<String>, Vec<String>, Object) {
         // The same act, outside the decision entirely.
         Call::new("drop", "chuck", "chat").arg("object", json!(ITEM))
     };
-    let outcome = catalogue::call(&mut store, &defs, &call).expect("the call");
+    let outcome = catalogue::call(&mut store, &mut world, &defs, &call).expect("the call");
 
     // What happened to the item: the rest of the world was ticking either way,
     // and the claim is about the object the operator acted on.
@@ -187,10 +189,11 @@ fn dictation_takes_the_decisions_transition() {
 fn service_start_and_stop_are_dictations() {
     let sandbox = store::Sandbox::new("service");
     let mut store = sandbox.store();
+    let mut world = world::Files::new();
     let defs = flywheel_domain::set::load().expect("the embedded definitions");
     for tool in ["start", "stop"] {
         let call = Call::new(tool, "chuck", "page").arg("service", json!("service/atlas/web"));
-        let outcome = catalogue::call(&mut store, &defs, &call).expect("the call");
+        let outcome = catalogue::call(&mut store, &mut world, &defs, &call).expect("the call");
         let record = store
             .get(&format!("response/{}", outcome.id))
             .expect("a read")

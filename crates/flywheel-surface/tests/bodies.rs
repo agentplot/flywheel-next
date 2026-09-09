@@ -3,6 +3,7 @@
 //! there (193, 4).
 
 mod store;
+mod world;
 
 use flywheel_atoms::Records;
 use flywheel_surface::catalogue::{self, Call};
@@ -63,6 +64,7 @@ fn every_named_tool_has_a_body() {
     // tool, through the store.
     let sandbox = store::Sandbox::new("bodies");
     let mut store = sandbox.store();
+    let mut world = world::Files::new();
     let defs = flywheel_domain::set::load().expect("the embedded definitions");
     for tool in catalogue::catalogue() {
         if tool.name == "later" {
@@ -74,7 +76,7 @@ fn every_named_tool_has_a_body() {
         for argument in tool.args {
             call = call.arg(argument, argument_for(argument));
         }
-        let outcome = catalogue::call(&mut store, &defs, &call)
+        let outcome = catalogue::call(&mut store, &mut world, &defs, &call)
             .unwrap_or_else(|e| panic!("`{}` has no body: {e}", tool.name));
         let record = store
             .get(&format!("response/{}", outcome.id))
@@ -130,9 +132,10 @@ fn a_tool_asserting_done_is_not_in_the_catalogue() {
 
     let sandbox = store::Sandbox::new("asserts-done");
     let mut store = sandbox.store();
+    let mut world = world::Files::new();
     let defs = flywheel_domain::set::load().expect("the embedded definitions");
     let call = Call::new("done", "chuck", "chat").arg("object", json!("work-item/atlas/v/1"));
-    let outcome = catalogue::call(&mut store, &defs, &call).expect("recorded, not dropped");
+    let outcome = catalogue::call(&mut store, &mut world, &defs, &call).expect("recorded, not dropped");
     let record = store
         .get(&format!("response/{}", outcome.id))
         .expect("a read")
@@ -150,14 +153,15 @@ fn a_tool_asserting_done_is_not_in_the_catalogue() {
 fn call_recorded_once() {
     let sandbox = store::Sandbox::new("recorded-once");
     let mut store = sandbox.store();
+    let mut world = world::Files::new();
     let defs = flywheel_domain::set::load().expect("the embedded definitions");
 
     let call = Call::new("drop", "chuck", "chat")
         .arg("object", json!("unit/atlas/u"))
         .delivered("discord-1");
 
-    let first = catalogue::call(&mut store, &defs, &call).expect("the first delivery");
-    let again = catalogue::call(&mut store, &defs, &call).expect("the same delivery again");
+    let first = catalogue::call(&mut store, &mut world, &defs, &call).expect("the first delivery");
+    let again = catalogue::call(&mut store, &mut world, &defs, &call).expect("the same delivery again");
     assert_eq!(first.id, again.id, "the repeat took a delivery id of its own");
     assert!(
         matches!(again.outcome, flywheel_atoms::Received::AlreadyApplied { .. }),

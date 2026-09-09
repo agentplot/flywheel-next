@@ -107,8 +107,9 @@ fn refuses_at_another_address() {
 #[test]
 fn binds_two_addresses_only() {
     let sandbox = store::Sandbox::new("bindings");
-    let served = Served::for_operators(
+    let served = Served::over(
         sandbox.store(),
+        caller::a_world(),
         flywheel_domain::set::load().expect("the embedded definitions"),
         &["chuck".to_string()],
         ADDRESS,

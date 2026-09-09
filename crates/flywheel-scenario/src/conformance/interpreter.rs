@@ -100,7 +100,7 @@ fn forwarded(platform: &str, body: &str) -> Option<flywheel_surface::chat::Forwa
         return None;
     }
     Some(flywheel_surface::chat::Forwarded {
-        key: format!("message-{id}"),
+        key: format!("message/{id}"),
         link: format!("{platform} message link {id}"),
     })
 }

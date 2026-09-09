@@ -134,18 +134,19 @@ or a command.
 - [x] 8.8 Route notifications by kind to the sinks the operator sets; verify `cargo test -p flywheel-surface routed_kind_reaches_its_sinks` with the event raised on a host presenting no sink (82)
 - [x] 8.9 Say so when a link points at an away host; verify `cargo test -p flywheel-surface away_link_says_so` (308, 150a)
 - [x] 8.10 Raise the in-process notify from the three real local causes — a page response, a chat message, a session's report; verify `cargo test -p flywheel local_causes_tick_at_once` for each (130, D6)
+- [x] 8.11 Deliver from the host's own tick: bind `sink.due` and `sink.delivered` in `derived.rs` so the sink machine ticks, and give `deliver_rail` its arm in `host::perform`, the presenter's channel loaded like the workspace and the sessions are; verify `cargo test -p flywheel host_delivers_to_its_sink` — a tick with a standing decision and a sink whose mark is behind delivers once and advances the mark, and the next tick delivers nothing (148, 216, D8, D9)
 
 ## 9. The adapters, signals and curation
 
-- [ ] 9.1 Write captures keyed by source event with their provenance and pointer, under the machinery's blueprints prefix, the raw material left outside; verify `cargo test -p flywheel capture_keyed_once` (111, 203)
-- [ ] 9.2 Implement the meeting-transcript enumerator behind `flywheel capture meeting <file>`; verify `flywheel scenario run conformance/scenarios/S22.yaml` — a second import writes nothing and starts no session (111, 115)
-- [ ] 9.3 Implement the chat-forward enumerator; verify `cargo test -p flywheel-surface forward_writes_capture_and_signal` (112, 215)
-- [ ] 9.4 Write the page capture box's single ask signal; verify `cargo test -p flywheel-surface box_writes_one_ask_signal` (19)
-- [ ] 9.5 Write signal records with their kind, asserter, subject, assertion and verbatim excerpt, and expose no tool that edits one; verify `cargo test -p flywheel signal_is_never_rewritten` reading the file's history (113, 193)
-- [ ] 9.6 Version the signal and move record formats and read an earlier version without conversion; verify `cargo test -p flywheel older_signal_reads_unconverted` against a fixture written in the earlier format (114)
-- [ ] 9.7 Write move records with the signal id, target, reason and date, one standing move per signal, curation seeing only unmoved ones; verify `cargo test -p flywheel one_standing_move_per_signal` (107)
-- [ ] 9.8 Implement the move consequences, a challenge recording the claim by name and version and attempting no ledger effect; verify `cargo test -p flywheel challenge_records_claim_only` (116, 101)
-- [ ] 9.9 Charge curation on its cadence and on the unmoved threshold, catching a missed cadence up once under the idempotent key; verify `cargo test -p flywheel curation_cadence_caught_up_once` over a simulated day down (110, 231, 111)
+- [x] 9.1 Write captures keyed by source event with their provenance and pointer, under the machinery's blueprints prefix, the raw material left outside; verify `cargo test -p flywheel capture_keyed_once` (111, 203)
+- [x] 9.2 Implement the meeting-transcript enumerator behind `flywheel capture meeting <file>`; verify `flywheel scenario run conformance/scenarios/S22.yaml` — a second import writes nothing and starts no session (111, 115)
+- [x] 9.3 Implement the chat-forward enumerator; verify `cargo test -p flywheel-surface forward_writes_capture_and_signal` (112, 215)
+- [x] 9.4 Write the page capture box's single ask signal; verify `cargo test -p flywheel-surface box_writes_one_ask_signal` (19)
+- [x] 9.5 Write signal records with their kind, asserter, subject, assertion and verbatim excerpt, and expose no tool that edits one; verify `cargo test -p flywheel signal_is_never_rewritten` reading the file's history (113, 193)
+- [x] 9.6 Version the signal and move record formats and read an earlier version without conversion; verify `cargo test -p flywheel older_signal_reads_unconverted` against a fixture written in the earlier format (114)
+- [x] 9.7 Write move records with the signal id, target, reason and date, one standing move per signal, curation seeing only unmoved ones; verify `cargo test -p flywheel one_standing_move_per_signal` (107)
+- [x] 9.8 Implement the move consequences, a challenge recording the claim by name and version and attempting no ledger effect; verify `cargo test -p flywheel challenge_records_claim_only` (116, 101)
+- [x] 9.9 Charge curation on its cadence and on the unmoved threshold, catching a missed cadence up once under the idempotent key; verify `cargo test -p flywheel curation_cadence_caught_up_once` over a simulated day down (110, 231, 111)
 - [ ] 9.10 Verify S08: `flywheel scenario run conformance/scenarios/S08.yaml` — one move each, joins become proposed intents, one decision per proposed intent
 - [ ] 9.11 Show a proposed intent's weight: its signals, how many, from which sources and over what span, counted by event date; verify `cargo test -p flywheel-surface proposed_intent_shows_weight` (109, 118)
 - [ ] 9.12 Verify S23 and S24: `flywheel scenario run conformance/scenarios/S23.yaml conformance/scenarios/S24.yaml`

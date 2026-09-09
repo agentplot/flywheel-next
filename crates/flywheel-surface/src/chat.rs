@@ -19,7 +19,7 @@
 use crate::catalogue::Call;
 use crate::links;
 use anyhow::{bail, Result};
-use flywheel_atoms::StateStore;
+use flywheel_atoms::{StateStore, World};
 use flywheel_domain::commands::{self, Called};
 use flywheel_domain::sinks::{self, Sink};
 use flywheel_engine::{DecisionInstance, Definitions};
@@ -126,6 +126,19 @@ pub trait Channel {
 
     /// Answer one message that arrived, writing nothing to the store (194).
     fn reply(&mut self, to: &str, text: &str) -> Result<()>;
+}
+
+/// A host loads its sinks' channels by name, like its workspace and its
+/// sessions (D8), so what it holds is a boxed one and this is what lets it be
+/// used as any other.
+impl Channel for Box<dyn Channel> {
+    fn post(&mut self, post: &Post) -> Result<String> {
+        (**self).post(post)
+    }
+
+    fn reply(&mut self, to: &str, text: &str) -> Result<()> {
+        (**self).reply(to, text)
+    }
 }
 
 /// The `Channel` this release carries: every post recorded, exactly as
@@ -472,21 +485,23 @@ impl<C: Channel> Chat<C> {
     ///
     /// A forward is looked at before the grammar, because a forwarded message
     /// is what the platform says it is and never what its text looks like.
-    pub fn receive<S: StateStore>(
+    pub fn receive<S: StateStore, W: World + ?Sized>(
         &mut self,
         store: &mut S,
+        world: &mut W,
         defs: &Definitions,
         message: &Message,
     ) -> Result<Heard> {
         if let Some(forwarded) = &message.forwarded {
             let mut call = forward_call(&message.by, forwarded);
             call.delivery_id = Some(format!("chat-{}", message.id));
-            let called = crate::catalogue::call(store, defs, &call)?;
+            let called = crate::catalogue::call(store, world, defs, &call)?;
             return Ok(Heard::Captured(called));
         }
         match read_grammar(&message.text) {
             Grammar::Answer { number, answer } => Ok(Heard::Answered(vec![self.answer(
                 store,
+                world,
                 defs,
                 message,
                 number,
@@ -510,6 +525,7 @@ impl<C: Channel> Chat<C> {
                     }
                     given.push(self.answer(
                         store,
+                        world,
                         defs,
                         message,
                         number,
@@ -533,9 +549,10 @@ impl<C: Channel> Chat<C> {
 
     /// One numbered answer, through the same `answer` tool the page's control
     /// calls (193, 194).
-    fn answer<S: StateStore>(
+    fn answer<S: StateStore, W: World + ?Sized>(
         &mut self,
         store: &mut S,
+        world: &mut W,
         defs: &Definitions,
         message: &Message,
         number: u32,
@@ -546,7 +563,7 @@ impl<C: Channel> Chat<C> {
             .delivered(delivery)
             .arg("decision", json!(number))
             .arg("answer", json!(answer));
-        let called = crate::catalogue::call(store, defs, &call)?;
+        let called = crate::catalogue::call(store, world, defs, &call)?;
         // The operator can tell it was recorded (154).
         self.channel.reply(
             &message.id,

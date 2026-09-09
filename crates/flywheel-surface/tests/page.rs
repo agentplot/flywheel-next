@@ -328,3 +328,64 @@ fn capture_box_parses_nothing() {
         );
     });
 }
+
+// ---- 9.4 the box's one ask signal
+
+/// The page's box writes one capture and one signal of kind ask, directly (19).
+///
+/// That is a control and not a judgment about the text: turning a capture into
+/// signals is curation's and never runs unattended, and the box's one signal is
+/// the submission itself, carried verbatim (19, 115, D13).
+#[test]
+fn box_writes_one_ask_signal() {
+    let (_sandbox, page) = a_page("ask-signal");
+    let typed = "the rows lose their numbers on the second page";
+    let answered = page.form("/api/tools/capture", &[("text", typed), ("source", "page")]);
+    assert_eq!(answered["recorded"], json!(true), "{answered}");
+
+    // The record and its one signal live under the machinery's prefix in the
+    // blueprints, where a person reads the same material by hand (203, 110).
+    let (key, signals) = page.with_world(|world| {
+        let captures = flywheel_domain::signals::captures(world).expect("the captures");
+        assert_eq!(captures.len(), 1, "one capture, whatever the text said");
+        let key = captures[0].key.clone();
+        assert_eq!(captures[0].source, "page");
+        assert_eq!(captures[0].raw, typed, "the text was captured whole");
+        (
+            key.clone(),
+            flywheel_domain::signals::signals_of(world, &key).expect("its signals"),
+        )
+    });
+
+    assert_eq!(signals.len(), 1, "one signal, and one only: {signals:?}");
+    let signal = &signals[0];
+    // Its kind is ask, so curation sees it (19).
+    assert_eq!(signal.kind, "ask");
+    assert_eq!(signal.asserted_by, "chuck", "the operator asserted it (153)");
+    // The excerpt is the submission, verbatim, and nothing was read out of it
+    // (113, 194).
+    assert_eq!(signal.excerpt, typed);
+    assert_eq!(signal.assertion, typed);
+    assert_eq!(signal.capture, flywheel_domain::signals::object_of(&key));
+    assert!(
+        signal.argues_with.is_empty(),
+        "the box judged what the text argues with (115)"
+    );
+
+    // And one of each in the store the engine ticks over: the capture, and the
+    // signal that names it. (The page's own fixture seeds a signal of its own,
+    // which this submission neither touched nor re-read.)
+    page.with_store(|store| {
+        let captures = StateStore::list(store, &flywheel_atoms::Scope::Machine("capture".into()))
+            .expect("a listing")
+            .objects;
+        assert_eq!(captures.len(), 1, "{captures:?}");
+        let made: Vec<_> = StateStore::list(store, &flywheel_atoms::Scope::Machine("signal".into()))
+            .expect("a listing")
+            .objects
+            .into_iter()
+            .filter(|o| o.parent.as_deref() == Some(captures[0].id.as_str()))
+            .collect();
+        assert_eq!(made.len(), 1, "one signal for the capture: {made:?}");
+    });
+}

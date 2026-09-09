@@ -18,7 +18,7 @@ use chrono::{DateTime, Duration, Utc};
 use flywheel_atoms::{
     EffectWrite, LandingPolicy, LeaseOp, LeaseOutcome, LeaseRecord, Listing, Notice, Object,
     Presentation, PutOutcome, ReadPoint, Received, Records, Scope, SessionPresence, StateStore,
-    StatusView, ThreadEntry, WorkOrder, Workspace, WriteOutcome,
+    StatusView, ThreadEntry, WorkOrder, Workspace, World, WriteOutcome,
 };
 use flywheel_domain::derived::{Declaration, Reading};
 use flywheel_domain::records::RunEntry;
@@ -26,6 +26,7 @@ use flywheel_domain::regions::{place_key, session_stem};
 use flywheel_engine::runtime::{EvidenceSource, Response};
 use flywheel_engine::{Definitions, PlannedEffect};
 use flywheel_scenario::console;
+use flywheel_surface::chat::{Chat, Channel};
 use flywheel_store_git::GitStore;
 use flywheel_workspace_recorded::RecordedWorkspace;
 use flywheel_world_host::{HostWorld, Manifest};
@@ -92,6 +93,12 @@ impl Bindings {
 /// record-derived half (D8, `record-derived.yaml`).
 pub struct HostStore {
     pub git: GitStore,
+    /// The world this host loaded (D8): the repositories, the manifest, the
+    /// router and the App's tokens. The blueprints are among them, which is
+    /// where the captures, signals and moves live, under the machinery's
+    /// prefix — so the evidence about them is read through here (111, 203,
+    /// `blueprints.yaml` evidence).
+    pub world: Box<dyn World>,
     pub reading: Reading,
     /// Every operation this store was asked for, in order. The run record and
     /// the fetch-first proof read it (79, 165).
@@ -103,6 +110,9 @@ impl HostStore {
         HostStore {
             reading: Reading::new(me, now),
             git,
+            // A world with no repositories on disk until `Host::open` binds the
+            // manifest's (D1, D8).
+            world: Box::new(flywheel_scenario::bindings::FilesWorld::new()),
             trace: RefCell::new(vec![]),
         }
     }
@@ -113,6 +123,20 @@ impl HostStore {
 
     pub fn since(&self) -> Vec<String> {
         self.trace.borrow().clone()
+    }
+
+    /// The store and the world it loaded, for a caller that needs both at
+    /// once: a capture writes one record to each — the object here and the
+    /// material under the machinery's prefix in the blueprints (111, 203).
+    ///
+    /// The world is taken out for the call and put back, so it lives in one
+    /// place and is borrowed from one.
+    pub fn with_world<T>(&mut self, act: impl FnOnce(&mut HostStore, &mut dyn World) -> T) -> T {
+        let mut world: Box<dyn World> =
+            std::mem::replace(&mut self.world, Box::new(flywheel_scenario::bindings::FilesWorld::new()));
+        let out = act(self, &mut *world);
+        self.world = world;
+        out
     }
 
     /// The type an object's sessions are named for, where it has one
@@ -211,6 +235,15 @@ impl EvidenceSource for HostStore {
     /// bindings this release carries (`record-derived.yaml`, B.3, D8).
     fn evidence(&self, object: &str, region: &str, name: &str) -> Option<Value> {
         flywheel_domain::derived::evidence(&self.git, &self.reading, object, name)
+            // The signal material, read from the blueprints under the
+            // machinery's prefix (111, 107, `blueprints.yaml` evidence).
+            .or_else(|| {
+                flywheel_domain::signals::evidence(
+                    &flywheel_domain::signals::Blueprints(&*self.world),
+                    object,
+                    name,
+                )
+            })
             .or_else(|| self.git.evidence(object, region, name))
             .or_else(|| {
                 flywheel_workspace_recorded::evidence(
@@ -233,6 +266,34 @@ impl EvidenceSource for HostStore {
     }
 }
 
+/// The sinks this host presents, and what each delivers through (D8, D9,
+/// 148).
+///
+/// A channel is loaded by name the way the workspace and the sessions are: one
+/// implementation in this release, replaced rather than branched. A sink whose
+/// channel this host has not loaded is one it does not present, whatever lease
+/// it holds.
+pub struct Sinks {
+    /// The address every link a delivery carries is written at (205a, 308,
+    /// D10a).
+    pub address: String,
+    pub channels: std::collections::BTreeMap<String, Box<dyn Channel>>,
+}
+
+impl Sinks {
+    pub fn at(address: &str) -> Sinks {
+        Sinks {
+            address: address.to_string(),
+            channels: Default::default(),
+        }
+    }
+
+    /// Load the channel one sink delivers through.
+    pub fn bind(&mut self, sink: &str, channel: Box<dyn Channel>) {
+        self.channels.insert(sink.to_string(), channel);
+    }
+}
+
 /// A host, running.
 pub struct Host {
     pub name: String,
@@ -250,6 +311,8 @@ pub struct Host {
     /// An away host's leases stand and its clocks pause; it writes no heartbeat
     /// while it is away (150a).
     pub away_since: Option<DateTime<Utc>>,
+    /// The sinks this host presents (148, D9).
+    pub sinks: Sinks,
 }
 
 impl Host {
@@ -274,7 +337,7 @@ impl Host {
             types: vec![],
             kinds: vec!["all".into()],
         };
-        Ok(Host::over(
+        let mut host = Host::over(
             name,
             &read.instance,
             flywheel_domain::set::load()?,
@@ -282,7 +345,12 @@ impl Host {
             bindings,
             declaration,
             now,
-        ))
+        );
+        // The host's one address, from the router the manifest names: every
+        // link a delivery carries is written at it (191, 205a, D10a).
+        host.sinks.address = world.address_of(name)?;
+        host.store.world = Box::new(world);
+        Ok(host)
     }
 
     /// A host over a store already open: what a test and `open` share.
@@ -314,6 +382,10 @@ impl Host {
                 at: now,
             },
             away_since: None,
+            // The host's own name on the operator's private network, with the
+            // instance in the path; `open` replaces it with what the manifest's
+            // router gives (205a, D10a).
+            sinks: Sinks::at(&format!("http://{name}/{instance}")),
         }
     }
 
@@ -440,11 +512,14 @@ impl Host {
         let me = self.name.clone();
         let now = self.now();
         let mut run: Vec<RunEntry> = Vec::new();
+        let sinks = &mut self.sinks;
         let ticked = console::tick(
             &mut self.store,
             &defs,
             scope,
-            |store, object, region, effect| perform(&defs, store, &me, now, object, region, effect),
+            |store, object, region, effect| {
+                perform(&defs, store, sinks, &me, now, object, region, effect)
+            },
             |store, fired, tail| {
                 // The evidence the guard read, name by name: what the write was
                 // decided on, not everything the object holds (79, 167).
@@ -829,6 +904,7 @@ fn digest(body: &str) -> String {
 pub fn perform(
     defs: &Definitions,
     store: &mut HostStore,
+    sinks: &mut Sinks,
     host: &str,
     now: DateTime<Utc>,
     object: &str,
@@ -938,14 +1014,54 @@ pub fn perform(
                 .flatten()
                 .and_then(|o| o.record.get("captured_by").and_then(|v| v.as_str()).map(String::from))
                 .unwrap_or_else(|| "operator".to_string());
-            let _ = flywheel_domain::signals::ensure_signal(&mut store.git, defs, object, &by, now);
+            let _ = flywheel_domain::signals::ensure_signal(
+                &mut store.git,
+                &mut *store.world,
+                defs,
+                object,
+                &by,
+                now,
+            );
         }
+        // The sink delivers: the numbered decisions routed here, the tail since
+        // its mark and the notices, with the mark advancing in the same write
+        // (14, 18, 82, `surfaces.yaml` effects.deliver_rail).
+        //
+        // Only the sink's presenter delivers, which `Chat::deliver` reads from
+        // the lease, so the operator sees each delivery once (148). A sink this
+        // host loaded no channel for is one it does not present, and the
+        // effect's proof stays absent so another host's tick performs it (127,
+        // 148).
+        "deliver_rail" => return deliver(defs, store, sinks, host, object),
         // The status projection is the rail's own effect (D12); the tick writes
         // it after every pass, so nothing to do here.
         "render_status" => {}
         _ => {}
     }
     true
+}
+
+/// Deliver to one sink, through the channel this host loaded for it (D8, D9).
+///
+/// The channel is taken out of the binding for the call and put back, because a
+/// `Chat` holds its channel: nothing is copied and nothing about the sink lives
+/// in two places.
+fn deliver(
+    defs: &Definitions,
+    store: &mut HostStore,
+    sinks: &mut Sinks,
+    host: &str,
+    sink: &str,
+) -> bool {
+    let Some(channel) = sinks.channels.remove(sink) else {
+        // No channel bound: this host presents nothing here, so nothing was
+        // delivered and the proof stays absent (148, 127).
+        return false;
+    };
+    let mut chat = Chat::new(sink, host, &sinks.address, channel);
+    let delivered = matches!(chat.deliver(store, defs), Ok(Some(_)));
+    sinks.channels.insert(sink.to_string(), chat.channel);
+    delivered
 }
 
 /// The work order a session is given: the closed set of inputs, rendered, and

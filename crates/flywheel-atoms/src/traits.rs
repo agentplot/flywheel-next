@@ -278,6 +278,28 @@ pub trait World {
     /// Files the world reports at a path under a repository's shared line —
     /// the blueprints' type files among them (57, 85).
     fn read_file(&self, repository: &str, path: &str) -> Result<Option<Vec<u8>>>;
+
+    /// Every file under a path on a repository's shared line, by path.
+    fn list_files(&self, repository: &str, under: &str) -> Result<Vec<String>>;
+
+    /// Write one file on a repository's shared line.
+    ///
+    /// The machinery writes in a tracked repository only under its own prefix,
+    /// and the one exception is the effect of a response (203): a write outside
+    /// it that no response asked for is refused and reported, never made. The
+    /// captures, signals and moves go here — `flywheel/signals/` in the
+    /// blueprints — because they are material a person reads and writes by hand
+    /// as readily as the machinery does (110, 113, `blueprints.yaml` layout).
+    ///
+    /// Writing the bytes that are already there is not a second write and says
+    /// so by returning false (127).
+    fn write_file(
+        &mut self,
+        repository: &str,
+        path: &str,
+        body: &[u8],
+        by_response: Option<&str>,
+    ) -> Result<bool>;
 }
 
 // ------------------------------------------------------------------ workspace

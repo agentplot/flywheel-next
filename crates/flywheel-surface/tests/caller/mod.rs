@@ -6,6 +6,10 @@
 //! fetched from anywhere else here either.
 #![allow(dead_code)]
 
+#[path = "../world/mod.rs"]
+pub mod world;
+
+use flywheel_atoms::World;
 use flywheel_store_git::GitStore;
 use flywheel_surface::http::Served;
 use serde_json::Value;
@@ -48,7 +52,7 @@ impl Server {
             .enable_all()
             .build()
             .expect("a runtime");
-        let served = Served::for_operators(store, defs, operators, address);
+        let served = Served::over(store, a_world(), defs, operators, address);
         let (address, task) = runtime.block_on({
             let served = served.clone();
             async move {
@@ -108,6 +112,15 @@ impl Server {
     /// The served bindings, for a test that asks what the host listens on.
     pub fn served(&self) -> &Served<GitStore> {
         &self.served
+    }
+
+    /// The world behind the page, for a test that reads back the material a
+    /// capture wrote under the machinery's prefix (111, 203).
+    pub fn with_world<T>(&self, read: impl FnOnce(&mut (dyn World + Send)) -> T) -> T {
+        self.runtime.block_on(async {
+            let mut world = self.served.world.lock().await;
+            read(&mut **world)
+        })
     }
 
     /// The store behind the page, for a test that reads back what a call wrote.
@@ -191,4 +204,9 @@ fn encode(text: &str) -> String {
         }
     }
     out
+}
+
+/// The world a served page writes its material into, for a test.
+pub fn a_world() -> Box<dyn World + Send> {
+    Box::new(world::Files::new())
 }

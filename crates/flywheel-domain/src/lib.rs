@@ -2,7 +2,9 @@
 //! written over the engine's generic rec reader and writer. The names of the
 //! seven objects live here and not in the engine (86, I13).
 
+pub mod adapters;
 pub mod blueprints;
+pub mod cadence;
 pub mod commands;
 pub mod envelope;
 pub mod profile;

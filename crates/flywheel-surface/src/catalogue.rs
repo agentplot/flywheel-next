@@ -157,8 +157,9 @@ pub fn enumerate() -> Value {
 // ---------------------------------------------------------------- the bodies
 
 use anyhow::{bail, Result};
-use flywheel_atoms::{Received, Scope, StateStore};
+use flywheel_atoms::{Received, Scope, StateStore, World};
 use flywheel_domain::commands::{self, CallRecord, Called};
+use flywheel_domain::signals;
 use flywheel_engine::Definitions;
 use std::collections::BTreeMap;
 
@@ -236,7 +237,12 @@ pub type Outcome = Called;
 /// Every caller ends here. A tool the catalogue lacks is not performed and is
 /// not silently dropped either: the call is recorded as the response it was,
 /// and the response machine reports it unapplicable under attention (4, 6).
-pub fn call<S: StateStore>(store: &mut S, defs: &Definitions, call: &Call) -> Result<Outcome> {
+pub fn call<S: StateStore, W: World + ?Sized>(
+    store: &mut S,
+    world: &mut W,
+    defs: &Definitions,
+    call: &Call,
+) -> Result<Outcome> {
     let Some(tool) = tool(&call.tool) else {
         // No such operation exists. Record it and let the response machine say
         // so (4, 6).
@@ -260,7 +266,7 @@ pub fn call<S: StateStore>(store: &mut S, defs: &Definitions, call: &Call) -> Re
 
     match tool.name {
         "answer" => answer(store, defs, call),
-        "capture" => capture(store, defs, call),
+        "capture" => capture(store, world, defs, call),
         "later" => later(store, defs, call),
         "open-session" => open_session(store, defs, call),
         // Every other tool takes the transition its decision would, on the
@@ -434,7 +440,12 @@ fn next_of<S: StateStore>(store: &S, machine: &str, prefix: &str) -> Result<u64>
 /// One keyed capture per source event, with its provenance and a pointer to
 /// raw material that stays outside every repository: capturing the same event
 /// twice finds the capture that exists and writes nothing (111).
-fn capture<S: StateStore>(store: &mut S, defs: &Definitions, call: &Call) -> Result<Outcome> {
+fn capture<S: StateStore, W: World + ?Sized>(
+    store: &mut S,
+    world: &mut W,
+    defs: &Definitions,
+    call: &Call,
+) -> Result<Outcome> {
     let text = call.text("text").unwrap_or_default();
     let source = call.text("source").unwrap_or_else(|| call.delivery.clone());
     let at = commands::now(store)?;
@@ -448,7 +459,21 @@ fn capture<S: StateStore>(store: &mut S, defs: &Definitions, call: &Call) -> Res
             next_of(store, "capture", &format!("capture/{}-", call.delivery))?
         ),
     };
-    let id = format!("capture/{key}");
+    let id = signals::object_of(&key);
+    // The record itself goes under the machinery's prefix in the blueprints,
+    // where a person reads and writes the same material by hand (111, 203,
+    // 110). Capturing the same source event twice finds the record that is
+    // already there and writes nothing.
+    let capture = signals::Capture {
+        key: key.clone(),
+        source: source.clone(),
+        event_at: at.to_rfc3339(),
+        captured_by: call.by.clone(),
+        // A pointer to the raw material, which stays outside every repository
+        // (111): what the caller handed us is the pointer, not the transcript.
+        raw: text.clone(),
+    };
+    signals::write_capture(world, &capture)?;
     if store.get(&id)?.is_none() {
         let record: BTreeMap<String, Value> = [
             ("source", json!(source)),
@@ -467,7 +492,7 @@ fn capture<S: StateStore>(store: &mut S, defs: &Definitions, call: &Call) -> Res
         // box makes carries the one ask signal the control asked for, which is
         // a control and not a judgment (19, 115, D13).
         if source != crate::chat::FORWARD {
-            flywheel_domain::signals::ensure_signal(store, defs, &id, &call.by, at)?;
+            signals::ensure_signal(store, world, defs, &id, &call.by, at)?;
         }
     }
     // The submission is the delivery, recorded once like any response (19).

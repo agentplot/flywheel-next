@@ -1059,7 +1059,9 @@ fn play_direct(run: &mut Run, direct: &Direct, suite: &Suite) -> Result<()> {
                 .with_context(|| format!("the dictation `{text}`"))?;
             run.runtime.store.log("dictation", "chat", text.clone());
             let defs = run.runtime.defs.clone();
-            let outcome = flywheel_surface::catalogue::call(&mut run.runtime.store, &defs, &call)?;
+            let outcome = crate::bindings::with_files(&mut run.runtime.store, |store, world| {
+                flywheel_surface::catalogue::call(store, world, &defs, &call)
+            })?;
             // A dictation is applied, never proposed: it raises no decision and
             // never enters the rail (12).
             run.observations.insert("dictation_bypassed_plan".into(), json!(true));
@@ -1072,15 +1074,35 @@ fn play_direct(run: &mut Run, direct: &Direct, suite: &Suite) -> Result<()> {
             }
             run.runtime.store.log("response", &outcome.id, format!("{} by {by}", call.tool));
         }
-        Direct::Adapter { command, .. } => {
-            // A path in the command resolves against `fixtures/`.
+        Direct::Adapter { command, by } => {
+            // The adapter's own binary, run by hand from any machine (217g). A
+            // path in the command resolves against `fixtures/`; the material
+            // stays where it is and the capture cites it (111).
             let argument = command.split_whitespace().last().unwrap_or_default();
             let bytes = suite.resolve_fixture(argument, "")?;
             run.runtime
                 .store
                 .world
-                .files
+                .raw
                 .insert(argument.to_string(), String::from_utf8_lossy(&bytes).to_string());
+            let by = by.clone().unwrap_or_else(|| "operator".into());
+            let defs = run.runtime.defs.clone();
+            let at = run.runtime.store.now;
+            let before = written_under(&run.runtime.store, &flywheel_domain::signals::UNDER);
+            let enumerated = crate::bindings::with_files(&mut run.runtime.store, |store, world| {
+                flywheel_domain::adapters::run(store, world, &defs, command, &by, at)
+            })
+            .with_context(|| format!("the adapter `{command}`"))?;
+            let after = written_under(&run.runtime.store, &flywheel_domain::signals::UNDER);
+            // A repeat import writes nothing, which is what S22 counts (111).
+            run.observations.insert(
+                "capture_files_written_on_second_import".into(),
+                json!(enumerated.captures_written),
+            );
+            run.observations.insert(
+                "signal_files_written_on_second_import".into(),
+                json!(after.saturating_sub(before)),
+            );
             run.runtime.store.log("adapter", argument, command.clone());
         }
         Direct::Commit { file, set, sha, by } => {
@@ -1231,4 +1253,16 @@ fn play_script(
 /// binding: the workspace is recorded and the sessions are scripted.
 pub fn provided() -> Vec<Requirement> {
     vec![]
+}
+
+
+/// How many files the blueprints hold under a path, for the counts an import
+/// asserts (111).
+fn written_under(store: &crate::store::Store, under: &str) -> usize {
+    store
+        .world
+        .files
+        .keys()
+        .filter(|path| path.starts_with(under))
+        .count()
 }

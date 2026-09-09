@@ -107,6 +107,19 @@ enum Cmd {
         #[command(subcommand)]
         cmd: ScenarioCmd,
     },
+    /// An adapter: one keyed capture per source event, and nothing else (111,
+    /// 115, 215). `flywheel capture meeting <file>` is the one this release
+    /// ships beside the page's box and the chat forward (D13).
+    Capture {
+        /// The adapter: `meeting`.
+        kind: String,
+        /// What it enumerates — for a meeting, the transcript's path in the raw
+        /// store, which is cited and never copied in (111).
+        source: String,
+        /// Who captured it; the operators list's entry by default (153).
+        #[arg(long, default_value = "operator")]
+        by: String,
+    },
     /// Dump an object's configuration and record.
     Obj { id: String },
     /// Evaluate one evidence name for an object (and optional region path).
@@ -544,6 +557,32 @@ async fn main() -> Result<()> {
             let r = Report::Refuse { reason: reason.join(" ") };
             std::process::exit(do_report(&cli, session, &r)?);
         }
+        // An adapter runs unattended and makes no judgment: one keyed capture
+        // per source event, with a pointer to material it never copies in
+        // (111, 115, 215).
+        Cmd::Capture { kind, source, by } => {
+            let mut rt = open(&cli)?;
+            let defs = rt.defs.clone();
+            let at = rt.store.now;
+            let enumerated = flywheel_scenario::bindings::with_files(&mut rt.store, |store, world| {
+                flywheel_domain::adapters::run(
+                    store,
+                    world,
+                    &defs,
+                    &format!("{kind} {source}"),
+                    &by,
+                    at,
+                )
+            })?;
+            flywheel_scenario::save(&rt.store, &cli.state)?;
+            for key in &enumerated.keys {
+                println!("{key}");
+            }
+            println!(
+                "{} capture(s) written, {} signal(s): an enumerator reads nothing into signals (115)",
+                enumerated.captures_written, enumerated.signals_written
+            );
+        }
         Cmd::Scenario { cmd } => {
             let ScenarioCmd::Run { paths, profile, hosts, definitions, trace } = cmd;
             let options = conformance::RunOptions {
@@ -561,8 +600,12 @@ async fn main() -> Result<()> {
         }
         Cmd::Serve { port, address, operators } => {
             let rt = open(&cli)?;
-            let served = flywheel_surface::http::Served::for_operators(
-                rt.store, rt.defs, operators, address,
+            let served = flywheel_surface::http::Served::over(
+                rt.store,
+                Box::new(flywheel_scenario::bindings::FilesWorld::new()),
+                rt.defs,
+                operators,
+                address,
             );
             // The two addresses of 46 and 245: the host's own, and the port the
             // operator at the machine uses. Nothing else is bound.

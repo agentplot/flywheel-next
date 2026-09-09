@@ -170,6 +170,50 @@ impl World for HostWorld {
         }
         Ok(git::show(&bare, &line, path)?.map(|s| s.into_bytes()))
     }
+
+    fn list_files(&self, repository: &str, under: &str) -> Result<Vec<String>> {
+        let repo = self.repository(repository)?;
+        let line = repo.shared_line.clone();
+        let bare = Repo::at(self.bare(repository));
+        if !bare.exists() {
+            return Ok(vec![]);
+        }
+        git::ls_tree(&bare, &line, under)
+    }
+
+    /// One commit on the repository's shared line, refused outside the
+    /// machinery's prefix unless a response asked for it (203).
+    ///
+    /// The bytes already there are not written again: reading twice with
+    /// nothing changed writes nothing (78, 127).
+    fn write_file(
+        &mut self,
+        repository: &str,
+        path: &str,
+        body: &[u8],
+        by_response: Option<&str>,
+    ) -> Result<bool> {
+        crate::prefix::check(repository, path, by_response)?;
+        if self.read_file(repository, path)?.as_deref() == Some(body) {
+            return Ok(false);
+        }
+        let entry = self.repository(repository)?;
+        let line = entry.shared_line.clone();
+        let checkout = Repo::at(self.checkout(repository));
+        if !checkout.exists() {
+            bail!(
+                "this host has no checkout of `{repository}`; it joins by one command and never \
+                 by hand (205)"
+            );
+        }
+        let text = String::from_utf8_lossy(body).to_string();
+        let reason = match by_response {
+            Some(response) => format!("{path}\n\nreason: the effect of response {response} (203)"),
+            None => format!("{path}\n\nreason: the machinery's own material, under its prefix (203)"),
+        };
+        git::commit_file(&checkout, &line, path, &text, &reason)?;
+        Ok(true)
+    }
 }
 
 /// A short, stable mark for a key, so a token can be told from another without

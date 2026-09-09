@@ -154,7 +154,9 @@ pub fn perform(defs: &Definitions, store: &mut Store, object: &str, region: &str
                 .and_then(|v| v.as_str())
                 .unwrap_or("operator")
                 .to_string();
-            let _ = flywheel_domain::signals::ensure_signal(store, defs, object, &by, at);
+            let _ = crate::bindings::with_files(store, |store, world| {
+                flywheel_domain::signals::ensure_signal(store, world, defs, object, &by, at)
+            });
         }
         "record_exit" => {
             if let Some(s) = store.world.sessions.get(&skey) {

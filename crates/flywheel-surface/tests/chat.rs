@@ -3,12 +3,14 @@
 //! (`surfaces/chat-sink`, D9).
 
 mod store;
+mod world;
 
 use flywheel_atoms::Records;
 use flywheel_domain::commands;
 use flywheel_engine::Definitions;
 use flywheel_store_git::GitStore;
 use flywheel_surface::chat::{Chat, Heard, Message, Recorded};
+use flywheel_domain::signals;
 use flywheel_domain::sinks::{self, Spec};
 use serde_json::json;
 use std::collections::BTreeSet;
@@ -18,7 +20,7 @@ use std::collections::BTreeSet;
 const ADDRESS: &str = "http://studio.tailnet.ts.net/willdan";
 
 /// A store with a chat sink this host presents, and the definitions behind it.
-fn a_chat(name: &str) -> (store::Sandbox, GitStore, Definitions, Chat<Recorded>) {
+fn a_chat(name: &str) -> (store::Sandbox, GitStore, world::Files, Definitions, Chat<Recorded>) {
     let sandbox = store::Sandbox::new(name);
     let defs = flywheel_domain::set::load().expect("the embedded definitions");
     let mut store = sandbox.store();
@@ -30,7 +32,7 @@ fn a_chat(name: &str) -> (store::Sandbox, GitStore, Definitions, Chat<Recorded>)
     .expect("the chat sink");
     let mut chat = Chat::new(&sink.id, "studio", ADDRESS, Recorded::new());
     assert!(chat.present(&mut store).expect("the presenter lease"));
-    (sandbox, store, defs, chat)
+    (sandbox, store, world::Files::new(), defs, chat)
 }
 
 /// A bolt whose close is offered: one decision, standing (22, 39).
@@ -151,7 +153,7 @@ fn a_manifest_pin_is_refused_rather_than_half_honoured() {
 /// line each, with a link to the page (18, 15).
 #[test]
 fn chat_and_page_show_one_number() {
-    let (_sandbox, mut store, defs, chat) = a_chat("one-number");
+    let (_sandbox, mut store, _world, defs, chat) = a_chat("one-number");
     a_decision(&mut store, &defs, "bolt/atlas/plan-rows");
     a_decision(&mut store, &defs, "bolt/atlas/drop-the-tail");
 
@@ -195,7 +197,7 @@ fn chat_and_page_show_one_number() {
 /// other line is (18, 209).
 #[test]
 fn only_a_decision_line_is_answerable() {
-    let (_sandbox, mut store, defs, chat) = a_chat("answerable-lines");
+    let (_sandbox, mut store, _world, defs, chat) = a_chat("answerable-lines");
     a_decision(&mut store, &defs, "bolt/atlas/plan-rows");
 
     // A signal, which is never a decision, and an intent that reached its tail
@@ -284,14 +286,17 @@ fn the_reply_grammar_is_a_grammar_and_not_an_interpreter() {
 /// (11, 137, 194).
 #[test]
 fn yes_all_expands_per_decision() {
-    let (_sandbox, mut store, defs, mut chat) = a_chat("yes-all");
+    let (_sandbox, mut store, mut world, defs, mut chat) = a_chat("yes-all");
     a_decision(&mut store, &defs, "bolt/atlas/plan-rows");
     a_decision(&mut store, &defs, "bolt/atlas/drop-the-tail");
     let standing = commands::rail(&mut store, &defs).expect("the rail");
     assert_eq!(standing.len(), 2, "two decisions stand: {standing:?}");
 
     let message = Message::new("1500", "chuck", "yes all");
-    let heard = chat.receive(&mut store, &defs, &message).expect("read");
+    let heard = chat.receive(
+&mut store,
+&mut world,
+&defs, &message).expect("read");
     let given = match heard {
         Heard::Answered(given) => given,
         other => panic!("`yes all` was heard as {other:?}"),
@@ -334,7 +339,10 @@ fn yes_all_expands_per_decision() {
     let before = Records::list_records(&store, &flywheel_atoms::Scope::Machine("response".into()))
         .expect("a listing")
         .len();
-    chat.receive(&mut store, &defs, &message).expect("read again");
+    chat.receive(
+&mut store,
+&mut world,
+&defs, &message).expect("read again");
     let after = Records::list_records(&store, &flywheel_atoms::Scope::Machine("response".into()))
         .expect("a listing")
         .len();
@@ -344,14 +352,17 @@ fn yes_all_expands_per_decision() {
 /// Any one of a group can be answered alone, by its number (11).
 #[test]
 fn one_of_a_group_is_answered_alone() {
-    let (_sandbox, mut store, defs, mut chat) = a_chat("one-alone");
+    let (_sandbox, mut store, mut world, defs, mut chat) = a_chat("one-alone");
     a_decision(&mut store, &defs, "bolt/atlas/plan-rows");
     a_decision(&mut store, &defs, "bolt/atlas/drop-the-tail");
     let standing = commands::rail(&mut store, &defs).expect("the rail");
     let number = standing[0].number.expect("a number");
 
     let heard = chat
-        .receive(&mut store, &defs, &Message::new("1501", "chuck", &format!("yes {number}")))
+        .receive(
+&mut store,
+&mut world,
+&defs, &Message::new("1501", "chuck", &format!("yes {number}")))
         .expect("read");
     let given = match heard {
         Heard::Answered(given) => given,
@@ -383,7 +394,7 @@ fn one_of_a_group_is_answered_alone() {
 /// never parses free text (194).
 #[test]
 fn free_text_writes_nothing() {
-    let (_sandbox, mut store, defs, mut chat) = a_chat("free-text");
+    let (_sandbox, mut store, mut world, defs, mut chat) = a_chat("free-text");
     a_decision(&mut store, &defs, "bolt/atlas/plan-rows");
 
     let before: Vec<String> = Records::list_records(&store, &flywheel_atoms::Scope::All)
@@ -399,7 +410,10 @@ fn free_text_writes_nothing() {
         "412 and 413 both",
     ] {
         let heard = chat
-            .receive(&mut store, &defs, &Message::new("1600", "chuck", free))
+            .receive(
+&mut store,
+&mut world,
+&defs, &Message::new("1600", "chuck", free))
             .expect("read");
         assert!(
             matches!(heard, Heard::Unaccepted),
@@ -433,7 +447,7 @@ fn free_text_writes_nothing() {
 /// numbered reply answers the same decision the control would (309, 155, 308).
 #[test]
 fn posted_message_carries_controls_and_link() {
-    let (_sandbox, mut store, defs, mut chat) = a_chat("controls-and-link");
+    let (_sandbox, mut store, mut world, defs, mut chat) = a_chat("controls-and-link");
     a_decision(&mut store, &defs, "bolt/atlas/plan-rows");
 
     let post = chat
@@ -475,7 +489,10 @@ fn posted_message_carries_controls_and_link() {
     // (194, 309).
     let number = decision.number.expect("its number");
     let heard = chat
-        .receive(&mut store, &defs, &Message::new("1700", "chuck", &format!("{number}: yes")))
+        .receive(
+&mut store,
+&mut world,
+&defs, &Message::new("1700", "chuck", &format!("{number}: yes")))
         .expect("read");
     let given = match heard {
         Heard::Answered(given) => given,
@@ -509,7 +526,7 @@ fn posted_message_carries_controls_and_link() {
 /// `surfaces.yaml` effects.deliver_rail).
 #[test]
 fn mark_advances_with_delivery() {
-    let (_sandbox, mut store, defs, mut chat) = a_chat("mark-advances");
+    let (_sandbox, mut store, _world, defs, mut chat) = a_chat("mark-advances");
     a_decision(&mut store, &defs, "bolt/atlas/plan-rows");
 
     let before = chat.read(&store).expect("the sink");
@@ -552,7 +569,7 @@ fn mark_advances_with_delivery() {
 /// sink's (14, 236).
 #[test]
 fn each_sinks_tail_is_its_own() {
-    let (_sandbox, mut store, defs, mut chat) = a_chat("own-tail");
+    let (_sandbox, mut store, _world, defs, mut chat) = a_chat("own-tail");
 
     // A shared channel is a sink of its own with one mark, and no member (236).
     let mut shared = Spec::chat("chat-shared", "chuck", "#flywheel");
@@ -704,7 +721,7 @@ fn routed_kind_reaches_its_sinks() {
 /// away and since when, rather than failing silently (308, 150a).
 #[test]
 fn away_link_says_so() {
-    let (_sandbox, mut store, defs, chat) = a_chat("away-link");
+    let (_sandbox, mut store, _world, defs, chat) = a_chat("away-link");
     a_decision(&mut store, &defs, "bolt/atlas/plan-rows");
 
     // A laptop takes the object and then goes quiet. Its lease stands (150a).
@@ -754,4 +771,85 @@ fn away_link_says_so() {
         "the page says nothing about the away host"
     );
     assert!(html.contains("is away since"), "{html}");
+}
+
+// ---- 9.3 the chat forward, as an enumerator
+
+/// A forwarded message is one source event: one capture with a pointer back to
+/// it, one signal naming that capture, and nothing else (111, 112, 215).
+#[test]
+fn forward_writes_capture_and_signal() {
+    let (_sandbox, mut store, mut world, defs, mut chat) = a_chat("forward");
+
+    let message = Message::new("1900", "chuck", "").forwarding(
+        "message/1421",
+        "https://discord.com/channels/willdan/rows/1421",
+    );
+    let heard = chat
+        .receive(&mut store, &mut world, &defs, &message)
+        .expect("read");
+    assert!(matches!(heard, Heard::Captured(_)), "{heard:?}");
+
+    // One capture, under the machinery's prefix in the blueprints, keyed by the
+    // source event and pointing back at it (111, 203).
+    let captures = signals::captures(&world).expect("the captures");
+    assert_eq!(captures.len(), 1, "{captures:?}");
+    assert_eq!(captures[0].key, "message/1421");
+    assert_eq!(captures[0].source, flywheel_surface::chat::FORWARD);
+    assert_eq!(
+        captures[0].raw, "https://discord.com/channels/willdan/rows/1421",
+        "the capture does not point back at the message"
+    );
+    assert_eq!(captures[0].captured_by, "chuck");
+
+    // The enumerator made no judgment: the signal is the capture machine's own
+    // `ensure_signal`, which the host's tick performs (S21 runs that whole
+    // path; here it is called as the tick calls it).
+    assert!(
+        signals::signals_of(&world, "message/1421")
+            .expect("a read")
+            .is_empty(),
+        "the enumerator read the message into signals (115)"
+    );
+    let object = signals::object_of("message/1421");
+    let at = commands::now(&store).expect("a point");
+    let id = signals::ensure_signal(&mut store, &mut world, &defs, &object, "chuck", at)
+        .expect("the effect")
+        .expect("one signal");
+
+    // One signal, naming that capture, carrying the message verbatim (113).
+    let written = signals::signals_of(&world, "message/1421").expect("a read");
+    assert_eq!(written.len(), 1, "{written:?}");
+    assert_eq!(written[0].capture, object);
+    assert_eq!(written[0].kind, "ask");
+    assert_eq!(
+        written[0].excerpt, "https://discord.com/channels/willdan/rows/1421",
+        "the signal does not carry the message verbatim"
+    );
+    let held = Records::get(&store, &id).expect("a read").expect("the signal");
+    assert_eq!(held.parent.as_deref(), Some(object.as_str()));
+
+    // And nothing else: one response for the forward, no second capture, and no
+    // session (111, 115).
+    let responses = Records::list_records(&store, &flywheel_atoms::Scope::Machine("response".into()))
+        .expect("a listing");
+    assert_eq!(responses.len(), 1, "{responses:?}");
+    assert!(
+        !Records::list_records(&store, &flywheel_atoms::Scope::All)
+            .expect("a listing")
+            .iter()
+            .any(|o| o.id.starts_with("fact/session/")),
+        "the forward started a session"
+    );
+
+    // The same message twice is one capture and one response (111, 137).
+    chat.receive(&mut store, &mut world, &defs, &message)
+        .expect("read again");
+    assert_eq!(signals::captures(&world).expect("a read").len(), 1);
+    assert_eq!(
+        Records::list_records(&store, &flywheel_atoms::Scope::Machine("response".into()))
+            .expect("a listing")
+            .len(),
+        1
+    );
 }

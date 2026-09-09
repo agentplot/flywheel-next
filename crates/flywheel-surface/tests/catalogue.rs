@@ -2,6 +2,7 @@
 
 mod caller;
 mod store;
+mod world;
 
 use serde_json::{json, Value};
 
@@ -64,11 +65,12 @@ fn http_call_writes_the_same_record() {
     // The same call, made in process.
     let here = store::Sandbox::new("in-process");
     let mut store = here.store();
+    let mut world = world::Files::new();
     let call = flywheel_surface::catalogue::Call::new("drop", "chuck", "page")
         .arg("object", json!("unit/atlas/u"))
         .delivered("page-7");
     let outcome =
-        flywheel_surface::catalogue::call(&mut store, &defs, &call).expect("the in-process call");
+        flywheel_surface::catalogue::call(&mut store, &mut world, &defs, &call).expect("the in-process call");
     let in_process = flywheel_atoms::Records::get(&store, &format!("response/{}", outcome.id))
         .expect("a read")
         .expect("the record");

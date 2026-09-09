@@ -861,8 +861,12 @@ fn local_causes_tick_at_once() {
                 let call = flywheel_surface::catalogue::Call::new("answer", "chuck", "page")
                     .arg("decision", json!(number))
                     .arg("answer", json!("yes"));
-                let called =
-                    flywheel_surface::catalogue::call(&mut host.store, &defs, &call).unwrap();
+                let called = host
+                    .store
+                    .with_world(|store, world| {
+                        flywheel_surface::catalogue::call(store, world, &defs, &call)
+                    })
+                    .unwrap();
                 format!("response/{}", called.id)
             }
             // A numbered reply in the chat (194).
@@ -873,16 +877,14 @@ fn local_causes_tick_at_once() {
                     "http://studio.tailnet.ts.net/willdan",
                     flywheel_surface::chat::Recorded::new(),
                 );
-                let heard = chat
-                    .receive(
-                        &mut host.store,
-                        &defs,
-                        &flywheel_surface::chat::Message::new(
-                            "1801",
-                            "chuck",
-                            &format!("yes {number}"),
-                        ),
-                    )
+                let message = flywheel_surface::chat::Message::new(
+                    "1801",
+                    "chuck",
+                    &format!("yes {number}"),
+                );
+                let heard = host
+                    .store
+                    .with_world(|store, world| chat.receive(store, world, &defs, &message))
                     .unwrap();
                 match heard {
                     flywheel_surface::chat::Heard::Answered(given) => {
@@ -941,4 +943,128 @@ fn local_causes_tick_at_once() {
             "{cause}: the pass ran a sweep rather than the notify-tick"
         );
     }
+}
+
+// -------------------------------------------- 8.11 the host delivers to a sink
+
+/// A tick with a standing decision and a sink whose mark is behind delivers
+/// once and advances the mark; the next tick delivers nothing, because the mark
+/// is no longer behind (148, 216, 14, `surfaces.yaml` effects.deliver_rail).
+#[test]
+fn host_delivers_to_its_sink() {
+    let mut host = host("delivers", &["atlas"]);
+    seed(
+        &mut host,
+        "bolt/atlas/plan-rows",
+        "bolt",
+        &[("life", "open"), ("life.open.close", "offered")],
+        &[("repository", json!("atlas"))],
+    );
+    let defs = host.defs.clone();
+    let sink = flywheel_domain::sinks::ensure(
+        &mut host.store,
+        &defs,
+        &flywheel_domain::sinks::Spec::chat("chat-chuck", "chuck", "#willdan"),
+    )
+    .unwrap();
+    // The channel this host's sink delivers through, loaded by name the way the
+    // workspace and the sessions are (D8, D9).
+    host.sinks.bind(
+        &sink.id,
+        Box::new(flywheel_surface::chat::Recorded::new()),
+    );
+
+    // The decision stands: the register holds it, as the tick before this one
+    // left it. Every guard in one tick reads the state taken before the region
+    // loop, so a decision numbered by this tick's own derive is one the sink
+    // sees on the next (model.md, the region rule).
+    flywheel_domain::commands::rail(&mut host.store, &defs).unwrap();
+    assert_eq!(sink.delivered_at, None, "a sink that never delivered has a mark");
+
+    host.sweep().unwrap();
+
+    let after = flywheel_domain::sinks::read(&host.store, &sink.id)
+        .unwrap()
+        .unwrap();
+    let mark = after.delivered_at.expect("the mark advanced with the delivery");
+    let delivery = after.delivery.clone().expect("the delivery's own id");
+    assert!(delivery.starts_with("#willdan-"), "{delivery}");
+
+    // One transition per region per tick, so the sink is in `delivering` with
+    // its entry effect performed; the next tick takes it back to idle and its
+    // mark is no longer behind, so it delivers nothing (127, 78).
+    let held = host.store.get(&sink.id).unwrap().unwrap();
+    assert_eq!(
+        held.config.get("delivery").map(String::as_str),
+        Some("delivering")
+    );
+    host.sweep().unwrap();
+    assert_eq!(
+        host.store
+            .get(&sink.id)
+            .unwrap()
+            .unwrap()
+            .config
+            .get("delivery")
+            .map(String::as_str),
+        Some("idle"),
+        "the sink stayed in delivering"
+    );
+    let again = flywheel_domain::sinks::read(&host.store, &sink.id)
+        .unwrap()
+        .unwrap();
+    assert_eq!(again.delivered_at, Some(mark), "the mark moved with no delivery");
+    assert_eq!(again.delivery, Some(delivery), "it delivered a second time");
+
+    // A second decision comes to stand, and the sink is behind again.
+    host.set_now(host.now() + Duration::minutes(2));
+    seed(
+        &mut host,
+        "bolt/atlas/drop-the-tail",
+        "bolt",
+        &[("life", "open"), ("life.open.close", "offered")],
+        &[("repository", json!("atlas"))],
+    );
+    flywheel_domain::commands::rail(&mut host.store, &defs).unwrap();
+    host.sweep().unwrap();
+    let third = flywheel_domain::sinks::read(&host.store, &sink.id)
+        .unwrap()
+        .unwrap();
+    assert!(
+        third.delivered_at > Some(mark),
+        "a decision stood and the sink did not deliver"
+    );
+}
+
+/// A host that loaded no channel for a sink presents nothing there, whatever
+/// lease it holds: the effect's proof stays absent, so the host that does
+/// present it performs the delivery (148, 127).
+#[test]
+fn a_host_with_no_channel_delivers_nothing() {
+    let mut host = host("no-channel", &["atlas"]);
+    seed(
+        &mut host,
+        "bolt/atlas/plan-rows",
+        "bolt",
+        &[("life", "open"), ("life.open.close", "offered")],
+        &[("repository", json!("atlas"))],
+    );
+    let defs = host.defs.clone();
+    let sink = flywheel_domain::sinks::ensure(
+        &mut host.store,
+        &defs,
+        &flywheel_domain::sinks::Spec::chat("chat-chuck", "chuck", "#willdan"),
+    )
+    .unwrap();
+
+    flywheel_domain::commands::rail(&mut host.store, &defs).unwrap();
+    host.sweep().unwrap();
+    let after = flywheel_domain::sinks::read(&host.store, &sink.id)
+        .unwrap()
+        .unwrap();
+    assert_eq!(
+        after.delivered_at, None,
+        "a host with no channel bound delivered anyway"
+    );
+    assert_eq!(after.delivery, None);
 }

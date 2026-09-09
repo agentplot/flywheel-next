@@ -172,4 +172,135 @@ impl World for StandInWorld<'_> {
             .get(path)
             .map(|s| s.as_bytes().to_vec()))
     }
+
+    fn list_files(&self, _repository: &str, under: &str) -> Result<Vec<String>> {
+        Ok(self
+            .store
+            .world
+            .files
+            .keys()
+            .filter(|path| path.starts_with(under))
+            .cloned()
+            .collect())
+    }
+
+    fn write_file(
+        &mut self,
+        repository: &str,
+        path: &str,
+        body: &[u8],
+        by_response: Option<&str>,
+    ) -> Result<bool> {
+        // The prefix rule holds on the stand-in too: a scenario that writes
+        // outside it fails here rather than passing on a world that let it
+        // (203).
+        prefix_check(repository, path, by_response)?;
+        let text = String::from_utf8_lossy(body).to_string();
+        if self.store.world.files.get(path) == Some(&text) {
+            return Ok(false);
+        }
+        self.store.world.files.insert(path.to_string(), text);
+        Ok(true)
+    }
+}
+
+/// What the machinery may write in a tracked repository without being asked
+/// (203). The same rule `flywheel-world-host` enforces, stated once here so the
+/// stand-in cannot be looser than the host.
+fn prefix_check(repository: &str, path: &str, by_response: Option<&str>) -> Result<()> {
+    if repository == "flywheel-state" || path.starts_with("flywheel/") || by_response.is_some() {
+        return Ok(());
+    }
+    anyhow::bail!(
+        "{repository}: `{path}` is outside the machinery's prefix `flywheel/` and no response \
+         asked for it (203)"
+    )
+}
+
+
+/// A world with no repositories on disk: the files it is given and nothing
+/// else (D1).
+///
+/// It owns its map rather than borrowing the store's, so a caller may hold it
+/// beside a store — which is what the page does, one write to each on a
+/// capture (111, 203). The prefix rule holds here as it does on a host.
+#[derive(Debug, Default)]
+pub struct FilesWorld {
+    pub files: std::collections::BTreeMap<String, String>,
+}
+
+impl FilesWorld {
+    pub fn new() -> FilesWorld {
+        FilesWorld::default()
+    }
+}
+
+impl World for FilesWorld {
+    fn manifest(&self) -> Result<Value> {
+        Ok(json!({}))
+    }
+
+    fn repositories(&self) -> Result<Vec<RepositoryRef>> {
+        Ok(vec![])
+    }
+
+    fn clone_repositories(&mut self) -> Result<()> {
+        Ok(())
+    }
+
+    fn route(&self, name: &str) -> Result<Endpoint> {
+        Ok(Endpoint {
+            name: name.to_string(),
+            url: format!("http://local.stand-in/{name}"),
+        })
+    }
+
+    fn app_token(&self) -> Result<String> {
+        Ok("stand-in-token".into())
+    }
+
+    fn read_file(&self, _repository: &str, path: &str) -> Result<Option<Vec<u8>>> {
+        Ok(self.files.get(path).map(|s| s.as_bytes().to_vec()))
+    }
+
+    fn list_files(&self, _repository: &str, under: &str) -> Result<Vec<String>> {
+        Ok(self
+            .files
+            .keys()
+            .filter(|path| path.starts_with(under))
+            .cloned()
+            .collect())
+    }
+
+    fn write_file(
+        &mut self,
+        repository: &str,
+        path: &str,
+        body: &[u8],
+        by_response: Option<&str>,
+    ) -> Result<bool> {
+        prefix_check(repository, path, by_response)?;
+        let text = String::from_utf8_lossy(body).to_string();
+        if self.files.get(path) == Some(&text) {
+            return Ok(false);
+        }
+        self.files.insert(path.to_string(), text);
+        Ok(true)
+    }
+}
+
+
+/// The stand-in world's files live on the store, so a caller that needs both at
+/// once — the capture tool writes one record to each (111, 203) — takes them
+/// out for the call and puts them back.
+pub fn with_files<T>(
+    store: &mut Store,
+    act: impl FnOnce(&mut Store, &mut FilesWorld) -> T,
+) -> T {
+    let mut world = FilesWorld {
+        files: std::mem::take(&mut store.world.files),
+    };
+    let out = act(store, &mut world);
+    store.world.files = std::mem::take(&mut world.files);
+    out
 }

@@ -54,8 +54,12 @@ pub struct World {
     /// Service facts per service object id.
     pub services: BTreeMap<String, ServiceFact>,
     /// What the world reports on disk: path -> content, materialized from
-    /// `conformance/fixtures/` or given inline.
+    /// `conformance/fixtures/` or given inline. These are repository files.
     pub files: BTreeMap<String, String>,
+    /// The raw store: transcripts, logs and the like, which stay outside every
+    /// repository and are cited by the captures that point at them (111).
+    #[serde(default)]
+    pub raw: BTreeMap<String, String>,
 }
 
 /// One host's checkout of the state repository, behind the record operations.
@@ -357,6 +361,12 @@ impl Store {
     }
 
     fn derived(&self, object: &str, region: &str, name: &str) -> Option<Value> {
+        // The signal material, read from the files the blueprints hold, exactly
+        // as a host reads it from the checkout (111, 107,
+        // `blueprints.yaml` evidence).
+        if let Some(v) = flywheel_domain::signals::evidence(&self.world.files, object, name) {
+            return Some(v);
+        }
         let obj = self.objects.get(object);
         let skey = self.session_of(object, region);
         let pkey = place_key(object, region);

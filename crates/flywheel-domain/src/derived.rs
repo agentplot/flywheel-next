@@ -263,10 +263,98 @@ pub fn evidence<S: Records>(
                 .any(|sink| sink.delivered_at.is_some_and(|mark| mark > given_at)))
         }
 
+        // ---- the sinks (14, 18, 82, 148, `surfaces.yaml` evidence)
+        //
+        // Both are read from the register the rail record holds and the mark
+        // the sink record holds, so they are the same in every profile and
+        // nothing about a rendering is stored to answer them (15).
+        "sink.due" => {
+            let Some(sink) = crate::sinks::read(store, object).ok().flatten() else {
+                return Some(json!(false));
+            };
+            json!(!standing_delivered(store, &sink))
+        }
+        "sink.delivered" => {
+            let Some(sink) = crate::sinks::read(store, object).ok().flatten() else {
+                return Some(json!(false));
+            };
+            // The mark is newer than every register entry routed here, and the
+            // last delivery's own id is recorded on the sink
+            // (`surfaces.yaml` evidence.sink.delivered).
+            json!(sink.delivery.is_some() && standing_delivered(store, &sink))
+        }
+
+        // ---- curation (110, 118, `blueprints.yaml` evidence)
+        "curation.threshold" => json!(field("threshold")
+            .and_then(|v| v.as_u64())
+            .unwrap_or(12)),
+        // The cadence has fired since this curation last ran. What "last ran"
+        // means is when its run region last settled, which is the object's own
+        // entered_at and nothing a process remembers (75, 231).
+        "curation.cadence_due" => {
+            let cadence = field("cadence")
+                .and_then(|v| v.as_str().map(String::from))
+                .unwrap_or_else(|| crate::cadence::DEFAULT.to_string());
+            let since = held
+                .as_ref()
+                .and_then(|o| o.entered_at.get("run").copied())
+                .unwrap_or(reading.now);
+            json!(crate::cadence::due(&cadence, since, reading.now))
+        }
+
         // ---- the run record (79)
         "report.recorded" => json!(true),
         _ => return None,
     })
+}
+
+/// Whether this sink's mark is newer than every register entry of a decision
+/// routed to it — which is what makes it delivered, and what makes it due when
+/// it is not (`surfaces.yaml` evidence.sink, 14, 82).
+///
+/// The register's entries are its decision ids, and a decision id carries the
+/// point its state was entered (`rail::decision_id`), so the "newer than the
+/// mark" of 14 is read from the register and the mark alone. A sink that has
+/// never delivered is behind everything standing.
+fn standing_delivered<S: Records>(store: &S, sink: &crate::sinks::Sink) -> bool {
+    let standing: Vec<String> = store
+        .get(crate::RAIL)
+        .ok()
+        .flatten()
+        .and_then(|o| o.record.get("standing").cloned())
+        .and_then(|v| serde_json::from_value(v).ok())
+        .unwrap_or_default();
+    let routed: Vec<&String> = standing
+        .iter()
+        .filter(|id| decision_kind(id).is_some_and(|kind| sink.routes_kind(kind)))
+        .collect();
+    if routed.is_empty() {
+        return true;
+    }
+    let Some(mark) = sink.delivered_at else {
+        return false;
+    };
+    routed
+        .iter()
+        .all(|id| decision_since(id).is_some_and(|since| since <= mark))
+}
+
+/// A decision id is `<object>/<kind>/<entered_at>` (`rail::decision_id`).
+fn decision_parts(id: &str) -> Option<(&str, &str)> {
+    let (rest, since) = id.rsplit_once('/')?;
+    let (_object, kind) = rest.rsplit_once('/')?;
+    Some((kind, since))
+}
+
+fn decision_kind(id: &str) -> Option<&str> {
+    decision_parts(id).map(|(kind, _)| kind)
+}
+
+fn decision_since(id: &str) -> Option<DateTime<Utc>> {
+    let (_kind, since) = decision_parts(id)?;
+    DateTime::parse_from_rfc3339(since)
+        .ok()
+        .map(|t| t.with_timezone(&Utc))
 }
 
 /// The host a host object's id names.

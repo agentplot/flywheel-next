@@ -13,7 +13,7 @@ use axum::{
     routing::{get, post},
     Json, Router,
 };
-use flywheel_atoms::StateStore;
+use flywheel_atoms::{StateStore, World};
 use flywheel_engine::Definitions;
 use serde::Deserialize;
 use serde_json::{json, Value};
@@ -27,6 +27,10 @@ use tokio::sync::Mutex;
 /// (153, 236a, 253a).
 pub struct Served<S: StateStore + Send + 'static> {
     pub store: Arc<Mutex<S>>,
+    /// The world the capture box writes its material into: the blueprints, under
+    /// the machinery's prefix (111, 203). Held beside the store because a
+    /// capture is one write to each.
+    pub world: Arc<Mutex<Box<dyn World + Send>>>,
     pub defs: Arc<Definitions>,
     /// The instance's operators list (236a). While it holds a single entry a
     /// self-managed host on the operator's private network may serve the page
@@ -45,6 +49,7 @@ impl<S: StateStore + Send + 'static> Clone for Served<S> {
     fn clone(&self) -> Self {
         Served {
             store: self.store.clone(),
+            world: self.world.clone(),
             defs: self.defs.clone(),
             operators: self.operators.clone(),
             address: self.address.clone(),
@@ -54,22 +59,17 @@ impl<S: StateStore + Send + 'static> Clone for Served<S> {
 }
 
 impl<S: StateStore + Send + 'static> Served<S> {
-    pub fn new(store: S, defs: Definitions, operator: &str) -> Served<S> {
-        Served::at(store, defs, operator, "http://host.example/instance")
-    }
-
-    pub fn at(store: S, defs: Definitions, operator: &str, address: &str) -> Served<S> {
-        Served::for_operators(store, defs, &[operator.to_string()], address)
-    }
-
-    pub fn for_operators(
+    /// The page, with the world its capture box writes into (111, 203).
+    pub fn over(
         store: S,
+        world: Box<dyn World + Send>,
         defs: Definitions,
         operators: &[String],
         address: &str,
     ) -> Served<S> {
         Served {
             store: Arc::new(Mutex::new(store)),
+            world: Arc::new(Mutex::new(world)),
             defs: Arc::new(defs),
             operators: operators.to_vec(),
             address: address.to_string(),
@@ -198,7 +198,8 @@ async fn invoke<S: StateStore + Send + 'static>(
     call.args = input.args;
     call.delivery_id = input.delivery_id;
     let mut store = served.store.lock().await;
-    match catalogue::call(&mut *store, &served.defs, &call) {
+    let mut world = served.world.lock().await;
+    match catalogue::call(&mut *store, &mut **world, &served.defs, &call) {
         Ok(outcome) => (
             StatusCode::OK,
             Json(json!({"id": outcome.id, "recorded": catalogue::recorded(&outcome)})),
