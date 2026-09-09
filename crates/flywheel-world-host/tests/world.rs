@@ -3,7 +3,7 @@
 
 use flywheel_atoms::World;
 use flywheel_world_host::bootstrap::{self, Bootstrap};
-use flywheel_world_host::manifest::{Host, Manifest};
+use flywheel_world_host::manifest::Manifest;
 use flywheel_world_host::{join, HostWorld};
 use std::path::PathBuf;
 
@@ -342,4 +342,71 @@ fn set_version_stamped() {
         "the stamp is unchanged and nothing is upgraded"
     );
     assert_eq!(again.blueprints.template_version.as_deref(), Some(stamped));
+}
+
+/// A host's address is the private-network name its router gives it, with the
+/// instance in the path — the manifest names a router per host, and the
+/// instance's own stands for a host that names none (191, 205a, 308, D10a).
+#[test]
+fn address_is_the_routers_name() {
+    let text = r#"
+instance: willdan
+router: {base: "http://studio.tailnet.ts.net"}
+blueprints: {remote: "git@example:willdan/blueprints.git"}
+state: {remote: "git@example:willdan/state.git"}
+hosts:
+  studio:
+    root: /tmp/flywheel
+  mac-mini:
+    root: /tmp/flywheel
+    router: {base: "http://mac-mini.tailnet.ts.net/"}
+    localhost_port: 5150
+"#;
+    let manifest = Manifest::parse(text).expect("the manifest parses");
+    let world = HostWorld::open(manifest, "studio").expect("the world opens");
+
+    // The host that names its own router is reached at that name.
+    assert_eq!(
+        world.address_of("mac-mini").expect("an address"),
+        "http://mac-mini.tailnet.ts.net/willdan"
+    );
+    // The host that names none is reached at the instance's.
+    assert_eq!(
+        world.address_of("studio").expect("an address"),
+        "http://studio.tailnet.ts.net/willdan"
+    );
+    // And `route` gives an object's endpoint at the acting host's address.
+    assert_eq!(
+        world.route("unit/atlas/u").expect("an endpoint").url,
+        "http://studio.tailnet.ts.net/willdan/unit/atlas/u"
+    );
+
+    // The localhost port is what the operator at the machine uses, kept beside
+    // the address and never part of it (245).
+    assert_eq!(world.localhost_port_of("mac-mini"), 5150);
+    assert_eq!(world.localhost_port_of("studio"), 4242);
+    assert!(!world.address_of("studio").unwrap().contains("localhost"));
+}
+
+/// A router base that is the machine's own address is refused: a link written
+/// at it opens nothing on a phone, which is what 306 asks of every decision
+/// (205a, 308, D10a).
+#[test]
+fn a_localhost_router_is_refused() {
+    let text = r#"
+instance: willdan
+router: {base: "http://localhost:4242"}
+blueprints: {remote: "git@example:willdan/blueprints.git"}
+state: {remote: "git@example:willdan/state.git"}
+hosts:
+  studio: {root: /tmp/flywheel}
+"#;
+    let manifest = Manifest::parse(text).expect("the manifest parses");
+    let world = HostWorld::open(manifest, "studio").expect("the world opens");
+    let refused = world.address_of("studio").expect_err("refused");
+    assert!(
+        format!("{refused}").contains("private-network name"),
+        "{refused}"
+    );
+    assert!(world.route("unit/atlas/u").is_err());
 }

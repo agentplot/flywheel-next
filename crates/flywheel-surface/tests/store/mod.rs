@@ -1,6 +1,7 @@
 //! A state store for the tests: the git-only profile over a local bare
 //! repository, so the catalogue is exercised against a store the phase admits
 //! and never against a map of its own.
+#![allow(dead_code)]
 
 use chrono::{TimeZone, Utc};
 use flywheel_store_git::{store::sandbox, GitStore};

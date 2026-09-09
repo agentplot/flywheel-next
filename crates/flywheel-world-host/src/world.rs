@@ -8,6 +8,12 @@ use flywheel_atoms::{Endpoint, RepositoryRef, World};
 use serde_json::Value;
 use std::path::PathBuf;
 
+/// Whether an address is the machine's own rather than a name on the
+/// operator's private network (205a, D10a).
+pub fn is_localhost(base: &str) -> bool {
+    base.contains("localhost") || base.contains("127.0.0.1") || base.contains("[::1]")
+}
+
 /// One host, serving one instance.
 pub struct HostWorld {
     pub manifest: Manifest,
@@ -36,6 +42,41 @@ impl HostWorld {
     /// made later; this is the machinery's own (205, 93a).
     pub fn checkout(&self, name: &str) -> PathBuf {
         self.root.join(name)
+    }
+
+    /// The router in force for a host: its own where the manifest gives it one,
+    /// the instance's otherwise (191, 205a).
+    pub fn router_of(&self, host: &str) -> &crate::manifest::Router {
+        self.manifest
+            .hosts
+            .get(host)
+            .and_then(|h| h.router.as_ref())
+            .unwrap_or(&self.manifest.router)
+    }
+
+    /// A host's one address: the private-network name its router gives it, with
+    /// the instance in the path (205a, D10a). Never a localhost port — that is
+    /// what `localhost_port_of` serves the operator at the machine, and no link
+    /// ever names it (245, 308).
+    pub fn address_of(&self, host: &str) -> Result<String> {
+        let base = self.router_of(host).base.trim_end_matches('/');
+        if is_localhost(base) {
+            bail!(
+                "host `{host}`'s router base `{base}` is a localhost address; a host's address \
+                 is its private-network name, so a link opens on a phone (191, 205a, D10a)"
+            );
+        }
+        Ok(format!("{base}/{}", self.manifest.instance))
+    }
+
+    /// The port the page is also served on for the operator at this machine
+    /// (245).
+    pub fn localhost_port_of(&self, host: &str) -> u16 {
+        self.manifest
+            .hosts
+            .get(host)
+            .map(|h| h.localhost_port)
+            .unwrap_or(4242)
     }
 
     fn repository(&self, name: &str) -> Result<&crate::manifest::Repository> {
@@ -90,16 +131,9 @@ impl World for HostWorld {
     /// A host has one address — its private-network name — with the instance in
     /// the path, and a link never names a localhost port (205a, D10a).
     fn route(&self, name: &str) -> Result<Endpoint> {
-        let base = self.manifest.router.base.trim_end_matches('/');
-        if base.contains("localhost") || base.contains("127.0.0.1") {
-            bail!(
-                "the router base `{base}` is a localhost address; a host's address is its \
-                 private-network name, so a link opens on a phone (205a, D10a)"
-            );
-        }
         Ok(Endpoint {
             name: name.to_string(),
-            url: format!("{base}/{}/{name}", self.manifest.instance),
+            url: format!("{}/{name}", self.address_of(&self.host)?),
         })
     }
 

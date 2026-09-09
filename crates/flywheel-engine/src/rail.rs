@@ -18,6 +18,10 @@ pub fn derive(defs: &Definitions, objects: &BTreeMap<String, Object>, register: 
     objs.sort_by_key(|o| o.created);
     for obj in objs {
         for (region, state) in &obj.config {
+            // A decision stands on a state the object is in. One it has left
+            // stays readable, but there is nothing to decide about it any more
+            // (model.md §1, 9).
+            if !crate::tick::is_live(obj, region) { continue; }
             let Some((_reg, st)) = state_def(defs, obj, region) else { continue };
             let Some(d) = &st.decision else { continue };
             let id = decision_id(obj, region, &d.kind);

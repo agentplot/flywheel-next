@@ -56,7 +56,7 @@ pub fn eval(g: &Guard, cx: &Ctx) -> Hold {
         Guard::Final { final_state } => {
             // `final: X` (or `final: <region>.X`): the state's direct submachine regions, or an inline
             // nested region whose state runs a submachine, is in state X. Deeper nesting is not seen.
-            let prefix = format!("{}.{}.", cx.region, cx.state_name);
+            let prefix = format!("{}.", cx.region);
             let (want_region, want_state) = match final_state.split_once('.') { Some((r, s)) => (Some(r), s), None => (None, final_state.as_str()) };
             let hit = cx.object.config.iter().any(|(path, st)| {
                 // `final: <region>.X` may also name a sibling region of the object.
@@ -65,14 +65,25 @@ pub fn eval(g: &Guard, cx: &Ctx) -> Hold {
                 }
                 let Some(rest) = path.strip_prefix(&prefix) else { return false };
                 let parts: Vec<&str> = rest.split('.').collect();
-                let visible = match parts.len() {
+                if parts.len() < 2 { return false; }
+                // The instance belongs to a state of this region: the one it is
+                // in now, or one it ran and left, which stays readable at its
+                // dotted path for a later state to guard on (model.md §1).
+                let (owner, under) = (parts[0], &parts[1..]);
+                // A state that instantiates something of its own is read for
+                // that and nothing else. A state that instantiates nothing —
+                // one that only commands what an earlier state ran — reads the
+                // instance still standing at its dotted path (model.md §1).
+                let runs_its_own = cx.state.machine.is_some() || !cx.state.regions.is_empty();
+                if runs_its_own && owner != cx.state_name { return false; }
+                let visible = match under.len() {
                     1 => true,
-                    3 => cx.state.regions.contains_key(parts[0]),
+                    3 => owner == cx.state_name && cx.state.regions.contains_key(under[0]),
                     _ => false,
                 };
                 if !visible { return false; }
-                let region_name = parts.last().copied().unwrap_or("");
-                want_region.map(|r| r == region_name || r == parts[0]).unwrap_or(true) && st == want_state
+                let region_name = under.last().copied().unwrap_or("");
+                want_region.map(|r| r == region_name || r == under[0]).unwrap_or(true) && st == want_state
             });
             if hit { Hold::yes() } else { Hold::no() }
         }

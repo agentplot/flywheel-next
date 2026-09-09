@@ -63,7 +63,7 @@ DECISIONS · 2026-09-04 14:41 · tick 1 · 12 decisions
         landed   bolt/switchboard/idle-timeout            13:52
 
 $ flywheel respond 412 yes
-31 transitions
+34 transitions
 DECISIONS · 2026-09-04 14:58 · tick 18 · 11 decisions
   APPROVE
      413  elaboration-proposed   elaboration/atlas-provider-limits/research → yes · drop · type <name> · pick <intents> · <intent>: drop

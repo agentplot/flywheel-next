@@ -28,8 +28,6 @@ anyhow.workspace = true
 chrono.workspace = true
 clap.workspace = true
 tokio.workspace = true
-axum.workspace = true
-serde.workspace = true
 
 [dev-dependencies]
 flywheel-sessions-operator = { path = "../flywheel-sessions-operator" }

@@ -105,7 +105,13 @@ fn dropping_a_unit_retires_its_items_and_ends_their_sessions() {
         let o = &rt.store.objects[id];
         assert_eq!(o.top_state(), Some("dropped"), "{id}");
         assert_eq!(o.config.get("place.place.life").map(String::as_str), Some("removed"), "{id}'s place is released");
-        assert!(!o.config.keys().any(|k| k.starts_with("life.in-type")), "{id} left its stages");
+        // Leaving `in-type` neither ends nor clears the stages it ran: they
+        // stay readable at their dotted paths, holding what they reached when
+        // the item was dropped (model.md §1).
+        assert!(
+            o.config.keys().any(|k| k.starts_with("life.in-type")),
+            "{id}'s stages are no longer readable"
+        );
     }
     for s in sessions {
         assert!(!rt.store.world.sessions[s].pane, "{s} was ended");

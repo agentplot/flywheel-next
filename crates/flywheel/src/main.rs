@@ -90,8 +90,17 @@ enum Cmd {
     Rail,
     /// Print the last N log lines.
     Log { #[arg(default_value = "30")] n: usize },
-    /// Serve the page.
-    Serve { #[arg(long, default_value = "4242")] port: u16 },
+    /// Serve the page: one bundle, the rail, the capture box and the status
+    /// view, at the host's private-network address (307, D11).
+    Serve {
+        #[arg(long, default_value = "4242")] port: u16,
+        /// The host's address, with the instance in the path — the
+        /// private-network name its router gives it (205a, D10a).
+        #[arg(long, default_value = "http://localhost/flywheel")] address: String,
+        /// The instance's operators list; while it holds one entry the page is
+        /// served with no sign-in (236a, 253a).
+        #[arg(long = "operator", default_value = "operator")] operators: Vec<String>,
+    },
     /// The conformance suite: load the definitions, seed the stores, play the
     /// steps against the real engine and assert the `then` clauses (94).
     Scenario {
@@ -550,9 +559,15 @@ async fn main() -> Result<()> {
             print!("{}", report.render());
             std::process::exit(report.exit_code());
         }
-        Cmd::Serve { port } => {
+        Cmd::Serve { port, address, operators } => {
             let rt = open(&cli)?;
-            flywheel::proto_page::serve(rt, cli.state.clone(), *port).await?;
+            let served = flywheel_surface::http::Served::for_operators(
+                rt.store, rt.defs, operators, address,
+            );
+            // The two addresses of 46 and 245: the host's own, and the port the
+            // operator at the machine uses. Nothing else is bound.
+            println!("page at {address}, and on localhost:{port} for this machine");
+            flywheel_surface::http::serve(served, &format!("127.0.0.1:{port}")).await?;
         }
     }
     Ok(())

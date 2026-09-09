@@ -342,6 +342,7 @@ fn a_binding_this_release_lacks_is_refused() {
             workspace: "host".into(),
             sessions: "operator".into(),
             covers: vec![],
+            ..Default::default()
         },
     );
     let refused = Bindings::read(&manifest, "local").unwrap_err().to_string();

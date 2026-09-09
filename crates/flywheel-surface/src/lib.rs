@@ -13,5 +13,7 @@
 
 pub mod catalogue;
 pub mod http;
+pub mod links;
+pub mod page;
 
 pub use catalogue::{catalogue, enumerate, tool, Tool, CATALOGUE};

@@ -43,6 +43,20 @@ pub struct Host {
     /// What this host takes leases within (149).
     #[serde(default)]
     pub covers: Vec<String>,
+    /// This host's router: the manifest names one per host, and the host's one
+    /// address is the private-network name it gives (191, 205a, D10a). Where a
+    /// host names none the instance's own stands for it.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub router: Option<Router>,
+    /// The port the page is also served on for the operator sitting at this
+    /// machine. What 245 permits rather than requires; a link never names it
+    /// (205a, 308, D10a).
+    #[serde(default = "localhost_port")]
+    pub localhost_port: u16,
+}
+
+fn localhost_port() -> u16 {
+    4242
 }
 
 fn host_workspace() -> String {

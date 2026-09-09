@@ -481,7 +481,16 @@ impl Store {
                 let rid = object.strip_prefix("response/").unwrap_or(object);
                 json!(self.responses.iter().find(|r| r.id == rid).map(|r| r.answer.clone()))
             }
-            _ => return None,
+            // Most of what a profile reads is a field of the object's own
+            // record (`record-derived.yaml`): `curation.threshold` is the
+            // threshold the record carries, and a scenario that seeds one has
+            // said what it is. Last, so nothing above it is shadowed.
+            _ => match name.rsplit_once('.').and_then(|(_, field)| {
+                obj.and_then(|o| o.record.get(field)).cloned()
+            }) {
+                Some(held) => held,
+                None => return None,
+            },
         };
         Some(v)
     }

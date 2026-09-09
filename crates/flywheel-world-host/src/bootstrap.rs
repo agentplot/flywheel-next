@@ -171,6 +171,10 @@ impl Bootstrap {
                 workspace: "recorded".into(),
                 sessions: "operator".into(),
                 covers: vec![],
+                // The instance's router until the operator names this host's
+                // own, and the port 245 permits at the machine (191, 205a).
+                router: None,
+                localhost_port: 4242,
             }
         });
     }

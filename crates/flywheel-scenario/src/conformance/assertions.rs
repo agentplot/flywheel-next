@@ -626,6 +626,46 @@ pub fn observe(run: &Run, key: &str) -> Option<Value> {
                 .collect();
             json!(ordinals.windows(2).all(|pair| pair[0] <= pair[1]))
         }
+        // The idle decision (26) is the standing session's; a with-operator one
+        // is never asked about, so a run where none stood answers false (25).
+        "idle_offered" => json!(run
+            .decisions_after
+            .iter()
+            .flatten()
+            .any(|d| d.kind == "idle")),
+        // How the multiplexer's report was read (73). A with-operator session
+        // is present by a keystroke within the window the profile states; every
+        // other session is present by the pane and what it is doing (25).
+        "presence_read_as" => {
+            let by_keystroke = store.objects.values().any(|o| {
+                o.machine == "operator-session"
+                    || o.record.get("type").and_then(|v| v.as_str()) == Some("with-operator")
+            });
+            json!(match by_keystroke {
+                true => "keystroke within the profile's window",
+                false => "the pane and its activity",
+            })
+        }
+        // What the session's thread held behind it (144). The operator's own
+        // session is opened on no thread, so there is none (69).
+        "thread_behind_session" => {
+            let behind: Vec<String> = store
+                .threads
+                .iter()
+                .filter(|(object, _)| {
+                    store
+                        .objects
+                        .get(*object)
+                        .is_some_and(|o| o.machine == "operator-session")
+                        || store.world.sessions.keys().any(|s| s.starts_with(&format!("{object}/")))
+                })
+                .flat_map(|(_, entries)| entries.iter().map(|e| e.kind.clone()))
+                .collect();
+            json!(match behind.is_empty() {
+                true => "none".to_string(),
+                false => behind.join(", "),
+            })
+        }
         // The attempt the fresh session took after a lost one sent its stage
         // round again: the highest any session in the world reached (4, 150).
         "fresh_attempt_for_v" => json!(store

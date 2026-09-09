@@ -41,14 +41,16 @@ pub fn state_def<'a>(defs: &'a Definitions, obj: &Object, region: &str) -> Optio
     let mut parts = region.split('.');
     let top = parts.next()?;
     let mut reg: &Region = machine.regions.get(top)?;
-    let mut state_name = obj.config.get(top)?.as_str();
-    let mut st: &State = reg.states.get(state_name)?;
+    let mut st: &State = reg.states.get(obj.config.get(top)?.as_str())?;
     let mut path = top.to_string();
-    // Alternating: state, region, state, region...
+    // Alternating: state, region, state, region... The state each step names is
+    // the path's own, which is the one its region is in now or one it ran and
+    // left: an instance a state left stays readable at its dotted path
+    // (model.md §1), so the path is walked as it is written.
     let mut rest: Vec<&str> = parts.collect();
     while !rest.is_empty() {
         let s = rest.remove(0);
-        if s != state_name { return None; }
+        st = reg.states.get(s)?;
         let r = rest.first()?.to_string();
         rest.remove(0);
         path = format!("{path}.{s}.{r}");
@@ -59,8 +61,7 @@ pub fn state_def<'a>(defs: &'a Definitions, obj: &Object, region: &str) -> Optio
             sub.regions.get(&r)?
         };
         reg = next_reg;
-        state_name = obj.config.get(&path)?.as_str();
-        st = reg.states.get(state_name)?;
+        st = reg.states.get(obj.config.get(&path)?.as_str())?;
     }
     Some((reg, st))
 }
@@ -83,6 +84,25 @@ fn resolve_ref(name: &str, obj: &Object) -> String {
         return field.to_string();
     }
     base.to_string()
+}
+
+
+/// Whether a region is one the object is in: every state its path names is the
+/// state the region above it holds. A path under a state the parent has left
+/// stays readable and open to a later state's `enter:`, but the object is not
+/// in it (model.md §1).
+pub fn is_live(obj: &Object, region: &str) -> bool {
+    let segments: Vec<&str> = region.split('.').collect();
+    let mut at = 1;
+    while at < segments.len() {
+        let above = segments[..at].join(".");
+        match obj.config.get(&above) {
+            Some(held) if held == segments[at] => {}
+            _ => return false,
+        }
+        at += 2;
+    }
+    true
 }
 
 /// Active region paths of an object, innermost first.
@@ -198,15 +218,18 @@ pub fn apply(defs: &Definitions, obj: &mut Object, f: &Fired, now: DateTime<Utc>
             }
         }
     }
-    // The state is entered afresh, and what ran under the state left goes with
-    // it. That holds for a self-transition too: one is written only when there
-    // is something to do (`plan_tick`), and a state that runs a submachine is
-    // then going round again, with whatever the bump counted. What stops the
-    // second time round doing the work a second time is each effect's own
-    // proof: one already proven is not planned again.
-    let prefix = format!("{}.{}.", f.region, f.from);
-    let gone: Vec<String> = obj.config.keys().filter(|k| k.starts_with(&prefix)).cloned().collect();
-    for k in gone { obj.config.remove(&k); obj.entered_at.remove(&k); }
+    // A state is instantiated when it is entered. Entering it again — by a
+    // self-transition, or by returning to it from somewhere else — retires the
+    // instance that was there under its attempt, where its last state stays
+    // readable, and puts a fresh one in the live slot. What stops the fresh
+    // instance doing the work a second time is each effect's own proof: one
+    // already proven is not planned again.
+    //
+    // Leaving a state neither ends nor clears what it instantiated. That stays
+    // at its dotted path, readable from any later state of the parent and open
+    // to a later state's `enter:`, so one state may command what an earlier one
+    // ran and a guard may then read what became of it (model.md §1).
+    set_aside_prior(obj, &f.region, &f.to);
     obj.config.insert(f.region.clone(), f.to.clone());
     if f.to != f.from { obj.entered_at.insert(f.region.clone(), now); }
     // A name the machine declares in its `record:` is a record field, and the
@@ -256,6 +279,39 @@ fn init_nested(defs: &Definitions, obj: &mut Object, path: &str, st: &State, now
         }
     }
 }
+
+
+/// The instance under a state about to be entered, set aside in the record so
+/// its last state stays readable, and cleared out of the live slot for the
+/// fresh one (model.md §1).
+///
+/// The attempt is which time round this is: the first instance is set aside
+/// under 1, the next under 2. Nothing is set aside the first time a state is
+/// entered, because there is no instance there yet.
+fn set_aside_prior(obj: &mut Object, region: &str, to: &str) {
+    let prefix = format!("{region}.{to}.");
+    let held: Vec<String> = obj.config.keys().filter(|k| k.starts_with(&prefix)).cloned().collect();
+    if held.is_empty() { return; }
+    let mut prior = match obj.record.get(PRIOR) {
+        Some(Value::Object(map)) => map.clone(),
+        _ => serde_json::Map::new(),
+    };
+    let path = format!("{region}.{to}");
+    let attempt = 1 + prior.keys().filter(|k| k.starts_with(&format!("{path}#"))).count();
+    let mut instance = serde_json::Map::new();
+    for key in &held {
+        if let Some(state) = obj.config.get(key) {
+            instance.insert(key[prefix.len()..].to_string(), Value::from(state.clone()));
+        }
+    }
+    prior.insert(format!("{path}#{attempt}"), Value::Object(instance));
+    obj.record.insert(PRIOR.to_string(), Value::Object(prior));
+    for key in held { obj.config.remove(&key); obj.entered_at.remove(&key); }
+}
+
+/// Where an instance set aside has its last state read back, keyed by its path
+/// and the attempt it was.
+pub const PRIOR: &str = "prior";
 
 /// A state commanded by a transition's `enter:` map: the region path to set and the state to put it in.
 #[derive(Debug, Clone)]

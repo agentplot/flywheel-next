@@ -202,14 +202,17 @@ fn evidence_and_dictation_leave_on() {
     assert_eq!(fired.len(), 1);
     assert_eq!((fired[0].region.as_str(), fired[0].to.as_str()), ("power.on.level", "bright"));
 
-    // A dictation naming the object turns it off; the nested region goes with the state.
+    // A dictation naming the object turns it off; what the state ran stays.
     responses.push(dictation("r2", "lamp/1", "off", t0()));
     let fired = tick(&d, &mut objects, &responses, &register, &facts, t0() + Duration::minutes(2));
     assert_eq!(fired.len(), 1, "{fired:?}");
     assert_eq!(fired[0].to, "off");
     let o = &objects["lamp/1"];
     assert_eq!(o.config.get("power").map(String::as_str), Some("off"));
-    assert!(!o.config.contains_key("power.on.level"));
+    // Leaving `on` neither ends nor clears what it instantiated: the level
+    // stays readable at its dotted path, holding the state it reached, for a
+    // later state to guard on or command (model.md §1).
+    assert_eq!(o.config.get("power.on.level").map(String::as_str), Some("bright"));
     assert_eq!(o.applied_responses, vec!["r1".to_string(), "r2".to_string()]);
 
     // Back on, then a fault turns it off with no response at all.
@@ -217,6 +220,11 @@ fn evidence_and_dictation_leave_on() {
     responses.push(answer("r3", number2, "on", t0()));
     tick(&d, &mut objects, &responses, &register, &facts, t0() + Duration::minutes(3));
     assert_eq!(objects["lamp/1"].config.get("power").map(String::as_str), Some("on"));
+    // Entering `on` again instantiates it afresh, and the instance that was
+    // there is set aside in the record under its attempt, its last state
+    // readable there (model.md §1).
+    assert_eq!(objects["lamp/1"].config.get("power.on.level").map(String::as_str), Some("dim"));
+    assert_eq!(objects["lamp/1"].record["prior"]["power.on#1"]["level"], json!("bright"));
     facts.set("lamp/1", "lamp.faulty", json!(true));
     let fired = tick(&d, &mut objects, &responses, &register, &facts, t0() + Duration::minutes(4));
     // Re-entering `on` restarted the level at dim; with lamp.level still 7 it goes bright in the
