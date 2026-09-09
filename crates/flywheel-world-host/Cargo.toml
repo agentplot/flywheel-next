@@ -1,27 +1,15 @@
 [package]
-name = "flywheel"
+name = "flywheel-world-host"
 version.workspace = true
 edition.workspace = true
 license.workspace = true
-
-[lib]
-name = "flywheel"
-path = "src/lib.rs"
-
-[[bin]]
-name = "flywheel"
-path = "src/main.rs"
 
 [dependencies]
 flywheel-engine = { path = "../flywheel-engine" }
 flywheel-atoms = { path = "../flywheel-atoms" }
 flywheel-domain = { path = "../flywheel-domain" }
-flywheel-world-host = { path = "../flywheel-world-host" }
-flywheel-scenario = { path = "../flywheel-scenario" }
-flywheel-surface = { path = "../flywheel-surface" }
+serde.workspace = true
 serde_json.workspace = true
 serde_yaml.workspace = true
 anyhow.workspace = true
 chrono.workspace = true
-clap.workspace = true
-tokio.workspace = true

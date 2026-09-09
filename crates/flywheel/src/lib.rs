@@ -1,6 +1,7 @@
 //! flywheel: the binary. What its commands do lives here so a test can call
 //! the same functions the command line does.
 
+pub mod init;
 pub mod report;
 
 /// The commands, written against the trait surface. They live in

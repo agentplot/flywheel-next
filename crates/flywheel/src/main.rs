@@ -1,6 +1,7 @@
 use anyhow::{Context, Result};
 use clap::{Parser, Subcommand};
 use flywheel::console;
+use flywheel::init;
 use flywheel::report::{self, Report, Reported, SESSION_ENV};
 use flywheel_scenario::{conformance, scenario, Runtime, Store};
 use std::path::PathBuf;
@@ -35,6 +36,34 @@ enum Cmd {
         /// binary (223, D2).
         #[arg(long, global = true)]
         definitions: Option<PathBuf>,
+    },
+    /// Bring an instance and its first host into existence: the blueprints, the
+    /// state repository, the App's installation recorded, the first host
+    /// registered. Every step proves itself, so running it again changes
+    /// nothing and a half-finished bootstrap is finished here (204).
+    Init {
+        /// The operator's name for the instance; it need not be a git-host
+        /// organization (219).
+        #[arg(long)]
+        instance: String,
+        /// The first host's name.
+        #[arg(long, default_value = "local")]
+        host: String,
+        /// Where this host keeps its clones (205).
+        #[arg(long)]
+        root: PathBuf,
+        /// The git host: where the instance's repositories live.
+        #[arg(long)]
+        git_host: PathBuf,
+        /// The App's id. Its key is the operator's to place (207a).
+        #[arg(long, default_value = "0")]
+        app: String,
+        /// The environment variable the operator put the App's key in.
+        #[arg(long, default_value = "FLYWHEEL_APP_KEY")]
+        app_key_from: String,
+        /// Where the manifest is written.
+        #[arg(long, default_value = "flywheel.yaml")]
+        manifest: PathBuf,
     },
     /// Load the machine definitions and report what was read.
     Defs,
@@ -135,6 +164,20 @@ enum HostCmd {
         /// A blueprints checkout to read the instance's own types from (57, 85).
         #[arg(long)]
         blueprints: Option<PathBuf>,
+        /// The manifest, to check this host's layout against (205, 222).
+        #[arg(long)]
+        manifest: Option<PathBuf>,
+        /// The host whose layout is checked.
+        #[arg(long, default_value = "local")]
+        name: String,
+    },
+    /// Clone what the manifest names under this host's root, and check the
+    /// layout (205, 222).
+    Join {
+        #[arg(long, default_value = "flywheel.yaml")]
+        manifest: PathBuf,
+        #[arg(long, default_value = "local")]
+        name: String,
     },
 }
 
@@ -258,6 +301,29 @@ async fn main() -> Result<()> {
             }
             println!("evidence atoms: {}  effects: {}", defs.atoms.evidence.len(), defs.atoms.effects.len());
         }
+        Cmd::Init {
+            instance,
+            host,
+            root,
+            git_host,
+            app,
+            app_key_from,
+            manifest,
+        } => {
+            let report = init::run(init::Init {
+                instance: instance.clone(),
+                host: host.clone(),
+                root: root.clone(),
+                git_host: git_host.clone(),
+                app: app.clone(),
+                app_key_from: app_key_from.clone(),
+                manifest: manifest.clone(),
+                state: cli.state.clone(),
+            })?;
+            for line in &report.lines {
+                println!("{line}");
+            }
+        }
         Cmd::Version { definitions } => {
             println!("flywheel {}", env!("CARGO_PKG_VERSION"));
             println!(
@@ -284,13 +350,50 @@ async fn main() -> Result<()> {
                 );
             }
             match cmd {
-                HostCmd::Doctor { blueprints } => {
+                HostCmd::Join { manifest, name } => {
+                    let read = flywheel_world_host::Manifest::read(manifest)?;
+                    let mut world = flywheel_world_host::HostWorld::open(read, name)?;
+                    let joined = flywheel_world_host::join::join(&mut world)?;
+                    for cloned in &joined.cloned {
+                        println!("cloned {cloned}");
+                    }
+                    if joined.cloned.is_empty() {
+                        println!("nothing to clone: the layout is already what the manifest says");
+                    }
+                    // A host refuses to start on a hand-made layout, and says
+                    // what differs (205, 222). The doctor runs at join and at
+                    // every tick.
+                    let differences = flywheel_world_host::join::doctor(&world);
+                    for difference in &differences {
+                        println!("differs: {difference}");
+                    }
+                    if !differences.is_empty() {
+                        anyhow::bail!("this host will not start on a layout it did not make (205, 222)");
+                    }
+                }
+                HostCmd::Doctor { blueprints, manifest, name } => {
                     println!(
                         "definition set {} · digest {:016x} · {} core machines",
                         flywheel_domain::set::SET_VERSION,
                         flywheel_domain::set::digest(),
                         flywheel_domain::set::versions()?.len()
                     );
+                    if let Some(path) = manifest {
+                        let read = flywheel_world_host::Manifest::read(path)?;
+                        let world = flywheel_world_host::HostWorld::open(read, name)?;
+                        let differences = flywheel_world_host::join::doctor(&world);
+                        match differences.is_empty() {
+                            true => println!("layout: as the manifest says"),
+                            false => {
+                                for difference in &differences {
+                                    println!("differs: {difference}");
+                                }
+                                anyhow::bail!(
+                                    "this host will not start on a layout it did not make (205, 222)"
+                                );
+                            }
+                        }
+                    }
                     if let Some(dir) = blueprints {
                         let loaded = flywheel_domain::blueprints::load_over_core(dir)?;
                         let core = flywheel_domain::set::load()?;

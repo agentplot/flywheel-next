@@ -42,7 +42,7 @@ or a command.
 - [x] 3.3 Implement `write_effect`: one commit per effect carrying its identity, reason and evidence, with repeat detection over the fetched history before committing, so the write is the no-op and the act still runs when its proof is absent; verify `flywheel scenario run --profile git-only conformance/contract/write-effect.yaml` (73, 127)
 - [x] 3.4 Write a state transition as one commit carrying the new state, `entered_at`, the counters and the consumed response's id in `applied_responses`; verify `flywheel scenario run --profile git-only conformance/contract/atomic.yaml conformance/contract/response-once.yaml` and that a response delivered twice across a restart is applied once (137, I2, D4)
 - [x] 3.5 Implement the push with expected-old and the rebase-retry, reporting and re-reading after three rejections; verify `flywheel scenario run --profile git-only conformance/contract/single-writer.yaml` (134, 162)
-- [ ] 3.6 Treat a rebase that conflicts on content as a loss — discard the local commit, re-read, take the operator's commit as the response; verify `flywheel scenario run --profile git-only conformance/scenarios/S19.yaml` (3, 164, I15)
+- [x] 3.6 Treat a rebase that conflicts on content as a loss — discard the local commit, re-read, take the operator's commit as the response; verify `flywheel scenario run --profile git-only conformance/scenarios/S19.yaml` (3, 164, I15)
 - [x] 3.7 Implement `lease` as pushes to a branch per object with expected-old, with the 5-minute stale window and the 24-hour expiry; verify `flywheel scenario run --profile git-only conformance/contract/lease.yaml` (128, 163)
 - [x] 3.8 Implement the heartbeat branch per host; verify `cargo test -p flywheel-store-git renewals_add_no_commit_to_main` simulating a month of renewals and asserting `git log main` is unchanged (163, 167)
 - [x] 3.9 Implement `notify` as the 30-second bounded poll of the shared line's head, with the branch-move call as an opt-in the manifest names; verify `flywheel scenario run --profile git-only conformance/contract/notify.yaml` (130, 166)
@@ -65,20 +65,20 @@ or a command.
 
 ## 5. The world, bootstrap and host join
 
-- [ ] 5.1 Add `flywheel-world-host` implementing `World` over git, the manifest and the host's router, with `profiles/host.yaml` as its specification; verify `cargo test -p flywheel-world-host` covers a repository read, a manifest read and a router lookup (D1, D8)
-- [ ] 5.2 Implement create-or-adopt of the blueprints repository from its template, with its proof; verify `cargo test -p flywheel-world-host adopt_is_idempotent` against a sandbox git host (204)
-- [ ] 5.3 Implement creation of the state repository with the profile's layout, with its proof; verify `cargo test -p flywheel-world-host create_state_repository` (204, C.2)
-- [ ] 5.4 Record that the App must be installed and raise the attention decision while it is unseen; verify `cargo test -p flywheel init_awaits_app_install` asserting the decision stands and no agent acts (204, 207, 82)
-- [ ] 5.5 Register the first host and complete the machine; verify `cargo test -p flywheel init_twice_writes_nothing` and `init_resumes_half_finished` (204)
-- [ ] 5.6 Implement `flywheel host join` in `flywheel-world-host`: bare clones of the state, the blueprints and every tracked repository under the manifest's root, one checkout per shared line, no worktree; verify `cargo test -p flywheel-world-host join_clones_only_what_is_missing` (205, 93a)
-- [ ] 5.7 Implement `flywheel host doctor` and run it at join and every tick; verify `cargo test -p flywheel-world-host doctor_names_first_difference` against a hand-made path (205, 222)
-- [ ] 5.8 Read the App key from where the operator placed it and mint short-lived installation tokens, in `flywheel-world-host`; verify `cargo test -p flywheel-world-host token_written_nowhere_else` asserting no key or token in configuration, code or the state repository (207, 207a)
-- [ ] 5.9 Raise the attention decision for a manifest repository the App's installation does not cover, in `flywheel-world-host`; verify `cargo test -p flywheel-world-host uncovered_repository_decision` (207)
-- [ ] 5.10 Enforce the prefix rule: refuse and report a tracked write outside the machinery's prefix that is not the effect of a response; verify `cargo test -p flywheel prefix_write_refused` (203)
-- [ ] 5.11 Scope the new flywheel to its own state repository and prefix, touching nothing of the existing flywheel's; verify `cargo test -p flywheel coexistence_scope_is_disjoint` asserting no read or write outside them (96, D14, `instance/bootstrap`)
-- [ ] 5.12 Implement the instance's removal by dictation — sessions ended, places removed, state archived with its counter, repositories left on disk; verify `cargo test -p flywheel remove_instance_keeps_counter` asserting no number is reused (221, 15, 4)
-- [ ] 5.13 Hold a repository record to its git details alone; verify `cargo test -p flywheel repository_record_has_git_details_only` refusing a kind, capability or scope (199)
-- [ ] 5.14 Stamp the set version at initialization and at repository creation; verify `cargo test -p flywheel set_version_stamped` and that a newer set upgrades nothing (208)
+- [x] 5.1 Add `flywheel-world-host` implementing `World` over git, the manifest and the host's router, with `profiles/host.yaml` as its specification; verify `cargo test -p flywheel-world-host` covers a repository read, a manifest read and a router lookup (D1, D8)
+- [x] 5.2 Implement create-or-adopt of the blueprints repository from its template, with its proof; verify `cargo test -p flywheel-world-host adopt_is_idempotent` against a sandbox git host (204)
+- [x] 5.3 Implement creation of the state repository with the profile's layout, with its proof; verify `cargo test -p flywheel-world-host create_state_repository` (204, C.2)
+- [x] 5.4 Record that the App must be installed and raise the attention decision while it is unseen; verify `cargo test -p flywheel init_awaits_app_install` asserting the decision stands and no agent acts (204, 207, 82)
+- [x] 5.5 Register the first host and complete the machine; verify `cargo test -p flywheel init_twice_writes_nothing` and `init_resumes_half_finished` (204)
+- [x] 5.6 Implement `flywheel host join` in `flywheel-world-host`: bare clones of the state, the blueprints and every tracked repository under the manifest's root, one checkout per shared line, no worktree; verify `cargo test -p flywheel-world-host join_clones_only_what_is_missing` (205, 93a)
+- [x] 5.7 Implement `flywheel host doctor` and run it at join and every tick; verify `cargo test -p flywheel-world-host doctor_names_first_difference` against a hand-made path (205, 222)
+- [x] 5.8 Read the App key from where the operator placed it and mint short-lived installation tokens, in `flywheel-world-host`; verify `cargo test -p flywheel-world-host token_written_nowhere_else` asserting no key or token in configuration, code or the state repository (207, 207a)
+- [x] 5.9 Raise the attention decision for a manifest repository the App's installation does not cover, in `flywheel-world-host`; verify `cargo test -p flywheel-world-host uncovered_repository_decision` (207)
+- [x] 5.10 Enforce the prefix rule: refuse and report a tracked write outside the machinery's prefix that is not the effect of a response; verify `cargo test -p flywheel prefix_write_refused` (203)
+- [x] 5.11 Scope the new flywheel to its own state repository and prefix, touching nothing of the existing flywheel's; verify `cargo test -p flywheel coexistence_scope_is_disjoint` asserting no read or write outside them (96, D14, `instance/bootstrap`)
+- [x] 5.12 Implement the instance's removal by dictation — sessions ended, places removed, state archived with its counter, repositories left on disk; verify `cargo test -p flywheel remove_instance_keeps_counter` asserting no number is reused (221, 15, 4)
+- [x] 5.13 Hold a repository record to its git details alone; verify `cargo test -p flywheel repository_record_has_git_details_only` refusing a kind, capability or scope (199)
+- [x] 5.14 Stamp the set version at initialization and at repository creation; verify `cargo test -p flywheel set_version_stamped` and that a newer set upgrades nothing (208)
 
 ## 6. The host loop, the workspace and the sessions
 

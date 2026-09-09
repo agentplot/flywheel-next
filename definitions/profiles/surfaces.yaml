@@ -102,8 +102,37 @@ host_agent:
     agent is a session of A.7 charged per message, with no context carried
     from one message to the next (217a, 217b), run inproc (217c).
   chat: "the instance's dispatch agent (tracker.yaml, 216): it reads the message, answers a question from the query tools in a reply, proposes each write as a card with a confirm control, and calls the tool on the operator's confirmation; a bare number reply (`yes 412`) needs no interpreter and is the answer tool at once"
-  page: "a model running in the page's browser (216a; the page ships it as a script under the same private network; no text leaves the operator's network): it answers from the query tools the page calls and proposes each write as a card; a control on the page is a tool call with no interpreter at all, and the capture box sends its text to the capture tool unparsed (19)"
+  page: "a model running in the page's browser (216a; the page ships it as a script under the same private network; no text leaves the operator's network): it answers from the query tools the page calls and proposes each write as a card; a control on the page is a tool call with no interpreter at all, and the palette sends plain text to the capture tool unparsed (19, 193a)"
   none: "a control — a button, a board move, a checklist tick, a plannotator annotation — is already one tool call; nothing is interpreted"
+palette:
+  doc: |
+    The page's one typed input, over the catalogue above filtered by the
+    caller's permissions, which is itself an operator surface a client may
+    render as a list (193a, 293): one field, one grammar, and no command
+    the catalogue lacks. It is the grammar the chat carries and not a
+    second one, and no other field on the page parses a word (19, 194).
+  grammar: "plain text is a capture sent unparsed, with an intent toggle beside the field making the same submission also call `mark-intent` (19, 12); where the flywheel has a model key, plain text may instead be read by the model running in the page's browser, which proposes one call per thing asked, each confirmed on its own (216a, 194, host_agent.page); a leading `/` names a command of the catalogue and resolves to that one tool call with its arguments named by object id (193); a bare number is the reply grammar, `412`, `412 yes`, `412: <text>`, which is the answer tool and needs no interpreter (194)"
+  opened_by: "⌘K, Ctrl+K or `/` from anywhere on the page, and a capture control on both tabs of the phone raising it as a bottom sheet with the platform's own keyboard (112, 311, S30, S38); Esc closes it ahead of everything else"
+  at_rest: "the field with its preview line saying what will be sent, and under it the last things sent, read from the sent log the header carries and never from client state (310)"
+  commands: "the catalogue filtered by the caller's permissions, fuzzy-matched, each row naming the command, what it does in the operator's words and the object it will act on; a tool the caller may not invoke is not offered and a feature a plan hides takes its command with it, named by the plan's own name and never by a rung (293, 249, 250, 280)"
+  accelerator: "the palette carries no operation that no control also carries: the rail's buttons and every dock control are unchanged, and the palette reaches them rather than replacing them (311, 306)"
+  writes: "capture and mark-intent are under `fw.capture.write`, so a caller without it sees the field read-only with its send refused and the command list filtered (249, S30); every send is one call recorded once with who gave it and when (153)"
+viewer:
+  doc: |
+    The instance's book, served beside the page as a standalone read-only
+    server and never a view of the board (315). It renders the blueprints'
+    shared line as mdBook: the chapter tree, one chapter at a time with
+    previous and next, headings with anchors, and each claim rendered
+    where its chapter includes it by anchor from the standing
+    specifications, with its name, version, scenarios, attachments,
+    derived scope and one verdict dot per repository in scope (97, 100,
+    200).
+  in_flight: "what is in flight — an intent's proposed claims, a chapter an elaboration has not landed — is not in it, so the viewer is always the standing destination and the page is where changes to it are answered (315, 98, 187)"
+  links_out: "every dock page's 'read in book' per cited chapter or claim, and the map's scope box, open the viewer at that anchor in a place of its own; the dock stays as it was and no chapter is embedded (315, S94)"
+  links_back: "every chapter and every rendered claim links to the object on the page, at the host's address with the instance in the path — the chapter's intent, the claim's decisions and evidence — and a link to a host that is away says so rather than failing silently (315, 205a, 308, 150a, away)"
+  readers: "the host's: on a self-managed host the private network is the boundary and the sign-in is the device flow of 253 with 253a's exception, nothing reaching beyond that network unless the operator says so (316, 155, 191, 46); on a hosted tier it is served at the tier's name under the caller's token like every other request and reads to members of that instance alone (316, 247, 249, 291)"
+  public_opt_in: "serving a book to readers who are not members is a separate, explicit act: one opt-in per book, stated on the settings form as what it is — 'anyone with the link can read this book' — revocable there, and a stated fact of the tier (316, 261, account.settings)"
+  flag: "`fw.ff.book-view` gates the viewer and the links to it, on by default; with the flag off no dock page carries 'read in book' (250, identity.yaml flags)"
 instances:
   doc: "the page serves one instance at a time and switches with `switch-instance` (218); each instance has its own sinks and presenters, its own register and its own state; nothing on a surface names two"
 phone:

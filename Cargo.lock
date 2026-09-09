@@ -372,6 +372,7 @@ dependencies = [
  "flywheel-engine",
  "flywheel-scenario",
  "flywheel-surface",
+ "flywheel-world-host",
  "serde_json",
  "serde_yaml",
  "tokio",
@@ -456,6 +457,20 @@ dependencies = [
  "serde",
  "serde_json",
  "tokio",
+]
+
+[[package]]
+name = "flywheel-world-host"
+version = "0.1.0"
+dependencies = [
+ "anyhow",
+ "chrono",
+ "flywheel-atoms",
+ "flywheel-domain",
+ "flywheel-engine",
+ "serde",
+ "serde_json",
+ "serde_yaml",
 ]
 
 [[package]]

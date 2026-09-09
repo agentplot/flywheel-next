@@ -5,6 +5,7 @@ members = [
   "crates/flywheel-atoms",
   "crates/flywheel-domain",
   "crates/flywheel-store-git",
+  "crates/flywheel-world-host",
   "crates/flywheel-scenario",
   "crates/flywheel-surface",
   "crates/flywheel",
