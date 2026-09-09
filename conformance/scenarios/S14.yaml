@@ -1,6 +1,7 @@
 scenario: S14
 title: verify sends an item back twice; the third verify passes; the item archives its change and merges; the bolt lands; history shows both send-backs and the bound
 profiles: [all]
+requires: [real-workspace]     # asserts merge_place and land_line on the repository itself
 satisfies: [38, 39, 41]
 given:
   objects:

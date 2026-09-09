@@ -86,7 +86,7 @@ observations:
   reported_failed:              {profiles: [all], doc: "what the run reported as failed (79)"}
   sessions_running_at_end:      {profiles: [all], doc: "sessions still running when the scenario ended"}
   sessions_running_max:         {profiles: [all], doc: "the most sessions running at once; never above the host's bound (149)"}
-  attempts_started_by_host:     {profiles: [all], doc: "host -> how many starts it attempted"}
+  attempts_started_by_host:     {profiles: [all], doc: "host -> the attempt ordinal the host last started (2 after a takeover), not a count of starts"}
   ended_own_pane_on_return:     {profiles: [all], doc: "host -> on returning it ended only panes it owned (150)"}
   session_interrupted:          {profiles: [all], doc: "a running session was interrupted by something else's decision; never (13)"}
   exit_written_through_command: {profiles: [all], doc: "the exit was written through the reporting command, not by setting evidence (67)"}

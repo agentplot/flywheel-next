@@ -1,6 +1,7 @@
 scenario: S26
 title: an operator-added unit type runs one test session per persona in the repository; three or five as found; recorded; a unit in flight is untouched
 profiles: [all]
+requires: [real-workspace]     # reads the personas out of the repository
 satisfies: [56, 57, 85]
 given:
   objects:
