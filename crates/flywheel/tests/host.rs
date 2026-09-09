@@ -806,3 +806,139 @@ fn takeover_starts_attempt_two() {
         &format!("{session}/1")
     ));
 }
+
+// ----------------------------------------------- 8.10 the three local causes
+
+/// A local cause notifies in-process at once and does not wait for the poll
+/// (130, D6). The three real ones are a page response, a chat message and a
+/// session's report; each writes through the store, and the store's own notice
+/// names what moved.
+#[test]
+fn local_causes_tick_at_once() {
+    for cause in ["page", "chat", "session"] {
+        let mut host = host(&format!("cause-{cause}"), &["atlas"]);
+        seed(
+            &mut host,
+            "bolt/atlas/plan-rows",
+            "bolt",
+            &[("life", "open"), ("life.open.close", "offered")],
+            &[("repository", json!("atlas"))],
+        );
+        // The sink the chat message arrives at, and the presenter lease that
+        // lets this host read it (148).
+        let defs = host.defs.clone();
+        flywheel_domain::sinks::ensure(
+            &mut host.store,
+            &defs,
+            &flywheel_domain::sinks::Spec::chat("chat-chuck", "chuck", "#willdan"),
+        )
+        .unwrap();
+
+        // One sweep, so the clock for the next one starts now. Everything after
+        // this is what a notice does on its own (D7).
+        host.sweep().unwrap();
+        let swept = host.last_sweep.expect("the sweep ran");
+        let number = flywheel_domain::commands::rail(&mut host.store, &defs)
+            .unwrap()
+            .iter()
+            .find(|d| d.object == "bolt/atlas/plan-rows")
+            .and_then(|d| d.number)
+            .expect("the decision was numbered");
+        host.tick(&Scope::All).unwrap();
+
+        // Nothing has moved that this host has not already read.
+        let quiet = host.notified().unwrap();
+        assert!(
+            !quiet.iter().any(|o| o.starts_with("response/")),
+            "{cause}: a response stood before the cause: {quiet:?}"
+        );
+
+        // The cause, raised locally on this host.
+        let named = match cause {
+            // A control on the page, through the same tool the chat's grammar
+            // calls (193).
+            "page" => {
+                let call = flywheel_surface::catalogue::Call::new("answer", "chuck", "page")
+                    .arg("decision", json!(number))
+                    .arg("answer", json!("yes"));
+                let called =
+                    flywheel_surface::catalogue::call(&mut host.store, &defs, &call).unwrap();
+                format!("response/{}", called.id)
+            }
+            // A numbered reply in the chat (194).
+            "chat" => {
+                let mut chat = flywheel_surface::chat::Chat::new(
+                    "sink/chat-chuck",
+                    &host.name,
+                    "http://studio.tailnet.ts.net/willdan",
+                    flywheel_surface::chat::Recorded::new(),
+                );
+                let heard = chat
+                    .receive(
+                        &mut host.store,
+                        &defs,
+                        &flywheel_surface::chat::Message::new(
+                            "1801",
+                            "chuck",
+                            &format!("yes {number}"),
+                        ),
+                    )
+                    .unwrap();
+                match heard {
+                    flywheel_surface::chat::Heard::Answered(given) => {
+                        format!("response/{}", given[0].id)
+                    }
+                    other => panic!("the reply was heard as {other:?}"),
+                }
+            }
+            // A session reporting through the command the machinery provides
+            // (67, 93b).
+            _ => {
+                let session = "bolt/atlas/plan-rows/session/1";
+                let at = host.now();
+                flywheel::report::write_report(
+                    &mut host.store,
+                    session,
+                    "chuck",
+                    at,
+                    &flywheel::report::Report::Exit {
+                        kind: "done".into(),
+                        deliverables: vec!["the rows".into()],
+                        question: None,
+                        text: None,
+                    },
+                )
+                .unwrap();
+                session.to_string()
+            }
+        };
+
+        // The store names it at once: no poll interval passed, and no sweep is
+        // due (130, D6, D7).
+        assert_eq!(host.now(), swept, "{cause}: the clock moved");
+        assert!(
+            host.now() - swept < Duration::seconds(flywheel::host::SWEEP),
+            "{cause}: the sweep was due, so this proves nothing"
+        );
+        let notice = host.notified().unwrap();
+        assert!(
+            notice.contains(&named),
+            "{cause}: the local cause `{named}` was not notified: {notice:?}"
+        );
+
+        // And the notify-tick takes it, without the sweep and without the poll:
+        // the pass integrates and re-reads past the cause's own commit. With no
+        // notice there would have been no tick at all, since no sweep was due.
+        let stood_at = host.last_point.mark.clone();
+        host.once().unwrap();
+        assert_ne!(
+            host.last_point.mark, stood_at,
+            "{cause}: the pass read nothing; the notice drove no tick"
+        );
+        assert_eq!(host.now(), swept, "{cause}: the pass moved the clock");
+        assert_eq!(
+            host.last_sweep, Some(swept),
+            "{cause}: the pass ran a sweep rather than the notify-tick"
+        );
+    }
+}

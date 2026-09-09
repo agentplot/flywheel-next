@@ -176,6 +176,11 @@ pub struct Call {
     /// The delivery's own id where the caller has one, so the same delivery
     /// twice is one record (137).
     pub delivery_id: Option<String>,
+    /// The source event this call captures, where it captures one: an adapter
+    /// keys its capture by the event, so the same event twice yields one
+    /// capture (111). It is not the delivery's id — one is the message that
+    /// arrived, the other the thing it is about.
+    pub event_key: Option<String>,
     /// The host's agent that proposed the call; nothing when a control was
     /// used (194).
     pub proposed_by: Option<String>,
@@ -190,6 +195,7 @@ impl Call {
             by: by.to_string(),
             delivery: delivery.to_string(),
             delivery_id: None,
+            event_key: None,
             proposed_by: None,
         }
     }
@@ -202,6 +208,13 @@ impl Call {
     /// The delivery's own id, so a repeat is recognised (137).
     pub fn delivered(mut self, id: &str) -> Call {
         self.delivery_id = Some(id.to_string());
+        self
+    }
+
+    /// The source event this call captures, so capturing it twice yields one
+    /// capture (111).
+    pub fn keyed(mut self, event: &str) -> Call {
+        self.event_key = Some(event.to_string());
         self
     }
 
@@ -415,46 +428,48 @@ fn next_of<S: StateStore>(store: &S, machine: &str, prefix: &str) -> Result<u64>
         + 1)
 }
 
-/// The capture box and the chat forward: the text is captured whole, with one
-/// signal of kind ask, and no part of it is interpreted (19, 194).
+/// The capture box and the chat forward: the text is captured whole, and no
+/// part of it is interpreted (19, 194).
+///
+/// One keyed capture per source event, with its provenance and a pointer to
+/// raw material that stays outside every repository: capturing the same event
+/// twice finds the capture that exists and writes nothing (111).
 fn capture<S: StateStore>(store: &mut S, defs: &Definitions, call: &Call) -> Result<Outcome> {
     let text = call.text("text").unwrap_or_default();
     let source = call.text("source").unwrap_or_else(|| call.delivery.clone());
     let at = commands::now(store)?;
-    let ordinal = next_of(store, "capture", &format!("capture/{}-", call.delivery))?;
-    let key = format!("{}-{ordinal}", call.delivery);
+    // The source event's key where the caller has one; otherwise this delivery
+    // is the event, which is what the page's box is (111, 19).
+    let key = match &call.event_key {
+        Some(event) => event.clone(),
+        None => format!(
+            "{}-{}",
+            call.delivery,
+            next_of(store, "capture", &format!("capture/{}-", call.delivery))?
+        ),
+    };
     let id = format!("capture/{key}");
-    let record: BTreeMap<String, Value> = [
-        ("source", json!(source)),
-        ("event_key", json!(key)),
-        ("event_at", json!(at.to_rfc3339())),
-        ("captured_by", json!(call.by)),
-        ("raw", json!(text)),
-    ]
-    .into_iter()
-    .map(|(k, v)| (k.to_string(), v))
-    .collect();
-    commands::put_new(store, defs, &id, "capture", None, record, at)?;
-    let signal: BTreeMap<String, Value> = [
-        ("kind", json!("ask")),
-        ("asserted_by", json!(call.by)),
-        ("assertion", json!(text)),
-        ("excerpt", json!(text)),
-        ("subject_tags", json!([])),
-        ("argues_with", json!([])),
-    ]
-    .into_iter()
-    .map(|(k, v)| (k.to_string(), v))
-    .collect();
-    commands::put_new(
-        store,
-        defs,
-        &format!("signal/{key}"),
-        "signal",
-        Some(&id),
-        signal,
-        at,
-    )?;
+    if store.get(&id)?.is_none() {
+        let record: BTreeMap<String, Value> = [
+            ("source", json!(source)),
+            ("event_key", json!(key)),
+            ("event_at", json!(at.to_rfc3339())),
+            ("captured_by", json!(call.by)),
+            ("raw", json!(text)),
+        ]
+        .into_iter()
+        .map(|(k, v)| (k.to_string(), v))
+        .collect();
+        commands::put_new(store, defs, &id, "capture", None, record, at)?;
+        // A forwarded single message is its own excerpt and needs no judgment,
+        // and the capture machine writes its one signal through `ensure_signal`
+        // (`capture.yaml` reading.captured, S21). Every other capture the page's
+        // box makes carries the one ask signal the control asked for, which is
+        // a control and not a judgment (19, 115, D13).
+        if source != crate::chat::FORWARD {
+            flywheel_domain::signals::ensure_signal(store, defs, &id, &call.by, at)?;
+        }
+    }
     // The submission is the delivery, recorded once like any response (19).
     let mut record = commands::record_call(
         store,

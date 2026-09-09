@@ -718,6 +718,25 @@ pub fn observe(run: &Run, key: &str) -> Option<Value> {
             .values()
             .filter(|o| o.machine == "capture")
             .count()),
+        "signals_written" => json!(store
+            .objects
+            .values()
+            .filter(|o| o.machine == "signal")
+            .count()),
+        // A signal cites the capture it came from by being owned by it
+        // (`capture.yaml` owns, 113).
+        "signal_cites_capture" => {
+            let signals: Vec<_> = store
+                .objects
+                .values()
+                .filter(|o| o.machine == "signal")
+                .collect();
+            json!(!signals.is_empty()
+                && signals.iter().all(|s| s
+                    .parent
+                    .as_ref()
+                    .is_some_and(|p| store.objects.get(p).is_some_and(|c| c.machine == "capture"))))
+        }
         "exit_written_through_command" => json!(!store.threads.is_empty()),
         "state_read_from_place_disk" => json!(0),
         _ => return None,

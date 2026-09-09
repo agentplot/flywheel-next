@@ -239,9 +239,29 @@ pub fn evidence<S: Records>(
                 .find(|r| r.id == id)
                 .map(|r| r.answer.clone()))
         }
-        // A sink's delivery newer than the response carried it under attention;
-        // the sinks are group 8, and until one runs nothing has been reported.
-        "response.reported" => json!(false),
+        // A sink's delivery newer than the response carried it under attention
+        // (6, 14, 82). With no sink delivering, nothing has been reported and
+        // the decision stands, which is what "never dropped" means.
+        "response.reported" => {
+            let id = object.strip_prefix("response/").unwrap_or(object);
+            let Some(given_at) = store
+                .responses(crate::RAIL)
+                .ok()?
+                .iter()
+                .find(|r| r.id == id)
+                .map(|r| r.given_at)
+            else {
+                return Some(json!(false));
+            };
+            json!(store
+                .list_records(&Scope::All)
+                .ok()?
+                .iter()
+                .filter(|o| o.machine == "sink")
+                .map(|o| crate::sinks::from_object(o))
+                .filter(|sink| sink.routes_kind("response-unapplicable"))
+                .any(|sink| sink.delivered_at.is_some_and(|mark| mark > given_at)))
+        }
 
         // ---- the run record (79)
         "report.recorded" => json!(true),

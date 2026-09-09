@@ -928,6 +928,18 @@ pub fn perform(
                 let _ = flywheel_sessions_operator::take_over(&mut store.git, &session, host, now);
             }
         }
+        // A capture that is its own excerpt — the page's box, a forwarded
+        // message — writes its one signal here, and never a second: no
+        // judgment is involved (19, 112, `atoms.yaml` ensure_signal).
+        "ensure_signal" => {
+            let by = store
+                .get(object)
+                .ok()
+                .flatten()
+                .and_then(|o| o.record.get("captured_by").and_then(|v| v.as_str()).map(String::from))
+                .unwrap_or_else(|| "operator".to_string());
+            let _ = flywheel_domain::signals::ensure_signal(&mut store.git, defs, object, &by, now);
+        }
         // The status projection is the rail's own effect (D12); the tick writes
         // it after every pass, so nothing to do here.
         "render_status" => {}

@@ -12,6 +12,7 @@
 //! one (125, 136).
 
 pub mod catalogue;
+pub mod chat;
 pub mod http;
 pub mod links;
 pub mod page;

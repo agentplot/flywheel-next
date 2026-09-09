@@ -7,6 +7,8 @@ pub mod commands;
 pub mod envelope;
 pub mod profile;
 pub mod set;
+pub mod signals;
+pub mod sinks;
 pub mod status;
 pub mod derived;
 pub mod leases;

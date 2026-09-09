@@ -33,6 +33,17 @@ pub fn to_object(address: &str, object: &str) -> Result<String> {
     ))
 }
 
+/// A link to the page itself, which every chat rendering carries (18, 308).
+pub fn to_page(address: &str) -> Result<String> {
+    if is_localhost(address) {
+        bail!(
+            "a link would name `{address}`, which opens nothing on a phone; a link names the \
+             host's private-network address with the instance in the path (205a, 308, D10a)"
+        );
+    }
+    Ok(address.trim_end_matches('/').to_string())
+}
+
 /// What a link to an away host says instead of failing silently (308, 150a).
 pub fn away(address: &str, object: &str, host: &str, since: &str) -> Result<String> {
     let link = to_object(address, object)?;

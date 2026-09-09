@@ -40,6 +40,16 @@ pub fn propose(
         let body = body.trim();
         let head = head.trim();
         if head == "capture" {
+            // A forwarded message is what the platform says it is, not what its
+            // text looks like: Discord carries a snapshot of the message it
+            // points at, and the scenario's `<forwarded message 1421>` is the
+            // harness standing in for that snapshot. The call it makes is the
+            // sink's own (112, 215, `chat::forward_call`).
+            if let Some(forwarded) = forwarded(delivery, body) {
+                let mut call = flywheel_surface::chat::forward_call(by, &forwarded);
+                call.delivery_id = Some(id.to_string());
+                return Ok(call);
+            }
             return Ok(call("capture")
                 .arg("text", json!(body))
                 .arg("source", json!(delivery)));
@@ -78,6 +88,21 @@ pub fn propose(
         .and_then(|t| t.args.first().copied())
         .unwrap_or("object");
     Ok(call(verb).arg(argument, json!(object)))
+}
+
+/// The forwarded message a scenario's `<forwarded message 1421>` stands for:
+/// the source event's own key and the pointer back to it, which on a live
+/// channel come from the platform and never from the text (111, 112, 215).
+fn forwarded(platform: &str, body: &str) -> Option<flywheel_surface::chat::Forwarded> {
+    let inner = body.trim().strip_prefix('<')?.strip_suffix('>')?;
+    let id = inner.trim().strip_prefix("forwarded message ")?.trim();
+    if id.is_empty() {
+        return None;
+    }
+    Some(flywheel_surface::chat::Forwarded {
+        key: format!("message-{id}"),
+        link: format!("{platform} message link {id}"),
+    })
 }
 
 /// The object a name means. An id is itself; a short name is the one object

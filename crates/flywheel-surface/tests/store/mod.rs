@@ -23,8 +23,14 @@ impl Sandbox {
     }
 
     pub fn store(&self) -> GitStore {
+        self.store_as("local")
+    }
+
+    /// A second host's own checkout of the same state repository, for a test
+    /// that needs two hosts on one laptop (S13, S17, S18, D15).
+    pub fn store_as(&self, host: &str) -> GitStore {
         let at = Utc.with_ymd_and_hms(2026, 1, 1, 0, 0, 0).unwrap();
-        sandbox(&self.dir, "local", at).expect("a state repository and a host's checkout")
+        sandbox(&self.dir, host, at).expect("a state repository and a host's checkout")
     }
 }
 

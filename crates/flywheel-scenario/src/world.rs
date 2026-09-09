@@ -142,6 +142,20 @@ pub fn perform(defs: &Definitions, store: &mut Store, object: &str, region: &str
         // stating the point it is as of (132, 145, D12). It is the rail's own
         // effect, and the tick writes it again whenever what it projects moved.
         "render_status" => store.write_status(defs),
+        // A capture that is its own excerpt writes its one signal here, and
+        // never a second: no judgment is involved (19, 112, `atoms.yaml`
+        // ensure_signal).
+        "ensure_signal" => {
+            let at = store.now;
+            let by = store
+                .objects
+                .get(object)
+                .and_then(|o| o.record.get("captured_by"))
+                .and_then(|v| v.as_str())
+                .unwrap_or("operator")
+                .to_string();
+            let _ = flywheel_domain::signals::ensure_signal(store, defs, object, &by, at);
+        }
         "record_exit" => {
             if let Some(s) = store.world.sessions.get(&skey) {
                 if let Some(q) = &s.question { let q = q.clone(); if let Some(o) = store.objects.get_mut(object) { o.record.insert("question".into(), json!(q)); } }

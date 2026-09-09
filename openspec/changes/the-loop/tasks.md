@@ -124,16 +124,16 @@ or a command.
 
 ## 8. The chat sink
 
-- [ ] 8.1 Implement the Discord sink and take its presenter lease, phase 1 binding the lease alone and no manifest pin; verify `cargo test -p flywheel-surface one_presenter_per_sink` (148, `surfaces/chat-sink`)
-- [ ] 8.2 Render one line per decision with its number and a link, keeping each kind's form; verify `cargo test -p flywheel-surface chat_and_page_show_one_number` (15, 18)
-- [ ] 8.3 Accept the numbered reply grammar as the answer tool and expand "yes all" into one response per decision; verify `cargo test -p flywheel-surface yes_all_expands_per_decision` with distinct delivery identities (11, 137, 194)
-- [ ] 8.4 Accept a forwarded message as a capture; verify `flywheel scenario run conformance/scenarios/S21.yaml` (112, 215)
-- [ ] 8.5 Reply to any other message with what the sink accepts and write nothing; verify `cargo test -p flywheel-surface free_text_writes_nothing` (194)
-- [ ] 8.6 Carry the platform's answer controls and the link on the posted message, with a numbered reply answering the same decision; verify `cargo test -p flywheel-surface posted_message_carries_controls_and_link` (309, 155)
-- [ ] 8.7 Advance the sink's mark in the same write as its delivery; verify `cargo test -p flywheel-surface mark_advances_with_delivery` and that each sink's tail is its own (14, 236)
-- [ ] 8.8 Route notifications by kind to the sinks the operator sets; verify `cargo test -p flywheel-surface routed_kind_reaches_its_sinks` with the event raised on a host presenting no sink (82)
-- [ ] 8.9 Say so when a link points at an away host; verify `cargo test -p flywheel-surface away_link_says_so` (308, 150a)
-- [ ] 8.10 Raise the in-process notify from the three real local causes — a page response, a chat message, a session's report; verify `cargo test -p flywheel local_causes_tick_at_once` for each (130, D6)
+- [x] 8.1 Implement the Discord sink and take its presenter lease, phase 1 binding the lease alone and no manifest pin; verify `cargo test -p flywheel-surface one_presenter_per_sink` (148, `surfaces/chat-sink`)
+- [x] 8.2 Render one line per decision with its number and a link, keeping each kind's form; verify `cargo test -p flywheel-surface chat_and_page_show_one_number` (15, 18)
+- [x] 8.3 Accept the numbered reply grammar as the answer tool and expand "yes all" into one response per decision; verify `cargo test -p flywheel-surface yes_all_expands_per_decision` with distinct delivery identities (11, 137, 194)
+- [x] 8.4 Accept a forwarded message as a capture; verify `flywheel scenario run conformance/scenarios/S21.yaml` (112, 215)
+- [x] 8.5 Reply to any other message with what the sink accepts and write nothing; verify `cargo test -p flywheel-surface free_text_writes_nothing` (194)
+- [x] 8.6 Carry the platform's answer controls and the link on the posted message, with a numbered reply answering the same decision; verify `cargo test -p flywheel-surface posted_message_carries_controls_and_link` (309, 155)
+- [x] 8.7 Advance the sink's mark in the same write as its delivery; verify `cargo test -p flywheel-surface mark_advances_with_delivery` and that each sink's tail is its own (14, 236)
+- [x] 8.8 Route notifications by kind to the sinks the operator sets; verify `cargo test -p flywheel-surface routed_kind_reaches_its_sinks` with the event raised on a host presenting no sink (82)
+- [x] 8.9 Say so when a link points at an away host; verify `cargo test -p flywheel-surface away_link_says_so` (308, 150a)
+- [x] 8.10 Raise the in-process notify from the three real local causes — a page response, a chat message, a session's report; verify `cargo test -p flywheel local_causes_tick_at_once` for each (130, D6)
 
 ## 9. The adapters, signals and curation
 

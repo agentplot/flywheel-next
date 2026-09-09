@@ -13,7 +13,9 @@
 use crate::links;
 use flywheel_atoms::StateStore;
 use flywheel_domain::{commands, status};
+use flywheel_domain::sinks;
 use flywheel_engine::{DecisionInstance, Definitions, Object};
+use std::collections::BTreeMap;
 use std::fmt::Write as _;
 
 /// The version the bundle carries: the binary's own (307).
@@ -29,6 +31,9 @@ pub struct Read {
     pub address: String,
     /// The identity every response records as given by (153, 236a, 253a).
     pub operator: String,
+    /// The objects held by a host past its stale window: a link to one says the
+    /// host is away and since when, rather than failing silently (308, 150a).
+    pub away: BTreeMap<String, sinks::Away>,
 }
 
 /// Read once, for one request (310).
@@ -50,12 +55,14 @@ pub fn read<S: StateStore>(
         chrono::Duration::minutes(30),
     )?;
     let objects = store.list_records(&flywheel_atoms::Scope::All)?;
+    let away = sinks::away_by_object(store, at, chrono::Duration::minutes(5))?;
     Ok(Read {
         decisions,
         status,
         objects,
         address: address.to_string(),
         operator: operator.to_string(),
+        away,
     })
 }
 
@@ -122,6 +129,14 @@ fn decisions(read: &Read) -> String {
             escape(&link),
             escape(&decision.object)
         );
+        if let Some(away) = read.away.get(&decision.object) {
+            let _ = write!(
+                out,
+                "<p class=\"away\" data-away-host=\"{}\">{}</p>\n",
+                escape(&away.host),
+                escape(&away.said())
+            );
+        }
         out.push_str("<div class=\"answers\">\n");
         for answer in &decision.answers {
             // One tap each, and nothing behind a hover or a keyboard (311).
@@ -193,6 +208,17 @@ fn dock(read: &Read) -> String {
             escape(&link),
             escape(&object.id)
         );
+        // A link to a host past its stale window opens this surface and says
+        // the host is away and since when, rather than failing silently
+        // (308, 150a).
+        if let Some(away) = read.away.get(&object.id) {
+            let _ = write!(
+                out,
+                "<p class=\"away\" data-away-host=\"{}\">{}</p>\n",
+                escape(&away.host),
+                escape(&away.said())
+            );
+        }
         // An elaboration is a surface of its own, reached from its intent, and
         // an intent lists its elaborations in order (210).
         if object.machine == "intent" {
