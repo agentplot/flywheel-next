@@ -5,7 +5,7 @@ satisfies: [132, 141, 142, 145]
 machines: ./contract/lamp
 given:
   objects: [{id: lamp/1, machine: lamp, state: {power: "off"}}, {id: lamp/2, machine: lamp, state: {power: "on"}}]
-  evidence: {lamp.switch: {"*": down}}
+  evidence: {lamp.switch: {lamp/1: down, lamp/2: up}}
   hosts: [{name: a, bound: 1}]
 when:
   - tick: {}
