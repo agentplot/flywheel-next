@@ -24,6 +24,6 @@ then:
     - {object: curation/willdan, from: running, to: applying}
     - {object: curation/willdan, from: applying, to: idle}
   effects: [{do: record_moves, count: 1}, {do: propose_intents, count: 1}, {do: open_intent, count: 0}]
-  decisions: [{after_step: 9, present: [intent-proposed, intent-proposed], count: 2}]
+  decisions: [{after_step: 8, present: [intent-proposed, intent-proposed], count: 2}]
   records: {intent/retry-jitter: {challenges: [providers/one-writer@3], signals_count: 3}, intent/status-copy: {signals_count: 2}}
   state_store: {signal_moves_stored: 20, signals_with_move: 20, unmoved_after: 0}
