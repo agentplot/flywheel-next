@@ -143,6 +143,9 @@ pub struct Store {
     /// Hosts that cannot reach the store (151, D4a).
     #[serde(default)]
     pub disconnected: Vec<String>,
+    /// What each host declared it takes, by host name (149, 217).
+    #[serde(default)]
+    pub declarations: BTreeMap<String, flywheel_domain::derived::Declaration>,
     /// Numbers a scenario gave a decision by its readable name,
     /// `<object id>/<decision kind>`. The register itself is keyed by the
     /// engine's decision id, which also carries the point the decision was
@@ -212,6 +215,7 @@ impl Default for Store {
             presented: vec![],
             acting_host: None,
             disconnected: vec![],
+            declarations: BTreeMap::new(),
             register_aliases: BTreeMap::new(),
             decision_numbers: BTreeMap::new(),
         }
@@ -371,7 +375,6 @@ impl Store {
             "rail.unnumbered" | "rail.status_current" | "sink.due" | "host.stray_places" => json!(name == "rail.status_current"),
             "host.last_seen" => obj.and_then(|o| o.record.get("last_seen").cloned())?,
             "lease.holder" => return None,
-            "lease.coverable" => json!(true),
             "response.applied" => {
                 let rid = object.strip_prefix("response/").unwrap_or(object);
                 json!(self.objects.values().any(|o| o.applied_responses.iter().any(|a| a == rid)))
@@ -392,6 +395,47 @@ impl Store {
             _ => return None,
         };
         Some(v)
+    }
+
+    /// A lease's own evidence, read from the lease record and the declarations
+    /// the hosts made (128, 149).
+    fn lease_evidence(&self, object: &str, name: &str) -> Option<Value> {
+        let held = self.leases.get(object);
+        match name {
+            // A holder that is nobody is no holder: `exists:` reads it as absent.
+            "lease.holder" => held
+                .map(|l| l.holder.clone())
+                .filter(|h| !h.is_empty())
+                .map(Value::String),
+            "lease.renewed_at" => held.map(|l| json!(l.renewed_at.to_rfc3339())),
+            "lease.taken_at" => held.map(|l| json!(l.taken_at.to_rfc3339())),
+            // No host's declaration covering it is what makes it uncovered
+            // (149). With no declaration given, every host covers everything.
+            "lease.coverable" => Some(json!(self.covered(object))),
+            _ => None,
+        }
+    }
+
+    /// Whether one host's declaration covers this object (149).
+    pub fn covers(&self, host: &str, object: &str) -> bool {
+        let Some(declaration) = self.declarations.get(host) else {
+            return true;
+        };
+        let Some(held) = self.objects.get(object) else {
+            return true;
+        };
+        declaration.covers(held)
+    }
+
+    /// Whether any host's declaration covers this object (149).
+    pub fn covered(&self, object: &str) -> bool {
+        if self.declarations.is_empty() {
+            return true;
+        }
+        let Some(held) = self.objects.get(object) else {
+            return true;
+        };
+        self.declarations.values().any(|d| d.covers(held))
     }
 
     /// Advance every started session's script by one tick.
@@ -478,6 +522,15 @@ impl EvidenceSource for Store {
     fn evidence(&self, object: &str, region: &str, name: &str) -> Option<Value> {
         if let Some(v) = self.given_value(object, name) {
             return Some(v);
+        }
+        // A lease is named for the object it is on, and a scenario describes it
+        // there: `lease.coverable` on `unit/atlas/u` is the lease's own
+        // (`engine/lease.yaml`, X05).
+        if let Some(leased) = flywheel_domain::leases::object_of(object) {
+            if let Some(v) = self.given_value(leased, name) {
+                return Some(v);
+            }
+            return self.lease_evidence(leased, name);
         }
         self.derived(object, region, name)
     }

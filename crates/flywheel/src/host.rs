@@ -22,7 +22,7 @@ use flywheel_atoms::{
 };
 use flywheel_domain::derived::{Declaration, Reading};
 use flywheel_domain::records::RunEntry;
-use flywheel_domain::regions::{place_key, session_key};
+use flywheel_domain::regions::{place_key, session_stem};
 use flywheel_engine::runtime::{EvidenceSource, Response};
 use flywheel_engine::{Definitions, PlannedEffect};
 use flywheel_scenario::console;
@@ -113,6 +113,19 @@ impl HostStore {
 
     pub fn since(&self) -> Vec<String> {
         self.trace.borrow().clone()
+    }
+
+    /// The type an object's sessions are named for, where it has one
+    /// (`session.yaml` id).
+    fn kind_of(&self, object: &str) -> Option<String> {
+        self.git
+            .get(object)
+            .ok()
+            .flatten()?
+            .record
+            .get("type")
+            .and_then(|v| v.as_str())
+            .map(String::from)
     }
 }
 
@@ -210,7 +223,10 @@ impl EvidenceSource for HostStore {
             .or_else(|| {
                 flywheel_sessions_operator::evidence(
                     &self.git,
-                    &session_key(object, region),
+                    &flywheel_sessions_operator::current(
+                        &self.git,
+                        &session_stem(object, region, self.kind_of(object).as_deref()),
+                    ),
                     name,
                 )
             })
@@ -279,8 +295,10 @@ impl Host {
         declaration: Declaration,
         now: DateTime<Utc>,
     ) -> Host {
+        let mut store = HostStore::new(git, name, now);
+        store.reading.declarations = vec![declaration.clone()];
         Host {
-            store: HostStore::new(git, name, now),
+            store,
             name: name.to_string(),
             instance: instance.to_string(),
             defs,
@@ -457,6 +475,8 @@ impl Host {
             },
         )?;
         self.run.extend(run);
+        self.take_over_released()?;
+        self.report_takeovers()?;
         self.report_sessions()?;
         self.rewrite_status()?;
         let entries = std::mem::take(&mut self.run);
@@ -507,6 +527,76 @@ impl Host {
             at = self.store.get(&parent)?.and_then(|o| o.parent);
         }
         Ok(out)
+    }
+
+    /// A host the operator's response released is one whose work is now this
+    /// host's to pick up: its leases are free and the sessions it was running
+    /// are closed, so what starts next is a fresh attempt and never the same
+    /// session twice (150, `session.yaml` id).
+    fn take_over_released(&mut self) -> Result<()> {
+        let now = self.now();
+        let me = self.name.clone();
+        let released: Vec<String> = self
+            .store
+            .list_records(&Scope::All)?
+            .into_iter()
+            .filter(|o| o.machine == "host")
+            .filter(|o| {
+                matches!(
+                    o.config.get("life").map(String::as_str),
+                    Some("released") | Some("gone")
+                )
+            })
+            .map(|o| o.id.trim_start_matches("host/").to_string())
+            .filter(|host| host != &me)
+            .collect();
+        for host in released {
+            for session in flywheel_sessions_operator::of_host(&self.store.git, &host) {
+                flywheel_sessions_operator::take_over(&mut self.store.git, &session, &me, now)?;
+                self.run.push(
+                    RunEntry::new(now, &me, "session", &session, "the host running it was taken over; the next attempt is this host's")
+                        .with("was", &host),
+                );
+            }
+        }
+        Ok(())
+    }
+
+    /// A session this host was running that another host took over: it ends
+    /// its own session and reports, and starts nothing again — the fresh
+    /// attempt is the taking host's (150).
+    fn report_takeovers(&mut self) -> Result<()> {
+        let now = self.now();
+        let me = self.name.clone();
+        let taken: Vec<Object> = self
+            .store
+            .list_records(&Scope::All)?
+            .into_iter()
+            .filter(|o| o.id.starts_with("fact/session/"))
+            .filter(|o| o.record.get("host").and_then(|v| v.as_str()) == Some(me.as_str()))
+            .filter(|o| o.record.get("taken_over_by").is_some_and(|v| !v.is_null()))
+            .filter(|o| !o.record.get("reported_by_holder").is_some_and(|v| !v.is_null()))
+            .collect();
+        for fact in taken {
+            let session = fact.id.trim_start_matches("fact/session/").to_string();
+            let by = fact
+                .record
+                .get("taken_over_by")
+                .and_then(|v| v.as_str())
+                .unwrap_or("another host")
+                .to_string();
+            flywheel_sessions_operator::end(&mut self.store.git, &session, now)?;
+            flywheel_sessions_operator::set(
+                &mut self.store.git,
+                &session,
+                &[("reported_by_holder", json!(now.to_rfc3339()))],
+            )?;
+            self.run.push(
+                RunEntry::new(now, &me, "session", &session, "this host was taken over; it ended its own session and stopped")
+                    .with("taken_over_by", &by),
+            );
+        }
+        Ok(())
     }
 
     /// What was expected of a session beside what it delivered, difference
@@ -746,7 +836,15 @@ pub fn perform(
     effect: &PlannedEffect,
 ) -> bool {
     let place = place_key(object, region);
-    let session = session_key(object, region);
+    let kind = store
+        .get(object)
+        .ok()
+        .flatten()
+        .and_then(|o| o.record.get("type").and_then(|v| v.as_str()).map(String::from));
+    let stem = session_stem(object, region, kind.as_deref());
+    // The one running, for everything but a start; a start takes a fresh
+    // attempt when the last is over (`session.yaml` id, 150).
+    let session = flywheel_sessions_operator::current(&store.git, &stem);
     match effect.name.as_str() {
         // ---- the workspace, recorded (93a)
         "create_line" => {
@@ -785,7 +883,8 @@ pub fn perform(
         }
         // ---- the sessions, with the operator as the session (93b)
         "start_session" => {
-            let order = work_order(defs, store, &session, &place, object);
+            let fresh = flywheel_sessions_operator::next_attempt(&store.git, &stem);
+            let order = work_order(defs, store, &fresh, &place, object);
             let _ = flywheel_sessions_operator::start(&mut store.git, host, now, &order);
         }
         "end_session" => {
@@ -802,6 +901,32 @@ pub fn perform(
         }
         "tell_moved" => {
             let _ = flywheel_sessions_operator::moved(&mut store.git, &session, host, now);
+        }
+        // The leases a gone host held are released, and the sessions it was
+        // running are closed: the host that takes over starts a fresh attempt,
+        // and the returning host reads that it lost (150, `session.yaml` id).
+        "expire_leases" => {
+            let gone = object.strip_prefix("host/").unwrap_or(object).to_string();
+            let objects = store.list_records(&Scope::All).unwrap_or_default();
+            for held in &objects {
+                let Ok(Some(lease)) = store.git.leases(&held.id) else {
+                    continue;
+                };
+                if lease.holder != gone {
+                    continue;
+                }
+                let _ = store.git.lease(&LeaseOp::Release {
+                    object: held.id.clone(),
+                    holder: gone.clone(),
+                });
+                let _ = store.git.lease(&LeaseOp::Mark {
+                    object: held.id.clone(),
+                    state: "expired".into(),
+                });
+            }
+            for session in flywheel_sessions_operator::of_host(&store.git, &gone) {
+                let _ = flywheel_sessions_operator::take_over(&mut store.git, &session, host, now);
+            }
         }
         // The status projection is the rail's own effect (D12); the tick writes
         // it after every pass, so nothing to do here.

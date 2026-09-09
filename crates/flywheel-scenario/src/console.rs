@@ -77,13 +77,21 @@ pub fn set_register(
 // ------------------------------------------------------------------ the reads
 
 /// Every object in a scope, keyed by id — what the engine ticks over.
+///
+/// The lease objects are put beside them: a lease is a branch and never a file
+/// on the shared line, so it is no part of what `list` returned, and the lease
+/// machine still has to tick over one per object the engine acts on (D5, 128,
+/// `engine/lease.yaml`).
 pub fn objects(store: &impl StateStore, scope: &Scope) -> Result<BTreeMap<String, Object>> {
-    Ok(store
+    let mut objects: BTreeMap<String, Object> = store
         .list(scope)?
         .objects
         .into_iter()
         .map(|o| (o.id.clone(), o))
-        .collect())
+        .collect();
+    let at = now(store)?;
+    flywheel_domain::leases::attach(store, &mut objects, at)?;
+    Ok(objects)
 }
 
 /// The point the store names a read as of (126).

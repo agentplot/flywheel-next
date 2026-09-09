@@ -84,9 +84,9 @@ or a command.
 
 - [x] 6.1 Implement `flywheel host` as one long-lived process with the notify-tick and the 60-second sweep, fetching before every tick; verify `cargo test -p flywheel sweep_fires_older_guards` and `tick_fetches_first` (D7, 165, 231)
 - [x] 6.2 Implement the host's declaration, heartbeat and lease-taking within it; verify `cargo test -p flywheel lease_only_within_declaration` (149)
-- [ ] 6.3 Raise and clear the uncovered attention decision; verify `flywheel scenario run conformance/scenarios/X05.yaml` (149, 150)
+- [x] 6.3 Raise and clear the uncovered attention decision; verify `flywheel scenario run conformance/scenarios/X05.yaml` (149, 150)
 - [x] 6.4 Implement the intermittent host's away window — away with since-when, leases standing, stall clocks paused, no attention line, takeover raised only when work waits or the long bound passes; verify `cargo test -p flywheel away_raises_no_attention` and `away_with_work_waiting_raises_takeover` (150a)
-- [ ] 6.5 Implement takeover: a fresh attempt on the taking host, the returning host ending its own session and reporting; verify `cargo test -p flywheel takeover_starts_attempt_two` — S13 is run at 11.2 with two processes
+- [x] 6.5 Implement takeover: a fresh attempt on the taking host, the returning host ending its own session and reporting; verify `cargo test -p flywheel takeover_starts_attempt_two` — S13 is run at 11.2 with two processes
 - [ ] 6.6 Implement the per-host session bound with the stated waiting order and the dependency gate; verify `flywheel scenario run conformance/scenarios/S29.yaml` (31, 32, 38)
 - [x] 6.7 Add `flywheel-workspace-recorded` implementing `Workspace` by writing the evidence each proof reads; verify `cargo test -p flywheel-workspace-recorded place_advances_without_a_repository` (93a, D8)
 - [x] 6.8 Select the `World`, `Workspace` and `Sessions` implementations from the manifest and record all three in the run record; verify `cargo test -p flywheel bindings_named_in_run_record` (93a, 139)

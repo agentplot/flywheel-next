@@ -123,6 +123,7 @@ pub fn lease_to_record(lease: &LeaseRecord) -> Record {
     r.set("holder", &lease.holder);
     r.set("taken_at", &lease.taken_at.to_rfc3339());
     r.set("renewed_at", &lease.renewed_at.to_rfc3339());
+    r.set("state", &lease.state);
     r
 }
 
@@ -132,6 +133,7 @@ pub fn lease_from_record(r: &Record) -> Result<LeaseRecord> {
         holder: text(r, "holder")?,
         taken_at: time(r, "taken_at")?,
         renewed_at: time(r, "renewed_at")?,
+        state: r.get("state").unwrap_or("free").to_string(),
     })
 }
 

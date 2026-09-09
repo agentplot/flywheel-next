@@ -58,6 +58,9 @@ pub struct LeaseEvent {
     pub stale: bool,
     /// It was past its expiry, so it was free to take.
     pub expired: bool,
+    /// A host's declaration covered the object at the moment it was asked
+    /// (149); nothing is ever taken when this is false.
+    pub coverable: bool,
     /// Another host's live lease was overwritten — never, on a store that
     /// keeps its promise.
     pub doubled: bool,
@@ -122,6 +125,11 @@ pub struct DecisionRecord {
     pub id: String,
     pub object: String,
     pub kind: String,
+    /// The rail group it is in: approve, decide, answer or attention. A line
+    /// under attention is not one of the numbered decisions a person works
+    /// through (15, 82).
+    #[serde(default)]
+    pub group: String,
     pub number: Option<u32>,
 }
 
@@ -144,8 +152,14 @@ impl Runtime {
     /// The standing decisions, numbered. A number a scenario gave by the
     /// decision's readable name is honoured here, before anything reads it.
     pub fn decisions(&mut self) -> Vec<DecisionInstance> {
+        // The lease objects stand beside the store's own: a lease is a branch
+        // and never a file on the shared line, and one of its states is a line
+        // under attention (D5, 149).
+        let mut objects = self.store.objects.clone();
+        let now = self.store.now;
+        let _ = flywheel_domain::leases::attach(&self.store, &mut objects, now);
         if !self.store.register_aliases.is_empty() {
-            let standing = rail::derive(&self.defs, &self.store.objects, &mut self.store.register.clone());
+            let standing = rail::derive(&self.defs, &objects, &mut self.store.register.clone());
             for d in &standing {
                 if let Some(n) = self.store.register_aliases.get(&Runtime::decision_name(&d.object, &d.kind)) {
                     self.store.register.numbers.insert(d.id.clone(), *n);
@@ -155,7 +169,7 @@ impl Runtime {
                 }
             }
         }
-        let mut d = rail::derive(&self.defs, &self.store.objects, &mut self.store.register);
+        let mut d = rail::derive(&self.defs, &objects, &mut self.store.register);
         d.extend(self.handed_back());
         self.store.standing = d.iter().map(|x| x.id.clone()).collect();
         for x in &d {
@@ -262,7 +276,13 @@ impl Runtime {
     /// One pass, told what this tick has already written. A tick writes each
     /// object once, however many passes it settles over (D7, D4).
     fn pass_with(&mut self, moved: &mut Vec<String>) -> TickRecord {
-        let objects = self.read_before_deciding();
+        let mut objects = self.read_before_deciding();
+        // A host owns what it acts on through a lease, so it takes what it may
+        // before it decides anything: the lease machine then reads a holder in
+        // the same pass and the object is worked in the one after (128, 149).
+        self.renew_and_take(&objects);
+        let now = self.store.now;
+        let _ = flywheel_domain::leases::attach(&self.store, &mut objects, now);
         let fired = self.plan(&objects);
         let mut record = TickRecord { tick: self.store.tick, at: self.store.now, ..Default::default() };
         self.perform(&objects, &fired, &mut record, moved);
@@ -270,7 +290,7 @@ impl Runtime {
         record.decisions = self
             .decisions()
             .iter()
-            .map(|d| DecisionRecord { id: d.id.clone(), object: d.object.clone(), kind: d.kind.clone(), number: d.number })
+            .map(|d| DecisionRecord { id: d.id.clone(), object: d.object.clone(), kind: d.kind.clone(), group: d.group.clone(), number: d.number })
             .collect();
         self.report_handed_back();
         record
@@ -303,7 +323,7 @@ impl Runtime {
         record.decisions = self
             .decisions()
             .iter()
-            .map(|d| DecisionRecord { id: d.id.clone(), object: d.object.clone(), kind: d.kind.clone(), number: d.number })
+            .map(|d| DecisionRecord { id: d.id.clone(), object: d.object.clone(), kind: d.kind.clone(), group: d.group.clone(), number: d.number })
             .collect();
         self.report_handed_back();
         record
@@ -459,8 +479,8 @@ impl Runtime {
         }
         let me = self.store.me();
         for (id, object) in objects {
-            // A host record is not an object a host holds.
-            if object.machine == "host" {
+            // The machinery's own objects are not ones a host holds.
+            if !flywheel_domain::leases::leasable(object) {
                 continue;
             }
             let standing = Records::leases(&self.store, id).ok().flatten();
@@ -476,9 +496,26 @@ impl Runtime {
         }
     }
 
+    /// Whether the lease machine says this host holds the object. The
+    /// machinery's own objects have no lease and are always its to write.
+    fn holding(&self, id: &str) -> bool {
+        if self.hooks.contains(&Hook::BypassLease) {
+            return true;
+        }
+        let Ok(Some(object)) = self.store.get(id) else {
+            return true;
+        };
+        if !flywheel_domain::leases::leasable(&object) {
+            return true;
+        }
+        let Ok(Some(lease)) = Records::leases(&self.store, id) else {
+            return false;
+        };
+        lease.state == "held" && lease.holder == self.store.me()
+    }
+
     /// Take the lease, write the transition, perform the effects.
     fn perform(&mut self, objects: &BTreeMap<String, flywheel_engine::Object>, fired: &[tick::Fired], record: &mut TickRecord, moved: &mut Vec<String>) {
-        self.renew_and_take(objects);
         // One object, one write: every region of it that fired on this read is
         // applied to the copy this host read and put back in one go (D4). A
         // region moves once per tick, however many passes the tick settles
@@ -511,6 +548,12 @@ impl Runtime {
                 continue;
             }
             if !self.hold(&id) {
+                continue;
+            }
+            // Nothing acts on an object its lease machine does not say it holds
+            // (128, 150). The lease objects are applied first, so a lease taken
+            // this pass is held by the time the object it names is written.
+            if !self.holding(&id) {
                 continue;
             }
             let Some(read) = objects.get(&id).cloned() else { continue };
@@ -612,7 +655,22 @@ impl Runtime {
         if self.hooks.contains(&Hook::BypassLease) {
             return true;
         }
+        // A lease is the machinery's own object; nothing takes a lease on one.
+        if flywheel_domain::leases::object_of(object).is_some() {
+            return true;
+        }
         let holder = self.store.me();
+        // A host takes only what its declaration covers, and it reads the same
+        // evidence the lease machine does (149). An object it does not cover
+        // waits, and the machine says so under attention.
+        let coverable = self
+            .store
+            .evidence(&flywheel_domain::leases::id_for(object), "hold", "lease.coverable")
+            .and_then(|v| v.as_bool())
+            .unwrap_or(true);
+        if !coverable {
+            return false;
+        }
         let before = Records::leases(&self.store, object).ok().flatten();
         let stale = before.as_ref().is_some_and(|l| self.store.now - l.renewed_at > self.store.lease_stale());
         let expired = before.as_ref().is_some_and(|l| self.store.lease_expired(l));
@@ -627,6 +685,7 @@ impl Runtime {
                     held: true,
                     stale,
                     expired,
+                    coverable,
                     doubled,
                 });
                 true
@@ -642,6 +701,7 @@ impl Runtime {
                     held: false,
                     stale,
                     expired,
+                    coverable,
                     doubled: false,
                 });
                 false

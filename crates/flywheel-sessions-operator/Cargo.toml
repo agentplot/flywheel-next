@@ -7,6 +7,7 @@ license.workspace = true
 [dependencies]
 flywheel-engine = { path = "../flywheel-engine" }
 flywheel-atoms = { path = "../flywheel-atoms" }
+flywheel-domain = { path = "../flywheel-domain" }
 anyhow.workspace = true
 chrono.workspace = true
 serde_json.workspace = true

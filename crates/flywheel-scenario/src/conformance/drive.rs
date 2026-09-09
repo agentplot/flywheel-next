@@ -109,6 +109,7 @@ pub fn play(
                     id: d.id.clone(),
                     object: d.object.clone(),
                     kind: d.kind.clone(),
+                    group: d.group.clone(),
                     number: d.number,
                 })
                 .collect(),
@@ -247,6 +248,7 @@ pub fn seed(defs: Definitions, scenario: &Scenario, suite: &Suite) -> Result<Run
                 holder: holder.to_string(),
                 taken_at: store.now,
                 renewed_at: store.now,
+                state: "held".into(),
             },
         );
     }

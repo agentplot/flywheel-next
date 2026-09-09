@@ -14,7 +14,8 @@ use serde_json::{json, Value};
 
 /// What a host is, as the manifest declared it: what it takes leases within
 /// (149, 217).
-#[derive(Debug, Clone, Default, PartialEq, Eq)]
+#[derive(Debug, Clone, Default, PartialEq, Eq, serde::Serialize, serde::Deserialize)]
+#[serde(default)]
 pub struct Declaration {
     /// Repositories this host takes work in; empty declares none.
     pub repositories: Vec<String>,
@@ -71,6 +72,9 @@ pub struct Reading {
     /// for `response.decision_present`.
     pub register: Register,
     pub standing: Vec<String>,
+    /// What the hosts declared they take. With none given every host covers
+    /// everything, which is what a single host with no declaration is (149).
+    pub declarations: Vec<Declaration>,
 }
 
 impl Reading {
@@ -81,6 +85,7 @@ impl Reading {
             stale: Duration::minutes(5),
             register: Register::default(),
             standing: vec![],
+            declarations: vec![],
         }
     }
 }
@@ -164,10 +169,22 @@ pub fn evidence<S: Records>(
         }
 
         // ---- leases (128)
-        "lease.holder" => match store.leases(lease_object(object)).ok()? {
-            Some(l) => json!(l.holder),
-            None => json!("none"),
-        },
+        // A holder that is nobody is no holder: `exists:` reads it as absent.
+        "lease.holder" => store
+            .leases(lease_object(object))
+            .ok()?
+            .map(|l| l.holder)
+            .filter(|h| !h.is_empty())
+            .map(Value::String)?,
+        // No host's declaration covering it is what makes it uncovered (149).
+        "lease.coverable" => {
+            let held = store.get(lease_object(object)).ok().flatten();
+            match held {
+                None => json!(true),
+                Some(held) => json!(reading.declarations.is_empty()
+                    || reading.declarations.iter().any(|d| d.covers(&held))),
+            }
+        }
         "lease.holder_is_me" => json!(store
             .leases(lease_object(object))
             .ok()?

@@ -62,7 +62,7 @@ fn approving_a_unit_cascades_to_a_merge_and_a_question() {
     let question: Vec<_> = decisions.iter().filter(|d| d.object == wi2).collect();
     assert_eq!(question.len(), 1, "wi-2 stands at exactly one decision");
     assert_eq!((question[0].kind.as_str(), question[0].group.as_str()), ("question", "answer"));
-    let build = &rt.store.world.sessions["unit/atlas/status-writer/wi-2/build"];
+    let build = &rt.store.world.sessions["unit/atlas/status-writer/wi-2/build/1"];
     assert!(build.pane, "the blocked session stays alive for its answer");
     assert_eq!(build.question.as_deref(), Some("two readings of one-writer sc.2 — which?"));
     assert!(!decisions.iter().any(|d| d.object == unit), "the approved proposal is no longer a decision");
@@ -90,12 +90,12 @@ fn dropping_a_unit_retires_its_items_and_ends_their_sessions() {
     let mut rt = seeded();
     let unit = "unit/atlas/rail-tail";
     let items = ["unit/atlas/rail-tail/wi-1", "unit/atlas/rail-tail/wi-2"];
-    let sessions = ["unit/atlas/rail-tail/wi-1/build", "unit/atlas/rail-tail/wi-2/build"];
+    let sessions = ["unit/atlas/rail-tail/wi-1/build/1", "unit/atlas/rail-tail/wi-2/build/1"];
     assert_eq!(state(&rt, unit).as_deref(), Some("in-flight"));
     for s in sessions {
         assert!(rt.store.world.sessions[s].pane, "{s} runs before the drop");
     }
-    let other_before = rt.store.world.sessions["elaboration/rail-derivation/prototype/work"].pane;
+    let other_before = rt.store.world.sessions["elaboration/rail-derivation/prototype/work/1"].pane;
 
     rt.dictate(unit, "drop", "test");
     run_until_quiet(&mut rt, 100, 5);
@@ -110,7 +110,7 @@ fn dropping_a_unit_retires_its_items_and_ends_their_sessions() {
     for s in sessions {
         assert!(!rt.store.world.sessions[s].pane, "{s} was ended");
     }
-    assert_eq!(rt.store.world.sessions["elaboration/rail-derivation/prototype/work"].pane, other_before, "an unrelated session is untouched");
+    assert_eq!(rt.store.world.sessions["elaboration/rail-derivation/prototype/work/1"].pane, other_before, "an unrelated session is untouched");
 
     let dropped: Vec<_> = rt.store.tail.iter().filter(|t| t.kind == "dropped" && t.object.starts_with(unit)).map(|t| t.object.clone()).collect();
     assert!(dropped.contains(&unit.to_string()));

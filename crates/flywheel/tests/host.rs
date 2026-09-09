@@ -178,11 +178,23 @@ fn lease_only_within_declaration() {
             .map(|l| l.holder),
         Some("mac-mini".to_string())
     );
+    // Nothing outside the declaration is held; the lease machine says so
+    // rather than waiting silently, and its line is under attention (149).
+    let outside = host.store.leases("bolt/beta/other").unwrap();
     assert_eq!(
-        host.store.leases("bolt/beta/other").unwrap().map(|l| l.holder),
-        None,
+        outside.as_ref().map(|l| l.holder.as_str()).unwrap_or(""),
+        "",
         "the host took a lease outside its declaration (149)"
     );
+    assert_eq!(
+        outside.as_ref().map(|l| l.state.as_str()),
+        Some("uncovered")
+    );
+    assert!(host
+        .attention()
+        .unwrap()
+        .iter()
+        .any(|a| a == "uncovered: lease/bolt/beta/other"));
 
     // Its declaration and its heartbeat are on the record, so another host can
     // read what this one takes (147, 149, 163).
@@ -649,4 +661,147 @@ fn drift_rewritten_and_reported() {
         .collect();
     assert!(fields.contains_key("was") && fields.contains_key("now"));
     assert_ne!(fields.get("was"), fields.get("now"));
+}
+
+// ------------------------------------------------------------- 6.5 the takeover
+
+/// Two hosts over one state repository, told apart by id alone (232).
+fn pair(name: &str) -> (Host, Host, std::path::PathBuf) {
+    let base = dir(name);
+    let now = at(0);
+    let defs = flywheel_domain::set::load().unwrap();
+    let bindings = Bindings {
+        world: "host".into(),
+        workspace: "recorded".into(),
+        sessions: "operator".into(),
+    };
+    let a = Host::over(
+        "mac-mini",
+        "willdan",
+        defs.clone(),
+        sandbox(&base, "mac-mini", now).unwrap(),
+        bindings.clone(),
+        declaration(&["atlas"]),
+        now,
+    );
+    let b = Host::over(
+        "studio",
+        "willdan",
+        defs,
+        sandbox(&base, "studio", now).unwrap(),
+        bindings,
+        declaration(&["atlas"]),
+        now,
+    );
+    (a, b, base)
+}
+
+#[test]
+fn takeover_starts_attempt_two() {
+    let (mut a, mut b, _base) = pair("takeover");
+    // A laptop holds an item and runs the operator's session on it.
+    seed(
+        &mut a,
+        "bolt/atlas/plan-rows",
+        "bolt",
+        &[("life", "open")],
+        &[("repository", json!("atlas"))],
+    );
+    let session = "unit/atlas/u/main";
+    flywheel_sessions_operator::start(
+        &mut a.store.git,
+        "mac-mini",
+        at(0),
+        &flywheel_atoms::WorkOrder {
+            session: format!("{session}/1"),
+            kind: "unit".into(),
+            place: "unit/atlas/u".into(),
+            body: "the first attempt".into(),
+        },
+    )
+    .unwrap();
+    a.store
+        .git
+        .lease(&flywheel_atoms::LeaseOp::Take {
+            object: "bolt/atlas/plan-rows".into(),
+            holder: "mac-mini".into(),
+        })
+        .unwrap();
+    a.sweep().unwrap();
+
+    // The laptop is shut for a day. The other host sees it gone.
+    a.go_away(at(0));
+    b.set_now(at(60 * 25));
+    b.sweep().unwrap();
+    b.sweep().unwrap();
+    b.sweep().unwrap();
+    let gone = b.store.get("host/mac-mini").unwrap().unwrap();
+    assert_eq!(gone.config.get("life").map(String::as_str), Some("gone"));
+    assert!(b
+        .attention()
+        .unwrap()
+        .iter()
+        .any(|a| a.starts_with("host-gone")));
+
+    // The operator answers takeover. The leases the gone host held expire and
+    // the sessions it was running are closed (150).
+    let defs = b.defs.clone();
+    flywheel::console::dictate(&mut b.store, &defs, "host/mac-mini", "takeover", "operator").unwrap();
+    b.sweep().unwrap();
+
+    // The gone host's lease is expired and the taking host holds it now (150).
+    assert_eq!(
+        b.store
+            .leases("bolt/atlas/plan-rows")
+            .unwrap()
+            .map(|l| l.holder)
+            .unwrap_or_default(),
+        "studio",
+        "the taking host does not hold what the gone host held"
+    );
+
+    // The taking host starts a fresh attempt, not the same session again.
+    let fresh = flywheel_sessions_operator::next_attempt(&b.store.git, session);
+    assert_eq!(fresh, format!("{session}/2"));
+    let taking_at = b.now();
+    flywheel_sessions_operator::start(
+        &mut b.store.git,
+        "studio",
+        taking_at,
+        &flywheel_atoms::WorkOrder {
+            session: fresh.clone(),
+            kind: "unit".into(),
+            place: "unit/atlas/u".into(),
+            body: "the second attempt".into(),
+        },
+    )
+    .unwrap();
+    assert!(flywheel_sessions_operator::running(&b.store.git, &fresh));
+    assert!(!flywheel_sessions_operator::running(
+        &b.store.git,
+        &format!("{session}/1")
+    ));
+
+    // The laptop comes back, reads that it lost, ends its own session and
+    // reports it. It starts nothing again.
+    a.set_now(at(60 * 26));
+    a.come_back().unwrap();
+    a.sweep().unwrap();
+    let record = a.store.git.run_record().unwrap();
+    let reported = record
+        .iter()
+        .find(|e| e.object == format!("{session}/1") && e.reason.contains("taken over"))
+        .expect("the returning host reports that its session was taken over (150)");
+    assert_eq!(
+        reported
+            .fields
+            .iter()
+            .find(|(n, _)| n == "taken_over_by")
+            .map(|(_, v)| v.as_str()),
+        Some("studio")
+    );
+    assert!(!flywheel_sessions_operator::running(
+        &a.store.git,
+        &format!("{session}/1")
+    ));
 }

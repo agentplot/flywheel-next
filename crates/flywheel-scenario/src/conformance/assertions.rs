@@ -191,20 +191,17 @@ pub fn check(scenario: &Scenario, run: &Run, suite: &Suite) -> Vec<Failure> {
             }
         }
         if let Some(n) = want.count {
-            // `count` counts the kinds `present:` names — two `lamp-off` means
-            // two lamps standing on that decision — not everything standing.
-            // With no `present:` it is the whole standing set.
-            let counted = if want.present.is_empty() {
-                standing.len()
-            } else {
-                kinds.iter().filter(|k| want.present.iter().any(|p| p == *k)).count()
-            };
+            // `count` is the rail's own count, the one the console prints: the
+            // decisions a person works through. A line under attention is not
+            // one of them, which is what lets X05 say
+            // `present: [uncovered], count: 0` (15, 82, 149).
+            let counted = standing.iter().filter(|d| d.group != "attention").count();
             if counted != n {
                 failures.push(Failure {
                     clause: "decisions".into(),
                     step: label,
-                    expected: format!("{n} standing of {:?}", want.present),
-                    actual: format!("{counted} standing: {kinds:?}"),
+                    expected: format!("{n} on the rail"),
+                    actual: format!("{counted} on the rail, standing: {kinds:?}"),
                 });
             }
         }
@@ -452,6 +449,16 @@ fn lease_fact(run: &Run, object: &str, key: &str) -> Option<Value> {
             return held.first().map(|e| json!([e.holder]));
         }
         "loser_read_again" => json!(run.runtime.loser_reread),
+        // The holder after a numbered step, which is what a scenario naming a
+        // step asserts (128, X05).
+        key if key.starts_with("holder_after_step_") => {
+            return run
+                .runtime
+                .store
+                .leases
+                .get(object)
+                .map(|l| json!(l.holder))
+        }
         "stale_after_5m" => json!(events.iter().any(|e| e.stale)),
         "expired_after_24h" => json!(events.iter().any(|e| e.expired)),
         "taken_by_b_after_expiry" => json!(held
@@ -557,6 +564,13 @@ pub fn observe(run: &Run, key: &str) -> Option<Value> {
             }
             Value::Object(out)
         }
+        // A lease held on an object no declaration covers: never one (149).
+        "lease_taken_outside_declaration" => json!(run
+            .runtime
+            .lease_log
+            .iter()
+            .filter(|e| e.held && !e.coverable)
+            .count()),
         "writes_attempted" => json!(run.runtime.writes_attempted),
         "writes_succeeded" => json!(run.runtime.writes_succeeded),
         "loser_told" => json!(run.runtime.loser_told),

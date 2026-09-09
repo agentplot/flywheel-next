@@ -19,17 +19,17 @@ given:
       host/studio: "2026-09-04T14:39:00Z"
       host/mac-mini: "2026-09-04T13:59:00Z"
   sessions:
-    unit/atlas/rail-tail/wi-1/build:
+    unit/atlas/rail-tail/wi-1/build/1:
       pane: true
       activity: working
       exit: blocked
       question: "should Ready imply Backlog cleared?"
       ticks_alive: 40
-    unit/atlas/rail-tail/wi-2/build:
+    unit/atlas/rail-tail/wi-2/build/1:
       pane: true
       activity: working
       ticks_alive: 2
-    elaboration/rail-derivation/prototype/work:
+    elaboration/rail-derivation/prototype/work/1:
       pane: true
       activity: idle
       idle_since: "2026-09-04T00:40:00Z"
@@ -41,22 +41,22 @@ given:
       - {name: worker, command: "uv run python -m atlas.worker --port $PORT", serves: "http://localhost:$PORT/metrics", port: 41232}
   script:
     # what sessions will do once started by an approval on the page
-    unit/atlas/status-writer/wi-1/spec:   [{after: 2t, exit: done, deliverables: [change-directory, spec]}]
-    unit/atlas/status-writer/wi-1/build:  [{after: 3t, exit: done, deliverables: [commits]}]
-    unit/atlas/status-writer/wi-1/verify: [{after: 2t, exit: done, verdict: pass}]
-    unit/atlas/status-writer/wi-2/spec:   [{after: 2t, exit: done}]
-    unit/atlas/status-writer/wi-2/build:  [{after: 4t, exit: blocked, question: "two readings of one-writer sc.2 — which?"}, {after: answer, exit: done}]
-    unit/atlas/status-writer/wi-2/verify: [{after: 1t, exit: done, verdict: pass}]
-    unit/atlas/retry-jitter/wi-1/ff-apply: [{after: 3t, exit: done, deliverables: [change-directory, spec, commits]}]
-    unit/atlas/chores-1/wi-1/fix:         [{after: 2t, exit: done}]
-    unit/new-repo/baseline-1/wi-1/spec:   [{after: 2t, exit: done}]
-    unit/new-repo/baseline-1/wi-1/build:  [{after: 3t, exit: done}]
-    unit/new-repo/baseline-1/wi-1/verify: [{after: 1t, exit: done}]
-    unit/atlas/rail-tail/wi-1/build:      [{after: answer, exit: done}]
-    unit/atlas/rail-tail/wi-1/verify:     [{after: 1t, exit: done}]
-    unit/atlas/rail-tail/wi-2/build:      [{after: 6t, exit: done}]
-    unit/atlas/rail-tail/wi-2/verify:     [{after: 1t, exit: done}]
-    elaboration/atlas-provider-limits/research/work: [{after: 3t, exit: done}]
+    unit/atlas/status-writer/wi-1/spec/1:   [{after: 2t, exit: done, deliverables: [change-directory, spec]}]
+    unit/atlas/status-writer/wi-1/build/1:  [{after: 3t, exit: done, deliverables: [commits]}]
+    unit/atlas/status-writer/wi-1/verify/1: [{after: 2t, exit: done, verdict: pass}]
+    unit/atlas/status-writer/wi-2/spec/1:   [{after: 2t, exit: done}]
+    unit/atlas/status-writer/wi-2/build/1:  [{after: 4t, exit: blocked, question: "two readings of one-writer sc.2 — which?"}, {after: answer, exit: done}]
+    unit/atlas/status-writer/wi-2/verify/1: [{after: 1t, exit: done, verdict: pass}]
+    unit/atlas/retry-jitter/wi-1/ff-apply/1: [{after: 3t, exit: done, deliverables: [change-directory, spec, commits]}]
+    unit/atlas/chores-1/wi-1/fix/1:         [{after: 2t, exit: done}]
+    unit/new-repo/baseline-1/wi-1/spec/1:   [{after: 2t, exit: done}]
+    unit/new-repo/baseline-1/wi-1/build/1:  [{after: 3t, exit: done}]
+    unit/new-repo/baseline-1/wi-1/verify/1: [{after: 1t, exit: done}]
+    unit/atlas/rail-tail/wi-1/build/1:      [{after: answer, exit: done}]
+    unit/atlas/rail-tail/wi-1/verify/1:     [{after: 1t, exit: done}]
+    unit/atlas/rail-tail/wi-2/build/1:      [{after: 6t, exit: done}]
+    unit/atlas/rail-tail/wi-2/verify/1:     [{after: 1t, exit: done}]
+    elaboration/atlas-provider-limits/research/work/1: [{after: 3t, exit: done}]
   objects:
     # ---- APPROVE
     - id: intent/atlas-provider-limits

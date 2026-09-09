@@ -297,6 +297,86 @@ pub fn running<S: Records>(store: &S, session: &str) -> bool {
     present(store, session)
 }
 
+/// Every attempt recorded under one stem, in order.
+fn attempts<S: Records>(store: &S, stem: &str) -> Vec<u32> {
+    let prefix = format!("{}{stem}/", session_fact(""));
+    let mut out: Vec<u32> = store
+        .list_records(&flywheel_atoms::Scope::All)
+        .unwrap_or_default()
+        .iter()
+        .filter_map(|o| o.id.strip_prefix(&prefix).and_then(|n| n.parse::<u32>().ok()))
+        .collect();
+    out.sort_unstable();
+    out
+}
+
+/// The session running under a stem, where one is: the newest attempt that is
+/// still the operator's to run.
+pub fn current<S: Records>(store: &S, stem: &str) -> String {
+    let highest = attempts(store, stem).into_iter().next_back().unwrap_or(1);
+    flywheel_domain::regions::session_id(stem, highest)
+}
+
+/// The session to start under a stem: the one running, or a fresh attempt when
+/// the last was ended, taken over or reported on. A fresh attempt is a session
+/// of its own, which is what makes a takeover a new attempt and not the same
+/// session twice (`session.yaml` id, 150).
+pub fn next_attempt<S: Records>(store: &S, stem: &str) -> String {
+    let attempts = attempts(store, stem);
+    let Some(highest) = attempts.into_iter().next_back() else {
+        return flywheel_domain::regions::session_id(stem, 1);
+    };
+    let held = flywheel_domain::regions::session_id(stem, highest);
+    match running(store, &held) {
+        true => held,
+        false => flywheel_domain::regions::session_id(stem, highest + 1),
+    }
+}
+
+/// A session the host that ran it can no longer run: its host was taken over,
+/// so the record is closed and says why (150).
+pub fn take_over<S: Records>(
+    store: &mut S,
+    session: &str,
+    by: &str,
+    now: DateTime<Utc>,
+) -> Result<()> {
+    set(
+        store,
+        session,
+        &[
+            ("ended_at", json!(now.to_rfc3339())),
+            ("taken_over_by", json!(by)),
+        ],
+    )?;
+    say(
+        store,
+        session,
+        by,
+        now,
+        "note",
+        [(
+            "text".to_string(),
+            json!(format!("the host running this session was taken over by {by}")),
+        )]
+        .into_iter()
+        .collect(),
+    )
+}
+
+/// Every session one host is running, by id.
+pub fn of_host<S: Records>(store: &S, host: &str) -> Vec<String> {
+    let prefix = session_fact("");
+    store
+        .list_records(&flywheel_atoms::Scope::All)
+        .unwrap_or_default()
+        .iter()
+        .filter(|o| o.record.get("host").and_then(|v| v.as_str()) == Some(host))
+        .filter_map(|o| o.id.strip_prefix(&prefix).map(String::from))
+        .filter(|id| running(store, id))
+        .collect()
+}
+
 impl<S: Records> Sessions for OperatorSessions<S> {
     fn start_session(&self, order: &WorkOrder) -> Result<()> {
         start(&mut *self.locked()?, &self.host, self.now, order)

@@ -291,6 +291,16 @@ pub enum Landed {
 
 impl Records for GitStore {
     fn get(&self, id: &str) -> Result<Option<Object>> {
+        // A lease lives on a branch, never as a file on the shared line (D5):
+        // its object is made from the lease record.
+        if let Some(object) = flywheel_domain::leases::object_of(id) {
+            let held = self.lease_record(object)?;
+            return Ok(Some(flywheel_domain::leases::as_object(
+                object,
+                held.as_ref(),
+                self.now,
+            )));
+        }
         let Some(text) = self.read_file(&layout::object(id))? else {
             return Ok(None);
         };
@@ -302,6 +312,16 @@ impl Records for GitStore {
     }
 
     fn put(&mut self, id: &str, record: &Object, base_seq: u64) -> Result<PutOutcome> {
+        // The state a lease's machine reached is marked on the lease, so
+        // `main`'s history stays state changes and nothing else (D5, 167).
+        if let Some(object) = flywheel_domain::leases::object_of(id) {
+            let state = record.config.get("hold").cloned().unwrap_or_default();
+            self.lease(&LeaseOp::Mark {
+                object: object.to_string(),
+                state,
+            })?;
+            return Ok(PutOutcome::Written { seq: record.seq + 1 });
+        }
         let held = self.get(id)?.map(|o| o.seq).unwrap_or(0);
         if held != base_seq {
             return Ok(PutOutcome::Rejected { held_seq: held });
@@ -549,6 +569,7 @@ impl StateStore for GitStore {
             LeaseOp::Take { object, holder }
             | LeaseOp::Renew { object, holder }
             | LeaseOp::Release { object, holder } => (object.clone(), holder.clone()),
+            LeaseOp::Mark { object, .. } => (object.clone(), String::new()),
         };
         let reference = layout::lease_ref(&object);
         let remote = format!("refs/remotes/origin/lease/{object}");
@@ -561,7 +582,7 @@ impl StateStore for GitStore {
                     bail!("a host that cannot reach the store takes no lease (151)");
                 }
                 if let Some(h) = &held {
-                    if h.holder != holder && !self.lease_expired(h) {
+                    if !h.holder.is_empty() && h.holder != holder && !self.lease_expired(h) {
                         return Ok(LeaseOutcome::HeldByAnother(h.clone()));
                     }
                 }
@@ -574,6 +595,12 @@ impl StateStore for GitStore {
                         .map(|h| h.taken_at)
                         .unwrap_or(self.now),
                     renewed_at: self.now,
+                    // Taking is what the machine reads as held; the machine
+                    // says so itself on the next tick.
+                    state: held
+                        .as_ref()
+                        .map(|h| h.state.clone())
+                        .unwrap_or_else(flywheel_atoms::traits::free),
                 };
                 let landed =
                     self.put_orphan(&reference, &records::lease_to_record(&record), &expected)?;
@@ -611,13 +638,28 @@ impl StateStore for GitStore {
             }
             LeaseOp::Release { .. } => {
                 match &held {
-                    Some(h) if h.holder != holder => Ok(LeaseOutcome::HeldByAnother(h.clone())),
+                    Some(h) if !h.holder.is_empty() && h.holder != holder => {
+                        Ok(LeaseOutcome::HeldByAnother(h.clone()))
+                    }
                     _ => {
                         git::delete_expecting(&self.repo, &reference, &expected)?;
                         let _ = self.repo.run(&["fetch", "--quiet", "--prune", "origin"]);
                         Ok(LeaseOutcome::Released)
                     }
                 }
+            }
+            // What the lease machine made of it, kept with the lease (128).
+            LeaseOp::Mark { state, .. } => {
+                let record = LeaseRecord {
+                    object: object.clone(),
+                    holder: held.as_ref().map(|h| h.holder.clone()).unwrap_or_default(),
+                    taken_at: held.as_ref().map(|h| h.taken_at).unwrap_or(self.now),
+                    renewed_at: held.as_ref().map(|h| h.renewed_at).unwrap_or(self.now),
+                    state: state.clone(),
+                };
+                self.put_orphan(&reference, &records::lease_to_record(&record), &expected)?;
+                let _ = self.repo.run(&["fetch", "--quiet", "origin"]);
+                Ok(LeaseOutcome::Held(record))
             }
         }
     }

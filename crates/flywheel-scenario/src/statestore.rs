@@ -143,6 +143,13 @@ impl Records for Store {
         if id == RAIL {
             return Ok(Some(self.rail_record()));
         }
+        // A lease object is made from the lease record, wherever it is kept.
+        if let Some(object) = flywheel_domain::leases::object_of(id) {
+            let held = self.leases.get(object);
+            return Ok(Some(flywheel_domain::leases::as_object(
+                object, held, self.now,
+            )));
+        }
         if let Some(durable) = self.durable() {
             return durable
                 .lock()
@@ -153,6 +160,18 @@ impl Records for Store {
     }
 
     fn put(&mut self, id: &str, record: &Object, base_seq: u64) -> Result<PutOutcome> {
+        // A lease is a branch and never a file on the shared line (D5), so the
+        // state its machine reached is marked on the lease and never put.
+        if let Some(object) = flywheel_domain::leases::object_of(id) {
+            let state = record.config.get("hold").cloned().unwrap_or_default();
+            self.lease(&LeaseOp::Mark {
+                object: object.to_string(),
+                state,
+            })?;
+            return Ok(PutOutcome::Written {
+                seq: self.moved_at(id),
+            });
+        }
         if id == RAIL {
             self.set_rail_record(record);
             let seq = self.moved_at(id);
@@ -392,7 +411,7 @@ impl StateStore for Store {
         match op {
             LeaseOp::Take { object, holder } => {
                 if let Some(held) = self.leases.get(object) {
-                    if &held.holder != holder && !self.lease_expired(held) {
+                    if !held.holder.is_empty() && &held.holder != holder && !self.lease_expired(held) {
                         // Two would-be holders of one object never both hold it
                         // (128): the other reads the holder and moves on.
                         return Ok(LeaseOutcome::HeldByAnother(held.clone()));
@@ -403,6 +422,11 @@ impl StateStore for Store {
                     holder: holder.clone(),
                     taken_at: self.now,
                     renewed_at: self.now,
+                    state: self
+                        .leases
+                        .get(object)
+                        .map(|l| l.state.clone())
+                        .unwrap_or_else(flywheel_atoms::traits::free),
                 };
                 self.leases.insert(object.clone(), record.clone());
                 Ok(LeaseOutcome::Held(record))
@@ -419,14 +443,35 @@ impl StateStore for Store {
             }
             LeaseOp::Release { object, holder } => {
                 match self.leases.get(object) {
-                    Some(held) if &held.holder != holder => {
+                    Some(held) if !held.holder.is_empty() && &held.holder != holder => {
                         Ok(LeaseOutcome::HeldByAnother(held.clone()))
                     }
                     _ => {
-                        self.leases.remove(object);
+                        // What the machine made of it outlives the holder: the
+                        // record stays with no holder on it (128).
+                        match self.leases.get_mut(object) {
+                            Some(held) => held.holder.clear(),
+                            None => {}
+                        }
                         Ok(LeaseOutcome::Released)
                     }
                 }
+            }
+            // What the lease machine made of it, kept with the lease (128).
+            LeaseOp::Mark { object, state } => {
+                let now = self.now;
+                let record = self
+                    .leases
+                    .entry(object.clone())
+                    .or_insert_with(|| LeaseRecord {
+                        object: object.clone(),
+                        holder: String::new(),
+                        taken_at: now,
+                        renewed_at: now,
+                        state: flywheel_atoms::traits::free(),
+                    });
+                record.state = state.clone();
+                Ok(LeaseOutcome::Held(record.clone()))
             }
         }
     }

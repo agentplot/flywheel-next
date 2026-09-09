@@ -62,6 +62,17 @@ pub struct LeaseRecord {
     pub holder: String,
     pub taken_at: DateTime<Utc>,
     pub renewed_at: DateTime<Utc>,
+    /// The state the lease machine reached on this object
+    /// (`engine/lease.yaml`, `hold` region). It is kept with the lease and not
+    /// on the shared line, because a lease is a branch and never a file there
+    /// (D5, 167).
+    #[serde(default = "free")]
+    pub state: String,
+}
+
+/// A lease nobody holds.
+pub fn free() -> String {
+    "free".to_string()
 }
 
 /// A host's heartbeat record (147, 163).
@@ -148,6 +159,10 @@ pub enum LeaseOp {
     Take { object: String, holder: String },
     Renew { object: String, holder: String },
     Release { object: String, holder: String },
+    /// Record the state the lease machine reached. Taking, renewing and
+    /// releasing are what a host asks for; marking is how the profile keeps
+    /// what the machine made of it (128, `engine/lease.yaml`).
+    Mark { object: String, state: String },
 }
 
 #[derive(Debug, Clone)]

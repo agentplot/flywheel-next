@@ -18,6 +18,28 @@ pub fn seed(defs: Definitions, sc: &Scenario) -> Runtime {
     store.host_bound = 0;
     for h in &sc.given.hosts {
         let alive = h.get("alive").and_then(|v| v.as_bool()).unwrap_or(true);
+        // What the host takes leases within (149, 217). A host that declares
+        // nothing takes everything, which is what a scenario with no
+        // `declares:` describes.
+        if let Some(name) = h.get("name").or_else(|| h.get("id")).and_then(|v| v.as_str()) {
+            if let Some(declares) = h.get("declares") {
+                let list = |key: &str| -> Vec<String> {
+                    declares
+                        .get(key)
+                        .and_then(|v| v.as_array())
+                        .map(|a| a.iter().filter_map(|x| x.as_str().map(String::from)).collect())
+                        .unwrap_or_default()
+                };
+                store.declarations.insert(
+                    name.to_string(),
+                    flywheel_domain::derived::Declaration {
+                        repositories: list("repositories"),
+                        types: list("unit_types"),
+                        kinds: list("kinds"),
+                    },
+                );
+            }
+        }
         if let Some(b) = h.get("bound").and_then(|v| v.as_u64()) { if alive { store.host_bound += b as usize; } }
         if let Some(id) = h.get("id").and_then(|v| v.as_str()) {
             let mut rec: BTreeMap<String, Value> = h.clone();

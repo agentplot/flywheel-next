@@ -105,10 +105,13 @@ fn response_thread_lease_and_host_roundtrip() {
         holder: "mac-mini".into(),
         taken_at: at,
         renewed_at: at,
+        state: "held".into(),
     };
     let back = records::lease_from_record(&records::lease_to_record(&lease)).unwrap();
     assert_eq!(back.holder, lease.holder);
     assert_eq!(back.renewed_at, lease.renewed_at);
+    // The lease machine's own state travels with the lease (128, D5).
+    assert_eq!(back.state, "held");
 
     let host = HostRecord {
         host: "mac-mini".into(),
