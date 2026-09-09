@@ -22,6 +22,7 @@ when:
   - evidence: {session.pane: {"*": present}, session.activity: {"*": working}}
   - restart: {}
   - tick: {}
+  - tick: {}
 then:
   transitions:
     - {object: elaboration/atlas-provider-limits/research-1, from: proposed, to: approved, response: discord/1001}

@@ -247,8 +247,8 @@ fn wall_clock_never_reaches_a_guard() {
         serde_json::to_string(&second.ticks).unwrap(),
         "the same scenario twice is the same run"
     );
-    // S01 carries six tick steps, and nothing else moves the clock.
-    assert_eq!(first.runtime.store.now, drive::start_of_time() + options.interval * 6);
+    // S01 carries seven tick steps, and nothing else moves the clock.
+    assert_eq!(first.runtime.store.now, drive::start_of_time() + options.interval * 7);
 }
 
 // ---- 2.11 the host step's closed vocabulary
