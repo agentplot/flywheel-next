@@ -205,7 +205,21 @@ pub fn apply(defs: &Definitions, obj: &mut Object, f: &Fired, now: DateTime<Utc>
     }
     obj.config.insert(f.region.clone(), f.to.clone());
     if f.to != f.from { obj.entered_at.insert(f.region.clone(), now); }
-    if let Some(b) = &f.bump { *obj.counters.entry(b.clone()).or_insert(0) += 1; }
+    // A name the machine declares in its `record:` is a record field, and the
+    // bump is that field's; `counters` holds the rest. Either way the envelope
+    // carries one number for the name and not two that disagree.
+    if let Some(b) = &f.bump {
+        let declared = defs
+            .for_object(&obj.machine)
+            .or_else(|| defs.get(&obj.machine))
+            .is_some_and(|m| m.record.contains_key(b));
+        if declared {
+            let n = obj.record.get(b).and_then(|v| v.as_u64()).unwrap_or(0);
+            obj.record.insert(b.clone(), Value::from(n + 1));
+        } else {
+            *obj.counters.entry(b.clone()).or_insert(0) += 1;
+        }
+    }
     if let Some((id, _)) = &f.response { if !obj.applied_responses.contains(id) { obj.applied_responses.push(id.clone()); } }
     obj.seq += 1;
     // Initialise nested regions and submachines of the target.

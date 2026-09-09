@@ -353,6 +353,9 @@ pub struct Run {
     /// What the profile answered for each observation the scenario asserts.
     pub observations: std::collections::BTreeMap<String, serde_json::Value>,
     pub skipped_steps: Vec<String>,
+    /// The store's write count when the first step began, so `writes:` counts
+    /// what the steps did and not what seeding put in place.
+    pub writes_at_start: u64,
 }
 
 /// A scenario that runs against no configuration at all is a failure, never a

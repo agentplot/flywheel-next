@@ -388,16 +388,20 @@ impl StateStore for Store {
                 Some(decision) => {
                     let decision = decision.to_string();
                     self.log("unapplicable", &decision, "the decision no longer stands");
+                    let reason = format!("decision {decision} no longer stands");
+                    self.hand_back(response, &decision, &reason);
                     return Ok(Received::Unapplicable {
                         id: response.id.clone(),
-                        reason: format!("decision {decision} no longer stands"),
+                        reason,
                     });
                 }
                 None => {
+                    let reason = format!("no decision carries number {number}");
+                    self.hand_back(response, "rail", &reason);
                     return Ok(Received::Unapplicable {
                         id: response.id.clone(),
-                        reason: format!("no decision carries number {number}"),
-                    })
+                        reason,
+                    });
                 }
             }
         }
@@ -412,6 +416,20 @@ impl StateStore for Store {
 }
 
 impl Store {
+    /// Hand a response back to the engine rather than dropping it: it stands
+    /// under attention until one tick has reported it (6, 129).
+    fn hand_back(&mut self, response: &Response, decision: &str, reason: &str) {
+        if self.unapplicable.iter().any(|u| u.response == response.id) {
+            return;
+        }
+        self.unapplicable.push(crate::store::Unapplicable {
+            response: response.id.clone(),
+            object: decision.split('/').next().unwrap_or("rail").to_string(),
+            reason: reason.to_string(),
+            reported_after: None,
+        });
+    }
+
     /// The status view, without the trait in scope.
     pub fn status_view(&self) -> flywheel_atoms::StatusView {
         StateStore::status(self).expect("the status view is derived, never fallible")
@@ -422,5 +440,18 @@ impl Store {
     /// load; the release's default is 24 hours.
     pub fn lease_expired(&self, lease: &LeaseRecord) -> bool {
         self.now - lease.renewed_at > chrono::Duration::hours(24)
+    }
+
+    /// The bound the profile states for notification: a host learns what moved
+    /// within it, by a webhook where the manifest names one and by the poll of
+    /// the shared line's head otherwise (130, 166, `git-only.yaml` notify).
+    pub fn notify_bound(&self) -> &'static str {
+        "30s"
+    }
+
+    /// Past this, the holder shows as away with since-when; the lease is still
+    /// its own until the expiry (128, 163, `git-only.yaml` leases).
+    pub fn lease_stale(&self) -> chrono::Duration {
+        chrono::Duration::minutes(5)
     }
 }

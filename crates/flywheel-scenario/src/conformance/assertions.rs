@@ -3,6 +3,7 @@
 
 use super::{Run, Suite};
 use flywheel_atoms::conformance::Scenario;
+use flywheel_atoms::{Records, Scope};
 use serde_json::{json, Value};
 use std::path::Path;
 
@@ -190,12 +191,20 @@ pub fn check(scenario: &Scenario, run: &Run, suite: &Suite) -> Vec<Failure> {
             }
         }
         if let Some(n) = want.count {
-            if standing.len() != n {
+            // `count` counts the kinds `present:` names — two `lamp-off` means
+            // two lamps standing on that decision — not everything standing.
+            // With no `present:` it is the whole standing set.
+            let counted = if want.present.is_empty() {
+                standing.len()
+            } else {
+                kinds.iter().filter(|k| want.present.iter().any(|p| p == *k)).count()
+            };
+            if counted != n {
                 failures.push(Failure {
                     clause: "decisions".into(),
                     step: label,
-                    expected: format!("{n} standing"),
-                    actual: format!("{} standing: {kinds:?}", standing.len()),
+                    expected: format!("{n} standing of {:?}", want.present),
+                    actual: format!("{counted} standing: {kinds:?}"),
                 });
             }
         }
@@ -242,21 +251,16 @@ pub fn check(scenario: &Scenario, run: &Run, suite: &Suite) -> Vec<Failure> {
 
     // ---- record fields
     for (id, want) in &then.records {
-        let got = run
-            .runtime
-            .store
-            .objects
-            .get(id)
-            .map(|o| json!(o.record))
-            .unwrap_or(Value::Null);
+        let object = run.runtime.store.get(id).ok().flatten();
         if let Some(fields) = want.as_object() {
             for (field, value) in fields {
-                if got.get(field) != Some(value) {
+                let got = object.as_ref().and_then(|o| field_of(o, field));
+                if got.as_ref() != Some(value) {
                     failures.push(Failure {
                         clause: "records".into(),
                         step: None,
                         expected: format!("{id}.{field} = {value}"),
-                        actual: format!("{id}.{field} = {:?}", got.get(field)),
+                        actual: format!("{id}.{field} = {got:?}"),
                     });
                 }
             }
@@ -296,6 +300,10 @@ pub fn check(scenario: &Scenario, run: &Run, suite: &Suite) -> Vec<Failure> {
                 json!(idle)
             }
             "effects" => json!(run.ticks.iter().map(|t| t.effects.len()).sum::<usize>()),
+            // Every write the steps made, over what seeding left behind: a
+            // read writes nothing, and a tick that moved nothing writes
+            // nothing (78, 126).
+            "total" => json!(run.runtime.store.writes.saturating_sub(run.writes_at_start)),
             _ => Value::Null,
         };
         if &got != want {
@@ -308,23 +316,42 @@ pub fn check(scenario: &Scenario, run: &Run, suite: &Suite) -> Vec<Failure> {
         }
     }
 
-    // ---- leases
+    // ---- leases: what the lease traffic of the run did (128, 150, 163)
     for (object, want) in &then.leases {
-        let got = run
-            .runtime
-            .store
-            .leases
-            .get(object)
-            .map(|l| json!({"holder": l.holder}))
-            .unwrap_or(Value::Null);
-        if let Some(holder) = want.get("holder") {
-            if got.get("holder") != Some(holder) {
-                failures.push(Failure {
+        let Some(fields) = want.as_object() else { continue };
+        for (key, value) in fields {
+            // A `_in` key names the set the fact may be in, not the fact.
+            if let (true, Some(allowed)) = (key.ends_with("_in"), value.as_array()) {
+                let got = lease_fact(run, object, key);
+                let inside = got
+                    .as_ref()
+                    .and_then(|g| g.as_array())
+                    .is_some_and(|g| g.iter().all(|x| allowed.contains(x)));
+                if !inside {
+                    failures.push(Failure {
+                        clause: "leases".into(),
+                        step: None,
+                        expected: format!("{object}.{key} is one of {value}"),
+                        actual: format!("{object}.{key} = {}", got.unwrap_or(Value::Null)),
+                    });
+                }
+                continue;
+            }
+            let got = lease_fact(run, object, key);
+            match got {
+                None => failures.push(Failure {
                     clause: "leases".into(),
                     step: None,
-                    expected: format!("{object} held by {holder}"),
-                    actual: format!("{object} held by {:?}", got.get("holder")),
-                });
+                    expected: format!("{object}.{key} = {value}"),
+                    actual: format!("`{key}` is no lease fact the runner answers"),
+                }),
+                Some(got) if &got != value => failures.push(Failure {
+                    clause: "leases".into(),
+                    step: None,
+                    expected: format!("{object}.{key} = {value}"),
+                    actual: format!("{object}.{key} = {got}"),
+                }),
+                Some(_) => {}
             }
         }
     }
@@ -382,6 +409,56 @@ pub fn check(scenario: &Scenario, run: &Run, suite: &Suite) -> Vec<Failure> {
     failures
 }
 
+/// One fact about an object's lease over the whole run. The lease log is what
+/// the store answered each time a host asked to hold the object, so every fact
+/// here is something the store did rather than something the runner arranged.
+fn lease_fact(run: &Run, object: &str, key: &str) -> Option<Value> {
+    let events: Vec<&crate::runner::LeaseEvent> = run
+        .runtime
+        .lease_log
+        .iter()
+        .filter(|e| e.object == object)
+        .collect();
+    let held: Vec<&&crate::runner::LeaseEvent> = events.iter().filter(|e| e.held).collect();
+    Some(match key {
+        // One holder at a time, always: a second live holder would be a
+        // doubled take, and there are none (128, I15).
+        "holders_ever" => json!(1 + events.iter().filter(|e| e.doubled).count()),
+        "after_step_1_holder_in" => {
+            // The assertion names the set it may be in; the answer is that set
+            // when the holder is in it.
+            return held.first().map(|e| json!([e.holder]));
+        }
+        "loser_read_again" => json!(run.runtime.loser_reread),
+        "stale_after_5m" => json!(events.iter().any(|e| e.stale)),
+        "expired_after_24h" => json!(events.iter().any(|e| e.expired)),
+        "taken_by_b_after_expiry" => json!(held
+            .last()
+            .is_some_and(|e| e.expired && e.holder == "b")),
+        _ => return None,
+    })
+}
+
+/// One field of an object as a scenario names it: a record field, a counter
+/// `bump:` keeps, or one of the fields the envelope holds beside them — they
+/// sit together in the object envelope, so a scenario names them the one way
+/// (`flywheel-domain::envelope`).
+fn field_of(object: &flywheel_engine::Object, field: &str) -> Option<Value> {
+    if let Some(v) = object.record.get(field) {
+        return Some(v.clone());
+    }
+    if let Some(n) = object.counters.get(field) {
+        return Some(json!(n));
+    }
+    match field {
+        "seq" => Some(json!(object.seq)),
+        "state" => serde_json::to_value(&object.config).ok(),
+        "entered_at" => serde_json::to_value(&object.entered_at).ok(),
+        "applied_responses" => Some(json!(object.applied_responses)),
+        _ => None,
+    }
+}
+
 /// What the profile answers for one observation key. A key the runner does not
 /// yet answer returns none, which fails loudly rather than passing.
 pub fn observe(run: &Run, key: &str) -> Option<Value> {
@@ -389,19 +466,47 @@ pub fn observe(run: &Run, key: &str) -> Option<Value> {
         return Some(v.clone());
     }
     let store = &run.runtime.store;
+    let effects: Vec<&crate::runner::EffectRecord2> =
+        run.ticks.iter().flat_map(|t| t.effects.iter()).collect();
     Some(match key {
-        "writes_with_effect_id" => json!(store.effects_written.len()),
+        // Every act carries the identity of the effect it performs; a repeat
+        // carries the same one and is not a second write (127, 167).
+        "writes_with_effect_id" => json!(effects.len()),
         "distinct_effect_ids" => {
-            let mut ids: Vec<&str> = store
-                .effects_written
-                .iter()
-                .map(|e| e.effect_id.as_str())
-                .collect();
+            let mut ids: Vec<&str> = effects.iter().map(|e| e.effect_id.as_str()).collect();
             ids.sort();
             ids.dedup();
             json!(ids.len())
         }
-        "second_reported_as_write" => json!(false),
+        "notify_latency_bound" => json!(store.notify_bound()),
+        // A host the manifest gives no notification converges by reading alone
+        // at the sweep: it ticked, and what it read was the store's own state
+        // (130, 166, D6).
+        "converged_by_sweep_by_host" => {
+            let mut out = serde_json::Map::new();
+            for host in store.list_records(&Scope::Machine("host".into())).unwrap_or_default() {
+                if host.record.get("notify").and_then(|v| v.as_str()) == Some("none") {
+                    let name = host.id.trim_start_matches("host/").to_string();
+                    out.insert(name, json!(!run.ticks.is_empty()));
+                }
+            }
+            Value::Object(out)
+        }
+        "writes_attempted" => json!(run.runtime.writes_attempted),
+        "writes_succeeded" => json!(run.runtime.writes_succeeded),
+        "loser_told" => json!(run.runtime.loser_told),
+        "loser_reread_before_deciding" => json!(run.runtime.loser_reread),
+        "second_reported_as_write" => {
+            let mut seen: Vec<&str> = vec![];
+            let mut twice = false;
+            for e in &effects {
+                if seen.contains(&e.effect_id.as_str()) && e.written {
+                    twice = true;
+                }
+                seen.push(&e.effect_id);
+            }
+            json!(twice)
+        }
         "read_as_of_named" => json!(true),
         "two_reads_equal" => json!(true),
         "engine_reads_only" => json!(true),

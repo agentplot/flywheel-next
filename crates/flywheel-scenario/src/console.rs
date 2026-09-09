@@ -265,7 +265,7 @@ pub fn put_new<S: StateStore>(
 /// register through the rail record.
 pub fn seed<S: StateStore>(
     store: &mut S,
-    defs: &Definitions,
+    _defs: &Definitions,
     objects: &[Object],
     register_start: Option<u32>,
 ) -> Result<usize> {

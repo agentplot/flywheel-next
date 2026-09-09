@@ -1,7 +1,7 @@
 //! The commands over the trait surface: nothing here names one store's fields.
 
 use chrono::Utc;
-use flywheel::console;
+use flywheel_scenario::console;
 use flywheel_atoms::{Records, Scope, StateStore};
 use flywheel_engine::runtime::Register;
 use flywheel_scenario::Store;

@@ -3,6 +3,7 @@
 //! the effects run for real.
 
 pub mod bindings;
+pub mod console;
 pub mod conformance;
 pub mod runner;
 pub mod scenario;

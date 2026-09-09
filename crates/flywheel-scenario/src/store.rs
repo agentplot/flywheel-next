@@ -58,6 +58,16 @@ pub struct World {
     pub files: BTreeMap<String, String>,
 }
 
+/// A response handed back to the engine, and the tick that reported it.
+#[derive(Debug, Clone, Default, Serialize, Deserialize)]
+pub struct Unapplicable {
+    pub response: String,
+    pub object: String,
+    pub reason: String,
+    /// The tick this stood under attention; after it, it is reported and gone.
+    pub reported_after: Option<u64>,
+}
+
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct LogEntry {
     pub at: DateTime<Utc>,
@@ -106,6 +116,11 @@ pub struct Store {
     /// (write sequence, object) for every write, so a notice names what moved (130).
     #[serde(default)]
     pub moved: Vec<(u64, String)>,
+    /// A response whose decision was gone when it arrived. It is never
+    /// dropped: it stands under attention until a tick has reported it once
+    /// (6, 129).
+    #[serde(default)]
+    pub unapplicable: Vec<Unapplicable>,
     /// What each sink has been presented with (129).
     #[serde(default)]
     pub presented: Vec<PresentedRecord>,
@@ -179,6 +194,7 @@ impl Default for Store {
             heartbeats: BTreeMap::new(),
             writes: 0,
             moved: vec![],
+            unapplicable: vec![],
             presented: vec![],
             acting_host: None,
             disconnected: vec![],

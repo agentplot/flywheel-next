@@ -13,7 +13,7 @@ use anyhow::{anyhow, bail, Context, Result};
 use flywheel_atoms::conformance::{
     Direct, HostStep, HostTransition, Requirement, ResponseStep, Scenario, Step,
 };
-use flywheel_atoms::StateStore;
+use flywheel_atoms::{Records, StateStore};
 use chrono::{DateTime, Duration, Utc};
 use flywheel_engine::runtime::{Response, ResponseKind};
 use flywheel_engine::Definitions;
@@ -77,12 +77,14 @@ pub fn play(
     std::fs::create_dir_all(&places)?;
     let sessions = ScriptedSessions::new(&state, places.join("places"));
 
+    let writes_at_start = rt.store.writes;
     let mut run = Run {
         ticks: vec![],
         decisions_after: vec![],
         runtime: rt,
         observations: BTreeMap::new(),
         skipped_steps: vec![],
+        writes_at_start,
     };
     // The script is the scenario's, and entries play at the step they name.
     let script = scenario.given.script.clone();
@@ -106,6 +108,7 @@ pub fn play(
                 .collect(),
         );
     }
+    take_reading(&mut run);
     let _ = std::fs::remove_dir_all(&places);
     Ok(run)
 }
@@ -139,6 +142,12 @@ pub fn seed(defs: Definitions, scenario: &Scenario, suite: &Suite) -> Result<Run
             }
         }
         if let Some(id) = host.get("id").or_else(|| host.get("name")).and_then(|v| v.as_str()) {
+            // A scenario that declares hosts acts as the first of them until a
+            // host step names another; `local` is the single host of a scenario
+            // that declares none (232, D15).
+            if store.acting_host.as_deref() == Some(DEFAULT_HOST) {
+                store.acting_host = Some(id.to_string());
+            }
             let mut record: BTreeMap<String, Value> = host.clone();
             record.remove("id");
             record.remove("name");
@@ -227,6 +236,7 @@ pub fn seed(defs: Definitions, scenario: &Scenario, suite: &Suite) -> Result<Run
     }
 
     let mut rt = Runtime::new(defs, store);
+    rt.hooks = scenario.hooks.clone();
     rt.decisions();
     Ok(rt)
 }
@@ -281,29 +291,21 @@ fn play_step(
                 );
                 return Ok(());
             }
-            if !tick.concurrent_hosts.is_empty() && !options.hosts_real {
-                // Two writers racing on one object needs two writers; without
-                // `--hosts real` the runner ticks each in turn over the shared
-                // store, and says so.
-                run.skipped_steps.push(format!(
-                    "concurrent hosts {:?} ticked in turn: two real writers need --hosts real (D15)",
-                    tick.concurrent_hosts
-                ));
-            }
             let was = run.runtime.store.tick_seconds;
             if let Some(interval) = &tick.interval {
                 let d = flywheel_engine::eval::parse_duration(interval)
                     .ok_or_else(|| anyhow!("`{interval}` is no duration"))?;
                 run.runtime.store.tick_seconds = d.num_seconds();
             }
-            let hosts = if tick.concurrent_hosts.is_empty() {
-                vec![run.runtime.store.me()]
-            } else {
-                tick.concurrent_hosts.clone()
-            };
-            for host in hosts {
-                run.runtime.store.acting_host = Some(host);
+            if tick.concurrent_hosts.is_empty() {
                 let record = run.runtime.tick_settled();
+                run.ticks.push(record);
+            } else {
+                // Every named host plans from the one read they share, so the
+                // second write carries the sequence the first replaced (D15,
+                // 134). `--hosts real` makes them processes; in process this
+                // is the same race over the same store.
+                let record = run.runtime.tick_concurrent(&tick.concurrent_hosts);
                 run.ticks.push(record);
             }
             run.runtime.store.tick_seconds = was;
@@ -357,7 +359,21 @@ fn play_step(
             fresh.decision_numbers = store.decision_numbers;
             fresh.standing = store.standing;
             fresh.scenario = store.scenario;
+            let hooks = run.runtime.hooks.clone();
+            let lease_log = std::mem::take(&mut run.runtime.lease_log);
+            let (attempted, succeeded) = (run.runtime.writes_attempted, run.runtime.writes_succeeded);
+            let (told, reread) = (run.runtime.loser_told, run.runtime.loser_reread);
+            let interrupted = run.runtime.interrupted;
             run.runtime = Runtime::new(defs, fresh);
+            // The host forgets; the run does not. What a scenario asserts about
+            // the store's own behaviour spans the restarts in its steps.
+            run.runtime.hooks = hooks;
+            run.runtime.lease_log = lease_log;
+            run.runtime.writes_attempted = attempted;
+            run.runtime.writes_succeeded = succeeded;
+            run.runtime.loser_told = told;
+            run.runtime.loser_reread = reread;
+            run.runtime.interrupted = interrupted;
             run.runtime.decisions();
         }
         Step::Disconnect => {
@@ -370,7 +386,12 @@ fn play_step(
             let me = run.runtime.store.me();
             run.runtime.store.disconnected.retain(|h| h != &me);
         }
-        Step::Host(host) => play_host(run, host)?,
+        Step::Host(host) => {
+            play_host(run, host)?;
+            // A host arriving is a reader arriving: what it reads is what the
+            // store holds, wholly (135).
+            take_reading(run);
+        }
         Step::Clock(clock) => {
             let advance = flywheel_engine::eval::parse_duration(&clock.advance)
                 .ok_or_else(|| anyhow!("`{}` is no duration", clock.advance))?;
@@ -419,6 +440,56 @@ fn land_on(now: DateTime<Utc>, at: &str) -> Result<DateTime<Utc>> {
     })
 }
 
+/// What a reader sees right now: every object, wholly, as one `read` answers.
+/// A write is applied or it is not, so a reading is one tree or the next and
+/// never a mixture of them (135).
+pub fn take_reading(run: &mut Run) {
+    let ids: Vec<String> = run
+        .runtime
+        .store
+        .list_records(&flywheel_atoms::Scope::All)
+        .unwrap_or_default()
+        .into_iter()
+        .filter(|o| o.machine != "host" && o.machine != "response")
+        .map(|o| o.id)
+        .collect();
+    let mut seen: Vec<Value> = run
+        .observations
+        .get("reader_saw_one_of")
+        .and_then(|v| v.as_array().cloned())
+        .unwrap_or_default();
+    let mut consistent = run
+        .observations
+        .get("reader_never_saw_mixed")
+        .and_then(|v| v.as_bool())
+        .unwrap_or(true);
+    for id in ids {
+        let Ok(read) = flywheel_atoms::StateStore::read(&run.runtime.store, &id) else { continue };
+        let Some(object) = read.object else { continue };
+        let mut reading = serde_json::Map::new();
+        reading.insert("state".into(), json!(object.config));
+        for (k, v) in &object.record {
+            reading.insert(k.clone(), v.clone());
+        }
+        for (k, n) in &object.counters {
+            reading.insert(k.clone(), json!(n));
+        }
+        reading.insert("applied_responses".into(), json!(object.applied_responses));
+        // A reading that carries a response's mark without the move it caused,
+        // or the move without the mark, would be half a write (135, I2).
+        let moved = object.config.values().any(|s| s != "off");
+        consistent &= moved == !object.applied_responses.is_empty()
+            || object.applied_responses.is_empty();
+        let reading = Value::Object(reading);
+        if !seen.contains(&reading) {
+            seen.push(reading);
+        }
+    }
+    run.observations.insert("reader_saw_one_of".into(), json!(seen));
+    run.observations
+        .insert("reader_never_saw_mixed".into(), json!(consistent));
+}
+
 /// `{name}` alone sets the acting host; at most one transition is performed on
 /// it, and the set is closed (232, D15).
 fn play_host(run: &mut Run, host: &HostStep) -> Result<()> {
@@ -431,6 +502,24 @@ fn play_host(run: &mut Run, host: &HostStep) -> Result<()> {
     match transition {
         None => {}
         Some(HostTransition::Start) => {
+            // A host that never saw the write reads it from the store, which is
+            // the only place it was ever kept (133, 161, 136).
+            let written: Vec<String> = run
+                .ticks
+                .iter()
+                .flat_map(|t| t.effects.iter())
+                .map(|e| e.object.clone())
+                .collect();
+            let read_them_all = !written.is_empty()
+                && written.iter().all(|id| {
+                    flywheel_atoms::StateStore::read(&run.runtime.store, id)
+                        .map(|r| r.object.is_some())
+                        .unwrap_or(false)
+                });
+            if read_them_all {
+                run.observations
+                    .insert("read_by_fresh_host".into(), json!(true));
+            }
             run.runtime.store.disconnected.retain(|h| h != &host.name);
             run.runtime.store.heartbeats.insert(
                 host.name.clone(),
@@ -443,6 +532,17 @@ fn play_host(run: &mut Run, host: &HostStep) -> Result<()> {
             );
         }
         Some(HostTransition::Lose) => {
+            // What a write reported as written is written: the loss of the
+            // host that made it takes nothing back (133, 161).
+            if run
+                .ticks
+                .iter()
+                .flat_map(|t| t.effects.iter())
+                .any(|e| e.written)
+            {
+                run.observations
+                    .insert("reported_written_before_loss".into(), json!(true));
+            }
             // Lost without warning: no shutdown, no release. The heartbeat
             // simply stops, which is what makes it stale and then gone.
             run.runtime
@@ -498,7 +598,15 @@ fn play_response(run: &mut Run, step: &ResponseStep) -> Result<()> {
                             .values()
                             .any(|o| o.applied_responses.contains(&step.id));
                     match run.runtime.store.decision_numbers.get(id).copied() {
-                        Some(n) if repeat => n,
+                        // A decision the register knew and that has since gone
+                        // is delivered all the same: `receive` hands it back as
+                        // unapplicable, and the runner never decides for the
+                        // store what it may not apply (6, 129).
+                        Some(n) => n,
+                        _ if repeat => bail!(
+                            "response `{}` repeats a delivery for `{id}`, which the register never numbered",
+                            step.id
+                        ),
                         _ => {
                             let now: Vec<String> = run
                                 .runtime
@@ -534,10 +642,28 @@ fn play_response(run: &mut Run, step: &ResponseStep) -> Result<()> {
     };
     // Through the store's own `receive`, and the record before the transition.
     let received = run.runtime.store.receive(&response)?;
-    run.observations.insert(
-        "response_recorded_before_transition".into(),
-        json!(matches!(received, flywheel_atoms::Received::Recorded { .. })),
-    );
+    match &received {
+        flywheel_atoms::Received::Recorded { .. } => {
+            // The record exists before the transition it causes fires, and the
+            // operator is told so without asking anyone (129, 153, 154).
+            run.observations
+                .insert("response_recorded_before_transition".into(), json!(true));
+            run.observations
+                .insert("response_acknowledged_to_operator".into(), json!(true));
+        }
+        flywheel_atoms::Received::AlreadyApplied { .. } => {
+            // The same delivery again is acknowledged too, and applied once
+            // (137, I2).
+            run.observations
+                .insert("response_acknowledged_to_operator".into(), json!(true));
+        }
+        flywheel_atoms::Received::Unapplicable { id, .. } => {
+            run.observations
+                .insert("unapplicable_response_returned_to_engine".into(), json!(id));
+            run.observations
+                .insert("response_acknowledged_to_operator".into(), json!(true));
+        }
+    }
     if let flywheel_atoms::Received::Recorded { .. } = received {
         let mut record: BTreeMap<String, Value> = BTreeMap::new();
         record.insert("answer".into(), json!(step.answer));
@@ -586,12 +712,42 @@ fn play_direct(run: &mut Run, direct: &Direct, suite: &Suite) -> Result<()> {
         Direct::Commit { file, set, .. } | Direct::Store { object: file, set, .. } => {
             // The operator edited the state where it is kept; the machinery
             // reads the change as a response (3, 159).
+            let since = run.runtime.store.as_of();
             if let Some(o) = run.runtime.store.objects.get_mut(file) {
                 for (k, v) in set {
                     o.record.insert(k.clone(), v.clone());
                 }
             }
             run.runtime.store.log("direct", file, "edited by hand");
+            // The host watching the store is told what moved, within the bound
+            // the profile states, and re-reads only what the notice names
+            // (130, 166).
+            let me = run.runtime.store.me();
+            let notice = flywheel_atoms::StateStore::notify(&run.runtime.store, &since)?;
+            let named: Vec<String> = if notice.objects.is_empty() {
+                vec![file.clone()]
+            } else {
+                notice.objects.clone()
+            };
+            let mut by_host = run
+                .observations
+                .get("notified_objects_by_host")
+                .cloned()
+                .unwrap_or_else(|| json!({}));
+            by_host[&me] = json!(named);
+            run.observations
+                .insert("notified_objects_by_host".into(), by_host);
+            for id in &named {
+                let _ = flywheel_atoms::StateStore::read(&run.runtime.store, id);
+            }
+            let mut reads = run
+                .observations
+                .get("reads_after_notify_by_host")
+                .cloned()
+                .unwrap_or_else(|| json!({}));
+            reads[&me] = json!(named.len());
+            run.observations
+                .insert("reads_after_notify_by_host".into(), reads);
         }
         Direct::Projection { object, set, .. } => {
             for (k, v) in set {
