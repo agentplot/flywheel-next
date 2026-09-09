@@ -41,13 +41,25 @@
 # raised reaches the phone through the chat sink's own notification with
 # the platform's answer controls; the page pushes nothing of its own and
 # the short reply grammar always works beside them (309).
+# Beside the page sink the host serves the instance's book as a read-only
+# viewer of its own, built from the blueprints' shared line — chapters as
+# mdBook with each claim rendered where its chapter includes it by anchor
+# from the standing specifications; the page links out to a chapter or a
+# claim and embeds neither, and every chapter and rendered claim links
+# back to the object at the host's address with the instance in the path;
+# what is in flight is not in it (315, 97, 205a, 308). Its readers are the
+# host's: the private network on a self-managed host with 253's sign-in
+# and 253a's exception, the caller's token on a hosted tier reading to
+# members of that instance alone, and serving a book to readers who are
+# not members is one opt-in per book on the settings form, revocable there
+# and a stated fact of the tier (316, 247, 249, 261, 291).
 machine: sink
 version: 1
 kind: engine
 tier: core
 object: sink
 parent: null
-satisfies: [2, 8, 14, 18, 68, 82, 148, 152, 153, 154, 155, 216, 217, 218, 233, 236, 243, 244, 245, 247, 253, 254, 277, 303, 306, 307, 308, 309, 310, 311]
+satisfies: [2, 8, 14, 18, 68, 82, 148, 152, 153, 154, 155, 216, 217, 218, 233, 236, 243, 244, 245, 247, 253, 254, 277, 303, 306, 307, 308, 309, 310, 311, 315, 316]
 record:
   kind: enum                    # chat | page | bell
   member: string                # the member this sink belongs to, or none for a shared channel or surface (236)
