@@ -165,6 +165,7 @@ evidence:
   bolt.moved_claim:        {of: bolt, type: string}
   bolt.hold_since_last_merge: {of: bolt, type: bool}
   unit.claim_moved:        {of: unit, type: bool, doc: this unit cites a claim whose standing version is newer than the one cited, and no choice is recorded for it (35)}
+  unit.claim_answer:       {of: unit, type: enum, values: [none, captured, declined], doc: "the operator's answer on the review surface for a unit that landed citing no claim: none until asked, captured when its change was attached to an intent where a claim is written, declined when nothing there was worth one. Stored on the unit and never on the ledger, since a unit naming no claim has no cell (317, 34a); asked once and stored once, as a not-applicable verdict is (101)"}
   unit.target_is_new_bolt: {of: unit, type: bool}
   unit.deps_merged:        {of: unit, type: bool}
   unit.type:               {of: unit, type: string}
@@ -217,6 +218,7 @@ evidence:
   unit.bolt_exists:         {of: unit, type: bool, proof_of: create_bolt}
   bolt.named:               {of: bolt, type: bool, proof_of: rename_bolt}
   unit.routed:              {of: unit, type: bool, proof_of: route_unit}
+  unit.claim_answer_recorded: {of: unit, type: bool, proof_of: record_claim_answer, doc: an answer for this unit is stored, so the review view never lists it again (317)}
   unit.items_exist:         {of: unit, type: bool, proof_of: create_items}
   citation_choice_recorded: {of: any, type: bool, proof_of: record_citation_choice, doc: the bolt or unit record holds a choice for the moved claim and version}
   rail.numbered:            {of: rail, type: bool, proof_of: number_decisions, doc: every standing decision has a number in the rail's register}
@@ -326,6 +328,7 @@ effects:
   create_bolt:     {of: unit, args: [name, repository], proof: unit.bolt_exists, satisfies: [16, 29]}
   rename_bolt:     {of: bolt, args: [name], proof: bolt.named, satisfies: [16, 29]}
   route_unit:      {of: unit, args: [bolt], proof: unit.routed, satisfies: [16]}
+  record_claim_answer: {of: unit, args: [answer, intent], proof: unit.claim_answer_recorded, satisfies: [34, 317], doc: "the review surface's one answer for a unit that landed citing no claim: store it on the unit, and for captured also attach the unit's change to the named intent — open or proposed — as material, where the claim is written by the normal path (23, 97). The unit is not reopened, nothing waits on the answer, and the answered unit is never listed again"}
   create_items:    {of: unit, args: [], proof: unit.items_exist, satisfies: [13, 36, 57], doc: one work item per task in the approved document, with the type version in force}
   record_citation_choice: {of: [bolt, unit], args: [choice, claim], proof: citation_choice_recorded, satisfies: [35, 103]}
   # ---- rail, sinks, status, reports

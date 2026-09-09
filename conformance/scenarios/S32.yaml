@@ -7,8 +7,8 @@ invariants: [I16]
 given:
   objects:
     - {id: bolt/atlas/plan-rows, machine: bolt, state: {life: open, line: current, place: ready, open.citations: current, open.close: not-offered}, record: {repository: atlas}}
-    - {id: unit/atlas/a, machine: unit, parent: bolt/atlas/plan-rows, state: {life: in-flight}, record: {type: fast, type_version: 1}}
-    - {id: unit/atlas/b, machine: unit, parent: bolt/atlas/plan-rows, state: {life: in-flight}, record: {type: fast, type_version: 1}}
+    - {id: unit/atlas/a, machine: unit, parent: bolt/atlas/plan-rows, state: {life: in-flight}, record: {type: default, type_version: 5}}
+    - {id: unit/atlas/b, machine: unit, parent: bolt/atlas/plan-rows, state: {life: in-flight}, record: {type: default, type_version: 5}}
     - {id: work-item/atlas/a/1, machine: work-item, parent: unit/atlas/a, state: {life: merging, merging.place: merging}, record: {ordinal: 1}}
     - {id: work-item/atlas/b/1, machine: work-item, parent: unit/atlas/b, state: {life: in-type, in-type.stages: build, build.run: sessions, session.life: alive, alive.activity: working, placing.place: ready}, record: {ordinal: 2}}
   evidence: {place.merge_slot: {work-item/atlas/a/1: true}, place.contains_line: {"*": true}, session.activity: {"work-item/atlas/b/1/build/1": working}, session.pane: {"*": present}}

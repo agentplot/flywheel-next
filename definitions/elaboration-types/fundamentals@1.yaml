@@ -1,0 +1,57 @@
+# The elaboration type that writes the fundamentals part of the book: a
+# statement of invariants of what the system is and what must always hold,
+# written as clauses numbered in one sequence, each stating something always
+# true or never done, and naming no mechanism (318). It is a type of its own
+# and not the writing type pointed at another deliverable, because a type is
+# the set of deliverables it names (190): this session delivers the part, the
+# claims that fall out of it and the map attachments those claims take, where
+# a chapter session delivers a chapter, a diagram and a claim.
+#
+# It is self-closing (25). The session ends itself when the part validates
+# against the schema the style guide fixes — every clause an invariant,
+# numbered in one sequence, naming no mechanism in the first two parts — which
+# is a check the session runs on itself, so nothing waits on the operator.
+#
+# It ships in the release's set and is listed in the registry as shipped
+# rather than added (208, 224). Like every type file it is extensible and
+# never core: it composes only the `session` template and atoms the release
+# already ships (57, 87, 223), so shipping it is no code change, and an
+# instance overrides it under its prefix like any other. Changing the type,
+# its schema or its producer is a chore (123).
+machine: fundamentals
+version: 1
+kind: template
+tier: extensible
+satisfies: [24, 25, 54, 190, 318]
+params:
+  place: the elaboration's place
+  agent: the agent for the session
+  deliverables: "entries {name, producer, schema, surface}; the defaults below name the shipped set, and the elaboration's proposal may narrow them; `default` resolves through the deliverables binding in force (190)"
+regions:
+  work:
+    initial: session
+    states:
+      session:
+        doc: "the part, the claims it yields and their map attachments are the three deliverables; a clause that names no behaviour a repository could be judged against yields no claim, and that is the normal case (318)"
+        machine: session
+        params: {agent: $agent, place: $place, work_order: rendered, keep_alive: false, deliverables: [{name: fundamentals-part, producer: default, schema: default, surface: default}, {name: claim, producer: default, schema: default, surface: default}, {name: context-map, producer: default, schema: default, surface: default}]}
+        transitions:
+          - when: {all: [{final: exited}, {ev: session.exit, is: done}]}
+            to: done
+            note: the session declares done only once the part validates against the style guide's schema; the machinery finishes the elaboration (25)
+          - when: {all: [{final: exited}, {ev: session.exit, in: [stalled, invalid]}]}
+            to: stalled
+          - when: {final: lost}
+            to: stalled
+          - when: {all: [{region: {name: activity, in: [idle]}}, {ev: session.idle_since, older: 2h}]}
+            to: stalled
+            note: idle with no exit written is a stall for a self-closing type
+      stalled:
+        decision: {kind: stalled, group: decide, answers: [retry, drop], satisfies: [25]}
+        transitions:
+          - when: {response: retry}
+            to: session
+          - when: {response: drop}
+            to: done
+      done:
+        final: true

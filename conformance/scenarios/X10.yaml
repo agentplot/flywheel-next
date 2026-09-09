@@ -1,0 +1,43 @@
+scenario: X10
+title: two units land citing no claim; the review view lists both under one question; one is declined, one wants a claim, and the next review lists neither
+profiles: [all]
+satisfies: [34, 61, 99, 102, 122, 317]
+given:
+  objects:
+    - {id: bolt/atlas/housekeeping, machine: bolt, state: {life: landed, line: current, place: gone}, record: {repository: atlas}}
+    - {id: unit/atlas/agents-md, machine: unit, parent: bolt/atlas/housekeeping, state: {life: merged}, record: {type: chore, type_version: 2, claims: [], batch: bolt/atlas/housekeeping}}
+    - {id: unit/atlas/claude-plugin, machine: unit, parent: bolt/atlas/housekeeping, state: {life: merged}, record: {type: chore, type_version: 2, claims: [], batch: bolt/atlas/housekeeping}}
+    - {id: unit/atlas/deploy-step, machine: unit, parent: bolt/atlas/housekeeping, state: {life: merged}, record: {type: fast, type_version: 3, claims: ["deploy/one-automated-step@3"]}}
+    - {id: intent/atlas-deploy-promises, machine: intent, state: {life: open, line: current, open.material: settled, open.close: not-offered}}
+    - {id: claim/deploy/one-automated-step, machine: claim, state: {standing: standing}, record: {version: 3, scope: all}}
+  evidence:
+    unit.claim_answer: {"*": none}
+  marks: {page: now}
+when:
+  - tick: {}
+  - direct: {do: page, path: "/review", by: chuck}
+  - response: {object: unit/atlas/claude-plugin, answer: "no claim needed", id: page/7002}
+  - tick: {}
+  - response: {object: unit/atlas/agents-md, answer: "claim wanted: intent/atlas-deploy-promises", id: page/7003}
+  - tick: {}
+  - direct: {do: page, path: "/review", by: chuck}
+then:
+  effects:
+    - {do: record_claim_answer, count: 2}
+    - {do: record_verdict, count: 0}
+  decisions:
+    - {after_step: 1, absent: [unit-proposed, unit-claim-moved]}
+    - {after_step: 6, absent: [unit-proposed, unit-claim-moved]}
+  states:
+    unit/atlas/agents-md: {life: landed}
+    unit/atlas/claude-plugin: {life: landed}
+    unit/atlas/deploy-step: {life: landed}
+  records:
+    unit/atlas/claude-plugin: {claim_answer: declined}
+    unit/atlas/agents-md: {claim_answer: captured}
+  state_store:
+    review_lists_unclaimed_units: [unit/atlas/agents-md, unit/atlas/claude-plugin]
+    review_lists_unclaimed_units_after: []
+    ledger_cells_for_unclaimed_units: 0
+    review_view_derived_from_history: true
+    hand_written_files_for_view: 0

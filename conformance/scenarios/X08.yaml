@@ -6,9 +6,9 @@ invariants: [I1, I6]
 given:
   objects:
     - {id: bolt/atlas/plan-rows, machine: bolt, state: {life: open, line: current, place: ready, open.citations: current, open.close: not-offered}, record: {repository: atlas}}
-    - {id: unit/atlas/u, machine: unit, parent: bolt/atlas/plan-rows, state: {life: in-flight}, record: {type: fast, type_version: 1}}
+    - {id: unit/atlas/u, machine: unit, parent: bolt/atlas/plan-rows, state: {life: in-flight}, record: {type: default, type_version: 5}}
     - {id: work-item/atlas/u/1, machine: work-item, parent: unit/atlas/u, state: {life: in-type, in-type.stages: build, build.run: sessions, session.life: alive, alive.activity: working, placing.place: ready}, record: {ordinal: 1}}
-    - {id: unit/atlas/v, machine: unit, parent: bolt/atlas/plan-rows, state: {life: in-flight}, record: {type: fast, type_version: 1}}
+    - {id: unit/atlas/v, machine: unit, parent: bolt/atlas/plan-rows, state: {life: in-flight}, record: {type: default, type_version: 5}}
     - {id: work-item/atlas/v/1, machine: work-item, parent: unit/atlas/v, state: {life: in-type, in-type.stages: build, build.run: sessions, session.life: alive, alive.activity: working, placing.place: ready}, record: {ordinal: 2}}
   evidence: {session.pane: {"*": present}, session.activity: {"*": working}, place.held: {"*": false}}
 when:
@@ -24,6 +24,7 @@ when:
   - evidence: {session.pane: {"work-item/atlas/v/1/build/1": absent}}
   - tick: {}
   - tick: {}
+  - tick: {}     # the presence read, then the session lost and the stage's fresh attempt, then the start of attempt 2
 then:
   transitions:
     - {object: unit/atlas/u, from: in-flight, to: dropped, response: discord/dictation-1}

@@ -10,6 +10,9 @@ types:
   fast@3:
     file: unit-types/fast@3.yaml
     sha256: ba2f439a480c680d405b8845b2d8dde40e5407790ba12cb32f62366f2b9f521d
+  fundamentals@1:
+    file: elaboration-types/fundamentals@1.yaml
+    sha256: 460c3af2fd4e30d53ebb2b7299f9660b228ace82395ce8e1b7488994b2fd7308
   persona-test@3:
     file: unit-types/persona-test@3.yaml
     sha256: ecd47836b1e9b4eda8ec41a9e73327a925882318dcfe2a3e28438b59a566a931

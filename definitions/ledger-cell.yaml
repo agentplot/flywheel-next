@@ -17,7 +17,12 @@
 # unjudged and planning due; one removed takes the cell out of scope, where
 # its verdict reads as not-applicable (195). A repository joins when a node
 # names it as home; its baseline is the claims attached to what it homes
-# (202).
+# (202). A cell is a claim and a repository and never a unit, so a unit that
+# cites no claim has no cell at all: it produces no as-built statement, the
+# backlog never sees it, and the ledger holds nothing for it (34a). The
+# question of whether such a unit wanted a claim after the fact is answered on
+# the review surface and stored on the unit, never here (317, unit.yaml
+# claim_answer).
 machine: ledger-cell
 version: 4
 kind: object

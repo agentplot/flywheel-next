@@ -21,7 +21,8 @@ record:
   document: ref          # the proposal document, kept with the proposal record in the state, not in a change directory (187); presented for review (17). The unit's own change lives in its built repository and is written at its first stage
   target: {bolt: bolt-id, new_name: string}
   depends_on: list       # other units of the same bolt
-  claims: list           # claim@version the work serves
+  claims: list           # claim@version the work serves; empty when no standing claim in scope fits, which is legal and is the common case for a chore (34a, 61). An empty list means no as-built statement, no verdict and no ledger cell; the unit never proposes a claim of its own
+  claim_answer: enum     # none, captured or declined: the review surface's one answer for a unit that landed citing no claim, stored once against the unit as a not-applicable verdict is stored once against a claim (101, 317); never a decision on the rail
   estimate: int          # the proposal's size estimate in slot-days, one session slot for one day (172)
   owner: string          # the one member the unit's decisions belong to — from the proposal, the type, or an assign response (237); never a role; none is everyone's
   actual: int            # the slot-days its sessions occupied, summed from the session records at landing and written on the as-built by write_acceptance (172)
@@ -155,6 +156,7 @@ regions:
           - when: {parent: {in: [landed]}}
             to: landed
       landed:
+        doc: a unit that landed with an empty claims list joins the review surface's batch — the units landed since the operator's mark citing no claim, read in one sitting under one question (317, model.md 8.5). The answer is recorded by record_claim_answer against the unit; the unit is not reopened for it and nothing waits on it. A chore that did cite a claim makes that claim's cell due again at its landing (64)
         final: true
       withdrawn:
         doc: back to planning with the notes; the next proposal is a new unit

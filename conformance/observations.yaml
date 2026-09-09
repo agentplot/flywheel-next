@@ -132,6 +132,9 @@ observations:
   review_view_points_to:        {profiles: [all], doc: "what the review view took the operator to (122)"}
   previous_version_shown:       {profiles: [all], doc: "the previous version was shown beside the amended one (122)"}
   hand_written_files_for_view:  {profiles: [all], doc: "files written by hand to make the view look right; zero (142)"}
+  review_lists_unclaimed_units: {profiles: [all], doc: "the units the review view listed as landed citing no claim since the mark, in order, the first time it was opened (317, 34a)"}
+  review_lists_unclaimed_units_after: {profiles: [all], doc: "the same list at the next review, once every unit in it has been answered; empty, because an answered unit is never listed again (317)"}
+  ledger_cells_for_unclaimed_units: {profiles: [all], doc: "ledger cells existing for units that named no claim; zero, since a cell is a claim and a repository and never a unit (34a, 102)"}
 
   # ---- captures, signals and curation
   captures_existing:            {profiles: [all], doc: "how many capture records exist for the source event; one, however many imports (111)"}

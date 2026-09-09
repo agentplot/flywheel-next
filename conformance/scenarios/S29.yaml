@@ -5,7 +5,7 @@ satisfies: [31, 32]
 given:
   objects:
     - {id: bolt/atlas/plan-rows, machine: bolt, state: {life: open, line: current, place: ready, open.citations: current, open.close: not-offered}, record: {repository: atlas}}
-    - {id: unit/atlas/u, machine: unit, parent: bolt/atlas/plan-rows, state: {life: in-flight}, record: {type: fast, type_version: 1}}
+    - {id: unit/atlas/u, machine: unit, parent: bolt/atlas/plan-rows, state: {life: in-flight}, record: {type: fast, type_version: 3}}
     - {id: work-item/atlas/u/1, machine: work-item, parent: unit/atlas/u, state: {life: waiting}, record: {ordinal: 1, depends_on: []}}
     - {id: work-item/atlas/u/2, machine: work-item, parent: unit/atlas/u, state: {life: waiting}, record: {ordinal: 2, depends_on: []}}
     - {id: work-item/atlas/u/3, machine: work-item, parent: unit/atlas/u, state: {life: waiting}, record: {ordinal: 3, depends_on: [work-item/atlas/u/1, work-item/atlas/u/2]}}
