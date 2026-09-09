@@ -1,0 +1,652 @@
+//! The host loop: what a tick does, what a host takes, what it records, and
+//! what it shows (D7, D8, D12, 79-82, 141-150a).
+//!
+//! Every test runs a real host over a real local state repository. No network,
+//! no built repository, no agent: the workspace is recorded and the operator is
+//! the session (93a, 93b).
+
+use chrono::{DateTime, Duration, TimeZone, Utc};
+use flywheel::host::{Bindings, Host};
+use flywheel_atoms::{Records, Scope, StateStore, ThreadEntry};
+use flywheel_domain::derived::Declaration;
+use flywheel_engine::Object;
+use flywheel_store_git::store::sandbox;
+use serde_json::json;
+use std::collections::BTreeMap;
+
+fn at(minute: i64) -> DateTime<Utc> {
+    Utc.with_ymd_and_hms(2026, 1, 1, 9, 0, 0).unwrap() + Duration::minutes(minute)
+}
+
+fn dir(name: &str) -> std::path::PathBuf {
+    let dir = std::env::temp_dir().join(format!(
+        "flywheel-host-{name}-{}-{:?}",
+        std::process::id(),
+        std::thread::current().id()
+    ));
+    let _ = std::fs::remove_dir_all(&dir);
+    std::fs::create_dir_all(&dir).unwrap();
+    dir
+}
+
+fn declaration(repositories: &[&str]) -> Declaration {
+    Declaration {
+        repositories: repositories.iter().map(|r| r.to_string()).collect(),
+        types: vec![],
+        kinds: vec!["all".into()],
+    }
+}
+
+fn host(name: &str, repositories: &[&str]) -> Host {
+    let base = dir(name);
+    let now = at(0);
+    let git = sandbox(&base, "mac-mini", now).unwrap();
+    Host::over(
+        "mac-mini",
+        "willdan",
+        flywheel_domain::set::load().unwrap(),
+        git,
+        Bindings {
+            world: "host".into(),
+            workspace: "recorded".into(),
+            sessions: "operator".into(),
+        },
+        declaration(repositories),
+        now,
+    )
+}
+
+/// Put a described object in the store: what a scenario's `given` does, and
+/// what the world outside these tests would have written.
+fn seed(host: &mut Host, id: &str, machine: &str, states: &[(&str, &str)], record: &[(&str, serde_json::Value)]) {
+    let mut object = Object {
+        id: id.to_string(),
+        machine: machine.to_string(),
+        parent: None,
+        config: states
+            .iter()
+            .map(|(r, s)| (r.to_string(), s.to_string()))
+            .collect(),
+        entered_at: states
+            .iter()
+            .map(|(r, _)| (r.to_string(), host.now()))
+            .collect(),
+        record: record
+            .iter()
+            .map(|(k, v)| (k.to_string(), v.clone()))
+            .collect::<BTreeMap<_, _>>(),
+        counters: Default::default(),
+        applied_responses: vec![],
+        seq: 0,
+        created: 0,
+    };
+    if object.config.is_empty() {
+        flywheel_engine::initialise(&host.defs, &mut object, host.now());
+    }
+    host.store.git.seed_object(&object).unwrap();
+}
+
+// ---------------------------------------------------------------- 6.1 the tick
+
+#[test]
+fn tick_fetches_first() {
+    let mut host = host("fetch", &["atlas"]);
+    seed(
+        &mut host,
+        "bolt/atlas/plan-rows",
+        "bolt",
+        &[("life", "open")],
+        &[("repository", json!("atlas"))],
+    );
+    host.sweep().unwrap();
+    let seen = host.store.since();
+    assert_eq!(
+        seen.first().map(String::as_str),
+        Some("fetch"),
+        "a tick read before it fetched: {seen:?}"
+    );
+    // And nothing decided before the fetch: the first read comes after it.
+    let first_read = seen.iter().position(|s| s == "list" || s == "read" || s == "get");
+    assert!(first_read.unwrap_or(0) > 0);
+}
+
+#[test]
+fn sweep_fires_older_guards() {
+    let mut host = host("sweep", &["atlas"]);
+    // Another host, last seen ten minutes ago: past the five-minute window its
+    // life is stale, and only a guard reading the clock says so (130, D7).
+    seed(
+        &mut host,
+        "host/mini-2",
+        "host",
+        &[],
+        &[
+            ("last_seen", json!((at(0) - Duration::minutes(10)).to_rfc3339())),
+            ("bound", json!(1)),
+            ("intermittent", json!(false)),
+        ],
+    );
+    seed(
+        &mut host,
+        "bolt/atlas/plan-rows",
+        "bolt",
+        &[("life", "open")],
+        &[("repository", json!("atlas"))],
+    );
+
+    // A notify-tick on another object leaves it where it was: nothing under
+    // `bolt/atlas/plan-rows` reads that host's clock.
+    host.tick(&Scope::Under("bolt/atlas/plan-rows".into())).unwrap();
+    let held = host.store.get("host/mini-2").unwrap().unwrap();
+    assert_eq!(held.config.get("life").map(String::as_str), Some("alive"));
+
+    // The sweep covers every scope, so the `older:` guard fires.
+    host.sweep().unwrap();
+    let held = host.store.get("host/mini-2").unwrap().unwrap();
+    assert_eq!(
+        held.config.get("life").map(String::as_str),
+        Some("stale"),
+        "the sweep did not fire the older guard"
+    );
+}
+
+// ------------------------------------------------- 6.2 declaration and leases
+
+#[test]
+fn lease_only_within_declaration() {
+    let mut host = host("declaration", &["atlas"]);
+    seed(
+        &mut host,
+        "bolt/atlas/plan-rows",
+        "bolt",
+        &[("life", "open")],
+        &[("repository", json!("atlas"))],
+    );
+    seed(
+        &mut host,
+        "bolt/beta/other",
+        "bolt",
+        &[("life", "open")],
+        &[("repository", json!("beta"))],
+    );
+    host.sweep().unwrap();
+
+    assert_eq!(
+        host.store
+            .leases("bolt/atlas/plan-rows")
+            .unwrap()
+            .map(|l| l.holder),
+        Some("mac-mini".to_string())
+    );
+    assert_eq!(
+        host.store.leases("bolt/beta/other").unwrap().map(|l| l.holder),
+        None,
+        "the host took a lease outside its declaration (149)"
+    );
+
+    // Its declaration and its heartbeat are on the record, so another host can
+    // read what this one takes (147, 149, 163).
+    let me = host.store.get("host/mac-mini").unwrap().unwrap();
+    assert_eq!(
+        me.record.get("declares").and_then(|d| d.get("repositories")),
+        Some(&json!(["atlas"]))
+    );
+    assert!(host.store.hosts().unwrap().iter().any(|h| h.host == "mac-mini"));
+}
+
+// ------------------------------------------------------- 6.4 the away window
+
+/// A host away: its life is `away`, its leases stand, and no attention line is
+/// raised for it (150a).
+#[test]
+fn away_raises_no_attention() {
+    let mut host = host("away", &["atlas"]);
+    seed(
+        &mut host,
+        "bolt/atlas/plan-rows",
+        "bolt",
+        &[("life", "open")],
+        &[("repository", json!("atlas"))],
+    );
+    host.intermittent = true;
+    host.sweep().unwrap();
+    let held_before = host
+        .store
+        .leases("bolt/atlas/plan-rows")
+        .unwrap()
+        .map(|l| l.holder);
+
+    // The laptop is shut: no heartbeat, and the clock runs on past the stale
+    // and the gone windows.
+    host.go_away(at(0));
+    host.set_now(at(45));
+    host.sweep().unwrap();
+    host.sweep().unwrap();
+
+    let me = host.store.get("host/mac-mini").unwrap().unwrap();
+    assert_eq!(
+        me.config.get("life").map(String::as_str),
+        Some("away"),
+        "an intermittent host past its stale window is away, not gone (150a)"
+    );
+    assert_eq!(
+        host.store
+            .leases("bolt/atlas/plan-rows")
+            .unwrap()
+            .map(|l| l.holder),
+        held_before,
+        "an away host's leases stand (150a)"
+    );
+    let attention = host.attention().unwrap();
+    assert!(
+        !attention.iter().any(|a| a.starts_with("host-gone")),
+        "an away host raised an attention line: {attention:?}"
+    );
+
+    // Back, with nothing to answer.
+    host.set_now(at(46));
+    host.come_back().unwrap();
+    host.sweep().unwrap();
+    host.sweep().unwrap();
+    let me = host.store.get("host/mac-mini").unwrap().unwrap();
+    assert_eq!(me.config.get("life").map(String::as_str), Some("alive"));
+}
+
+#[test]
+fn away_with_work_waiting_raises_takeover() {
+    let mut host = host("waiting", &["atlas"]);
+    seed(
+        &mut host,
+        "bolt/atlas/plan-rows",
+        "bolt",
+        &[("life", "open")],
+        &[("repository", json!("atlas"))],
+    );
+    // Work the operator approved, waiting on the host that holds it.
+    seed(
+        &mut host,
+        "unit/atlas/u",
+        "unit",
+        &[("life", "approved")],
+        &[("repository", json!("atlas")), ("type", json!("default"))],
+    );
+    host.intermittent = true;
+    host.sweep().unwrap();
+
+    host.go_away(at(0));
+    host.set_now(at(45));
+    host.sweep().unwrap();
+    host.sweep().unwrap();
+    host.sweep().unwrap();
+
+    let me = host.store.get("host/mac-mini").unwrap().unwrap();
+    assert_eq!(
+        me.config.get("life").map(String::as_str),
+        Some("gone"),
+        "work waiting on an away host raises the takeover decision (150a)"
+    );
+    let attention = host.attention().unwrap();
+    assert!(
+        attention.iter().any(|a| a.starts_with("host-gone")),
+        "no takeover was offered though work waited: {attention:?}"
+    );
+}
+
+// ----------------------------------------------------------- 6.8 the bindings
+
+#[test]
+fn bindings_named_in_run_record() {
+    let mut host = host("bindings", &["atlas"]);
+    host.record_bindings();
+    host.sweep().unwrap();
+    let record = host.store.git.run_record().unwrap();
+    let binding = record
+        .iter()
+        .find(|e| e.kind == "binding")
+        .expect("the run record names the bindings this host loaded (139)");
+    let named: BTreeMap<&str, &str> = binding
+        .fields
+        .iter()
+        .map(|(n, v)| (n.as_str(), v.as_str()))
+        .collect();
+    assert_eq!(named.get("world"), Some(&"host"));
+    assert_eq!(named.get("workspace"), Some(&"recorded"));
+    assert_eq!(named.get("sessions"), Some(&"operator"));
+    assert!(named.contains_key("definitions"));
+}
+
+#[test]
+fn a_binding_this_release_lacks_is_refused() {
+    // A host never branches on a binding it cannot load: it says so and stops
+    // (D8, 299).
+    let mut manifest = flywheel_world_host::Manifest {
+        instance: "willdan".into(),
+        ..Default::default()
+    };
+    manifest.hosts.insert(
+        "local".into(),
+        flywheel_world_host::manifest::Host {
+            root: "/tmp/flywheel".into(),
+            workspace: "host".into(),
+            sessions: "operator".into(),
+            covers: vec![],
+        },
+    );
+    let refused = Bindings::read(&manifest, "local").unwrap_err().to_string();
+    assert!(refused.contains("workspace"), "{refused}");
+    assert!(refused.contains("phase 2"), "{refused}");
+}
+
+// ----------------------------------------------------------- 6.11-6.14 the run record
+
+#[test]
+fn run_record_carries_reason_and_evidence() {
+    let mut host = host("reason", &["atlas"]);
+    seed(
+        &mut host,
+        "host/mini-2",
+        "host",
+        &[],
+        &[
+            ("last_seen", json!((at(0) - Duration::minutes(10)).to_rfc3339())),
+            ("bound", json!(1)),
+        ],
+    );
+    host.sweep().unwrap();
+    let record = host.store.git.run_record().unwrap();
+    let write = record
+        .iter()
+        .find(|e| e.kind == "write" && e.object == "host/mini-2")
+        .expect("every write is recorded with its reason (79)");
+    assert!(
+        write.reason.contains("alive") && write.reason.contains("stale"),
+        "the reason does not say what moved: {:?}",
+        write.reason
+    );
+    assert!(
+        write.evidence.iter().any(|(n, _)| n == "host.last_seen"),
+        "the evidence the guard read is not on the entry: {:?}",
+        write.evidence
+    );
+}
+
+#[test]
+fn expected_beside_delivered() {
+    let mut host = host("delivered", &["atlas"]);
+    // A session asked for three things that delivered two.
+    flywheel_sessions_operator::set(
+        &mut host.store.git,
+        "session/unit/atlas/u/main",
+        &[
+            ("runner", json!("operator")),
+            ("place", json!("unit/atlas/u")),
+            ("started_at", json!(at(0).to_rfc3339())),
+            ("deliverables", json!(["book-chapter", "claim", "context-map"])),
+        ],
+    )
+    .unwrap();
+    host.store
+        .git
+        .append(
+            "session/unit/atlas/u/main",
+            &ThreadEntry {
+                at: at(1),
+                kind: "exit".into(),
+                by: Some("operator".into()),
+                fields: [
+                    ("exit".to_string(), json!("done")),
+                    ("deliverables".to_string(), json!(["book-chapter", "claim"])),
+                ]
+                .into_iter()
+                .collect(),
+            },
+        )
+        .unwrap();
+    host.set_now(at(2));
+    host.sweep().unwrap();
+
+    let record = host.store.git.run_record().unwrap();
+    let entry = record
+        .iter()
+        .find(|e| e.kind == "session")
+        .expect("what a session delivered is recorded (80)");
+    let fields: BTreeMap<&str, &str> = entry
+        .fields
+        .iter()
+        .map(|(n, v)| (n.as_str(), v.as_str()))
+        .collect();
+    // The difference first (80).
+    assert_eq!(entry.fields.first().map(|(n, _)| n.as_str()), Some("entry"));
+    assert_eq!(fields.get("missing"), Some(&"context-map"));
+    assert_eq!(
+        fields.get("expected"),
+        Some(&"book-chapter, claim, context-map")
+    );
+    assert_eq!(fields.get("delivered"), Some(&"book-chapter, claim"));
+}
+
+#[test]
+fn machinery_problem_is_not_work() {
+    let mut host = host("problem", &["atlas"]);
+    let before = host.store.list(&Scope::All).unwrap().objects.len();
+    host.report_problem("host/mac-mini", "the git host refused the push");
+    host.sweep().unwrap();
+
+    let record = host.store.git.run_record().unwrap();
+    let problem = record
+        .iter()
+        .find(|e| e.is_problem())
+        .expect("a problem with the machinery is reported (81)");
+    assert!(problem.reason.contains("refused the push"));
+
+    // And nothing was made of it: no intent, no unit, no work item (81).
+    let after = host.store.list(&Scope::All).unwrap().objects;
+    assert!(
+        !after
+            .iter()
+            .any(|o| matches!(o.machine.as_str(), "intent" | "unit" | "work-item" | "capture")),
+        "a problem with the machinery became work"
+    );
+    assert!(after.len() >= before);
+}
+
+#[test]
+fn refusal_reaches_attention() {
+    let mut host = host("refusal", &["atlas"]);
+    flywheel_sessions_operator::set(
+        &mut host.store.git,
+        "session/unit/atlas/u/main",
+        &[
+            ("runner", json!("operator")),
+            ("place", json!("unit/atlas/u")),
+            ("started_at", json!(at(0).to_rfc3339())),
+        ],
+    )
+    .unwrap();
+    host.store
+        .git
+        .append(
+            "session/unit/atlas/u/main",
+            &ThreadEntry {
+                at: at(1),
+                kind: "refusal".into(),
+                by: Some("session/unit/atlas/u/main".into()),
+                fields: [
+                    ("operation".to_string(), json!("land_line")),
+                    ("reason".to_string(), json!("a session may not land a line")),
+                ]
+                .into_iter()
+                .collect(),
+            },
+        )
+        .unwrap();
+    host.set_now(at(2));
+    host.sweep().unwrap();
+
+    let record = host.store.git.run_record().unwrap();
+    let refusal = record
+        .iter()
+        .find(|e| e.kind == "refusal")
+        .expect("every refusal is recorded (4, 79)");
+    let fields: BTreeMap<&str, &str> = refusal
+        .fields
+        .iter()
+        .map(|(n, v)| (n.as_str(), v.as_str()))
+        .collect();
+    assert_eq!(fields.get("identity"), Some(&"session/unit/atlas/u/main"));
+    assert_eq!(fields.get("operation"), Some(&"land_line"));
+    assert_eq!(refusal.object, "session/unit/atlas/u/main");
+    assert!(
+        host.attention()
+            .unwrap()
+            .iter()
+            .any(|a| a == "refusal: session/unit/atlas/u/main"),
+        "the refusal never reached attention (81, 82)"
+    );
+}
+
+// ------------------------------------------------------- 6.15-6.19 the status view
+
+#[test]
+fn status_view_groups_every_object() {
+    let mut host = host("status", &["atlas"]);
+    seed(
+        &mut host,
+        "bolt/atlas/plan-rows",
+        "bolt",
+        &[("life", "open")],
+        &[("repository", json!("atlas"))],
+    );
+    seed(
+        &mut host,
+        "unit/atlas/u",
+        "unit",
+        &[("life", "approved")],
+        &[("repository", json!("atlas")), ("type", json!("default"))],
+    );
+    seed(
+        &mut host,
+        "unit/atlas/done",
+        "unit",
+        &[("life", "landed")],
+        &[("repository", json!("atlas")), ("type", json!("default"))],
+    );
+    host.sweep().unwrap();
+
+    let status = host.status().unwrap();
+    let grouped: Vec<&str> = status.rows.iter().map(|r| r.object.as_str()).collect();
+    for object in ["bolt/atlas/plan-rows", "unit/atlas/u", "unit/atlas/done"] {
+        assert!(grouped.contains(&object), "{object} is on no group: {grouped:?}");
+    }
+    // Every group is one of the four of 141, and every object is in exactly one.
+    for row in &status.rows {
+        assert!(
+            flywheel_domain::status::GROUPS.contains(&row.group.as_str()),
+            "{} is in the group `{}`",
+            row.object,
+            row.group
+        );
+    }
+    assert_eq!(status.group("done"), vec!["unit/atlas/done"]);
+
+    // Its holder, its runner and that host's liveness are shown (143, 146).
+    let held = status
+        .rows
+        .iter()
+        .find(|r| r.object == "bolt/atlas/plan-rows")
+        .unwrap();
+    assert_eq!(held.holder.as_deref(), Some("mac-mini"));
+    assert_eq!(held.liveness.as_deref(), Some("alive"));
+
+    // One place for the instance: one page, with the as-of point on it (145).
+    let view = flywheel_domain::status::render(&status);
+    assert!(view.body.contains("as of commit"));
+    for object in ["bolt/atlas/plan-rows", "unit/atlas/u", "unit/atlas/done"] {
+        assert!(view.body.contains(object), "{object} is not on the page");
+    }
+}
+
+#[test]
+fn discussion_stays_with_the_object() {
+    let mut host = host("discussion", &["atlas"]);
+    seed(
+        &mut host,
+        "unit/atlas/u",
+        "unit",
+        &[("life", "approved")],
+        &[("repository", json!("atlas")), ("type", json!("default"))],
+    );
+    for (kind, text) in [
+        ("question", "which rows does this cover?"),
+        ("answer", "the ones the claim names"),
+        ("note", "the claim moved on Tuesday"),
+    ] {
+        host.store
+            .git
+            .append(
+                "unit/atlas/u",
+                &ThreadEntry {
+                    at: at(1),
+                    kind: kind.into(),
+                    by: Some("operator".into()),
+                    fields: [("text".to_string(), json!(text))].into_iter().collect(),
+                },
+            )
+            .unwrap();
+    }
+    host.sweep().unwrap();
+
+    // The session that said them is gone; they are still under the object.
+    flywheel_sessions_operator::end(&mut host.store.git, "unit/atlas/u/main", at(2)).unwrap();
+    let status = host.status().unwrap();
+    let row = status
+        .rows
+        .iter()
+        .find(|r| r.object == "unit/atlas/u")
+        .unwrap();
+    assert_eq!(
+        row.discussion,
+        vec![
+            ("question".to_string(), "which rows does this cover?".to_string()),
+            ("answer".to_string(), "the ones the claim names".to_string()),
+            ("note".to_string(), "the claim moved on Tuesday".to_string()),
+        ]
+    );
+}
+
+#[test]
+fn drift_rewritten_and_reported() {
+    let mut host = host("drift", &["atlas"]);
+    seed(
+        &mut host,
+        "unit/atlas/u",
+        "unit",
+        &[("life", "approved")],
+        &[("repository", json!("atlas")), ("type", json!("default"))],
+    );
+    host.sweep().unwrap();
+    let written = host.store.git.committed_status().unwrap().unwrap();
+    assert!(written.contains("unit/atlas/u"));
+
+    // Someone rewrote the projection by hand. It is not the truth, so it is
+    // rewritten from its source on the next tick and reported with both values
+    // (77, 142).
+    host.store.git.commit_status("<html>not what was read</html>").unwrap();
+    host.set_now(at(1));
+    host.sweep().unwrap();
+
+    let again = host.store.git.committed_status().unwrap().unwrap();
+    assert!(again.contains("unit/atlas/u"), "the drift was not rewritten");
+    let record = host.store.git.run_record().unwrap();
+    let drift = record
+        .iter()
+        .find(|e| e.kind == "drift")
+        .expect("drift is reported (77, 142)");
+    let fields: BTreeMap<&str, &str> = drift
+        .fields
+        .iter()
+        .map(|(n, v)| (n.as_str(), v.as_str()))
+        .collect();
+    assert!(fields.contains_key("was") && fields.contains_key("now"));
+    assert_ne!(fields.get("was"), fields.get("now"));
+}

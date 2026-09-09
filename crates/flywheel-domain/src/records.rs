@@ -157,3 +157,105 @@ pub fn host_from_record(r: &Record) -> Result<HostRecord> {
         intermittent: r.get("intermittent").unwrap_or("false").parse()?,
     })
 }
+
+// ------------------------------------------------------------- the run record
+//
+// What a host did and why (79–82). One file per host per day
+// (`git-only.yaml layout`), one record per entry: every write with its reason
+// and the evidence the guard read, what was expected of a session beside what
+// it delivered, every refusal, and every problem with the machinery itself —
+// which is reported here and never turned into work (81).
+
+/// One line of the run record.
+#[derive(Debug, Clone, PartialEq)]
+pub struct RunEntry {
+    pub at: DateTime<Utc>,
+    pub host: String,
+    /// `write`, `session`, `refusal`, `problem`, `drift`, `binding`.
+    pub kind: String,
+    pub object: String,
+    /// Why this happened, in the machine's own words.
+    pub reason: String,
+    /// The evidence the guard read, name by name (79).
+    pub evidence: Vec<(String, Value)>,
+    /// Anything else the entry carries, difference first (80).
+    pub fields: Vec<(String, String)>,
+}
+
+impl RunEntry {
+    pub fn new(at: DateTime<Utc>, host: &str, kind: &str, object: &str, reason: &str) -> RunEntry {
+        RunEntry {
+            at,
+            host: host.to_string(),
+            kind: kind.to_string(),
+            object: object.to_string(),
+            reason: reason.to_string(),
+            evidence: vec![],
+            fields: vec![],
+        }
+    }
+
+    pub fn with(mut self, name: &str, value: &str) -> RunEntry {
+        self.fields.push((name.to_string(), value.to_string()));
+        self
+    }
+
+    pub fn reading(mut self, evidence: impl IntoIterator<Item = (String, Value)>) -> RunEntry {
+        self.evidence.extend(evidence);
+        self
+    }
+
+    /// Whether this entry is a problem with the machinery. No work is ever made
+    /// for one (81).
+    pub fn is_problem(&self) -> bool {
+        self.kind == "problem"
+    }
+}
+
+pub fn run_to_record(entry: &RunEntry) -> Record {
+    let mut r = Record {
+        kind: Some("run".to_string()),
+        fields: vec![],
+    };
+    r.set("at", &entry.at.to_rfc3339());
+    r.set("host", &entry.host);
+    r.set("kind", &entry.kind);
+    r.set("object", &entry.object);
+    r.set("reason", &entry.reason);
+    for (name, value) in &entry.evidence {
+        r.fields.push(("evidence".to_string(), format!("{name}={value}")));
+    }
+    for (name, value) in &entry.fields {
+        r.set(name, value);
+    }
+    r
+}
+
+pub fn run_from_record(r: &Record) -> Result<RunEntry> {
+    let mut entry = RunEntry {
+        at: time(r, "at")?,
+        host: text(r, "host")?,
+        kind: text(r, "kind")?,
+        object: text(r, "object")?,
+        reason: r.get("reason").unwrap_or_default().to_string(),
+        evidence: vec![],
+        fields: vec![],
+    };
+    for read in r.all("evidence") {
+        let (name, value) = read.split_once('=').unwrap_or((read, ""));
+        entry.evidence.push((
+            name.to_string(),
+            serde_json::from_str(value).unwrap_or_else(|_| Value::String(value.to_string())),
+        ));
+    }
+    for (name, value) in &r.fields {
+        if matches!(
+            name.as_str(),
+            "at" | "host" | "kind" | "object" | "reason" | "evidence"
+        ) {
+            continue;
+        }
+        entry.fields.push((name.clone(), value.clone()));
+    }
+    Ok(entry)
+}

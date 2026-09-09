@@ -1,0 +1,15 @@
+[package]
+name = "flywheel-workspace-recorded"
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+
+[dependencies]
+flywheel-engine = { path = "../flywheel-engine" }
+flywheel-atoms = { path = "../flywheel-atoms" }
+anyhow.workspace = true
+serde_json.workspace = true
+
+[dev-dependencies]
+flywheel-store-git = { path = "../flywheel-store-git" }
+chrono.workspace = true

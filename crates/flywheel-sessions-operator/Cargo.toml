@@ -1,0 +1,16 @@
+[package]
+name = "flywheel-sessions-operator"
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+
+[dependencies]
+flywheel-engine = { path = "../flywheel-engine" }
+flywheel-atoms = { path = "../flywheel-atoms" }
+anyhow.workspace = true
+chrono.workspace = true
+serde_json.workspace = true
+
+[dev-dependencies]
+flywheel-domain = { path = "../flywheel-domain" }
+flywheel-store-git = { path = "../flywheel-store-git" }

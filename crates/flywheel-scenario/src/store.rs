@@ -218,28 +218,7 @@ impl Default for Store {
     }
 }
 
-/// The stage or type a nested region path belongs to, for session and stage facts.
-pub fn session_key(object: &str, region: &str) -> String {
-    let parts: Vec<&str> = region.split('.').collect();
-    if let Some(i) = parts.iter().position(|p| *p == "stages") {
-        if let Some(stage) = parts.get(i + 1) {
-            return format!("{object}/{stage}");
-        }
-    }
-    if parts.iter().any(|p| *p == "working") {
-        return format!("{object}/work");
-    }
-    format!("{object}/main")
-}
-
-/// The place a region path refers to: a bolt's own place is `<id>#own`; every other object has one.
-pub fn place_key(object: &str, region: &str) -> String {
-    if region.starts_with("place") {
-        format!("{object}#own")
-    } else {
-        object.to_string()
-    }
-}
+pub use flywheel_domain::regions::{place_key, session_key};
 
 impl Store {
     pub fn log(&mut self, kind: &str, object: &str, text: impl Into<String>) {

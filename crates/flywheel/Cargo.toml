@@ -17,6 +17,9 @@ flywheel-engine = { path = "../flywheel-engine" }
 flywheel-atoms = { path = "../flywheel-atoms" }
 flywheel-domain = { path = "../flywheel-domain" }
 flywheel-world-host = { path = "../flywheel-world-host" }
+flywheel-workspace-recorded = { path = "../flywheel-workspace-recorded" }
+flywheel-sessions-operator = { path = "../flywheel-sessions-operator" }
+flywheel-store-git = { path = "../flywheel-store-git" }
 flywheel-scenario = { path = "../flywheel-scenario" }
 flywheel-surface = { path = "../flywheel-surface" }
 serde_json.workspace = true
@@ -25,3 +28,6 @@ anyhow.workspace = true
 chrono.workspace = true
 clap.workspace = true
 tokio.workspace = true
+
+[dev-dependencies]
+flywheel-sessions-operator = { path = "../flywheel-sessions-operator" }

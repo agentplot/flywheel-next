@@ -6,6 +6,13 @@ pub mod blueprints;
 pub mod envelope;
 pub mod profile;
 pub mod set;
+pub mod status;
+pub mod derived;
 pub mod records;
+pub mod regions;
+
+/// The rail's own record: the register, and the decisions standing after the
+/// last derive (`profiles/record-derived.yaml`).
+pub const RAIL: &str = "rail";
 
 pub use envelope::{from_record, read_all, to_record, write_all, ENVELOPE_FIELDS};

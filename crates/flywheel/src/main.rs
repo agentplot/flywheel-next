@@ -30,8 +30,18 @@ enum Cmd {
     /// What a host does. A host runs the set the binary carries and no other:
     /// `--definitions` is the scenario runner's alone (D2, 223).
     Host {
+        /// With no subcommand, the host runs: one long-lived process, the
+        /// notify-tick and the 60-second sweep, fetching before every tick
+        /// (D7, 231).
         #[command(subcommand)]
-        cmd: HostCmd,
+        cmd: Option<HostCmd>,
+        /// The manifest this host reads itself from (183).
+        #[arg(long, global = true, default_value = "flywheel.yaml")]
+        manifest: PathBuf,
+        /// Which host this is; several run on one computer, told apart by id
+        /// alone (232).
+        #[arg(long, global = true, default_value = "local")]
+        name: String,
         /// Refused, wherever it is written. A host runs the definitions in the
         /// binary (223, D2).
         #[arg(long, global = true)]
@@ -164,20 +174,18 @@ enum HostCmd {
         /// A blueprints checkout to read the instance's own types from (57, 85).
         #[arg(long)]
         blueprints: Option<PathBuf>,
-        /// The manifest, to check this host's layout against (205, 222).
+        /// Check this host's layout against the manifest too (205, 222).
         #[arg(long)]
-        manifest: Option<PathBuf>,
-        /// The host whose layout is checked.
-        #[arg(long, default_value = "local")]
-        name: String,
+        layout: bool,
     },
     /// Clone what the manifest names under this host's root, and check the
     /// layout (205, 222).
-    Join {
-        #[arg(long, default_value = "flywheel.yaml")]
-        manifest: PathBuf,
-        #[arg(long, default_value = "local")]
-        name: String,
+    Join,
+    /// Run the loop, and say what each pass did rather than staying silent.
+    Run {
+        /// Stop after this many passes; zero runs until the process is stopped.
+        #[arg(long, default_value = "0")]
+        passes: usize,
     },
 }
 
@@ -337,7 +345,7 @@ async fn main() -> Result<()> {
                 }
             }
         }
-        Cmd::Host { cmd, definitions } => {
+        Cmd::Host { cmd, definitions, manifest, name } => {
             // A host runs the set the binary carries. The directory load is the
             // scenario runner's, and a host that took one could not prove which
             // set it ran (223, 224, D2).
@@ -349,8 +357,8 @@ async fn main() -> Result<()> {
                     dir.display()
                 );
             }
-            match cmd {
-                HostCmd::Join { manifest, name } => {
+            match cmd.clone().unwrap_or(HostCmd::Run { passes: 0 }) {
+                HostCmd::Join => {
                     let read = flywheel_world_host::Manifest::read(manifest)?;
                     let mut world = flywheel_world_host::HostWorld::open(read, name)?;
                     let joined = flywheel_world_host::join::join(&mut world)?;
@@ -371,15 +379,15 @@ async fn main() -> Result<()> {
                         anyhow::bail!("this host will not start on a layout it did not make (205, 222)");
                     }
                 }
-                HostCmd::Doctor { blueprints, manifest, name } => {
+                HostCmd::Doctor { blueprints, layout } => {
                     println!(
                         "definition set {} · digest {:016x} · {} core machines",
                         flywheel_domain::set::SET_VERSION,
                         flywheel_domain::set::digest(),
                         flywheel_domain::set::versions()?.len()
                     );
-                    if let Some(path) = manifest {
-                        let read = flywheel_world_host::Manifest::read(path)?;
+                    if layout {
+                        let read = flywheel_world_host::Manifest::read(manifest)?;
                         let world = flywheel_world_host::HostWorld::open(read, name)?;
                         let differences = flywheel_world_host::join::doctor(&world);
                         match differences.is_empty() {
@@ -394,7 +402,7 @@ async fn main() -> Result<()> {
                             }
                         }
                     }
-                    if let Some(dir) = blueprints {
+                    if let Some(dir) = &blueprints {
                         let loaded = flywheel_domain::blueprints::load_over_core(dir)?;
                         let core = flywheel_domain::set::load()?;
                         // A pinned `name@version` is the same machine under a
@@ -408,11 +416,49 @@ async fn main() -> Result<()> {
                         println!("blueprints {} · {own} types of its own", dir.display());
                         // A refusal is reported, never swallowed: what the
                         // binary carries goes on running and the operator is
-                        // told what was not read (223, 79–82). Group 6 writes
-                        // these to the run record.
+                        // told what was not read (223, 79-82).
                         for refusal in &loaded.refusals {
                             println!("refused: {refusal}");
                         }
+                    }
+                }
+                HostCmd::Run { passes } => {
+                    let mut host = flywheel::host::Host::open(manifest, name, chrono::Utc::now())?;
+                    println!(
+                        "host {} · instance {} · world {} · workspace {} · sessions {}",
+                        host.name,
+                        host.instance,
+                        host.bindings.world,
+                        host.bindings.workspace,
+                        host.bindings.sessions
+                    );
+                    host.record_bindings();
+                    // One long-lived process: the notify poll, and the sweep
+                    // every 60 seconds whatever the poll says (D6, D7, 231).
+                    let mut pass = 0usize;
+                    loop {
+                        host.set_now(chrono::Utc::now());
+                        match host.once() {
+                            Ok(fired) => {
+                                if fired > 0 {
+                                    println!("{fired} transitions");
+                                }
+                            }
+                            // A problem with the machinery is reported and made
+                            // no work of; the loop goes on (81).
+                            Err(e) => {
+                                host.report_problem(&format!("host/{}", host.name), &format!("{e:#}"));
+                                eprintln!("problem: {e:#}");
+                            }
+                        }
+                        pass += 1;
+                        if passes > 0 && pass >= passes {
+                            break;
+                        }
+                        tokio::time::sleep(std::time::Duration::from_secs(
+                            flywheel::host::POLL as u64,
+                        ))
+                        .await;
                     }
                 }
             }

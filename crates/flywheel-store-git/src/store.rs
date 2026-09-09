@@ -742,6 +742,64 @@ impl GitStore {
     }
 }
 
+impl GitStore {
+    /// Append entries to today's run record and commit them: what this host did
+    /// and why, readable with no host running (79-82, 167).
+    pub fn append_run(&mut self, entries: &[records::RunEntry]) -> Result<()> {
+        if entries.is_empty() {
+            return Ok(());
+        }
+        let path = layout::run_record(&self.host, &self.now.format("%Y-%m-%d").to_string());
+        let mut held = self
+            .read_file(&path)?
+            .map(|text| rec::parse(&text))
+            .unwrap_or_default();
+        held.extend(entries.iter().map(records::run_to_record));
+        self.on_fetched_head()?;
+        git::stage(&self.repo, &path, &rec::write(&held))?;
+        self.commit_and_push(&format!(
+            "run record: {} {} on {}\n\nreason: what this host did and why (79)",
+            entries.len(),
+            match entries.len() {
+                1 => "entry",
+                _ => "entries",
+            },
+            self.host
+        ))?;
+        Ok(())
+    }
+
+    /// Today's run record, as written.
+    pub fn run_record(&self) -> Result<Vec<records::RunEntry>> {
+        let path = layout::run_record(&self.host, &self.now.format("%Y-%m-%d").to_string());
+        let Some(text) = self.read_file(&path)? else {
+            return Ok(vec![]);
+        };
+        rec::parse(&text).iter().map(records::run_from_record).collect()
+    }
+
+    /// Commit the status projection on the shared line, stating the commit and
+    /// time it is as of. Only the rail's lease holder writes it (D12, 132, 145).
+    pub fn commit_status(&mut self, body: &str) -> Result<()> {
+        if self.read_file(layout::STATUS)?.as_deref() == Some(body) {
+            return Ok(());
+        }
+        self.on_fetched_head()?;
+        git::stage(&self.repo, layout::STATUS, body)?;
+        self.commit_and_push(&format!(
+            "{}\n\nreason: the status view is rewritten from its source on every tick (77, 132)",
+            layout::STATUS
+        ))?;
+        Ok(())
+    }
+
+    /// The status file as it stands on the shared line: what the operator reads
+    /// with no host running (145, S20).
+    pub fn committed_status(&self) -> Result<Option<String>> {
+        self.read_file(layout::STATUS)
+    }
+}
+
 impl flywheel_engine::runtime::EvidenceSource for GitStore {
     fn evidence(&self, object: &str, _region: &str, name: &str) -> Option<Value> {
         self.given

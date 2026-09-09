@@ -82,25 +82,25 @@ or a command.
 
 ## 6. The host loop, the workspace and the sessions
 
-- [ ] 6.1 Implement `flywheel host` as one long-lived process with the notify-tick and the 60-second sweep, fetching before every tick; verify `cargo test -p flywheel sweep_fires_older_guards` and `tick_fetches_first` (D7, 165, 231)
-- [ ] 6.2 Implement the host's declaration, heartbeat and lease-taking within it; verify `cargo test -p flywheel lease_only_within_declaration` (149)
+- [x] 6.1 Implement `flywheel host` as one long-lived process with the notify-tick and the 60-second sweep, fetching before every tick; verify `cargo test -p flywheel sweep_fires_older_guards` and `tick_fetches_first` (D7, 165, 231)
+- [x] 6.2 Implement the host's declaration, heartbeat and lease-taking within it; verify `cargo test -p flywheel lease_only_within_declaration` (149)
 - [ ] 6.3 Raise and clear the uncovered attention decision; verify `flywheel scenario run conformance/scenarios/X05.yaml` (149, 150)
-- [ ] 6.4 Implement the intermittent host's away window — away with since-when, leases standing, stall clocks paused, no attention line, takeover raised only when work waits or the long bound passes; verify `cargo test -p flywheel away_raises_no_attention` and `away_with_work_waiting_raises_takeover` (150a)
+- [x] 6.4 Implement the intermittent host's away window — away with since-when, leases standing, stall clocks paused, no attention line, takeover raised only when work waits or the long bound passes; verify `cargo test -p flywheel away_raises_no_attention` and `away_with_work_waiting_raises_takeover` (150a)
 - [ ] 6.5 Implement takeover: a fresh attempt on the taking host, the returning host ending its own session and reporting; verify `cargo test -p flywheel takeover_starts_attempt_two` — S13 is run at 11.2 with two processes
 - [ ] 6.6 Implement the per-host session bound with the stated waiting order and the dependency gate; verify `flywheel scenario run conformance/scenarios/S29.yaml` (31, 32, 38)
-- [ ] 6.7 Add `flywheel-workspace-recorded` implementing `Workspace` by writing the evidence each proof reads; verify `cargo test -p flywheel-workspace-recorded place_advances_without_a_repository` (93a, D8)
-- [ ] 6.8 Select the `World`, `Workspace` and `Sessions` implementations from the manifest and record all three in the run record; verify `cargo test -p flywheel bindings_named_in_run_record` (93a, 139)
-- [ ] 6.9 Add `flywheel-sessions-operator`: `start_session` records the session with its place and work order and starts no agent, and the rail and status view show it as the operator's to run; verify `cargo test -p flywheel-sessions-operator no_agent_started` (93b, 89)
-- [ ] 6.10 Apply the with-operator rules to an operator-bound session: no finish-or-keep on idle, ends only by dictation; verify `cargo test -p flywheel-sessions-operator idle_offers_nothing` over a simulated day (93b, 25)
-- [ ] 6.11 Record every write with its reason and the evidence the guard read; verify `cargo test -p flywheel run_record_carries_reason_and_evidence` (79, `observability/run-record`)
-- [ ] 6.12 Record what was expected of a session beside what it delivered, difference first; verify `cargo test -p flywheel expected_beside_delivered` with a session delivering two of three (80)
-- [ ] 6.13 Report a problem with the machinery through the run record and create no work for it; verify `cargo test -p flywheel machinery_problem_is_not_work` (81)
-- [ ] 6.14 Record every refusal with the identity, the operation and the object, and surface it under attention; verify `cargo test -p flywheel refusal_reaches_attention` (4, 79, 81)
-- [ ] 6.15 Derive the status view from `list` and `read` alone: every object grouped by queued, in progress, waiting on the operator and done, with its holder, its runner and that host's liveness, one place for the instance; verify `cargo test -p flywheel status_view_groups_every_object` (141, 143, 146)
-- [ ] 6.16 Keep a question, an answer and a note on the object and show them under it on the status view; verify `cargo test -p flywheel discussion_stays_with_the_object` reading them back after the session is gone (144)
+- [x] 6.7 Add `flywheel-workspace-recorded` implementing `Workspace` by writing the evidence each proof reads; verify `cargo test -p flywheel-workspace-recorded place_advances_without_a_repository` (93a, D8)
+- [x] 6.8 Select the `World`, `Workspace` and `Sessions` implementations from the manifest and record all three in the run record; verify `cargo test -p flywheel bindings_named_in_run_record` (93a, 139)
+- [x] 6.9 Add `flywheel-sessions-operator`: `start_session` records the session with its place and work order and starts no agent, and the rail and status view show it as the operator's to run; verify `cargo test -p flywheel-sessions-operator no_agent_started` (93b, 89)
+- [x] 6.10 Apply the with-operator rules to an operator-bound session: no finish-or-keep on idle, ends only by dictation; verify `cargo test -p flywheel-sessions-operator idle_offers_nothing` over a simulated day (93b, 25)
+- [x] 6.11 Record every write with its reason and the evidence the guard read; verify `cargo test -p flywheel run_record_carries_reason_and_evidence` (79, `observability/run-record`)
+- [x] 6.12 Record what was expected of a session beside what it delivered, difference first; verify `cargo test -p flywheel expected_beside_delivered` with a session delivering two of three (80)
+- [x] 6.13 Report a problem with the machinery through the run record and create no work for it; verify `cargo test -p flywheel machinery_problem_is_not_work` (81)
+- [x] 6.14 Record every refusal with the identity, the operation and the object, and surface it under attention; verify `cargo test -p flywheel refusal_reaches_attention` (4, 79, 81)
+- [x] 6.15 Derive the status view from `list` and `read` alone: every object grouped by queued, in progress, waiting on the operator and done, with its holder, its runner and that host's liveness, one place for the instance; verify `cargo test -p flywheel status_view_groups_every_object` (141, 143, 146)
+- [x] 6.16 Keep a question, an answer and a note on the object and show them under it on the status view; verify `cargo test -p flywheel discussion_stays_with_the_object` reading them back after the session is gone (144)
 - [ ] 6.17 Implement `render_status` as an effect of the rail object, committing the status file on the shared line with its as-of commit and time, written only by the rail's lease holder; verify `flywheel scenario run --profile git-only conformance/contract/status.yaml` (D12, 132, 145, 148)
 - [ ] 6.18 Verify S20: `flywheel scenario run --profile git-only conformance/scenarios/S20.yaml` — the committed file is readable from the state repository alone and its as-of commit is the last that landed
-- [ ] 6.19 Rewrite a drifting projection from its source on the next tick and report both values; verify `cargo test -p flywheel drift_rewritten_and_reported` (77, 142)
+- [x] 6.19 Rewrite a drifting projection from its source on the next tick and report both values; verify `cargo test -p flywheel drift_rewritten_and_reported` (77, 142)
 
 ## 7. The tool catalogue and the page
 

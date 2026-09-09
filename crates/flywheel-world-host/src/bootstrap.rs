@@ -166,7 +166,10 @@ impl Bootstrap {
         manifest.hosts.entry(host.to_string()).or_insert_with(|| {
             crate::manifest::Host {
                 root: root.to_path_buf(),
-                workspace: "host".into(),
+                // What this release binds: the lines and places recorded, the
+                // operator as the session (93a, 93b, D8).
+                workspace: "recorded".into(),
+                sessions: "operator".into(),
                 covers: vec![],
             }
         });

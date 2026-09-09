@@ -37,6 +37,9 @@ pub struct Host {
     /// `host` or `recorded` — which line-and-place binding is in force (93a).
     #[serde(default = "host_workspace")]
     pub workspace: String,
+    /// `operator` — what starts a session on this host (93b, 217c).
+    #[serde(default = "operator_sessions")]
+    pub sessions: String,
     /// What this host takes leases within (149).
     #[serde(default)]
     pub covers: Vec<String>,
@@ -44,6 +47,10 @@ pub struct Host {
 
 fn host_workspace() -> String {
     "host".to_string()
+}
+
+fn operator_sessions() -> String {
+    "operator".to_string()
 }
 
 /// The GitHub App: the one connection. Its id is here; its key is not, and

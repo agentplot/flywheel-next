@@ -6,6 +6,8 @@ members = [
   "crates/flywheel-domain",
   "crates/flywheel-store-git",
   "crates/flywheel-world-host",
+  "crates/flywheel-workspace-recorded",
+  "crates/flywheel-sessions-operator",
   "crates/flywheel-scenario",
   "crates/flywheel-surface",
   "crates/flywheel",

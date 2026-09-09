@@ -24,7 +24,7 @@ use std::collections::BTreeMap;
 
 /// The rail's own record: the register and the decisions standing after the
 /// last derive (`profiles/record-derived.yaml`).
-pub const RAIL: &str = "rail";
+pub use flywheel_domain::RAIL;
 
 // --------------------------------------------------------------- the register
 

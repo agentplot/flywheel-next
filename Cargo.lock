@@ -371,7 +371,10 @@ dependencies = [
  "flywheel-domain",
  "flywheel-engine",
  "flywheel-scenario",
+ "flywheel-sessions-operator",
+ "flywheel-store-git",
  "flywheel-surface",
+ "flywheel-workspace-recorded",
  "flywheel-world-host",
  "serde_json",
  "serde_yaml",
@@ -433,6 +436,19 @@ dependencies = [
 ]
 
 [[package]]
+name = "flywheel-sessions-operator"
+version = "0.1.0"
+dependencies = [
+ "anyhow",
+ "chrono",
+ "flywheel-atoms",
+ "flywheel-domain",
+ "flywheel-engine",
+ "flywheel-store-git",
+ "serde_json",
+]
+
+[[package]]
 name = "flywheel-store-git"
 version = "0.1.0"
 dependencies = [
@@ -457,6 +473,18 @@ dependencies = [
  "serde",
  "serde_json",
  "tokio",
+]
+
+[[package]]
+name = "flywheel-workspace-recorded"
+version = "0.1.0"
+dependencies = [
+ "anyhow",
+ "chrono",
+ "flywheel-atoms",
+ "flywheel-engine",
+ "flywheel-store-git",
+ "serde_json",
 ]
 
 [[package]]
