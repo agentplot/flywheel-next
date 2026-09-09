@@ -15,9 +15,13 @@ The requirements and the model are in the blueprints repository, not here:
 - Local checkout: `/Users/chuck/Code/github_agentplot/blueprints/main/design/flywheel-next/`.
 
 `definitions/` is a byte-for-byte mirror of the model's machines and profiles,
-and `conformance/` of the model's conformance suite (scenarios, contract,
-fixtures, observations, schema). Change the model there first, then copy;
-never edit `definitions/` or `conformance/` by hand.
+`conformance/` of the model's conformance suite (scenarios, contract,
+fixtures, observations, schema), and `instructions/` of the model's shipped
+instruction set (the default instructions, the schema per deliverable and per
+unit-type stage, the producer skills, and a skill and definition per agent;
+`set.yaml` attaches the defaults by type tier). Change the model there first,
+then copy; never edit `definitions/`, `conformance/` or `instructions/` by
+hand.
 `check.py` in the model must report every clause cited before a definition
 lands here.
 

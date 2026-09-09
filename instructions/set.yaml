@@ -1,0 +1,41 @@
+# The shipped instruction set: the schemas an artifact must satisfy, the
+# instructions that shape what a session writes, and the skill for each
+# session type, as files (88, 119, 120, 190). Every file here is data,
+# versioned like anything else, and no line of it exists in the engine: the
+# engine reads a name, a version and a path, never the text (119).
+#
+# The layout mirrors the blueprints prefix exactly. A file's `path` is where
+# it lives under `flywheel/` in the blueprints, and its place in this
+# directory is that path with `flywheel/` cut off, so
+# `instructions/schemas/claim.md` is `flywheel/schemas/claim.md` and nothing
+# resolves by convention (check.py fails a file whose two paths differ).
+#
+# Every file carries front matter: `name`, `kind`, `path`, `version`, and
+# `set` — the set version it was written against (224). `set` below is the
+# release's, and a file naming a later one is refused.
+#
+# A change to one of these files is a chore on the blueprints (91, 123): the
+# text moves and the file's `version` moves with it, so a session started
+# before the chore and one started after can be told apart by the versions
+# their work orders name. check.py refuses text that moved while the version
+# stood still.
+format: flywheel-instruction-set/1
+name: instructions
+set: 1
+version: 1
+carries:
+  doc: "which default instructions (120) a session type is handed when its type file names none. A type file may name `instructions:` itself, and then that list is what it carries; an instance's own type reaches the defaults the same way (119, 223)."
+  elaboration-types: [design-conclusion, claim-granularity]
+  unit-types: [construction]
+  by-name:
+    fundamentals: [design-conclusion, claim-granularity, fundamentals]
+  none:
+    doc: "the machinery's own sessions carry the schema instructions their rows in profiles/context.yaml name and no default instruction: curation, planning, capture reading and the operator's own session settle no design conclusion and write no claim, so 120 has nothing to say to them. The absence is a decision, not an omission."
+    sessions: [curation, planning, capture-reader, operator-session]
+resolution:
+  doc: "how a work order's inputs resolve to files here (89, 190, 226)"
+  schema_instruction: "the schema of each deliverable the type names, through profiles/deliverables.yaml; `by-type` resolves to `flywheel/schemas/units/<type>/<step>.md`"
+  type_skill: "`flywheel/skills/<agent>/SKILL.md`, keyed by the agent name the machine or the stage names; the agent's own definition is `flywheel/agents/<agent>.md` (profiles/context.yaml ruling 3)"
+  producer: "`flywheel/skills/producers/<deliverable>/SKILL.md`, through profiles/deliverables.yaml; a producer says how the artifact is written, its schema says what the artifact must contain"
+  default_instructions: "`carries:` above, or the type file's own `instructions:`"
+  override: "an instance replaces any of these by writing a file of the same name under its own `flywheel/` prefix in the blueprints (203, 223); the shipped file is the fallback and the instance's is what the work order names"
