@@ -418,6 +418,10 @@ pub struct TransitionExpectation {
     /// The response that caused it, where one did.
     #[serde(default)]
     pub response: Option<String>,
+    /// The host that made it, where a scenario says which — two hosts of one
+    /// instance write on the same line (147, 232, S18).
+    #[serde(default)]
+    pub host: Option<String>,
 }
 
 #[derive(Debug, Clone, Deserialize)]

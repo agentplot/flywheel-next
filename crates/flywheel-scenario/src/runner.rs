@@ -125,6 +125,11 @@ pub struct TransitionRecord {
     pub to: String,
     pub response: Option<String>,
     pub reason: Option<String>,
+    /// The host that made the write, where the run knows which. Two hosts of
+    /// one instance write on the same line, so a scenario may say which of them
+    /// a move was (147, 232, S18).
+    #[serde(default)]
+    pub host: Option<String>,
 }
 
 /// One effect performed, with the identity the write carries (79, 127).
@@ -762,6 +767,7 @@ impl Runtime {
                     to: f.to.clone(),
                     response: f.response.as_ref().map(|(r, _)| r.clone()),
                     reason: f.note.clone(),
+                    host: Some(self.store.me()),
                 });
                 for (region, e) in commanded.iter().map(|(r, e)| (r.as_str(), e)).chain(f.effects.iter().map(|e| (f.region.as_str(), e))) {
                     // A region performs each act once per tick, however many

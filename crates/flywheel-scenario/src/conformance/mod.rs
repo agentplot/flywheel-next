@@ -8,6 +8,7 @@
 
 pub mod assertions;
 pub mod drive;
+pub mod hosts;
 pub mod interpreter;
 pub mod schema;
 pub mod trace;
@@ -360,12 +361,30 @@ pub struct Run {
     /// The tail as a sink whose mark is the start of the run reads it, at each
     /// step boundary. Derived like the decisions and stored nowhere (14, 15).
     pub tail_after: Vec<Vec<flywheel_engine::runtime::TailEntry>>,
+    /// The status view at each step boundary, so a scenario asserting what the
+    /// view showed after a numbered step is answered from the view as it stood
+    /// then (141, 143, 146).
+    pub status_after: Vec<serde_json::Value>,
     /// The profile the run bound, which is the binding a scenario about
     /// bindings is asserted against (140).
     pub profile: &'static str,
     /// How many dictations this scenario has made, so each takes a delivery id
     /// of its own and a repeat is recognised (137).
     pub dictations: u32,
+    /// How many ticks the runner itself made. Under `--hosts real` this stays
+    /// zero: the hosts are processes, the runner holds no engine, and every
+    /// transition it asserts was read from the store (D15, 134, 162, I15).
+    pub engine_ticks: usize,
+    /// When each host had no route, by the run's own clock: the moment it was
+    /// cut and the moment it came back, where it did (151, D4a). What a
+    /// scenario asks about what a host did while it was offline is answered
+    /// against these.
+    pub offline: std::collections::BTreeMap<String, Vec<(chrono::DateTime<chrono::Utc>, Option<chrono::DateTime<chrono::Utc>>)>>,
+    /// How many entries of each host's run record have been read into `ticks`,
+    /// so each pass reads only what was written since the last one. One host
+    /// appends to its own file and never to another's, which is why the mark is
+    /// per file and not one count over the whole set.
+    pub read_at: std::collections::BTreeMap<String, usize>,
 }
 
 /// A scenario that runs against no configuration at all is a failure, never a

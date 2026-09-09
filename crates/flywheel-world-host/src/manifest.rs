@@ -43,6 +43,15 @@ pub struct Host {
     /// What this host takes leases within (149).
     #[serde(default)]
     pub covers: Vec<String>,
+    /// How many sessions this host may run at once. A setting of the host, and
+    /// so a setting of the manifest (31, 183, `host.yaml` record.bound).
+    #[serde(default = "four")]
+    pub bound: u32,
+    /// A laptop by default: past its stale window it is away rather than gone,
+    /// its leases standing (150a, `host.yaml` record.intermittent). A host that
+    /// is always on says so here.
+    #[serde(default = "yes")]
+    pub intermittent: bool,
     /// This host's router: the manifest names one per host, and the host's one
     /// address is the private-network name it gives (191, 205a, D10a). Where a
     /// host names none the instance's own stands for it.
@@ -57,6 +66,14 @@ pub struct Host {
 
 fn localhost_port() -> u16 {
     4242
+}
+
+fn four() -> u32 {
+    4
+}
+
+fn yes() -> bool {
+    true
 }
 
 fn host_workspace() -> String {

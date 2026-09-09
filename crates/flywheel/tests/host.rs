@@ -700,6 +700,9 @@ fn pair(name: &str) -> (Host, Host, std::path::PathBuf) {
 #[test]
 fn takeover_starts_attempt_two() {
     let (mut a, mut b, _base) = pair("takeover");
+    // A host that is always on: past its stale window it is gone and offers
+    // takeover, rather than away with its leases standing (150, 150a).
+    a.intermittent = false;
     // A laptop holds an item and runs the operator's session on it.
     seed(
         &mut a,
@@ -730,11 +733,11 @@ fn takeover_starts_attempt_two() {
         .unwrap();
     a.sweep().unwrap();
 
-    // The laptop is shut for a day. The other host sees it gone.
+    // The laptop is shut for an hour. The other host sees it gone — past the
+    // stale and gone windows, and well inside the long bound that would release
+    // it without anyone answering (150).
     a.go_away(at(0));
-    b.set_now(at(60 * 25));
-    b.sweep().unwrap();
-    b.sweep().unwrap();
+    b.set_now(at(60));
     b.sweep().unwrap();
     let gone = b.store.get("host/mac-mini").unwrap().unwrap();
     assert_eq!(gone.config.get("life").map(String::as_str), Some("gone"));
@@ -785,7 +788,7 @@ fn takeover_starts_attempt_two() {
 
     // The laptop comes back, reads that it lost, ends its own session and
     // reports it. It starts nothing again.
-    a.set_now(at(60 * 26));
+    a.set_now(at(61));
     a.come_back().unwrap();
     a.sweep().unwrap();
     let record = a.store.git.run_record().unwrap();
@@ -990,15 +993,9 @@ fn host_delivers_to_its_sink() {
     let delivery = after.delivery.clone().expect("the delivery's own id");
     assert!(delivery.starts_with("#willdan-"), "{delivery}");
 
-    // One transition per region per tick, so the sink is in `delivering` with
-    // its entry effect performed; the next tick takes it back to idle and its
-    // mark is no longer behind, so it delivers nothing (127, 78).
-    let held = host.store.get(&sink.id).unwrap().unwrap();
-    assert_eq!(
-        held.config.get("delivery").map(String::as_str),
-        Some("delivering")
-    );
-    host.sweep().unwrap();
+    // A sweep settles, so the sink went through `delivering` — where its entry
+    // effect performed the delivery — and back to idle, with its mark no longer
+    // behind. The sweep after it delivers nothing (127, 78).
     assert_eq!(
         host.store
             .get(&sink.id)
@@ -1010,6 +1007,7 @@ fn host_delivers_to_its_sink() {
         Some("idle"),
         "the sink stayed in delivering"
     );
+    host.sweep().unwrap();
     let again = flywheel_domain::sinks::read(&host.store, &sink.id)
         .unwrap()
         .unwrap();

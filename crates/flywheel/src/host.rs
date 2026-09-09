@@ -41,6 +41,10 @@ pub const SWEEP: i64 = 60;
 /// no history read (D6).
 pub const POLL: i64 = 30;
 
+/// How many passes one sweep settles over before it gives up and leaves the
+/// rest to the next one. A pass that moved nothing ends it long before this.
+pub const PASSES: usize = 50;
+
 /// The three bindings a host loads by name, and the one implementation this
 /// release carries of each (D8, 139).
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -103,6 +107,11 @@ pub struct HostStore {
     /// Every operation this store was asked for, in order. The run record and
     /// the fetch-first proof read it (79, 165).
     pub trace: RefCell<Vec<String>>,
+    /// A lease an effect moved out of band — the lease of a released host,
+    /// expired at once by the operator's response (150, `lease.yaml` stale).
+    /// The machine never takes that transition, because the effect is what
+    /// makes it; the run record is where the host says so (79, 167).
+    pub marked: RefCell<Vec<(String, String, String)>>,
 }
 
 impl HostStore {
@@ -114,6 +123,7 @@ impl HostStore {
             // manifest's (D1, D8).
             world: Box::new(flywheel_scenario::bindings::FilesWorld::new()),
             trace: RefCell::new(vec![]),
+            marked: RefCell::new(vec![]),
         }
     }
 
@@ -161,6 +171,15 @@ impl Records for HostStore {
 
     fn put(&mut self, id: &str, record: &Object, base_seq: u64) -> Result<PutOutcome> {
         self.saw("put");
+        // The rail's own record — the register and the counter — belongs to
+        // every host of the instance, and a host with no route holds no
+        // opinion about it: a number it gave locally would collide with the
+        // one another host gave, and a commit on it would meet theirs on the
+        // rebase home (15, 151, 161, D4a). Its own work is committed as
+        // always; this is the one record it leaves alone.
+        if self.git.disconnected && id == flywheel_domain::RAIL {
+            return Ok(PutOutcome::Written { seq: base_seq });
+        }
         self.git.put(id, record, base_seq)
     }
 
@@ -244,7 +263,6 @@ impl EvidenceSource for HostStore {
                     name,
                 )
             })
-            .or_else(|| self.git.evidence(object, region, name))
             .or_else(|| {
                 flywheel_workspace_recorded::evidence(
                     &self.git,
@@ -260,6 +278,28 @@ impl EvidenceSource for HostStore {
                         &self.git,
                         &session_stem(object, region, self.kind_of(object).as_deref()),
                     ),
+                    name,
+                )
+            })
+            // What the world reports and this profile inherits, last: a
+            // binding that answers a name is the answer, and what the world
+            // was told stands only where nothing is bound to it (B.3, D8). The
+            // other order would let a described world outlive the bindings that
+            // moved past it.
+            //
+            // The world names what it reports about by the thing itself — a
+            // session by its id, a place by its key — so all three are asked
+            // (`record-derived.yaml` B.3).
+            .or_else(|| self.git.evidence(object, region, name))
+            .or_else(|| {
+                self.git
+                    .evidence(&place_key(object, region), region, name)
+            })
+            .or_else(|| {
+                let stem = session_stem(object, region, self.kind_of(object).as_deref());
+                self.git.evidence(
+                    &flywheel_sessions_operator::current(&self.git, &stem),
+                    region,
                     name,
                 )
             })
@@ -313,17 +353,44 @@ pub struct Host {
     pub away_since: Option<DateTime<Utc>>,
     /// The sinks this host presents (148, D9).
     pub sinks: Sinks,
+    /// Whether the last pass moved anything that was not a re-entry. A sweep
+    /// settles while it did (model.md the tick).
+    pub moved: bool,
+}
+
+/// The manifest as this host reads it, with the root the command line names in
+/// place of the manifest's own.
+///
+/// Several hosts run on one computer, told apart by id alone (232), and each
+/// keeps its clones under a root of its own; `--root` is how a caller that made
+/// those roots — the conformance runner under `--hosts real` — says which is
+/// this host's, without writing a manifest per host (D15).
+pub fn manifest_with_root(path: &Path, name: &str, root: Option<&Path>) -> Result<Manifest> {
+    let mut read = Manifest::read(path)?;
+    if let Some(root) = root {
+        let entry = read
+            .hosts
+            .get_mut(name)
+            .ok_or_else(|| anyhow::anyhow!("the manifest names no host `{name}`"))?;
+        entry.root = root.to_path_buf();
+    }
+    Ok(read)
 }
 
 impl Host {
     /// Open a host on the manifest's terms. Nothing here starts the loop.
-    pub fn open(manifest: &Path, name: &str, now: DateTime<Utc>) -> Result<Host> {
-        let read = Manifest::read(manifest)?;
+    pub fn open(manifest: &Path, name: &str, root: Option<&Path>, now: DateTime<Utc>) -> Result<Host> {
+        let read = manifest_with_root(manifest, name, root)?;
         let bindings = Bindings::read(&read, name)?;
         let world = HostWorld::open(read.clone(), name)?;
         let entry = read.host(name)?;
+        // The state repository's checkout is the state store's own, and a
+        // durable write is one that reached the git host: its origin is the
+        // remote the manifest names, never this host's mirror of it (133, 161).
+        // Two hosts on one computer therefore push at one shared line, which is
+        // what makes the expected-old push a real compare-and-swap (134, 162).
         let git = GitStore::open(
-            &world.bare("flywheel-state"),
+            Path::new(&read.state.remote),
             &world.checkout("flywheel-state"),
             name,
             now,
@@ -346,6 +413,10 @@ impl Host {
             declaration,
             now,
         );
+        // What the host is, as the manifest says: how many sessions it runs at
+        // once, and whether it is a laptop (31, 150a, 183).
+        host.bound = entry.bound;
+        host.intermittent = entry.intermittent;
         // The host's one address, from the router the manifest names: every
         // link a delivery carries is written at it (191, 205a, D10a).
         host.sinks.address = world.address_of(name)?;
@@ -382,6 +453,7 @@ impl Host {
                 at: now,
             },
             away_since: None,
+            moved: false,
             // The host's own name on the operator's private network, with the
             // instance in the path; `open` replaces it with what the manifest's
             // router gives (205a, D10a).
@@ -470,11 +542,22 @@ impl Host {
             }
             let standing = self.store.leases(&object.id)?;
             let mine = standing.as_ref().is_some_and(|l| l.holder == me);
+            // A lease nobody holds is free to take, whatever its record says
+            // about when it was last renewed: a released lease is a released
+            // lease (128, 150, `lease.yaml` free).
             let expired = standing
                 .as_ref()
-                .map(|l| now - l.renewed_at > self.store.git.lease_expiry)
+                .map(|l| {
+                    l.holder.is_empty() || now - l.renewed_at > self.store.git.lease_expiry
+                })
                 .unwrap_or(true);
             if !mine && !expired {
+                continue;
+            }
+            // A host that cannot reach the store keeps ticking what it already
+            // holds and takes nothing new (151, D4a). Renewals stand: they push
+            // first when the route comes back (165).
+            if !mine && self.store.git.disconnected {
                 continue;
             }
             let op = match mine {
@@ -487,9 +570,86 @@ impl Host {
                     holder: me.clone(),
                 },
             };
-            self.store.lease(&op)?;
+            let outcome = self.store.lease(&op)?;
+            // A take is a push with expected-old, and the push is the
+            // compare-and-swap: two hosts asking for one lease is the race the
+            // whole profile rests on, so the record says who asked, who got it,
+            // and that the loser read who holds it before deciding anything
+            // (128, 134, 162, I15, 167). A renewal is not news and is not
+            // recorded: it happens on every tick of everything a host holds.
+            if !mine {
+                self.run.push(
+                    RunEntry::new(now, &me, "lease", &object.id, "take")
+                        .with(
+                            "outcome",
+                            match &outcome {
+                                LeaseOutcome::Held(_) => "held",
+                                LeaseOutcome::HeldByAnother(_) => "held-by-another",
+                                LeaseOutcome::Released => "released",
+                            },
+                        )
+                        .with(
+                            "holder",
+                            match &outcome {
+                                LeaseOutcome::Held(l) | LeaseOutcome::HeldByAnother(l) => {
+                                    l.holder.as_str()
+                                }
+                                LeaseOutcome::Released => "",
+                            },
+                        )
+                        .with(
+                            "reread",
+                            &self.store.git.reread_after_rejection.to_string(),
+                        ),
+                );
+            }
         }
         Ok(())
+    }
+
+    /// Renew every lease this host holds, and say how many stood.
+    ///
+    /// On reconnect these push first (165, D4a). A renewal the git host rejects
+    /// means the object was taken over while the route was down: this host ends
+    /// its own session for it, reports, and its local commits on that object are
+    /// discarded rather than rebased over the taking host's.
+    pub fn renew_held(&mut self) -> Result<usize> {
+        let me = self.name.clone();
+        let now = self.now();
+        let mut stood = 0;
+        let objects = self.store.list_records(&Scope::All)?;
+        for object in objects {
+            let Some(lease) = self.store.leases(&object.id)? else {
+                continue;
+            };
+            if lease.holder != me {
+                continue;
+            }
+            let outcome = self.store.lease(&LeaseOp::Renew {
+                object: object.id.clone(),
+                holder: me.clone(),
+            })?;
+            match outcome {
+                LeaseOutcome::Held(_) => stood += 1,
+                // Taken over while the route was down: this host ends its own
+                // session for it and starts nothing again — the fresh attempt
+                // is the taking host's (165, 150).
+                LeaseOutcome::HeldByAnother(held) => {
+                    for session in flywheel_sessions_operator::of_host(&self.store.git, &me)
+                        .into_iter()
+                        .filter(|s| s.starts_with(&object.id))
+                    {
+                        flywheel_sessions_operator::end(&mut self.store.git, &session, now)?;
+                    }
+                    self.run.push(
+                        RunEntry::new(now, &me, "lease", &object.id, "this host's renewal was rejected; the object was taken over while its route was down")
+                            .with("holder", &held.holder),
+                    );
+                }
+                LeaseOutcome::Released => {}
+            }
+        }
+        Ok(stood)
     }
 
     /// One tick over a scope: fetch, heartbeat, read, decide, write, perform,
@@ -505,22 +665,58 @@ impl Host {
         self.declare()?;
 
         let objects = self.store.list(scope)?.objects;
+        let me = self.name.clone();
+        let now = self.now();
+        // The rail's projection has one writer, and the lease is what decides
+        // which host it is: `render_status` is an effect of the rail object, so
+        // the holder of the rail's lease is its only writer (D12, 132, 148).
+        // The push is the compare-and-swap, so exactly one host holds it.
+        let rail = self.store.leases(flywheel_domain::RAIL)?;
+        if !self.store.git.disconnected
+            && rail.as_ref().is_none_or(|l| {
+                l.holder.is_empty()
+                    || l.holder == me
+                    || now - l.renewed_at > self.store.git.lease_expiry
+            })
+        {
+            let _ = self.store.lease(&LeaseOp::Take {
+                object: flywheel_domain::RAIL.to_string(),
+                holder: me.clone(),
+            });
+        }
         self.renew_and_take(&objects)?;
         self.store.reading.register = console::register(&self.store)?;
 
         let defs = self.defs.clone();
-        let me = self.name.clone();
-        let now = self.now();
-        let mut run: Vec<RunEntry> = Vec::new();
+        // Two closures write here, so the entries are held where both reach
+        // them; the order they are written in is the order they happened.
+        let run: RefCell<Vec<RunEntry>> = RefCell::new(Vec::new());
+        // A self-transition re-enters the state it is in, so a pass that only
+        // re-entered has settled (model.md the tick).
+        let moved = std::cell::Cell::new(false);
         let sinks = &mut self.sinks;
-        let ticked = console::tick(
+        let ticked = console::tick_as(
             &mut self.store,
             &defs,
             scope,
+            // A host owns what it acts on through a lease: it writes on what it
+            // holds and on the machinery's own, and on nothing else (128, 149,
+            // 162, I15).
+            Some(&me),
             |store, object, region, effect| {
-                perform(&defs, store, sinks, &me, now, object, region, effect)
+                let did = perform(&defs, store, sinks, &me, now, object, region, effect);
+                // What this host performed, with the effect's own identity: a
+                // reader of the record knows which act ran on which object and
+                // whether it was performed here (79, 127, 167).
+                run.borrow_mut().push(
+                    RunEntry::new(now, &me, "effect", object, &effect.name)
+                        .with("region", region)
+                        .with("performed", &did.to_string()),
+                );
+                did
             },
             |store, fired, tail| {
+                moved.set(moved.get() || fired.from != fired.to);
                 // The evidence the guard read, name by name: what the write was
                 // decided on, not everything the object holds (79, 167).
                 let evidence: Vec<(String, Value)> = guard_evidence(&defs, store, fired)
@@ -532,7 +728,7 @@ impl Host {
                         (name, read)
                     })
                     .collect();
-                run.push(
+                run.borrow_mut().push(
                     RunEntry::new(now, &me, "write", &fired.object, &format!(
                         "{}: {} → {}{}",
                         fired.region,
@@ -544,12 +740,38 @@ impl Host {
                             .map(|n| format!(" — {n}"))
                             .unwrap_or_default()
                     ))
+                    .with("region", &fired.region)
+                    .with("from", &fired.from)
+                    .with("to", &fired.to)
+                    // The response this write consumed, where one did: what a
+                    // reader needs to tell a move the operator asked for from
+                    // one the machinery made (79, 137, 167).
+                    .with(
+                        "response",
+                        fired
+                            .response
+                            .as_ref()
+                            .map(|(id, _)| id.as_str())
+                            .unwrap_or(""),
+                    )
                     .reading(evidence),
                 );
                 let _ = tail;
             },
         )?;
-        self.run.extend(run);
+        self.moved = moved.get();
+        self.run.extend(run.into_inner());
+        // What an effect moved out of band, said in the same record and after
+        // the write that caused it (79, 167).
+        for (object, from, to) in self.store.marked.take() {
+            self.run.push(
+                RunEntry::new(now, &me, "write", &object, &format!("hold: {from} → {to}"))
+                    .with("region", "hold")
+                    .with("from", &from)
+                    .with("to", &to)
+                    .with("response", ""),
+            );
+        }
         self.take_over_released()?;
         self.report_takeovers()?;
         self.report_sessions()?;
@@ -563,7 +785,18 @@ impl Host {
     /// what makes `older:` guards fire and a never-notified host converge
     /// (130, D7).
     pub fn sweep(&mut self) -> Result<usize> {
-        let fired = self.tick(&Scope::All)?;
+        // A sweep settles: it passes again while something moved, because a
+        // region's move is its siblings' to read on the next pass and a host
+        // that stopped after one would carry the rest to the next sweep for no
+        // reason (model.md the tick, D7). A self-transition re-enters the state
+        // it is in, so a pass that only re-entered has settled.
+        let mut fired = 0;
+        for _ in 0..PASSES {
+            fired += self.tick(&Scope::All)?;
+            if !self.moved {
+                break;
+            }
+        }
         self.last_sweep = Some(self.now());
         Ok(fired)
     }
@@ -666,6 +899,14 @@ impl Host {
                 &session,
                 &[("reported_by_holder", json!(now.to_rfc3339()))],
             )?;
+            // Ending its own is an act like any other, and the record says so:
+            // the returning host closed the session it was running and started
+            // nothing again (79, 150, 167).
+            self.run.push(
+                RunEntry::new(now, &me, "effect", &session, "end_session")
+                    .with("region", "life")
+                    .with("performed", "true"),
+            );
             self.run.push(
                 RunEntry::new(now, &me, "session", &session, "this host was taken over; it ended its own session and stopped")
                     .with("taken_over_by", &by),
@@ -765,10 +1006,16 @@ impl Host {
     /// Rewrite the status projection from its source and report any drift, with
     /// both values (77, 142, D12). Only the rail's lease holder writes the file.
     pub fn rewrite_status(&mut self) -> Result<()> {
+        // A host with no route writes no projection: the file is what a reader
+        // with no host running reads off the shared line, and this host's copy
+        // of it is not a fact (132, 145, 161, D4a, D12).
+        if self.store.git.disconnected {
+            return Ok(());
+        }
         let held = self
             .store
             .leases(flywheel_domain::RAIL)?
-            .map(|l| l.holder == self.name)
+            .map(|l| l.holder == self.name || l.holder.is_empty())
             .unwrap_or(true);
         if !held {
             return Ok(());
@@ -993,6 +1240,7 @@ pub fn perform(
                 if lease.holder != gone {
                     continue;
                 }
+                let was = lease.state.clone();
                 let _ = store.git.lease(&LeaseOp::Release {
                     object: held.id.clone(),
                     holder: gone.clone(),
@@ -1001,6 +1249,15 @@ pub fn perform(
                     object: held.id.clone(),
                     state: "expired".into(),
                 });
+                // The lease reached `expired` because this effect put it
+                // there, which is the rule the machine names for work a session
+                // is behind (150, `lease.yaml` stale). A move nothing recorded
+                // would be a move no reader could find (79, 167).
+                store.marked.borrow_mut().push((
+                    flywheel_domain::leases::id_for(&held.id),
+                    was,
+                    "expired".to_string(),
+                ));
             }
             for session in flywheel_sessions_operator::of_host(&store.git, &gone) {
                 let _ = flywheel_sessions_operator::take_over(&mut store.git, &session, host, now);

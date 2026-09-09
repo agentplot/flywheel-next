@@ -15,6 +15,7 @@ use flywheel_engine::rec;
 use flywheel_engine::runtime::Response;
 use serde_json::Value;
 use std::collections::BTreeMap;
+use std::cell::RefCell;
 use std::path::{Path, PathBuf};
 
 /// What the operator's own commit says of itself in its subject line, so every
@@ -45,6 +46,9 @@ pub struct GitStore {
     /// Evidence the world reports, which the git profile inherits from the
     /// host and sessions bindings rather than owning (B.3).
     pub given: BTreeMap<String, BTreeMap<String, Value>>,
+    /// The same, as the shared line holds it: read at every fetch, so every
+    /// host of one instance answers it alike (B.3, 136).
+    pub shared: BTreeMap<String, BTreeMap<String, Value>>,
     /// What this run has done, for the observations a scenario asserts.
     pub writes_attempted: usize,
     pub writes_rejected: usize,
@@ -52,6 +56,14 @@ pub struct GitStore {
     pub reads_since_notify: usize,
     /// Effect ids written locally but not yet landed (161, D4a).
     pub pending: Vec<String>,
+    /// What has already been read at the fetched commit: the commit it was
+    /// read at, the files, and the trees. A commit is immutable, so this is a
+    /// memory and never a second source of truth (126, 135).
+    read_at: RefCell<(String, BTreeMap<String, Option<String>>, BTreeMap<String, Vec<String>>)>,
+    /// The heartbeats as the refs held them when they were last read. Refs move
+    /// without the shared line moving, so this is discarded on every fetch and
+    /// on every write of a heartbeat or a lease (D5).
+    heartbeats: RefCell<Option<Vec<HostRecord>>>,
 }
 
 impl GitStore {
@@ -71,11 +83,14 @@ impl GitStore {
             lease_stale: Duration::minutes(5),
             disconnected: false,
             given: BTreeMap::new(),
+            shared: BTreeMap::new(),
             writes_attempted: 0,
             writes_rejected: 0,
             reread_after_rejection: false,
             reads_since_notify: 0,
             pending: vec![],
+            read_at: RefCell::new((String::new(), BTreeMap::new(), BTreeMap::new())),
+            heartbeats: RefCell::new(None),
         };
         store.fetch()?;
         Ok(store)
@@ -89,10 +104,66 @@ impl GitStore {
             // keeps working what it already holds (151).
             let _ = self.repo.run(&["fetch", "--quiet", "origin"]);
         }
-        self.fetched = git::rev(&self.repo, layout::ORIGIN_MAIN)?
-            .or(git::rev(&self.repo, "HEAD")?)
-            .unwrap_or_else(|| git::ZERO.to_string());
+        // A host with no route reads its own line: its local commits are
+        // intentions, not facts (161), but they are the state it is working
+        // and it must read back what it wrote or it would decide the same
+        // thing again on every tick (151, D4a).
+        self.fetched = match self.disconnected {
+            true => git::rev(&self.repo, "HEAD")?.or(git::rev(&self.repo, layout::ORIGIN_MAIN)?),
+            false => git::rev(&self.repo, layout::ORIGIN_MAIN)?.or(git::rev(&self.repo, "HEAD")?),
+        }
+        .unwrap_or_else(|| git::ZERO.to_string());
+        // What the world reports comes down the shared line with everything
+        // else, so a host that has just fetched answers the same evidence as
+        // every other host of this instance (B.3, 136).
+        self.shared = self.read_given()?;
+        // The refs moved with the fetch, so what was read of them is read again.
+        *self.heartbeats.borrow_mut() = None;
         Ok(self.fetched.clone())
+    }
+
+    /// The world's answers as the shared line holds them.
+    fn read_given(&self) -> Result<BTreeMap<String, BTreeMap<String, Value>>> {
+        let Some(text) = self.read_file(layout::GIVEN)? else {
+            return Ok(BTreeMap::new());
+        };
+        let mut out: BTreeMap<String, BTreeMap<String, Value>> = BTreeMap::new();
+        for record in rec::parse(&text) {
+            let (Some(object), Some(name), Some(value)) =
+                (record.get("object"), record.get("name"), record.get("value"))
+            else {
+                continue;
+            };
+            out.entry(object.to_string()).or_default().insert(
+                name.to_string(),
+                serde_json::from_str(value).unwrap_or_else(|_| Value::String(value.to_string())),
+            );
+        }
+        Ok(out)
+    }
+
+    /// Write one of the world's answers on to the shared line, so every host
+    /// reads it (B.3). What the recorded workspace and the operator's sessions
+    /// answer is written as facts; this is the rest, which phase 1's bindings
+    /// inherit rather than own.
+    pub fn commit_given(&mut self, object: &str, name: &str, value: &Value) -> Result<()> {
+        let mut held = self.read_given()?;
+        held.entry(object.to_string())
+            .or_default()
+            .insert(name.to_string(), value.clone());
+        let mut text = String::from("%rec: given\n\n");
+        for (object, per) in &held {
+            for (name, value) in per {
+                text.push_str(&format!("object: {object}\nname: {name}\nvalue: {value}\n\n"));
+            }
+        }
+        self.on_fetched_head()?;
+        git::stage(&self.repo, layout::GIVEN, &text)?;
+        self.commit_and_push(&format!(
+            "{object} {name}\n\nreason: what the world reports, which this profile inherits (B.3)"
+        ))?;
+        self.shared = held;
+        Ok(())
     }
 
     /// The point a read is as of: the commit, and the time the store says it is.
@@ -112,11 +183,55 @@ impl GitStore {
         }
     }
 
+    /// One file as of the fetched commit.
+    ///
+    /// A commit is immutable, so what a path holds at one is read once and
+    /// remembered: a tick reads the same object under a dozen guards, and a
+    /// read that has already been answered is not a fact that can have changed
+    /// (126, 135). The memory is discarded whenever the fetched point moves.
     fn read_file(&self, path: &str) -> Result<Option<String>> {
         if self.fetched.is_empty() || self.fetched == git::ZERO {
             return Ok(None);
         }
-        git::show(&self.repo, &self.fetched, path)
+        {
+            let read = self.read_at.borrow();
+            if read.0 == self.fetched {
+                if let Some(held) = read.1.get(path) {
+                    return Ok(held.clone());
+                }
+            }
+        }
+        let text = git::show(&self.repo, &self.fetched, path)?;
+        let mut read = self.read_at.borrow_mut();
+        if read.0 != self.fetched {
+            read.0 = self.fetched.clone();
+            read.1.clear();
+            read.2.clear();
+        }
+        read.1.insert(path.to_string(), text.clone());
+        Ok(text)
+    }
+
+    /// The paths under a prefix as of the fetched commit, remembered the same
+    /// way and for the same reason.
+    fn tree(&self, prefix: &str) -> Result<Vec<String>> {
+        {
+            let read = self.read_at.borrow();
+            if read.0 == self.at() {
+                if let Some(held) = read.2.get(prefix) {
+                    return Ok(held.clone());
+                }
+            }
+        }
+        let paths = git::ls_tree(&self.repo, self.at(), prefix)?;
+        let mut read = self.read_at.borrow_mut();
+        if read.0 != self.at() {
+            read.0 = self.at().to_string();
+            read.1.clear();
+            read.2.clear();
+        }
+        read.2.insert(prefix.to_string(), paths.clone());
+        Ok(paths)
     }
 
     /// Put the checkout on a local branch at the fetched head, ready to commit.
@@ -361,7 +476,7 @@ impl Records for GitStore {
 
     fn list_records(&self, scope: &Scope) -> Result<Vec<Object>> {
         let mut out = Vec::new();
-        for path in git::ls_tree(&self.repo, self.at(), "objects/")? {
+        for path in self.tree("objects/")? {
             let Some(id) = layout::id_of(&path) else { continue };
             let Some(object) = self.get(id)? else { continue };
             let keep = match scope {
@@ -390,7 +505,7 @@ impl Records for GitStore {
 
     fn responses(&self, id: &str) -> Result<Vec<Response>> {
         let mut out = Vec::new();
-        for path in git::ls_tree(&self.repo, self.at(), layout::RESPONSES)? {
+        for path in self.tree(layout::RESPONSES)? {
             let Some(text) = self.read_file(&path)? else { continue };
             for record in rec::parse(&text) {
                 let response = records::response_from_record(&record)?;
@@ -410,6 +525,9 @@ impl Records for GitStore {
     }
 
     fn hosts(&self) -> Result<Vec<HostRecord>> {
+        if let Some(held) = self.heartbeats.borrow().as_ref() {
+            return Ok(held.clone());
+        }
         let out = self.repo.run(&["for-each-ref", "--format=%(refname)", "refs/remotes/origin/host/"])?;
         let mut hosts = Vec::new();
         for reference in out.stdout.lines() {
@@ -423,6 +541,7 @@ impl Records for GitStore {
             }
             let _ = name;
         }
+        *self.heartbeats.borrow_mut() = Some(hosts.clone());
         Ok(hosts)
     }
 }
@@ -456,6 +575,7 @@ impl GitStore {
         });
         self.put_orphan(&reference, &record, &expected)?;
         let _ = self.repo.run(&["fetch", "--quiet", "origin"]);
+        *self.heartbeats.borrow_mut() = None;
         Ok(())
     }
 }
@@ -747,6 +867,25 @@ impl GitStore {
             } else {
                 self.fetched.clone()
             };
+            // What landed while the route was down is not this host's to
+            // discard: its own commits go on top of what it finds, and the push
+            // that follows carries both (134, 165, D4a).
+            if !self.fetched.is_empty()
+                && self.fetched != git::ZERO
+                && !self
+                    .repo
+                    .run(&["merge-base", "--is-ancestor", &self.fetched, "HEAD"])?
+                    .ok
+            {
+                let onto = self.fetched.clone();
+                if !self.repo.run(&["rebase", "--quiet", &onto])?.ok {
+                    // A conflict on content is a loss: the other commit stands
+                    // and this host re-reads (3, 164, I15).
+                    let _ = self.repo.run(&["rebase", "--abort"]);
+                    self.repo.git(&["reset", "--hard", "--quiet", &onto])?;
+                    return Ok(false);
+                }
+            }
             if git::push_expecting(&self.repo, "HEAD", layout::MAIN, &expected)? {
                 self.fetch()?;
                 self.pending.clear();
@@ -820,6 +959,42 @@ impl GitStore {
         rec::parse(&text).iter().map(records::run_from_record).collect()
     }
 
+    /// Every host's run record on the shared line, in the order it was written.
+    ///
+    /// The record is what a host says it did and why, and it is readable with no
+    /// host running (79–82, 167). A reader that is not a host — the conformance
+    /// runner under `--hosts real` — reads what every host did from here and
+    /// from nowhere else (D15).
+    pub fn all_run_records(&self) -> Result<Vec<records::RunEntry>> {
+        let mut out: Vec<records::RunEntry> = self
+            .run_records_by_file()?
+            .into_iter()
+            .flat_map(|(_, entries)| entries)
+            .collect();
+        out.sort_by(|a, b| a.at.cmp(&b.at));
+        Ok(out)
+    }
+
+    /// The same, file by file. One host appends to its own file and never to
+    /// another's, so a reader that wants to know what is new since it last
+    /// looked reads each file on its own: the whole set is reordered by time as
+    /// hosts come and go, and one file never is.
+    pub fn run_records_by_file(&self) -> Result<Vec<(String, Vec<records::RunEntry>)>> {
+        if self.fetched.is_empty() || self.fetched == git::ZERO {
+            return Ok(vec![]);
+        }
+        let mut out = Vec::new();
+        for path in self.tree("runs")? {
+            let Some(text) = self.read_file(&path)? else {
+                continue;
+            };
+            let entries: Result<Vec<records::RunEntry>> =
+                rec::parse(&text).iter().map(records::run_from_record).collect();
+            out.push((path, entries?));
+        }
+        Ok(out)
+    }
+
     /// Commit the status projection on the shared line, stating the commit and
     /// time it is as of. Only the rail's lease holder writes it (D12, 132, 145).
     pub fn commit_status(&mut self, body: &str) -> Result<()> {
@@ -835,6 +1010,32 @@ impl GitStore {
         Ok(())
     }
 
+    /// The newest commit on the shared line that wrote a state record. The
+    /// projection is as-of the state, and the commits after it are the
+    /// projection's own and the run record's (145, 167).
+    pub fn newest_state_write(&self) -> Result<Option<String>> {
+        if self.fetched.is_empty() || self.fetched == git::ZERO {
+            return Ok(None);
+        }
+        let out = self.repo.run(&[
+            "log",
+            "-1",
+            "--format=%H",
+            &self.fetched,
+            "--",
+            "objects",
+        ])?;
+        Ok(out.stdout.split_whitespace().next().map(String::from))
+    }
+
+    /// Whether one commit is in another's history.
+    pub fn is_ancestor(&self, older: &str, newer: &str) -> bool {
+        self.repo
+            .run(&["merge-base", "--is-ancestor", older, newer])
+            .map(|said| said.ok)
+            .unwrap_or(false)
+    }
+
     /// The status file as it stands on the shared line: what the operator reads
     /// with no host running (145, S20).
     pub fn committed_status(&self) -> Result<Option<String>> {
@@ -844,11 +1045,19 @@ impl GitStore {
 
 impl flywheel_engine::runtime::EvidenceSource for GitStore {
     fn evidence(&self, object: &str, _region: &str, name: &str) -> Option<Value> {
-        self.given
-            .get(object)
-            .and_then(|m| m.get(name))
-            .or_else(|| self.given.get("*").and_then(|m| m.get(name)))
-            .cloned()
+        // What this process was told first, then what the shared line holds:
+        // a host that has just been told something has not yet committed it,
+        // and both are the same world (B.3).
+        for held in [&self.given, &self.shared] {
+            if let Some(value) = held
+                .get(object)
+                .and_then(|m| m.get(name))
+                .or_else(|| held.get("*").and_then(|m| m.get(name)))
+            {
+                return Some(value.clone());
+            }
+        }
+        None
     }
 }
 

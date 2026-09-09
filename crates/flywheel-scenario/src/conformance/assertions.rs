@@ -82,6 +82,8 @@ pub fn check(scenario: &Scenario, run: &Run, suite: &Suite) -> Vec<Failure> {
                     .response
                     .as_ref()
                     .is_none_or(|r| t.response.as_ref() == Some(r))
+                // Which host made it, where the scenario says (147, 232).
+                && want.host.as_ref().is_none_or(|h| t.host.as_ref() == Some(h))
         });
         match found {
             Some(at) => from += at + 1,
@@ -102,7 +104,10 @@ pub fn check(scenario: &Scenario, run: &Run, suite: &Suite) -> Vec<Failure> {
                     "in order after the ones matched: {:?}",
                     taken[from..]
                         .iter()
-                        .map(|t| format!("{} {}→{}", t.object, t.from, t.to))
+                        .map(|t| match &t.host {
+                            Some(host) => format!("{} {}→{} by {host}", t.object, t.from, t.to),
+                            None => format!("{} {}→{}", t.object, t.from, t.to),
+                        })
                         .collect::<Vec<_>>()
                 ),
             }),
@@ -448,9 +453,26 @@ pub fn check(scenario: &Scenario, run: &Run, suite: &Suite) -> Vec<Failure> {
             .get("status_written")
             .and_then(|v| v.as_str())
             .map(String::from);
+        // A `status:` clause naming a step is about the view as it stood after
+        // that step, not at the end of the run (141, S13).
+        let after_step = then
+            .status
+            .get("after_step")
+            .and_then(|v| v.as_u64())
+            .map(|n| n as usize);
+        let at_step = after_step
+            .and_then(|n| run.status_after.get(n.saturating_sub(1)))
+            .cloned()
+            .unwrap_or_else(|| run.status_after.last().cloned().unwrap_or(Value::Null));
         for (key, want) in &then.status {
             let got = match key.as_str() {
+                // The step the clause is about; it names the reading, and is
+                // not itself a thing the view says.
+                "after_step" => want.clone(),
                 "as_of" => json!(store.status_as_of),
+                // What the view showed as stale then: the work whose holder
+                // stopped renewing, and the host itself (146, 150).
+                "stale" => at_step.get("stale").cloned().unwrap_or(Value::Null),
                 // Readable with no host: the projection stands where the
                 // profile keeps it, written before the last host stopped.
                 "readable_with_no_host" => json!(written.is_some()),
@@ -503,7 +525,7 @@ pub fn check(scenario: &Scenario, run: &Run, suite: &Suite) -> Vec<Failure> {
             });
             continue;
         };
-        let got = observe(run, key);
+        let got = observe(run, scenario, key);
         match got {
             None => failures.push(Failure {
                 clause: format!("state_store.{key}"),
@@ -511,7 +533,7 @@ pub fn check(scenario: &Scenario, run: &Run, suite: &Suite) -> Vec<Failure> {
                 expected: format!("{want}"),
                 actual: "the profile answered nothing for this key".into(),
             }),
-            Some(got) if &got != want => failures.push(Failure {
+            Some(got) if !answers(&got, want) => failures.push(Failure {
                 clause: format!("state_store.{key}"),
                 step: None,
                 expected: format!("{want}"),
@@ -568,12 +590,47 @@ fn lease_fact(run: &Run, object: &str, key: &str) -> Option<Value> {
         // The holder after a numbered step, which is what a scenario naming a
         // step asserts (128, X05).
         key if key.starts_with("holder_after_step_") => {
-            return run
-                .runtime
-                .store
-                .leases
-                .get(object)
+            return Records::leases(&run.runtime.store, object)
+                .ok()
+                .flatten()
+                .or_else(|| run.runtime.store.leases.get(object).cloned())
                 .map(|l| json!(l.holder))
+        }
+        // Whether a named host had the lease before it expired. A host that
+        // waits does not touch another's work: it takes the lease only once the
+        // expiry the operator's response brought about has passed (150, I15).
+        key if key.starts_with("touched_by_") && key.ends_with("_before_expiry") => {
+            let who = key
+                .trim_start_matches("touched_by_")
+                .trim_end_matches("_before_expiry")
+                .replace('_', "-");
+            if events.iter().any(|e| e.holder == who && !e.expired) {
+                return Some(json!(true));
+            }
+            let held = Records::leases(&run.runtime.store, object).ok().flatten();
+            // It holds it now: it touched it before the expiry only if it took
+            // it before the lease reached `expired`.
+            let expired_at = run
+                .ticks
+                .iter()
+                .flat_map(|t| t.transitions.iter())
+                .find(|t| t.object == flywheel_domain::leases::id_for(object) && t.to == "expired")
+                .and_then(|_| {
+                    run.ticks
+                        .iter()
+                        .find(|t| {
+                            t.transitions.iter().any(|x| {
+                                x.object == flywheel_domain::leases::id_for(object)
+                                    && x.to == "expired"
+                            })
+                        })
+                        .map(|t| t.at)
+                });
+            return Some(json!(match (held, expired_at) {
+                (Some(l), Some(at)) => l.holder == who && l.taken_at < at,
+                (Some(l), None) => l.holder == who,
+                (None, _) => false,
+            }));
         }
         "stale_after_5m" => json!(events.iter().any(|e| e.stale)),
         "expired_after_24h" => json!(events.iter().any(|e| e.expired)),
@@ -604,9 +661,144 @@ fn field_of(object: &flywheel_engine::Object, field: &str) -> Option<Value> {
     }
 }
 
+/// Whether what the profile answered is what the scenario asked for.
+///
+/// A scenario may state a bound rather than a number — `">= 1"` says at least
+/// one, which is what a clause about a queue of intentions means (S18) — and a
+/// map of them is answered field by field.
+fn answers(got: &Value, want: &Value) -> bool {
+    match (got, want) {
+        (_, Value::String(text)) => match comparison(text) {
+            Some((op, n)) => got.as_f64().is_some_and(|got| match op {
+                ">=" => got >= n,
+                "<=" => got <= n,
+                ">" => got > n,
+                "<" => got < n,
+                _ => got == n,
+            }),
+            None => got == want,
+        },
+        (Value::Object(got), Value::Object(want)) => want
+            .iter()
+            .all(|(k, v)| got.get(k).is_some_and(|g| answers(g, v))),
+        _ => got == want,
+    }
+}
+
+/// A comparison a scenario wrote as text, or none.
+fn comparison(text: &str) -> Option<(&str, f64)> {
+    for op in [">=", "<=", ">", "<", "=="] {
+        if let Some(rest) = text.trim().strip_prefix(op) {
+            return rest.trim().parse().ok().map(|n| (op, n));
+        }
+    }
+    None
+}
+
+/// Every take of the lease the scenario's race is about: the object its
+/// `leases:` clause names, or, where it names none, whichever a host was
+/// refused. A lease nobody contested was no race (128, 134, 162, I15).
+fn contested(run: &Run, scenario: &Scenario) -> Vec<flywheel_domain::records::RunEntry> {
+    let entries = run_record(run);
+    let takes: Vec<&flywheel_domain::records::RunEntry> = entries
+        .iter()
+        .filter(|e| e.kind == "lease" && e.reason == "take")
+        // The machinery's own leases — the rail's, a sink's presenter — are not
+        // the work two hosts race for (D5, 148, 167).
+        .filter(|e| !crate::conformance::drive::machinery(&run.runtime.store, &e.object))
+        .collect();
+    let named: Vec<&str> = scenario.then.leases.keys().map(|k| k.as_str()).collect();
+    let about: Vec<&str> = match named.is_empty() {
+        false => named,
+        true => takes
+            .iter()
+            .filter(|e| {
+                e.fields
+                    .iter()
+                    .any(|(n, v)| n == "outcome" && v == "held-by-another")
+            })
+            .map(|e| e.object.as_str())
+            .collect(),
+    };
+    takes
+        .into_iter()
+        .filter(|e| about.contains(&e.object.as_str()))
+        .cloned()
+        .collect()
+}
+
+/// Whether a moment fell inside one of a host's offline windows (151, D4a).
+fn while_offline(run: &Run, host: &str, at: chrono::DateTime<chrono::Utc>) -> bool {
+    run.offline
+        .get(host)
+        .into_iter()
+        .flatten()
+        .any(|(cut, back)| at >= *cut && back.is_none_or(|back| at < back))
+}
+
+/// The hosts a run knows about: the ones it cut off, and the ones the record
+/// says wrote.
+fn hosts_of(run: &Run) -> Vec<String> {
+    let mut out: Vec<String> = run.offline.keys().cloned().collect();
+    for object in run
+        .runtime
+        .store
+        .list_records(&Scope::Machine("host".into()))
+        .unwrap_or_default()
+    {
+        let name = object.id.trim_start_matches("host/").to_string();
+        if !out.contains(&name) {
+            out.push(name);
+        }
+    }
+    out.sort();
+    out
+}
+
+/// Every run-record entry the shared line holds, whoever wrote it (79, 167).
+fn run_record(run: &Run) -> Vec<flywheel_domain::records::RunEntry> {
+    match run.runtime.store.durable() {
+        Some(durable) => durable
+            .lock()
+            .ok()
+            .and_then(|git| git.all_run_records().ok())
+            .unwrap_or_default(),
+        None => vec![],
+    }
+}
+
+/// Every session the store holds a record of, whoever ran it (93b).
+fn session_facts(run: &Run) -> Vec<flywheel_engine::Object> {
+    run.runtime
+        .store
+        .list_records(&Scope::All)
+        .unwrap_or_default()
+        .into_iter()
+        .filter(|o| o.id.starts_with("fact/session/"))
+        .collect()
+}
+
+/// Whether the run started this session, rather than being seeded holding it.
+/// A scenario's clock starts at one fixed point, so anything started after it
+/// was started by a step (D15).
+fn started_during(fact: &flywheel_engine::Object) -> bool {
+    fact.record
+        .get("started_at")
+        .and_then(|v| v.as_str())
+        .and_then(|at| chrono::DateTime::parse_from_rfc3339(at).ok())
+        .is_some_and(|at| at.with_timezone(&chrono::Utc) > super::drive::start_of_time())
+}
+
+/// Whether a session record says it is still the operator's to run: started,
+/// not ended.
+fn running_now(fact: &flywheel_engine::Object) -> bool {
+    fact.record.get("started_at").is_some_and(|v| !v.is_null())
+        && !fact.record.get("ended_at").is_some_and(|v| !v.is_null())
+}
+
 /// What the profile answers for one observation key. A key the runner does not
 /// yet answer returns none, which fails loudly rather than passing.
-pub fn observe(run: &Run, key: &str) -> Option<Value> {
+pub fn observe(run: &Run, scenario: &Scenario, key: &str) -> Option<Value> {
     if let Some(v) = run.observations.get(key) {
         return Some(v.clone());
     }
@@ -786,12 +978,209 @@ pub fn observe(run: &Run, key: &str) -> Option<Value> {
         "engine_reads_only" => json!(store.deciding.operations()),
         "projection_rewritten_from_source" => json!(store.projection_rewritten_from_source()?),
         "renderings_stored" => json!(0),
-        "sessions_running_at_end" => json!(store
-            .world
-            .sessions
-            .values()
-            .filter(|s| s.pane)
+        // The sessions the store says are running: started, not ended and not
+        // reported on. Where a profile keeps session records, that is the
+        // answer; the stand-in world's panes are the answer where it does not
+        // (93b, D8).
+        "sessions_running_at_end" => match session_facts(run) {
+            facts if !facts.is_empty() => json!(facts.iter().filter(|f| running_now(f)).count()),
+            _ => json!(store.world.sessions.values().filter(|s| s.pane).count()),
+        },
+        // ---- the race for one lease (128, 134, 162, I15)
+        //
+        // The take is a push with expected-old, and the push is the
+        // compare-and-swap: two hosts ask, one lands, and the loser fetches and
+        // reads who holds it before it decides anything.
+        "lease_pushes_attempted" => json!(contested(run, scenario).len()),
+        "lease_pushes_accepted" => json!(contested(run, scenario)
+            .iter()
+            .filter(|e| e.fields.iter().any(|(n, v)| n == "outcome" && v == "held"))
             .count()),
+        "loser_fetched_and_read_holder" => {
+            let entries = run_record(run);
+            let losers: Vec<_> = entries
+                .iter()
+                .filter(|e| e.kind == "lease" && e.reason == "take")
+                .filter(|e| {
+                    e.fields
+                        .iter()
+                        .any(|(n, v)| n == "outcome" && v == "held-by-another")
+                })
+                .collect();
+            json!(!losers.is_empty()
+                && losers.iter().all(|e| {
+                    e.fields.iter().any(|(n, v)| n == "reread" && v == "true")
+                        && e.fields.iter().any(|(n, v)| n == "holder" && !v.is_empty())
+                }))
+        }
+        // One host made the work, not both: no act ran twice on one object at
+        // one moment, whatever raced for it (I15).
+        "items_created_once" => {
+            // One host made the work: no act on one object was performed by two
+            // of them. A host repeating its own act as a tick settles is the
+            // same host and the same act, and the write carries the identity it
+            // had (127); two hosts would be two.
+            let entries = run_record(run);
+            let mut by: std::collections::BTreeMap<(String, String), Vec<String>> =
+                Default::default();
+            for entry in entries.iter().filter(|e| e.kind == "effect") {
+                // The machinery's own — the rail's projection, a sink's
+                // delivery — are not the work a scenario counts (D5, 167).
+                if crate::conformance::drive::machinery(&run.runtime.store, &entry.object) {
+                    continue;
+                }
+                let who = by
+                    .entry((entry.object.clone(), entry.reason.clone()))
+                    .or_default();
+                if !who.contains(&entry.host) {
+                    who.push(entry.host.clone());
+                }
+            }
+            json!(by.values().all(|who| who.len() < 2))
+        }
+        // ---- what a host with no route did, and what landed when it came back
+        // (151, 161, 165, D4a)
+        //
+        // A local commit is an intention until its push lands (161), so what a
+        // host wrote while its route was down is counted from the record it
+        // pushed once it was back.
+        "local_commits_while_offline" => {
+            let entries = run_record(run);
+            let mut out = serde_json::Map::new();
+            for host in hosts_of(run) {
+                let made = entries
+                    .iter()
+                    .filter(|e| e.host == host && e.kind == "write")
+                    .filter(|e| while_offline(run, &host, e.at))
+                    .count();
+                out.insert(host, json!(made));
+            }
+            Value::Object(out)
+        }
+        // A host that cannot reach the store takes no new lease (151).
+        "leases_taken_while_offline" => {
+            let mut out = serde_json::Map::new();
+            for host in hosts_of(run) {
+                let taken = run
+                    .runtime
+                    .store
+                    .list_records(&Scope::All)
+                    .unwrap_or_default()
+                    .iter()
+                    .filter_map(|o| Records::leases(&run.runtime.store, &o.id).ok().flatten())
+                    .filter(|l| l.holder == host && while_offline(run, &host, l.taken_at))
+                    .count();
+                out.insert(host, json!(taken));
+            }
+            Value::Object(out)
+        }
+        // Nor does it start a session for work it does not already hold (151).
+        "sessions_started_while_offline" => {
+            let mut out = serde_json::Map::new();
+            for host in hosts_of(run) {
+                let started = session_facts(run)
+                    .iter()
+                    .filter(|f| f.record.get("host").and_then(|v| v.as_str()) == Some(host.as_str()))
+                    // What the run started, not what it was seeded holding.
+                    .filter(|f| started_during(f))
+                    .filter(|f| {
+                        f.record
+                            .get("started_at")
+                            .and_then(|v| v.as_str())
+                            .and_then(|at| chrono::DateTime::parse_from_rfc3339(at).ok())
+                            .is_some_and(|at| while_offline(run, &host, at.with_timezone(&chrono::Utc)))
+                    })
+                    .count();
+                out.insert(host, json!(started));
+            }
+            Value::Object(out)
+        }
+        // What each host wrote is on the shared line when the route is back:
+        // an intention became a fact and nothing of anyone else's was lost
+        // (133, 161, 165).
+        "commits_present_after_reconnect" => {
+            let entries = run_record(run);
+            let mut out = serde_json::Map::new();
+            for host in hosts_of(run) {
+                out.insert(host.clone(), json!(entries.iter().any(|e| e.host == host)));
+            }
+            Value::Object(out)
+        }
+        // And the projection states the point it is as of, which is the last
+        // write that landed (145, 167).
+        "status_as_of_after_reconnect" => {
+            let body = run
+                .observations
+                .get("status_written")
+                .and_then(|v| v.as_str())
+                .unwrap_or_default()
+                .to_string();
+            // The point the projection states it is as of, and the newest
+            // state write on the shared line: the projection is latest when
+            // nothing it projects landed after it (145, 167).
+            let as_of = body
+                .split("as of commit ")
+                .nth(1)
+                .and_then(|rest| rest.split(' ').next())
+                .unwrap_or_default()
+                .to_string();
+            let current = match run.runtime.store.durable() {
+                Some(durable) => durable.lock().ok().is_some_and(|git| {
+                    match git.newest_state_write().ok().flatten() {
+                        Some(newest) => !as_of.is_empty() && git.is_ancestor(&newest, &as_of),
+                        None => !as_of.is_empty(),
+                    }
+                }),
+                None => false,
+            };
+            json!(match current {
+                true => "latest",
+                false => "behind",
+            })
+        }
+        // Which attempt each host started. A takeover is a fresh attempt and
+        // never the same session twice, so the number is what says a host
+        // started the second one (150, `session.yaml` id, S13).
+        "attempts_started_by_host" => {
+            let mut out = serde_json::Map::new();
+            for fact in session_facts(run) {
+                let Some(host) = fact.record.get("host").and_then(|v| v.as_str()) else {
+                    continue;
+                };
+                // What the run started, not what it was seeded holding: a
+                // session the scenario described as already running was started
+                // by nobody in it.
+                if !started_during(&fact) {
+                    continue;
+                }
+                let session = fact.id.trim_start_matches("fact/session/");
+                let attempt = flywheel_domain::regions::attempt_of(session).unwrap_or(1) as u64;
+                let held = out.get(host).and_then(|v| v.as_u64()).unwrap_or(0);
+                out.insert(host.to_string(), json!(attempt.max(held)));
+            }
+            Value::Object(out)
+        }
+        // A host that came back ended its own session and reported it, and
+        // started nothing again: the fresh attempt is the taking host's (150).
+        "ended_own_pane_on_return" => {
+            let mut out = serde_json::Map::new();
+            for fact in session_facts(run) {
+                let Some(host) = fact.record.get("host").and_then(|v| v.as_str()) else {
+                    continue;
+                };
+                if !fact.record.get("taken_over_by").is_some_and(|v| !v.is_null()) {
+                    continue;
+                }
+                let own = fact
+                    .record
+                    .get("reported_by_holder")
+                    .is_some_and(|v| !v.is_null())
+                    && !running_now(&fact);
+                let held = out.get(host).and_then(|v| v.as_bool()).unwrap_or(true);
+                out.insert(host.to_string(), json!(own && held));
+            }
+            Value::Object(out)
+        }
         "list_returned" => json!(store.objects.keys().collect::<Vec<_>>()),
         "second_tick_writes" => json!(run
             .ticks

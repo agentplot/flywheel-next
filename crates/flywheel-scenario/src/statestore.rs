@@ -192,8 +192,38 @@ impl Store {
         git.now = now;
         let _ = git.fetch();
         let Ok(objects) = Records::list_records(&*git, &Scope::All) else { return };
+        // The leases and the heartbeats are branches, not files on the shared
+        // line (D5), so they are read back beside the objects: a reader that
+        // took the objects and kept a remembered lease would be deciding on
+        // something it holds in memory (128, 136, 163, I14).
+        let leases: Vec<(String, LeaseRecord)> = objects
+            .iter()
+            .filter_map(|o| {
+                Records::leases(&*git, &o.id)
+                    .ok()
+                    .flatten()
+                    .map(|l| (o.id.clone(), l))
+            })
+            .collect();
+        let heartbeats = Records::hosts(&*git).unwrap_or_default();
         drop(git);
         self.objects = objects.into_iter().map(|o| (o.id.clone(), o)).collect();
+        if !leases.is_empty() {
+            self.leases = leases.into_iter().collect();
+        }
+        if !heartbeats.is_empty() {
+            self.heartbeats = heartbeats
+                .into_iter()
+                .map(|h| (h.host.clone(), h))
+                .collect();
+        }
+        // The register is the rail's record and is read back like anything
+        // else: the numbers a host gave are on the shared line, and a reader
+        // that took the objects and left the register behind would be deciding
+        // on something it holds in memory (15, 75, 131, 148, I14).
+        if let Some(rail) = self.objects.get(RAIL).cloned() {
+            self.set_rail_record(&rail);
+        }
     }
 }
 

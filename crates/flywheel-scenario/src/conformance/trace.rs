@@ -109,13 +109,10 @@ impl Trace {
     }
 }
 
-/// Write the trace. The json is written, then read back and rendered, so the
-/// markdown is a rendering of the file and not of what was in memory.
-pub fn write(scenario: &Scenario, run: &Run, options: &RunOptions) -> Result<PathBuf> {
-    let dir = options.trace_dir();
-    std::fs::create_dir_all(&dir)
-        .with_context(|| format!("making the trace directory {}", dir.display()))?;
-    let trace = Trace {
+/// The trace of one run, before anything is written. What `--trace` writes and
+/// what a caller comparing two runs reads are the same record (95, D15).
+pub fn of(scenario: &Scenario, run: &Run, options: &RunOptions) -> Trace {
+    Trace {
         scenario: scenario.scenario.clone(),
         title: scenario.title.clone(),
         profile: options.profile.name().to_string(),
@@ -123,7 +120,16 @@ pub fn write(scenario: &Scenario, run: &Run, options: &RunOptions) -> Result<Pat
         ticks: run.ticks.clone(),
         decisions_after: run.decisions_after.clone(),
         skipped_steps: run.skipped_steps.clone(),
-    };
+    }
+}
+
+/// Write the trace. The json is written, then read back and rendered, so the
+/// markdown is a rendering of the file and not of what was in memory.
+pub fn write(scenario: &Scenario, run: &Run, options: &RunOptions) -> Result<PathBuf> {
+    let dir = options.trace_dir();
+    std::fs::create_dir_all(&dir)
+        .with_context(|| format!("making the trace directory {}", dir.display()))?;
+    let trace = of(scenario, run, options);
     let json_path = dir.join(format!("{}.trace.json", scenario.scenario));
     std::fs::write(&json_path, serde_json::to_string_pretty(&trace)?)
         .with_context(|| format!("writing {}", json_path.display()))?;

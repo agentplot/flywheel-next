@@ -42,6 +42,11 @@ enum Cmd {
         /// alone (232).
         #[arg(long, global = true, default_value = "local")]
         name: String,
+        /// Where this host keeps its clones, in place of the manifest's own.
+        /// Several hosts run on one computer, each under a root of its own
+        /// (205, 232).
+        #[arg(long, global = true)]
+        root: Option<PathBuf>,
         /// Refused, wherever it is written. A host runs the definitions in the
         /// binary (223, D2).
         #[arg(long, global = true)]
@@ -208,6 +213,12 @@ enum HostCmd {
         /// Stop after this many passes; zero runs until the process is stopped.
         #[arg(long, default_value = "0")]
         passes: usize,
+        /// Take the clock and the sweep from the caller, one command per line
+        /// on the input, rather than from a timer. What the conformance runner
+        /// starts a host with under `--hosts real`, so a two-host run is
+        /// deterministic (D15, D7).
+        #[arg(long)]
+        driven: bool,
     },
 }
 
@@ -367,7 +378,7 @@ async fn main() -> Result<()> {
                 }
             }
         }
-        Cmd::Host { cmd, definitions, manifest, name } => {
+        Cmd::Host { cmd, definitions, manifest, name, root } => {
             // A host runs the set the binary carries. The directory load is the
             // scenario runner's, and a host that took one could not prove which
             // set it ran (223, 224, D2).
@@ -379,9 +390,9 @@ async fn main() -> Result<()> {
                     dir.display()
                 );
             }
-            match cmd.clone().unwrap_or(HostCmd::Run { passes: 0 }) {
+            match cmd.clone().unwrap_or(HostCmd::Run { passes: 0, driven: false }) {
                 HostCmd::Join => {
-                    let read = flywheel_world_host::Manifest::read(manifest)?;
+                    let read = flywheel::host::manifest_with_root(manifest, name, root.as_deref())?;
                     let mut world = flywheel_world_host::HostWorld::open(read, name)?;
                     let joined = flywheel_world_host::join::join(&mut world)?;
                     for cloned in &joined.cloned {
@@ -409,7 +420,7 @@ async fn main() -> Result<()> {
                         flywheel_domain::set::versions()?.len()
                     );
                     if layout {
-                        let read = flywheel_world_host::Manifest::read(manifest)?;
+                        let read = flywheel::host::manifest_with_root(manifest, name, root.as_deref())?;
                         let world = flywheel_world_host::HostWorld::open(read, name)?;
                         let differences = flywheel_world_host::join::doctor(&world);
                         match differences.is_empty() {
@@ -444,8 +455,20 @@ async fn main() -> Result<()> {
                         }
                     }
                 }
-                HostCmd::Run { passes } => {
-                    let mut host = flywheel::host::Host::open(manifest, name, chrono::Utc::now())?;
+                HostCmd::Run { passes, driven } => {
+                    let mut host =
+                        flywheel::host::Host::open(manifest, name, root.as_deref(), chrono::Utc::now())?;
+                    if driven {
+                        // The clock and the sweep come from the caller; nothing
+                        // here keeps time (D15, D7).
+                        host.record_bindings();
+                        let stdin = std::io::stdin();
+                        return flywheel::driven::drive(
+                            &mut host,
+                            stdin.lock(),
+                            std::io::stdout(),
+                        );
+                    }
                     println!(
                         "host {} · instance {} · world {} · workspace {} · sessions {}",
                         host.name,

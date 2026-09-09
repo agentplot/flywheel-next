@@ -452,6 +452,28 @@ pub fn tick<S, P, N>(
     store: &mut S,
     defs: &Definitions,
     scope: &Scope,
+    perform: P,
+    note: N,
+) -> Result<Ticked>
+where
+    S: StateStore + EvidenceSource,
+    P: FnMut(&mut S, &str, &str, &PlannedEffect) -> bool,
+    N: FnMut(&mut S, &tick::Fired, Vec<flywheel_engine::runtime::TailEntry>),
+{
+    tick_as(store, defs, scope, None, perform, note)
+}
+
+/// The same, as a named host.
+///
+/// A host owns what it acts on through a lease: nothing writes on an object
+/// whose lease another host holds, however clearly its guards fired (128, 149,
+/// 150, 162, I15). A caller that is nobody in particular — a test, the
+/// prototype's console — passes none and writes what it reads.
+pub fn tick_as<S, P, N>(
+    store: &mut S,
+    defs: &Definitions,
+    scope: &Scope,
+    me: Option<&str>,
     mut perform: P,
     mut note: N,
 ) -> Result<Ticked>
@@ -477,6 +499,22 @@ where
         };
         tick::plan_tick(defs, &snapshot)
     };
+
+    // What this host may write: what it holds, and the machinery's own objects,
+    // which no host takes a lease on (D5, 149).
+    let mine = |store: &S, id: &str| -> bool {
+        let Some(me) = me else { return true };
+        let Some(object) = objects.get(id) else { return true };
+        if !crate::leases::leasable(object) {
+            return true;
+        }
+        // The lease is taken before anything is decided, so by now what this
+        // host may act on is what it holds. A lease nobody holds is one nobody
+        // may write on: an uncovered object waits, and a host with no route
+        // takes nothing new (149, 151).
+        matches!(store.leases(id), Ok(Some(lease)) if lease.holder == me)
+    };
+    let fired: Vec<tick::Fired> = fired.into_iter().filter(|f| mine(store, &f.object)).collect();
 
     let transitions = fired.len();
     for f in &fired {

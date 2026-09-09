@@ -175,6 +175,10 @@ impl Bootstrap {
                 // own, and the port 245 permits at the machine (191, 205a).
                 router: None,
                 localhost_port: 4242,
+                // What the first host is until the operator says otherwise: a
+                // laptop, running four sessions at once (31, 150a).
+                bound: 4,
+                intermittent: true,
             }
         });
     }

@@ -121,7 +121,16 @@ impl World for HostWorld {
             }
             let checkout = self.checkout(&name);
             if !checkout.join(".git").is_dir() {
-                git::checkout_line(&bare, &checkout, &repository.shared_line)
+                // The state repository's checkout is the state store's, and a
+                // durable write is one that reached the git host: it is cloned
+                // from the remote so its pushes land there (133, 161). Every
+                // other repository is read from the mirror this host keeps and
+                // written back through it.
+                let from = match name.as_str() {
+                    "flywheel-state" => PathBuf::from(&repository.remote),
+                    _ => bare.clone(),
+                };
+                git::checkout_line(&from, &checkout, &repository.shared_line)
                     .with_context(|| format!("checking out {name}"))?;
             }
         }

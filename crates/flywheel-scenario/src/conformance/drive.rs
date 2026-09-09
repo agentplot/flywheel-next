@@ -5,6 +5,7 @@
 //! guard, so a run is deterministic and a scenario that waits says so in its
 //! own steps (D15).
 
+use super::hosts::RealHosts;
 use super::{interpreter, Run, RunOptions, Suite};
 use crate::sessions::ScriptedSessions;
 use crate::store::Store;
@@ -109,6 +110,14 @@ pub fn play(
     std::fs::create_dir_all(&places)?;
     let sessions = ScriptedSessions::new(&state, places.join("places"));
 
+    // `--hosts real`: every host the scenario names is a process of its own,
+    // and from here the runner holds no engine — it drives those processes and
+    // reads what they wrote (232, D15).
+    let mut real = match options.hosts_real {
+        true => Some(start_real(&mut rt, scenario, &places)?),
+        false => None,
+    };
+
     let writes_at_start = rt.store.work_writes;
     let mut run = Run {
         ticks: vec![],
@@ -118,8 +127,12 @@ pub fn play(
         skipped_steps: vec![],
         writes_at_start,
         tail_after: vec![],
+        status_after: vec![],
         profile: options.profile.name(),
         dictations: 0,
+        engine_ticks: 0,
+        read_at: Default::default(),
+        offline: Default::default(),
     };
     // The script is the scenario's, and entries play at the step they name.
     let script = scenario.given.script.clone();
@@ -127,8 +140,18 @@ pub fn play(
     let steps = scenario.steps()?;
     for (index, step) in steps.iter().enumerate() {
         let number = index + 1;
-        play_step(&mut run, step, scenario, path, suite, options, &sessions, &state)
-            .with_context(|| format!("step {number}"))?;
+        play_step(
+            &mut run,
+            step,
+            scenario,
+            path,
+            suite,
+            options,
+            &sessions,
+            &state,
+            real.as_mut(),
+        )
+        .with_context(|| format!("step {number}"))?;
         play_script(&mut run, &script, index, &sessions, &state)?;
         // As a sink that has never delivered reads it: everything that has
         // reached done, landed, closed or dropped since before the run, which
@@ -139,6 +162,8 @@ pub fn play(
             DateTime::<Utc>::from_timestamp_nanos(0),
         );
         run.tail_after.push(tail);
+        let reading = status_reading(&run);
+        run.status_after.push(reading);
         run.decisions_after.push(
             run.runtime
                 .decisions()
@@ -152,6 +177,17 @@ pub fn play(
                 })
                 .collect(),
         );
+    }
+    // Every host is told to stop before the run is read: a process still
+    // writing is not a state to assert against.
+    if let Some(hosts) = &mut real {
+        hosts.shutdown();
+        // What the run did, in the order it was done. A host whose route was
+        // cut wrote at the time it wrote and the shared line learned of it
+        // later (161, D4a), so the record is read once more, whole, and the
+        // ticks are the times the writes were made rather than the moments the
+        // runner could see them.
+        read_all_the_hosts_did(&mut run)?;
     }
     // What the run is asserted against is what the store holds, read once more
     // after the last step: a host that never fetched is behind, and being
@@ -427,7 +463,14 @@ pub fn seed(defs: Definitions, scenario: &Scenario, suite: &Suite) -> Result<Run
             if store.acting_host.as_deref() == Some(DEFAULT_HOST) {
                 store.acting_host = Some(id.to_string());
             }
-            let mut record: BTreeMap<String, Value> = host.clone();
+            // `now` in a host's record is the run's clock, like anywhere else:
+            // a host seeded as last seen now and then left for six minutes is
+            // saying one thing (D15).
+            let now = store.now;
+            let mut record: BTreeMap<String, Value> = host
+                .iter()
+                .map(|(name, value)| (name.clone(), at_now(value, now)))
+                .collect();
             record.remove("id");
             record.remove("name");
             world::new_object(&defs, &mut store, &format!("host/{id}"), "host", None, record);
@@ -682,6 +725,362 @@ fn materialize(store: &mut Store, files: &BTreeMap<String, String>, suite: &Suit
     Ok(())
 }
 
+/// The status view as it stands, for the assertions a scenario makes about what
+/// it showed after a numbered step (141, 143, 146).
+///
+/// It is read the way any reader reads it — from `list` and `read` alone — so
+/// what a scenario asserts is what a person would have seen (132, D12).
+fn status_reading(run: &Run) -> Value {
+    let store = &run.runtime.store;
+    let Ok(status) = flywheel_domain::status::read(
+        store,
+        &run.runtime.defs,
+        &flywheel_atoms::ReadPoint {
+            mark: format!("write {}", store.writes),
+            seq: store.writes,
+            at: store.now,
+        },
+        store.now,
+        Duration::minutes(5),
+        Duration::minutes(30),
+    ) else {
+        return json!({});
+    };
+    // What the view shows as stale: the work whose holder has stopped renewing,
+    // and the host itself (146, 150).
+    let mut stale: Vec<String> = status
+        .rows
+        .iter()
+        .filter(|row| row.liveness.as_deref() == Some("stale"))
+        .map(|row| row.object.clone())
+        .collect();
+    for host in flywheel_atoms::Records::hosts(store).unwrap_or_default() {
+        let since = store.now - host.last_seen;
+        if since >= Duration::minutes(5) && since < Duration::minutes(30) {
+            stale.push(host.host.clone());
+        }
+    }
+    json!({ "stale": stale })
+}
+
+/// Every session a seeded object described as alive: the object, the region
+/// that holds it and the session's name. The same reading the stand-in world
+/// makes when it puts a pane behind a seeded `session.life: alive`.
+fn sessions_described(rt: &Runtime) -> Vec<(String, String, String)> {
+    let defs = rt.defs.clone();
+    rt.store
+        .objects
+        .values()
+        .flat_map(|o| {
+            o.config
+                .iter()
+                .filter(|(path, state)| {
+                    path.split('.')
+                        .any(|segment| segment == "session" || segment == "sessions")
+                        && path.ends_with(".life")
+                        && state.as_str() == "alive"
+                })
+                .map(|(path, _)| {
+                    (
+                        o.id.clone(),
+                        path.clone(),
+                        flywheel_domain::regions::session_key_of_in(&defs, o, path),
+                    )
+                })
+                .collect::<Vec<_>>()
+        })
+        .collect()
+}
+
+/// The hosts a scenario names, in the order it named them; the single host
+/// `local` where it names none (232, D15).
+pub fn host_names(scenario: &Scenario) -> Vec<String> {
+    let mut names: Vec<String> = scenario
+        .given
+        .hosts
+        .iter()
+        .filter_map(|h| {
+            h.get("id")
+                .or_else(|| h.get("name"))
+                .and_then(|v| v.as_str())
+                .map(String::from)
+        })
+        .collect();
+    for step in scenario.steps().unwrap_or_default() {
+        match &step {
+            Step::Host(h) if h.name != "none" && !names.contains(&h.name) => {
+                names.push(h.name.clone())
+            }
+            Step::Tick(t) => {
+                for name in &t.concurrent_hosts {
+                    if !names.contains(name) {
+                        names.push(name.clone());
+                    }
+                }
+            }
+            _ => {}
+        }
+    }
+    if names.is_empty() {
+        names.push(DEFAULT_HOST.to_string());
+    }
+    names
+}
+
+/// Put the described state where a process can read it, and start every host
+/// the scenario names as one (232, D15).
+///
+/// The leases and the world's answers go on to the shared line rather than into
+/// this process's memory, because the hosts that read them are other processes:
+/// a described state a child cannot read is no described state at all.
+fn start_real(rt: &mut Runtime, scenario: &Scenario, places: &Path) -> Result<RealHosts> {
+    let now = rt.store.now;
+    if let Some(durable) = rt.store.durable() {
+        let mut git = durable
+            .lock()
+            .map_err(|_| anyhow!("the state repository is poisoned"))?;
+        for (name, per_object) in &scenario.given.evidence {
+            for (object, value) in per_object {
+                git.commit_given(object, name, &at_now(value, now))?;
+            }
+        }
+        for (object, held) in &rt.store.leases {
+            git.lease(&flywheel_atoms::LeaseOp::Take {
+                object: object.clone(),
+                holder: held.holder.clone(),
+            })?;
+            // A lease the scenario described as held is held: taking one puts
+            // its machine at `free`, and a lease seeded held has already been
+            // read as held by the host that holds it (D5, 128).
+            git.lease(&flywheel_atoms::LeaseOp::Mark {
+                object: object.clone(),
+                state: held.state.clone(),
+            })?;
+        }
+        // A described state includes the sessions under it: an object seeded
+        // with a session alive has one, recorded against the host holding its
+        // lease, because that is the host running it (93b, 147).
+        for (object, region, session) in sessions_described(rt) {
+            let host = rt
+                .store
+                .leases
+                .get(&object)
+                .map(|l| l.holder.clone())
+                .unwrap_or_else(|| rt.store.me());
+            flywheel_sessions_operator::start(
+                &mut *git,
+                &host,
+                now,
+                &flywheel_atoms::WorkOrder {
+                    session: session.clone(),
+                    kind: "work".into(),
+                    place: flywheel_domain::regions::place_key(&object, &region),
+                    body: String::new(),
+                },
+            )?;
+        }
+    }
+    // What the scenario said each host is, as manifest entries: a host is what
+    // the manifest says it is, and the harness decides nothing (149, 150a, 183).
+    let described: BTreeMap<String, &BTreeMap<String, Value>> = scenario
+        .given
+        .hosts
+        .iter()
+        .filter_map(|h| {
+            let id = h
+                .get("id")
+                .or_else(|| h.get("name"))
+                .and_then(|v| v.as_str())?;
+            Some((id.to_string(), h))
+        })
+        .collect();
+    let specs: Vec<super::hosts::HostSpec> = host_names(scenario)
+        .into_iter()
+        .map(|name| {
+            let mut spec = super::hosts::HostSpec::named(&name);
+            if let Some(given) = described.get(&name) {
+                if let Some(bound) = given.get("bound").and_then(|v| v.as_u64()) {
+                    spec.bound = bound as u32;
+                }
+                if let Some(laptop) = given.get("intermittent").and_then(|v| v.as_bool()) {
+                    spec.intermittent = laptop;
+                }
+                if let Some(covers) = given.get("covers").and_then(|v| v.as_array()) {
+                    spec.covers = covers
+                        .iter()
+                        .filter_map(|v| v.as_str().map(String::from))
+                        .collect();
+                }
+            }
+            spec
+        })
+        .collect();
+    // Every repository the scenario's objects name is one the instance tracks;
+    // a host takes leases only within what it declares, and a repository the
+    // manifest does not name is covered by nobody (149, 199, 205).
+    let mut repositories: Vec<String> = rt
+        .store
+        .objects
+        .values()
+        .filter_map(|o| o.record.get("repository").and_then(|v| v.as_str()))
+        .map(String::from)
+        .collect();
+    repositories.sort();
+    repositories.dedup();
+    let names: Vec<String> = specs.iter().map(|s| s.name.clone()).collect();
+    let mut hosts = RealHosts::open(places, "conformance", &specs, &repositories, now)?;
+    // A scenario's hosts are running when it begins; a `start` step starts one
+    // it named and has not.
+    for name in &names {
+        hosts.start(name)?;
+    }
+    hosts.set_clock(now)?;
+    Ok(hosts)
+}
+
+/// What the hosts wrote since the last reading, as the ticks a scenario is
+/// asserted against. The runner holds no engine under `--hosts real`: every
+/// transition and every effect it knows about was read from the run record on
+/// the shared line (79, 167, D15).
+fn read_what_the_hosts_did(run: &mut Run) -> Result<()> {
+    let now = run.runtime.store.now;
+    let by_file = match run.runtime.store.durable() {
+        Some(durable) => {
+            let mut git = durable
+                .lock()
+                .map_err(|_| anyhow!("the state repository is poisoned"))?;
+            git.now = now;
+            git.fetch()?;
+            git.run_records_by_file()?
+        }
+        None => vec![],
+    };
+    let mut fresh: Vec<flywheel_domain::records::RunEntry> = Vec::new();
+    for (file, entries) in by_file {
+        let mark = run.read_at.entry(file).or_insert(0);
+        fresh.extend(entries[(*mark).min(entries.len())..].iter().cloned());
+        *mark = entries.len();
+    }
+    fresh.sort_by(|a, b| a.at.cmp(&b.at));
+    let mut record = crate::runner::TickRecord {
+        tick: run.ticks.len() as u64 + 1,
+        at: now,
+        guards: vec![],
+        transitions: vec![],
+        effects: vec![],
+        decisions: vec![],
+    };
+    for entry in &fresh {
+        match entry.kind.as_str() {
+            "write" => record.transitions.push(as_transition(entry)),
+            "effect" => record.effects.push(as_effect(entry)),
+            _ => {}
+        }
+    }
+    run.ticks.push(record);
+    // What the runner reads is what the store holds, wholly (135).
+    run.runtime.store.refresh();
+    run.runtime.decisions();
+    Ok(())
+}
+
+/// This host's route was cut, at the run's clock (151, D4a).
+fn cut(run: &mut Run, host: &str) {
+    let now = run.runtime.store.now;
+    run.offline.entry(host.to_string()).or_default().push((now, None));
+}
+
+/// And came back.
+fn restored(run: &mut Run, host: &str) {
+    let now = run.runtime.store.now;
+    if let Some(window) = run.offline.get_mut(host).and_then(|w| w.last_mut()) {
+        if window.1.is_none() {
+            window.1 = Some(now);
+        }
+    }
+}
+
+/// One run-record entry as the tick record holds it.
+fn as_transition(entry: &flywheel_domain::records::RunEntry) -> crate::runner::TransitionRecord {
+    let field = |name: &str| {
+        entry
+            .fields
+            .iter()
+            .find(|(n, _)| n == name)
+            .map(|(_, v)| v.clone())
+    };
+    crate::runner::TransitionRecord {
+        object: entry.object.clone(),
+        region: field("region").unwrap_or_default(),
+        from: field("from").unwrap_or_default(),
+        to: field("to").unwrap_or_default(),
+        response: field("response").filter(|r| !r.is_empty()),
+        reason: Some(entry.reason.clone()),
+        host: Some(entry.host.clone()),
+    }
+}
+
+fn as_effect(entry: &flywheel_domain::records::RunEntry) -> crate::runner::EffectRecord2 {
+    crate::runner::EffectRecord2 {
+        effect_id: format!("{}/{}", entry.object, entry.reason),
+        name: entry.reason.clone(),
+        object: entry.object.clone(),
+        args: BTreeMap::new(),
+        written: entry
+            .fields
+            .iter()
+            .any(|(n, v)| n == "performed" && v == "true"),
+        recalled: false,
+    }
+}
+
+/// The whole run record, as the ticks it describes.
+///
+/// One tick is one moment: every write a host made at one point on the virtual
+/// clock belongs to the same tick, whichever host made it and whenever the
+/// shared line learned of it. That is what puts a disconnected host's writes
+/// where they happened rather than where they landed (161, D4a, D15).
+fn read_all_the_hosts_did(run: &mut Run) -> Result<()> {
+    let now = run.runtime.store.now;
+    let entries = match run.runtime.store.durable() {
+        Some(durable) => {
+            let mut git = durable
+                .lock()
+                .map_err(|_| anyhow!("the state repository is poisoned"))?;
+            git.now = now;
+            git.fetch()?;
+            git.all_run_records()?
+        }
+        None => return Ok(()),
+    };
+    let mut ticks: Vec<crate::runner::TickRecord> = Vec::new();
+    for entry in &entries {
+        if !matches!(entry.kind.as_str(), "write" | "effect") {
+            continue;
+        }
+        let tick = match ticks.last_mut().filter(|t| t.at == entry.at) {
+            Some(held) => held,
+            None => {
+                ticks.push(crate::runner::TickRecord {
+                    tick: ticks.len() as u64 + 1,
+                    at: entry.at,
+                    guards: vec![],
+                    transitions: vec![],
+                    effects: vec![],
+                    decisions: vec![],
+                });
+                ticks.last_mut().expect("the tick just pushed")
+            }
+        };
+        match entry.kind.as_str() {
+            "write" => tick.transitions.push(as_transition(entry)),
+            _ => tick.effects.push(as_effect(entry)),
+        }
+    }
+    run.ticks = ticks;
+    Ok(())
+}
+
 #[allow(clippy::too_many_arguments)]
 fn play_step(
     run: &mut Run,
@@ -692,7 +1091,11 @@ fn play_step(
     options: &RunOptions,
     sessions: &ScriptedSessions,
     state: &Path,
+    real: Option<&mut RealHosts>,
 ) -> Result<()> {
+    if let Some(hosts) = real {
+        return play_step_real(run, step, suite, options, hosts);
+    }
     match step {
         Step::Tick(tick) => {
             if let Some(other) = &tick.run {
@@ -725,6 +1128,7 @@ fn play_step(
                     .ok_or_else(|| anyhow!("`{interval}` is no duration"))?;
                 run.runtime.store.tick_seconds = d.num_seconds();
             }
+            run.engine_ticks += 1;
             if tick.concurrent_hosts.is_empty() {
                 let record = run.runtime.tick_settled();
                 run.ticks.push(record);
@@ -878,6 +1282,149 @@ fn play_step(
         }
     }
     let _ = (scenario, path);
+    Ok(())
+}
+
+/// One step, with every host a process of its own.
+///
+/// The runner drives those processes and reads the store; it holds no engine
+/// and ticks nothing (D15). What a step means is the same as in process — the
+/// difference is who performs it.
+fn play_step_real(
+    run: &mut Run,
+    step: &Step,
+    suite: &Suite,
+    options: &RunOptions,
+    hosts: &mut RealHosts,
+) -> Result<()> {
+    match step {
+        Step::Tick(tick) => {
+            let interval = match &tick.interval {
+                Some(interval) => flywheel_engine::eval::parse_duration(interval)
+                    .ok_or_else(|| anyhow!("`{interval}` is no duration"))?,
+                None => options.interval,
+            };
+            hosts.set_clock(run.runtime.store.now)?;
+            // Every named host sweeps from the one read they share, so the
+            // second write meets the head the first left (134, D15). With none
+            // named it is the acting host's tick: a scenario says which host a
+            // step runs as, and says so precisely because which host acted is
+            // what it is asserting (232, `schema.json` step.host).
+            match tick.concurrent_hosts.is_empty() {
+                true => hosts.sweep(&[run.runtime.store.me()])?,
+                false => hosts.sweep_concurrently(&tick.concurrent_hosts)?,
+            };
+            run.runtime.store.now = run.runtime.store.now + interval;
+            run.runtime.store.tick += 1;
+            read_what_the_hosts_did(run)?;
+        }
+        Step::Clock(clock) => {
+            let advance = flywheel_engine::eval::parse_duration(&clock.advance)
+                .ok_or_else(|| anyhow!("`{}` is no duration", clock.advance))?;
+            run.runtime.store.now = run.runtime.store.now + advance;
+            if let Some(at) = &clock.at {
+                run.runtime.store.now = land_on(run.runtime.store.now, at)?;
+            }
+            hosts.set_clock(run.runtime.store.now)?;
+        }
+        Step::Host(host) => {
+            let transition = host.transition()?;
+            if host.name != "none" {
+                run.runtime.store.acting_host = Some(host.name.clone());
+            }
+            match transition {
+                None => {}
+                Some(HostTransition::Start) => hosts.start(&host.name)?,
+                // Stopped without a farewell: no shutdown, no release. The
+                // heartbeat simply stops (S13, 150).
+                Some(HostTransition::Lose) => hosts.lose(&host.name)?,
+                Some(HostTransition::Disconnect) => {
+                    hosts.disconnect(&host.name)?;
+                    cut(run, &host.name);
+                }
+                Some(HostTransition::Return) => {
+                    hosts.returned(&host.name)?;
+                    restored(run, &host.name);
+                }
+            }
+            run.runtime.fetch();
+            take_reading(run);
+        }
+        Step::Disconnect => {
+            let me = run.runtime.store.me();
+            hosts.disconnect(&me)?;
+            cut(run, &me);
+        }
+        Step::Reconnect => {
+            let me = run.runtime.store.me();
+            hosts.reconnect(&me)?;
+            restored(run, &me);
+        }
+        // The world changed, and every host reads it from the shared line (B.3).
+        Step::Evidence(evidence) => {
+            let now = run.runtime.store.now;
+            for (name, per_object) in evidence {
+                for (object, value) in per_object {
+                    let value = at_now(value, now);
+                    run.runtime.store.set_given(object, name, value.clone());
+                    if let Some(durable) = run.runtime.store.durable() {
+                        durable
+                            .lock()
+                            .map_err(|_| anyhow!("the state repository is poisoned"))?
+                            .commit_given(object, name, &value)?;
+                    }
+                    // And told to every host that is running, so one whose
+                    // route is cut learns what happened on its own machine
+                    // (B.3, 151).
+                    hosts.tell_given(object, name, &value)?;
+                }
+            }
+        }
+        // A restart drops what a process holds; under `--hosts real` that is
+        // the process itself, started again on the state it left (75, I14).
+        Step::Restart => {
+            for name in hosts.started() {
+                hosts.lose(&name)?;
+                hosts.start(&name)?;
+            }
+            run.runtime.fetch();
+        }
+        Step::Response(response) => {
+            play_response(run, response)?;
+            // The record reaches the hosts the way the page's control and the
+            // sink's reply grammar leave it: on the shared line (129, 193).
+            if let Some(durable) = run.runtime.store.durable() {
+                let mut git = durable
+                    .lock()
+                    .map_err(|_| anyhow!("the state repository is poisoned"))?;
+                let last = run
+                    .runtime
+                    .store
+                    .responses
+                    .last()
+                    .cloned()
+                    .ok_or_else(|| anyhow!("a response was received and none was recorded"))?;
+                git.receive(&last)?;
+            }
+        }
+        Step::Files(files) => materialize(&mut run.runtime.store, files, suite)?,
+        // A notify only shortens the wait; the tick that follows does the work
+        // (130). Under `--hosts real` the hosts poll the shared line for
+        // themselves, so there is nothing here to tell them.
+        Step::Notify(_) => {}
+        Step::Direct(direct) => play_direct(run, direct, suite)?,
+        Step::Script(script) => {
+            for (session, entries) in script {
+                run.runtime
+                    .store
+                    .world
+                    .script
+                    .entry(session.clone())
+                    .or_default()
+                    .extend(entries.clone());
+            }
+        }
+    }
     Ok(())
 }
 

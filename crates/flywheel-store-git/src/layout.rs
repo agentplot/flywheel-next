@@ -70,6 +70,14 @@ pub const ORIGIN_MAIN: &str = "origin/main";
 /// The record inside a lease or host branch's one orphan commit.
 pub const RECORD: &str = "record.rec";
 
+/// What the world reports, which this profile inherits from the host and the
+/// sessions bindings rather than owning (B.3, `record-derived.yaml`).
+///
+/// A host reads it from the shared line like anything else, so several hosts of
+/// one instance answer the same evidence the same way, and a host started after
+/// the fact reads what was already true rather than starting blind (136, I14).
+pub const GIVEN: &str = "given.rec";
+
 #[cfg(test)]
 mod tests {
     use super::*;
