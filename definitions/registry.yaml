@@ -21,5 +21,5 @@ types:
     sha256: c57483069a41a9891248e229f39f24eaabe6532f2b3a567c0eb6333aa87f3758
   with-operator@3:
     file: elaboration-types/with-operator@3.yaml
-    sha256: 4ac62703e7c149cff49c6f20bb27a6867e67c012f30d363b1ae27472aabd7b68
+    sha256: 78a9bd99ccdc3fcc2c909100cd004b580ced0da3f98b2ca5a5bfaaff081839c9
 doc: the content hash of every extensible machine file at registration; check.py fails a file whose hash moved (model.md 10.7). Add a version with `check.py --register`; never edit an entry
