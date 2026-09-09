@@ -232,6 +232,133 @@ fn bind_git_only(rt: &mut Runtime, scenario: &Scenario, base: &Path) -> Result<(
     Ok(())
 }
 
+/// The region of a seeded object that a scenario's `state:` key names.
+///
+/// A scenario names a region the way the machine file does — relative to
+/// whatever holds it, and by the singular of a plural region (`session.life`
+/// for the `sessions` region's session) or by the phase the region belongs to
+/// (`placing.place` for the place prepared while the item was placing). The
+/// object's own paths are absolute. This resolves the one against the other by
+/// the rule `enter:` already uses, and the state named is what settles it: a
+/// region that cannot hold it is not the region meant.
+///
+/// Nothing, or more than one, gives back nothing, and the caller writes the key
+/// as it stands rather than guessing at which region was meant.
+fn resolve_given_region(
+    defs: &Definitions,
+    object: &flywheel_engine::Object,
+    shape: &[String],
+    given: &str,
+    state: &str,
+) -> Option<String> {
+    let admits = |path: &String| {
+        flywheel_engine::tick::state_def(defs, object, path)
+            .is_some_and(|(region, _)| region.states.contains_key(state))
+    };
+    // The absolute path, or one ending in it, is the plain reading.
+    let plain = |k: &&String| **k == *given || k.ends_with(&format!(".{given}"));
+    if let Some(path) = shape.iter().find(|k| plain(k) && admits(k)) {
+        return Some(path.clone());
+    }
+    let names = |segment: &str, wanted: &str| segment == wanted || segment == format!("{wanted}s");
+    let wanted: Vec<&str> = given.split('.').collect();
+    // Every segment the scenario named, in order, among the path's own.
+    let all_named = |path: &String| {
+        let segments: Vec<&str> = path.split('.').collect();
+        let mut at = 0;
+        wanted.iter().all(|w| {
+            match segments[at..].iter().position(|s| names(s, w)) {
+                Some(found) => {
+                    at += found + 1;
+                    true
+                }
+                None => false,
+            }
+        })
+    };
+    // Failing that, the last segment alone: the leading ones name the phase the
+    // region belongs to rather than a region of their own.
+    let last = *wanted.last()?;
+    let by_last = |path: &String| path.split('.').any(|s| names(s, last));
+
+    for rule in [&all_named as &dyn Fn(&String) -> bool, &by_last] {
+        let matched: Vec<&String> = shape.iter().filter(|k| admits(k) && rule(k)).collect();
+        if let [one] = matched.as_slice() {
+            return Some((*one).clone());
+        }
+    }
+    // No region can hold the state named. The plain reading is still the region
+    // the scenario meant, and writing it there is what says so.
+    shape.iter().find(|k| plain(k)).cloned()
+}
+
+/// Enter the one state that would bring a region the scenario named into being.
+///
+/// Only where exactly one state of exactly one region would: anything less
+/// certain is left for the caller to write as it stands, because entering the
+/// wrong state would be the harness deciding what the scenario meant.
+fn open_a_region(
+    defs: &Definitions,
+    object: &mut flywheel_engine::Object,
+    shape: &[String],
+    left: &[(&String, &String)],
+    entered: DateTime<Utc>,
+) -> bool {
+    for (given_path, state) in left {
+        let last = given_path.rsplit('.').next().unwrap_or(given_path);
+        for region_path in shape {
+            let segment = region_path.rsplit('.').next().unwrap_or(region_path);
+            if segment != last && segment != format!("{last}s") {
+                continue;
+            }
+            let Some((region, _)) = flywheel_engine::tick::state_def(defs, object, region_path)
+            else {
+                continue;
+            };
+            let opens: Vec<String> = region
+                .states
+                .keys()
+                .filter(|candidate| {
+                    let mut trial = object.clone();
+                    set_region(&mut trial, region_path, candidate, entered);
+                    flywheel_engine::initialise(defs, &mut trial, entered);
+                    let opened: Vec<String> = trial.config.keys().cloned().collect();
+                    resolve_given_region(defs, &trial, &opened, given_path, state).is_some()
+                })
+                .cloned()
+                .collect();
+            if let [one] = opens.as_slice() {
+                set_region(object, region_path, one, entered);
+                flywheel_engine::initialise(defs, object, entered);
+                return true;
+            }
+        }
+    }
+    false
+}
+
+/// Put one region of a seeded object in the state the scenario named, dropping
+/// whatever was nested under the state it leaves.
+fn set_region(
+    object: &mut flywheel_engine::Object,
+    path: &str,
+    state: &str,
+    entered: DateTime<Utc>,
+) {
+    let prefix = format!("{path}.");
+    let gone: Vec<String> = object
+        .config
+        .keys()
+        .filter(|k| k.starts_with(&prefix))
+        .cloned()
+        .collect();
+    for k in gone {
+        object.config.remove(&k);
+    }
+    object.config.insert(path.to_string(), state.to_string());
+    object.entered_at.insert(path.to_string(), entered);
+}
+
 /// Put the described state of the stores in place. Anything the scenario does
 /// not list is absent, false or none.
 pub fn seed(defs: Definitions, scenario: &Scenario, suite: &Suite) -> Result<Runtime> {
@@ -329,44 +456,14 @@ pub fn seed(defs: Definitions, scenario: &Scenario, suite: &Suite) -> Result<Run
             given.parent.as_deref(),
             given.record.clone(),
         );
-        let entered = store.now;
-        if let Some(o) = store.objects.get_mut(&given.id) {
-            // Top-level first, so nested initialisation follows the given state.
-            let mut paths: Vec<(&String, &String)> = given.state.iter().collect();
-            paths.sort_by_key(|(k, _)| k.matches('.').count());
-            // A scenario names a nested region the way the machine file does,
-            // relative to the region that holds it; the object's own paths are
-            // absolute. Resolve against the shape initialisation gave it.
-            let shape: Vec<String> = o.config.keys().cloned().collect();
-            for (given_path, state) in paths {
-                let path = &shape
-                    .iter()
-                    .find(|k| *k == given_path || k.ends_with(&format!(".{given_path}")))
-                    .cloned()
-                    .unwrap_or_else(|| given_path.clone());
-                let prefix = format!("{path}.");
-                let gone: Vec<String> = o
-                    .config
-                    .keys()
-                    .filter(|k| k.starts_with(&prefix))
-                    .cloned()
-                    .collect();
-                for k in gone {
-                    o.config.remove(&k);
-                }
-                o.config.insert(path.clone(), state.clone());
-                o.entered_at.insert(path.clone(), entered);
-            }
-            o.applied_responses = given.applied_responses.clone();
-            let mut settled = o.clone();
-            flywheel_engine::initialise(&defs, &mut settled, entered);
-            *o = settled;
-        }
     }
 
     // An item works its unit's type at the version the unit recorded (57), and
     // `create_items` writes both on to the item when it makes one. A scenario
-    // that describes items directly need not repeat them.
+    // that describes items directly need not repeat them. This is settled
+    // before the states are, because the type is what says which regions the
+    // item has: a scenario naming a stage names a region of the type's machine,
+    // and there is none until the item knows its type.
     let inherited: Vec<(String, Value, Value)> = store
         .objects
         .values()
@@ -386,11 +483,92 @@ pub fn seed(defs: Definitions, scenario: &Scenario, suite: &Suite) -> Result<Run
             if !version.is_null() {
                 item.record.insert("type_version".into(), version);
             }
-            let settled = item.clone();
-            let mut settled = settled;
+            let mut settled = item.clone();
             flywheel_engine::initialise(&defs, &mut settled, store.now);
             *item = settled;
         }
+    }
+
+    for given in &scenario.given.objects {
+        let entered = store.now;
+        if let Some(o) = store.objects.get_mut(&given.id) {
+            // A scenario names a nested region the way the machine file does,
+            // relative to the region that holds it; the object's own paths are
+            // absolute. Resolve each against the shape the object has, then
+            // initialise, because setting a region is what brings the regions
+            // nested under it into being: `in-type.stages` is a path only once
+            // `life` holds `in-type`. The given state is a map, so the order it
+            // was written in is gone; take whichever paths the shape can place
+            // this round and go round again until none can. Anything left over
+            // names no region of this machine and is written as it stands, the
+            // way it always was.
+            let mut left: Vec<(&String, &String)> = given.state.iter().collect();
+            while !left.is_empty() {
+                let shape: Vec<String> = o.config.keys().cloned().collect();
+                // The outermost region the shape can place goes first, and the
+                // shape is read again after it: setting a region drops whatever
+                // was nested under the state it left, so a child placed before
+                // its parent would be thrown away with it.
+                let next = left
+                    .iter()
+                    .enumerate()
+                    .filter_map(|(at, (given_path, state))| {
+                        resolve_given_region(&defs, o, &shape, given_path, state)
+                            .map(|path| (path.matches('.').count(), path, at))
+                    })
+                    .min();
+                let Some((_, path, at)) = next else {
+                    // No region the object has can hold what is left. A region
+                    // that names a submachine has to be entered before the
+                    // submachine's own regions exist: a scenario naming
+                    // `placing.place` names the place prepared while the item
+                    // was placing, which is a region of the place machine.
+                    // Enter the state that opens it and go round again.
+                    if open_a_region(&defs, o, &shape, &left, entered) {
+                        continue;
+                    }
+                    break;
+                };
+                let (_, state) = left.remove(at);
+                set_region(o, &path, state, entered);
+                let mut settled = o.clone();
+                flywheel_engine::initialise(&defs, &mut settled, entered);
+                *o = settled;
+            }
+            for (given_path, state) in left {
+                set_region(o, given_path, state, entered);
+            }
+            o.applied_responses = given.applied_responses.clone();
+            let mut settled = o.clone();
+            flywheel_engine::initialise(&defs, &mut settled, entered);
+            *o = settled;
+        }
+    }
+
+    // A described state includes the world under it: an object seeded with its
+    // own place standing has a place, and the effects that act on one — a
+    // removal above all — have something to act on. Only where the scenario
+    // said nothing about it; what it did say stands (D15).
+    let standing: Vec<(String, String)> = store
+        .objects
+        .values()
+        .flat_map(|o| {
+            o.config
+                .iter()
+                .filter(|(path, state)| {
+                    path.starts_with("place")
+                        && path.ends_with(".life")
+                        && !matches!(state.as_str(), "absent" | "removed" | "none")
+                })
+                .map(|(path, _)| (o.id.clone(), path.clone()))
+        })
+        .collect();
+    for (id, region) in standing {
+        let key = flywheel_domain::regions::place_key(&id, &region);
+        store.world.places.entry(key).or_insert(crate::store::PlaceFact {
+            exists: true,
+            ..Default::default()
+        });
     }
 
     let mut rt = Runtime::new(defs, store);

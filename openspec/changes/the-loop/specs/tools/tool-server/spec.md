@@ -9,11 +9,11 @@ identically by the page, the chat and the machinery.
 ### Requirement: Every operator operation is a tool, and no caller has one the others lack
 
 Every operation the operator may invoke — capture, mark as intent, answer a
-decision, drop, later, hold, release, rename, finish, end, close, retire,
-takeover, revive, take, and the rest of what clause 4 grants — SHALL be exposed
-by the state store as a tool with a schema naming its arguments by object id
-(193). The page's controls, the chat and the machinery SHALL call the same
-tools, and no caller SHALL have an operation the others lack (193).
+decision, open-session, drop, later, hold, release, rename, finish, end, close,
+retire, takeover, revive, take, and the rest of what clause 4 grants — SHALL be
+exposed by the state store as a tool with a schema naming its arguments by
+object id (193). The page's controls, the chat and the machinery SHALL call the
+same tools, and no caller SHALL have an operation the others lack (193).
 
 #### Scenario: One catalogue, several callers
 - **WHEN** the same operation is invoked from a page control and from the chat

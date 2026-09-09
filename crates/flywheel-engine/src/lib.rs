@@ -42,11 +42,17 @@ fn init_nested_pub(defs: &Definitions, obj: &mut Object, path: &str, st: &defs::
     }
     for (rname, reg) in regions {
         let rpath = format!("{path}.{rname}");
-        if obj.config.contains_key(&rpath) { continue; }
-        obj.config.insert(rpath.clone(), reg.initial.clone());
-        obj.entered_at.insert(rpath.clone(), now);
-        if let Some(init) = reg.states.get(&reg.initial) {
-            init_nested_pub(defs, obj, &format!("{rpath}.{}", reg.initial), init, now);
+        if !obj.config.contains_key(&rpath) {
+            obj.config.insert(rpath.clone(), reg.initial.clone());
+            obj.entered_at.insert(rpath.clone(), now);
+        }
+        // Descend into the state the region is in, which is its initial state
+        // for a region just made and the held one for a region already there:
+        // an object read back deep in a machine has the regions under the state
+        // it is in, not the regions under the state it started in.
+        let Some(held) = obj.config.get(&rpath).cloned() else { continue };
+        if let Some(st) = reg.states.get(&held).cloned() {
+            init_nested_pub(defs, obj, &format!("{rpath}.{held}"), &st, now);
         }
     }
 }

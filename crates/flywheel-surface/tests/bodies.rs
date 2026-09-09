@@ -21,7 +21,7 @@ fn spec_list() -> BTreeSet<String> {
     let start = spec.find(opening).expect("the spec's enumeration") + opening.len();
     let rest = &spec[start..];
     let end = rest.find(" — ").expect("the enumeration's close");
-    let mut named: BTreeSet<String> = rest[..end]
+    let named: BTreeSet<String> = rest[..end]
         .replace('\n', " ")
         .split(',')
         .map(|item| item.split_whitespace().collect::<Vec<_>>().join(" "))
@@ -32,13 +32,6 @@ fn spec_list() -> BTreeSet<String> {
             other => other.to_string(),
         })
         .collect();
-    // The operator's own session, which the same spec's dictation requirement
-    // gives a scenario of its own (69, X01).
-    assert!(
-        spec.contains("The operator's own session"),
-        "the spec no longer names the operator's own session"
-    );
-    named.insert("open-session".to_string());
     named
 }
 
