@@ -6,7 +6,7 @@ given:
   objects:
     - {id: intent/atlas-provider-limits, machine: intent, state: {life: open, line: current, open.material: settled, open.close: not-offered}}
     - {id: elaboration/atlas-provider-limits/amend-1, machine: elaboration, parent: intent/atlas-provider-limits, state: {life: working, working.work: session, session.life: alive, alive.activity: working}, record: {type: self-closing, type_version: 1}}
-  files: {"blueprints flywheel/instructions/design-conclusion.md": "version blueprints@a1b2: the chapter, the requirement it includes, and the context map in one commit"}
+  files: {"blueprints flywheel/instructions/design-conclusion.md": "design-conclusion@1 at blueprints@a1b2, the version the work order's header names: the chapter, the requirement it includes, and the context map in one commit"}
 when:
   - files: {"intent line commit c9": "openspec/changes/atlas-provider-limits/specs/providers/spec.md (the requirement one-writer amended, so its content hash moves; nothing else recomputed), src/providers/one-writer.md (the chapter that includes it), src/context-map.md, context-map.json"}
   - evidence: {session.exit: {"*": done}}

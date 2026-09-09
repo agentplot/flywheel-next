@@ -13,7 +13,11 @@ when:
   - evidence: {capture.signals_present: {capture/message-1421: true}, curation.unmoved_count: {curation/willdan: 1}}
   - tick: {}
 then:
-  effects: [{do: ensure_signal, count: 1}, {do: start_session, count: 0}, {do: prepare_place, count: 0}]
+  # ensure_signal acts on every tick the capture stands in `captured` with a
+  # forwarded source: the tick after the dictation and the tick after step 3
+  # restates the proof absent. Two acts, one write (same effect id), as
+  # contract/write-effect.yaml fixes; `signals_written: 1` below is the write.
+  effects: [{do: ensure_signal, count: 2}, {do: start_session, count: 0}, {do: prepare_place, count: 0}]
   states: {capture/message-1421: {reading: read}, curation/willdan: {run: idle}}
   records: {capture/message-1421: {raw: "discord message link 1421"}}
   state_store: {signals_written: 1, signal_cites_capture: true}
