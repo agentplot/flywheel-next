@@ -1105,8 +1105,19 @@ fn play_step(
                         .trim_start_matches("conformance/")
                         .trim_start_matches('/'),
                 );
+                // The scenario a dictation produced is either a file of the
+                // suite or one a `files` step wrote into this run's world; a
+                // step naming neither has nothing to run (94, D15).
+                let written = run.runtime.store.world.files.contains_key(other)
+                    || run
+                        .runtime
+                        .store
+                        .world
+                        .files
+                        .keys()
+                        .any(|held| held.ends_with(other) || other.ends_with(held));
                 run.observations
-                    .insert("scenario_valid".into(), json!(nested.exists()));
+                    .insert("scenario_valid".into(), json!(nested.exists() || written));
                 run.observations.insert(
                     "trace_written".into(),
                     json!(format!(

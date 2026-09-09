@@ -117,3 +117,89 @@ fn the_atoms_crate_depends_on_the_engine_alone() {
         .collect();
     assert_eq!(workspace_deps, vec!["flywheel-engine".to_string()]);
 }
+
+// ---- 11.7: the 390px driver is a test dependency and of one crate alone
+
+/// Libraries that drive a browser. The 390px pass needs one; the binary a host
+/// runs must not carry one (314, D15).
+const BROWSER_LIBRARIES: &[&str] = &[
+    "headless_chrome",
+    "fantoccini",
+    "thirtyfour",
+    "chromiumoxide",
+    "playwright",
+    "webdriver",
+];
+
+/// The crate whose tests hold the driver.
+const DRIVER_CRATE: &str = "flywheel-scenario";
+
+/// The dependency names a manifest declares, by the table they are in.
+fn dependencies_by_table(manifest: &Path) -> Vec<(String, String)> {
+    let text = std::fs::read_to_string(manifest).expect("a manifest is readable");
+    let mut out = Vec::new();
+    let mut table = String::new();
+    for line in text.lines() {
+        let line = line.trim();
+        if line.starts_with('[') {
+            table = line.trim_matches(['[', ']'].as_slice()).to_string();
+            continue;
+        }
+        if !table.contains("dependencies") || line.is_empty() || line.starts_with('#') {
+            continue;
+        }
+        if let Some((name, _)) = line.split_once('=') {
+            out.push((table.clone(), name.trim().to_string()));
+        }
+    }
+    out
+}
+
+#[test]
+fn driver_is_no_shipped_dependency() {
+    let mut held = Vec::new();
+    for (name, manifest) in crate_manifests() {
+        for (table, dependency) in dependencies_by_table(&manifest) {
+            if BROWSER_LIBRARIES.contains(&dependency.as_str()) {
+                held.push((name.clone(), table, dependency));
+            }
+        }
+    }
+    assert!(
+        !held.is_empty(),
+        "the 390px pass needs a browser to drive, and no crate declares one (314)"
+    );
+    for (crate_name, table, dependency) in &held {
+        assert_eq!(
+            crate_name, DRIVER_CRATE,
+            "`{dependency}` is declared by {crate_name}; the driver is {DRIVER_CRATE}'s alone (D15)"
+        );
+        assert_eq!(
+            table, "dev-dependencies",
+            "`{dependency}` is a `{table}` of {crate_name}; nothing the binary carries links a \
+             browser (314, D15)"
+        );
+    }
+}
+
+/// The check is only worth having if it fires when the dependency moves.
+#[test]
+fn driver_boundary_catches_a_browser_in_a_shipped_table() {
+    let manifest = workspace_root().join("crates/flywheel-scenario/Cargo.toml");
+    let tables: Vec<String> = dependencies_by_table(&manifest)
+        .into_iter()
+        .filter(|(_, name)| BROWSER_LIBRARIES.contains(&name.as_str()))
+        .map(|(table, _)| table)
+        .collect();
+    assert_eq!(
+        tables,
+        vec!["dev-dependencies".to_string()],
+        "the reader tells a dev table from a shipped one"
+    );
+    assert!(
+        dependencies_by_table(&workspace_root().join("crates/flywheel/Cargo.toml"))
+            .iter()
+            .all(|(_, name)| !BROWSER_LIBRARIES.contains(&name.as_str())),
+        "the binary links no browser"
+    );
+}

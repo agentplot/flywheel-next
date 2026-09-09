@@ -31,6 +31,11 @@ impl Tool {
     }
 }
 
+/// The one tool that answers a numbered decision. The page's controls, the
+/// chat's numbered reply grammar and the machinery's own command all name this
+/// and there is no second way to answer (193, 194).
+pub const ANSWER: &str = "answer";
+
 /// The catalogue. Phase 1's rows of `profiles/surfaces.yaml` `tools:`.
 ///
 /// A tool that would assert work was done is not here and does not exist; a
@@ -38,7 +43,7 @@ impl Tool {
 /// under attention (4, 6).
 pub const CATALOGUE: &[Tool] = &[
     Tool {
-        name: "answer",
+        name: ANSWER,
         args: &["decision", "answer", "text"],
         doc: "answer a numbered decision; the deterministic path, `yes 412` or \
               `421: <text>` in chat is this tool (194)",
@@ -226,6 +231,18 @@ impl Call {
             other => Some(other.to_string()),
         })
     }
+
+    /// A number an argument carries, however the caller sent it. The page's own
+    /// controls are plain forms so that a control works with nothing fetched
+    /// and no script running (310, 311), and a form sends every field as text;
+    /// a client sending JSON sends a number. One tool serves both (193).
+    fn number(&self, name: &str) -> Option<u64> {
+        match self.args.get(name)? {
+            Value::Number(n) => n.as_u64(),
+            Value::String(s) => s.trim().parse().ok(),
+            _ => None,
+        }
+    }
 }
 
 /// What a call did. `Recorded` carries the response's id; the machinery's next
@@ -265,7 +282,7 @@ pub fn call<S: StateStore, W: World + ?Sized>(
     };
 
     match tool.name {
-        "answer" => answer(store, defs, call),
+        ANSWER => answer(store, defs, call),
         "capture" => capture(store, world, defs, call),
         "later" => later(store, defs, call),
         "open-session" => open_session(store, defs, call),
@@ -298,7 +315,7 @@ fn first_object_argument(call: &Call) -> Option<String> {
 /// Answer a numbered decision: the deterministic path, and the same tool the
 /// chat's numbered reply grammar calls (129, 153, 194).
 fn answer<S: StateStore>(store: &mut S, defs: &Definitions, call: &Call) -> Result<Outcome> {
-    let Some(number) = call.args.get("decision").and_then(|v| v.as_u64()) else {
+    let Some(number) = call.number("decision") else {
         bail!("`answer` takes the decision's number, and the call names none");
     };
     let answer = call
@@ -309,7 +326,7 @@ fn answer<S: StateStore>(store: &mut S, defs: &Definitions, call: &Call) -> Resu
         store,
         defs,
         &CallRecord {
-            tool: "answer",
+            tool: ANSWER,
             decision: Some(number as u32),
             object: None,
             answer: &answer,
@@ -329,7 +346,7 @@ fn answer<S: StateStore>(store: &mut S, defs: &Definitions, call: &Call) -> Resu
 /// Defer the proposal a decision stands on, a week (172). The argument is the
 /// decision's number; the object it acts on is that decision's own.
 fn later<S: StateStore>(store: &mut S, defs: &Definitions, call: &Call) -> Result<Outcome> {
-    let Some(number) = call.args.get("decision").and_then(|v| v.as_u64()) else {
+    let Some(number) = call.number("decision") else {
         bail!("`later` takes the decision's number, and the call names none");
     };
     let register = commands::register(store)?;

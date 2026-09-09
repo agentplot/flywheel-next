@@ -16,7 +16,7 @@
 //! all exercised against a real state store, and the client that speaks to
 //! Discord's servers is a second `Channel` beside the first, not a second sink.
 
-use crate::catalogue::Call;
+use crate::catalogue::{self, Call};
 use crate::links;
 use anyhow::{bail, Result};
 use flywheel_atoms::{StateStore, World};
@@ -559,7 +559,7 @@ impl<C: Channel> Chat<C> {
         answer: &str,
         delivery: &str,
     ) -> Result<Called> {
-        let call = Call::new("answer", &message.by, "chat")
+        let call = Call::new(catalogue::ANSWER, &message.by, "chat")
             .delivered(delivery)
             .arg("decision", json!(number))
             .arg("answer", json!(answer));

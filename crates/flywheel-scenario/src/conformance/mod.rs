@@ -10,6 +10,7 @@ pub mod assertions;
 pub mod drive;
 pub mod hosts;
 pub mod interpreter;
+pub mod record;
 pub mod schema;
 pub mod trace;
 
@@ -17,6 +18,7 @@ use anyhow::{Context, Result};
 use flywheel_atoms::conformance::Requirement;
 use std::path::{Path, PathBuf};
 
+pub use record::RunRecord;
 pub use schema::{Observations, Suite};
 
 /// The state store binding a run uses.
@@ -95,6 +97,12 @@ impl RunOptions {
             PathBuf::from("target/flywheel-trace").join(self.profile.name())
         })
     }
+
+    /// Where the run's own record is written, never beside the scenario files,
+    /// which are the model's copy (D15).
+    pub fn record_dir(&self) -> PathBuf {
+        PathBuf::from("target/flywheel-run").join(self.profile.name())
+    }
 }
 
 /// What became of one scenario.
@@ -146,6 +154,14 @@ impl Outcome {
 #[derive(Debug, Clone, Default)]
 pub struct RunReport {
     pub outcomes: Vec<Outcome>,
+    /// What the run recorded of itself: the profile it bound and the hash of
+    /// the machine files it ran (168, D2).
+    pub record: RunRecord,
+    /// The record as the store holds it, read back after it was written. What
+    /// a reader with nothing running finds (167).
+    pub recorded: Vec<flywheel_domain::records::RunEntry>,
+    /// Why the profile was refused before any scenario played, where it was.
+    pub refusal: Option<String>,
 }
 
 impl RunReport {
@@ -153,7 +169,7 @@ impl RunReport {
     /// an assertion failed; 2 a scenario is invalid or uses a name nothing
     /// binds; 3 the profile was refused (D15).
     pub fn exit_code(&self) -> i32 {
-        if self.outcomes.iter().any(|o| o.status == Status::Refused) {
+        if self.refusal.is_some() || self.outcomes.iter().any(|o| o.status == Status::Refused) {
             return 3;
         }
         if self.outcomes.iter().any(|o| o.status == Status::Invalid) {
@@ -182,6 +198,11 @@ impl RunReport {
     /// One line per scenario, then a summary.
     pub fn render(&self) -> String {
         let mut out = String::new();
+        if let Some(refusal) = &self.refusal {
+            out.push_str(refusal);
+            out.push('\n');
+            return out;
+        }
         for o in &self.outcomes {
             out.push_str(&o.line());
             out.push('\n');
@@ -208,6 +229,12 @@ impl RunReport {
                 .filter(|o| o.status == Status::NotApplicable)
                 .count()
         ));
+        // What the record holds, so a reader of the run sees what a reader of
+        // the record will (167, D15).
+        out.push_str(&format!(
+            "profile {} · definitions {:016x}\n",
+            self.record.profile, self.record.definitions_hash
+        ));
         out
     }
 }
@@ -215,6 +242,9 @@ impl RunReport {
 /// Every scenario file under a path, in order. A directory yields the contract
 /// set first, then the scenarios, because the contract admits the profile
 /// before any domain definition loads (168).
+/// The suite's own files, which sit beside the scenarios and are not ones.
+const SUITE_FILES: &[&str] = &["observations.yaml"];
+
 pub fn scenario_files(path: &Path) -> Result<Vec<PathBuf>> {
     if path.is_file() {
         return Ok(vec![path.to_path_buf()]);
@@ -242,6 +272,11 @@ fn collect(dir: &Path, contract: &mut Vec<PathBuf>, scenarios: &mut Vec<PathBuf>
             }
             collect(&p, contract, scenarios)?;
         } else if p.extension().is_some_and(|x| x == "yaml") {
+            // The suite's own files are not scenarios: `observations.yaml` is
+            // the registry every `then.state_store` key is bound in (D15).
+            if p.file_name().is_some_and(|f| SUITE_FILES.iter().any(|own| f == *own)) {
+                continue;
+            }
             if p.components().any(|c| c.as_os_str() == "contract") {
                 contract.push(p);
             } else {
@@ -252,14 +287,53 @@ fn collect(dir: &Path, contract: &mut Vec<PathBuf>, scenarios: &mut Vec<PathBuf>
     Ok(())
 }
 
-/// Run every scenario a path names.
-pub fn run(paths: &[PathBuf], options: &RunOptions) -> Result<RunReport> {
-    let mut report = RunReport::default();
-    for path in paths {
-        for file in scenario_files(path)? {
-            report.outcomes.push(run_one(&file, options));
+/// The scenarios the 390px pass runs: every one that carries an operator's
+/// response (314).
+///
+/// The set is read off the scenario files and no list of it is kept anywhere:
+/// a scenario that gains a response step joins the pass, and one that loses it
+/// leaves, with nothing to remember to edit (D15).
+pub fn phone_set(path: &Path) -> Result<Vec<PathBuf>> {
+    let mut out = Vec::new();
+    for file in scenario_files(path)? {
+        let Ok((scenario, _)) = flywheel_atoms::conformance::load(&file) else {
+            continue;
+        };
+        if scenario.carries_response() {
+            out.push(file);
         }
     }
+    Ok(out)
+}
+
+/// Run every scenario a path names.
+///
+/// The machine files are hashed before anything plays and the hash is compared
+/// with `definitions/`: a run against a directory the repository does not hold
+/// proves nothing about the model, so the profile is refused and no scenario
+/// plays (168, D2).
+pub fn run(paths: &[PathBuf], options: &RunOptions) -> Result<RunReport> {
+    let mut report = RunReport {
+        record: RunRecord::of(options)?,
+        ..Default::default()
+    };
+    if let Some(refusal) = report.record.refusal() {
+        report.refusal = Some(refusal);
+        return Ok(report);
+    }
+    for path in paths {
+        for file in scenario_files(path)? {
+            let outcome = run_one(&file, options);
+            report.record.saw(&outcome);
+            report.outcomes.push(outcome);
+        }
+    }
+    // The run's own record, written through the store the run bound: the
+    // profile, the definitions hash, what ran, what was skipped and why, and
+    // every failure (79–82, 93a, 167, D15).
+    report.recorded = record::write(&report.record, options)
+        .map(|store| store.run_record())
+        .unwrap_or_default();
     Ok(report)
 }
 

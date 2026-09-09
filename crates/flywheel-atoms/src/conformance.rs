@@ -92,6 +92,15 @@ impl Scenario {
         self.requires.iter().find(|r| !provided.contains(r)).copied()
     }
 
+    /// Whether the scenario carries an operator's response.
+    ///
+    /// This is what selects the 390px set: every scenario with a `response`
+    /// step runs at the phone's viewport as well as the desktop's, so the set
+    /// is read off the scenarios and no list of it is kept by hand (314, D15).
+    pub fn carries_response(&self) -> bool {
+        self.when.iter().any(|step| step.contains_key("response"))
+    }
+
     /// The steps, parsed. An unknown key is an error, never a silent skip.
     pub fn steps(&self) -> Result<Vec<Step>> {
         self.when

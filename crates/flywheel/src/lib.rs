@@ -4,6 +4,7 @@
 pub mod driven;
 pub mod host;
 pub mod init;
+pub mod render_order;
 pub mod report;
 
 /// The commands, written against the trait surface. They live in

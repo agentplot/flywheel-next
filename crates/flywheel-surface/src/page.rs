@@ -38,6 +38,57 @@ pub struct Read {
     /// What each proposed intent weighs: its signals, how many, from which
     /// sources and over what span (109, 118).
     pub weight: BTreeMap<String, signals::Weight>,
+    /// Every answer recorded, by the number of the decision it answered. A
+    /// response is recorded when it is given and applied on the next tick, so
+    /// this is what a reload shows the operator: the answer, who gave it and
+    /// when (153, 154, 310).
+    pub answered: BTreeMap<u32, Vec<Answered>>,
+}
+
+/// One answer as the record holds it (153).
+#[derive(Debug, Clone)]
+pub struct Answered {
+    pub answer: String,
+    pub given_by: String,
+    pub given_at: String,
+}
+
+impl Answered {
+    /// The answer as the page says it: what was answered, by whom, and when.
+    pub fn said(&self) -> String {
+        let when = self
+            .given_at
+            .split_once('T')
+            .map(|(day, rest)| format!("{day} {}", &rest[..rest.len().min(5)]))
+            .unwrap_or_else(|| self.given_at.clone());
+        format!("{} · {} · {when}", self.answer, self.given_by)
+    }
+}
+
+/// The answers among a read's objects, by the decision number each answered.
+/// Read from the same objects the rest of the page is, so the whole page is
+/// still one read (310).
+fn answers_of(objects: &[Object]) -> BTreeMap<u32, Vec<Answered>> {
+    let mut out: BTreeMap<u32, Vec<Answered>> = BTreeMap::new();
+    for object in objects.iter().filter(|o| o.machine == "response") {
+        let field = |name: &str| {
+            object
+                .record
+                .get(name)
+                .and_then(|v| v.as_str())
+                .unwrap_or_default()
+                .to_string()
+        };
+        let Some(number) = object.record.get("decision").and_then(|v| v.as_u64()) else {
+            continue;
+        };
+        out.entry(number as u32).or_default().push(Answered {
+            answer: field("answer"),
+            given_by: field("given_by"),
+            given_at: field("given_at"),
+        });
+    }
+    out
 }
 
 /// Read once, for one request (310).
@@ -79,6 +130,7 @@ pub fn read<S: StateStore, W: World + ?Sized>(
         }
         weight.insert(object.id.clone(), signals::weight_of(&files, &cited));
     }
+    let answered = answers_of(&objects);
     Ok(Read {
         decisions,
         status,
@@ -87,6 +139,7 @@ pub fn read<S: StateStore, W: World + ?Sized>(
         operator: operator.to_string(),
         away,
         weight,
+        answered,
     })
 }
 
@@ -164,18 +217,43 @@ fn decisions(read: &Read) -> String {
         out.push_str("<div class=\"answers\">\n");
         for answer in &decision.answers {
             // One tap each, and nothing behind a hover or a keyboard (311).
+            // The control posts to the one tool the chat's numbered reply
+            // grammar calls, so the two surfaces share a write path (193, 194).
             let _ = write!(
                 out,
-                "<form method=\"post\" action=\"/api/tools/answer\" class=\"answer\">\n\
+                "<form method=\"post\" action=\"/api/tools/{tool}\" class=\"answer\">\n\
                  <input type=\"hidden\" name=\"decision\" value=\"{number}\">\n\
                  <input type=\"hidden\" name=\"answer\" value=\"{0}\">\n\
                  <button type=\"submit\" data-answer=\"{0}\">{0}</button>\n</form>\n",
-                escape(answer)
+                escape(answer),
+                tool = crate::catalogue::ANSWER
             );
         }
-        out.push_str("</div>\n</article>\n");
+        out.push_str("</div>\n");
+        // What has already been answered, with who gave it and when: the
+        // response is recorded when it is given and applied on the next tick,
+        // so a reload shows it before the decision is retracted (153, 154, 310).
+        out.push_str(&answered(read, decision.number));
+        out.push_str("</article>\n");
     }
     out.push_str("</section>\n");
+    out
+}
+
+/// What was answered on one decision, with who gave it and when (153, 154).
+fn answered(read: &Read, number: Option<u32>) -> String {
+    let mut out = String::new();
+    for given in number.and_then(|n| read.answered.get(&n)).into_iter().flatten() {
+        let _ = write!(
+            out,
+            "<p class=\"answered\" data-answer=\"{}\" data-given-by=\"{}\" \
+             data-given-at=\"{}\">{}</p>\n",
+            escape(&given.answer),
+            escape(&given.given_by),
+            escape(&given.given_at),
+            escape(&given.said())
+        );
+    }
     out
 }
 
@@ -316,6 +394,7 @@ fn style() -> String {
          .tab-panel { display: none; }\n\
          .tab-panel:target, #decisions:not(:target) { display: block; }\n\
          .dock { position: fixed; inset: 0; background: #fff; overflow: auto; }\n\
+         .dock:not(:has(.surface:target)) { display: none; }\n\
          .back { display: block; }\n\
          }\n\
          </style>\n",

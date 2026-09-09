@@ -218,6 +218,13 @@ pub struct Store {
     /// the object moving in the scenario's sense (D15, `then.no_transitions`).
     #[serde(default)]
     pub described: BTreeMap<String, Vec<String>>,
+    /// The run record this store holds where no state repository stands behind
+    /// it. On `--profile git-only` the record is the repository's, committed
+    /// like any other write; on the stand-in it is here, so a record is written
+    /// through the store either way (79–82, 167). Not part of what is saved:
+    /// the record is the run's, as `durable` is the profile's.
+    #[serde(skip)]
+    pub runs: Vec<flywheel_domain::records::RunEntry>,
 }
 
 /// What the engine asked the store for while it was deciding (136). Shared
@@ -343,6 +350,7 @@ impl Default for Store {
             deciding: Deciding::default(),
             drifted: None,
             described: BTreeMap::new(),
+            runs: Vec::new(),
         }
     }
 }
@@ -707,6 +715,36 @@ impl Store {
             if let Ok(mut held) = durable.lock() {
                 self.status_committed = held.commit_status(&view.body).is_ok();
             }
+        }
+    }
+
+    /// Append to the run record: what was done and why, readable with no host
+    /// running (79–82, 167). Where a state repository stands behind this store
+    /// the entries are committed on its shared line; where none does they are
+    /// held here. One call site, and the profile decides where it lands.
+    pub fn append_run(
+        &mut self,
+        entries: &[flywheel_domain::records::RunEntry],
+    ) -> anyhow::Result<()> {
+        if let Some(durable) = self.durable() {
+            let mut held = durable
+                .lock()
+                .map_err(|_| anyhow::anyhow!("the state repository is poisoned"))?;
+            return held.append_run(entries);
+        }
+        self.runs.extend(entries.iter().cloned());
+        Ok(())
+    }
+
+    /// The run record as this store holds it.
+    pub fn run_record(&self) -> Vec<flywheel_domain::records::RunEntry> {
+        match self.durable() {
+            Some(durable) => durable
+                .lock()
+                .ok()
+                .and_then(|git| git.run_record().ok())
+                .unwrap_or_default(),
+            None => self.runs.clone(),
         }
     }
 

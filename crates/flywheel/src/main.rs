@@ -106,6 +106,24 @@ enum Cmd {
         /// served with no sign-in (236a, 253a).
         #[arg(long = "operator", default_value = "operator")] operators: Vec<String>,
     },
+    /// Render the exact prompt a session would be handed, with no session
+    /// started: the closed set of inputs of 89 for one session type, one
+    /// instruction version and one scenario's job (90, 124).
+    RenderOrder {
+        /// The session type; a unit type names its stage, `default/build`.
+        session_type: String,
+        /// The instruction set version to render against. The set the binary
+        /// carries is the release's; another is read with `--instructions`
+        /// (123).
+        instruction_version: u32,
+        /// The scenario the job is taken from.
+        scenario: PathBuf,
+        /// Read the instruction set from a directory instead of the set the
+        /// binary carries, which is how a prompt is rendered against a version
+        /// the release does not ship (123, 124).
+        #[arg(long)]
+        instructions: Option<PathBuf>,
+    },
     /// The conformance suite: load the definitions, seed the stores, play the
     /// steps against the real engine and assert the `then` clauses (94).
     Scenario {
@@ -604,6 +622,17 @@ async fn main() -> Result<()> {
             println!(
                 "{} capture(s) written, {} signal(s): an enumerator reads nothing into signals (115)",
                 enumerated.captures_written, enumerated.signals_written
+            );
+        }
+        Cmd::RenderOrder { session_type, instruction_version, scenario, instructions } => {
+            print!(
+                "{}",
+                flywheel::render_order::render_order(
+                    session_type,
+                    *instruction_version,
+                    scenario,
+                    instructions.as_deref()
+                )?
             );
         }
         Cmd::Scenario { cmd } => {

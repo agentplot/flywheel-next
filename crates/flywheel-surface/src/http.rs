@@ -294,6 +294,16 @@ pub async fn serve<S: StateStore + Send + 'static>(
     address: &str,
 ) -> anyhow::Result<()> {
     let listener = tokio::net::TcpListener::bind(address).await?;
+    serve_on(served, listener).await
+}
+
+/// The same on a listener already bound, so a caller that must know the port
+/// before the page is served can learn it — which is what the 390px pass needs
+/// to open the rail on a loopback port of its own (314, D15).
+pub async fn serve_on<S: StateStore + Send + 'static>(
+    served: Served<S>,
+    listener: tokio::net::TcpListener,
+) -> anyhow::Result<()> {
     axum::serve(listener, router(served)).await?;
     Ok(())
 }

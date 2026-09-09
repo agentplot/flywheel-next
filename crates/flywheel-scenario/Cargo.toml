@@ -18,3 +18,10 @@ serde_yaml.workspace = true
 anyhow.workspace = true
 chrono.workspace = true
 jsonschema = { version = "0.55.1", default-features = false }
+
+# The 390px driver: a headless Chromium the phone pass opens the rail in, and
+# the runtime that serves the page to it. A test dependency of this crate and of
+# no shipped crate — nothing the binary carries links a browser (314, D15).
+[dev-dependencies]
+headless_chrome = "1"
+tokio.workspace = true

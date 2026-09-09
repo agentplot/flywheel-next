@@ -496,6 +496,7 @@ fn exit_codes_are_four() {
     let code = |statuses: Vec<Status>| {
         RunReport {
             outcomes: statuses.into_iter().map(outcome).collect(),
+            ..Default::default()
         }
         .exit_code()
     };
@@ -536,6 +537,7 @@ fn failure_line_names_clauses_and_trace() {
     // The run prints one line per scenario, then a summary.
     let report = conformance::RunReport {
         outcomes: vec![outcome],
+        ..Default::default()
     };
     let rendered = report.render();
     assert!(rendered.starts_with("FAIL"));
@@ -683,5 +685,168 @@ fn the_rail_acceptance_scenarios_pass() {
             outcome.reason,
             outcome.failures.join("\n")
         );
+    }
+}
+
+// ---- 11.5 the machine files' hash, in the record and against the directory
+
+/// A run records the hash of the machine files it ran and compares it with
+/// `definitions/`, the mirror of the model. What passed against a directory
+/// the repository does not hold proved nothing about the model, so the profile
+/// is refused with exit 3 and no scenario plays (168, D2).
+#[test]
+fn run_record_hash_matches_definitions() {
+    let options = RunOptions {
+        definitions: Some(root().join("definitions")),
+        ..Default::default()
+    };
+    let report = conformance::run(
+        &[conformance_dir().join("contract/read.yaml")],
+        &options,
+    )
+    .expect("the run is made");
+    assert_eq!(
+        report.record.profile, "stand-in",
+        "the record names the binding the run bound"
+    );
+    assert_eq!(
+        Some(report.record.definitions_hash),
+        report.record.repository_hash,
+        "the machine files that ran are definitions/ on disk"
+    );
+    assert!(report.record.hash_matches_repository());
+    assert!(report.refusal.is_none(), "{:?}", report.refusal);
+    assert_ne!(report.exit_code(), 3);
+    assert!(!report.ran().is_empty(), "the scenario played");
+
+    // The same files with one byte more are a different set, and the run that
+    // loads them is refused before anything plays.
+    let edited = std::env::temp_dir().join(format!(
+        "flywheel-definitions-{}-{}",
+        std::process::id(),
+        "edited"
+    ));
+    let _ = std::fs::remove_dir_all(&edited);
+    copy_tree(&root().join("definitions"), &edited);
+    let atoms = edited.join("atoms.yaml");
+    let mut text = std::fs::read_to_string(&atoms).expect("the atoms file is readable");
+    text.push_str("\n# a hand edit no rebuild saw\n");
+    std::fs::write(&atoms, text).expect("the copy is writable");
+
+    let report = conformance::run(
+        &[conformance_dir().join("contract/read.yaml")],
+        &RunOptions {
+            definitions: Some(edited.clone()),
+            ..Default::default()
+        },
+    )
+    .expect("the run is made");
+    assert_ne!(
+        Some(report.record.definitions_hash),
+        report.record.repository_hash,
+        "an edited directory is a different set"
+    );
+    assert!(!report.record.hash_matches_repository());
+    assert_eq!(report.exit_code(), 3, "an unmatched hash refuses the profile");
+    assert!(report.outcomes.is_empty(), "no scenario played");
+    let rendered = report.render();
+    assert!(rendered.contains("REFUSED"), "{rendered}");
+    assert!(rendered.contains("168"), "the clause: {rendered}");
+    let _ = std::fs::remove_dir_all(&edited);
+}
+
+fn copy_tree(from: &Path, to: &Path) {
+    for entry in std::fs::read_dir(from).expect("the directory is readable").flatten() {
+        let path = entry.path();
+        let target = to.join(path.file_name().expect("a name"));
+        if path.is_dir() {
+            std::fs::create_dir_all(&target).expect("the copy is made");
+            copy_tree(&path, &target);
+        } else {
+            std::fs::create_dir_all(to).expect("the copy is made");
+            std::fs::copy(&path, &target).expect("the file copies");
+        }
+    }
+}
+
+// ---- 11.8a the run's own record, through the store
+
+/// Every run writes a record through the store the run bound: the profile, the
+/// definitions hash, the scenarios that ran, the subset skipped with its reason
+/// and the failures (79–82, 93a, 167, D15).
+#[test]
+fn run_record_names_ran_and_skipped() {
+    for profile in [Profile::StandIn, Profile::GitOnly] {
+        let options = RunOptions {
+            profile,
+            definitions: Some(root().join("definitions")),
+            ..Default::default()
+        };
+        // Two that run and one the phase's bindings do not provide for (93a).
+        let report = conformance::run(
+            &[
+                conformance_dir().join("scenarios/S01.yaml"),
+                conformance_dir().join("scenarios/S07.yaml"),
+                conformance_dir().join("scenarios/S14.yaml"),
+            ],
+            &options,
+        )
+        .expect("the run is made");
+
+        assert_eq!(report.record.profile, profile.name());
+        assert_eq!(
+            report.record.ran,
+            vec!["S1".to_string(), "S7".to_string()],
+            "the scenarios that ran are named, in the order they did"
+        );
+        assert_eq!(
+            report.record.skipped,
+            vec![(
+                "S14".to_string(),
+                Requirement::RealWorkspace.reason().to_string()
+            )],
+            "the subset skipped, each with the reason it was (93a)"
+        );
+
+        // And it is a record, read back from the store rather than from the
+        // struct that wrote it (167).
+        let entries = &report.recorded;
+        assert!(!entries.is_empty(), "the record was written through the store");
+        let binding = entries
+            .iter()
+            .find(|e| e.kind == "binding")
+            .expect("the record says what the run bound");
+        assert_eq!(binding.object, profile.name());
+        let field = |name: &str| {
+            binding
+                .fields
+                .iter()
+                .find(|(n, _)| n == name)
+                .map(|(_, v)| v.clone())
+                .unwrap_or_default()
+        };
+        assert_eq!(
+            field("definitions_hash"),
+            format!("{:016x}", report.record.definitions_hash),
+            "the definitions hash is in the record (168, D2)"
+        );
+        assert_eq!(field("definitions_match_repository"), "true");
+        assert!(field("ran").contains("S7"));
+        assert!(field("skipped").contains("S14"));
+
+        let skipped: Vec<&flywheel_domain::records::RunEntry> =
+            entries.iter().filter(|e| e.kind == "skipped").collect();
+        assert_eq!(skipped.len(), 1, "one entry per scenario skipped");
+        assert_eq!(skipped[0].object, "S14");
+        assert_eq!(skipped[0].reason, Requirement::RealWorkspace.reason());
+
+        // A failure reaches the record as a problem with the machinery, which
+        // is reported and never filed as work (81).
+        let mut failed = report.record.clone();
+        failed.failures.push("FAIL T · step 1 · effects".into());
+        let entries = failed.entries(drive::start_of_time());
+        assert!(entries
+            .iter()
+            .any(|e| e.kind == "problem" && e.reason.starts_with("FAIL T")));
     }
 }

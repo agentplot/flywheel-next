@@ -83,6 +83,24 @@ pub fn digest_of_dir(dir: &std::path::Path) -> Result<u64> {
     Ok(hash)
 }
 
+/// `definitions/` as the binary was built from it, where that directory is
+/// still there to read. It is the mirror of the model (83), and what a run
+/// compares its own machine files against (168, D2). A binary carried
+/// somewhere else has only the set inside it, and there is nothing to compare.
+pub fn repository_dir() -> Option<std::path::PathBuf> {
+    let dir = std::path::PathBuf::from(concat!(
+        env!("CARGO_MANIFEST_DIR"),
+        "/../../definitions"
+    ));
+    dir.is_dir().then_some(dir)
+}
+
+/// The digest of that directory, by the rule above, or none where it is not
+/// there.
+pub fn repository_digest() -> Option<u64> {
+    digest_of_dir(&repository_dir()?).ok()
+}
+
 /// The core definitions, parsed. The rules are the directory loader's: one
 /// atoms file, every file naming a machine is one, and the highest version of
 /// a name wins for a bare reference.

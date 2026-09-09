@@ -140,8 +140,9 @@ pub fn check(scenario: &Scenario, run: &Run, suite: &Suite) -> Vec<Failure> {
     // calls are three acts, of which the multiplexer refused two as a name it
     // already held (72, 73, S6). A repeat whose write carries the identity it
     // had is still an act — the write is the no-op, and the act runs (127,
-    // `contract/write-effect.yaml`). What is suppressed before it runs, by a
-    // proof that already holds, never reaches this list at all.
+    // `contract/write-effect.yaml`, which counts two `light` acts under one
+    // identity). What is suppressed before it runs, by a proof that already
+    // holds, never reaches this list at all.
     let count_of = |name: &str, object: Option<&String>| -> usize {
         performed
             .iter()
@@ -836,8 +837,8 @@ pub fn observe(run: &Run, scenario: &Scenario, key: &str) -> Option<Value> {
         "notify_latency_bound" => json!(store.notify_bound()),
         // ---- the binding gate (138–140, 169, 170)
         "machine_files_hash_equals_repository" => {
-            let dir = std::path::Path::new(env!("CARGO_MANIFEST_DIR")).join("../../definitions");
-            json!(flywheel_domain::set::digest_of_dir(&dir).ok() == Some(flywheel_domain::set::digest()))
+            json!(flywheel_domain::set::repository_digest()
+                .is_none_or(|held| held == flywheel_domain::set::digest()))
         }
         "binding_covers_every_evidence_name" => json!(binding_faults(run)
             .iter()

@@ -162,6 +162,13 @@ fn layout_switches_at_760px() {
         phone.contains(".dock { position: fixed; inset: 0;"),
         "the dock is full screen under 760px"
     );
+    // Full screen when an object is open, and not before: a dock covering the
+    // rail would put every decision behind it, which is the one thing the phone
+    // must not do (307, 311).
+    assert!(
+        phone.contains(".dock:not(:has(.surface:target)) { display: none; }"),
+        "the dock covers the rail only once an object is opened"
+    );
     assert!(
         desktop.contains(".back { display: none; }"),
         "the back control is the phone's"
