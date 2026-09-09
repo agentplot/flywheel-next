@@ -15,7 +15,7 @@ when:
   - host: {name: studio}
   - tick: {}
 then:
-  transitions: [{object: intent/loop-granularity, from: offered, to: archiving, response: commit/abc123}]
+  transitions: [{object: intent/loop-granularity, region: life, from: open, to: archiving, response: commit/abc123}]
   effects: [{do: archive_intent, count: 1}]
   applied_responses: {intent/loop-granularity: [commit/abc123]}
   state_store: {response_derived_from_fetch: true, processes_told: 0, hosts_agreeing: 2}
