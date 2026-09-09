@@ -386,8 +386,11 @@ pub struct Then {
     pub effects_closed: bool,
     #[serde(default)]
     pub decisions: Vec<DecisionExpectation>,
+    /// The state a region is in, by object. A scenario names the state as the
+    /// machine file writes it; a value that is not text — a version, a count —
+    /// is compared as it reads.
     #[serde(default)]
-    pub states: BTreeMap<String, BTreeMap<String, String>>,
+    pub states: BTreeMap<String, BTreeMap<String, Value>>,
     #[serde(default)]
     pub records: BTreeMap<String, Value>,
     #[serde(default)]

@@ -395,7 +395,7 @@ return it (`profiles/sessions-stand-in.yaml`).
 | S12, S14, S26 | construction on a real bolt line, the status view of it and the persona set of a real work order; the recorded workspace could play them, and they are deferred with construction (A.5) — phase 2 |
 | X07 | the bell on a named surface needs the multiplexer — phase 2 |
 | T01 | the tracker profile — phase 2 |
-| S09, S10, S11, S25, S27, X02 | claims, the ledger, planning and the map — phase 3 |
+| S09, S10, S11, S25, S27, X02, X10 | claims, the ledger, planning and the map — phase 3 |
 | X04 | the dispatcher as a presenter — phase 4 |
 
 Of the four rules those deferred scenarios also carry, two are proved in phase 1

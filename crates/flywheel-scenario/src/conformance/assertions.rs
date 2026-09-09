@@ -317,6 +317,12 @@ pub fn check(scenario: &Scenario, run: &Run, suite: &Suite) -> Vec<Failure> {
                 .iter()
                 .find(|(path, _)| path == &region || path.ends_with(&format!(".{region}")))
                 .map(|(_, s)| s.as_str());
+            // A scenario writes the state as the machine file writes it; a
+            // value that is not text reads as what it says.
+            let want = match want {
+                Value::String(text) => text.clone(),
+                other => other.to_string(),
+            };
             if got != Some(want.as_str()) {
                 failures.push(Failure {
                     clause: "states".into(),
