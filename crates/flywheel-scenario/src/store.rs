@@ -130,6 +130,11 @@ pub struct Store {
     /// The write sequence: the point a read is as of (126).
     #[serde(default)]
     pub writes: u64,
+    /// Writes of the work alone: the machinery's own objects — the rail's
+    /// register and projection, the sinks, the hosts, the leases — move on the
+    /// same line and are counted apart from it (D5, 167).
+    #[serde(default)]
+    pub work_writes: u64,
     /// (write sequence, object) for every write, so a notice names what moved (130).
     #[serde(default)]
     pub moved: Vec<(u64, String)>,
@@ -196,6 +201,74 @@ pub struct Store {
     /// repeat delivery name a decision that has since been retracted (15, 137).
     #[serde(default)]
     pub decision_numbers: BTreeMap<String, u32>,
+    /// The record operations served while the engine was deciding: what it
+    /// read to reach its plan, and nothing else. 136 is a claim about this
+    /// list — `read` and `list`, never a private read of the store's own
+    /// shapes — so the store keeps it rather than the assertion asserting it
+    /// of itself.
+    #[serde(skip)]
+    pub deciding: Deciding,
+    /// What a hand wrote into the projection, where a scenario made one drift
+    /// (136, 142).
+    #[serde(default)]
+    pub drifted: Option<String>,
+    /// The region paths a scenario described, per object. A region it said
+    /// nothing about starts where its machine starts it and settles on the
+    /// first ticks; that settling is the machinery's own housekeeping and not
+    /// the object moving in the scenario's sense (D15, `then.no_transitions`).
+    #[serde(default)]
+    pub described: BTreeMap<String, Vec<String>>,
+}
+
+/// What the engine asked the store for while it was deciding (136). Shared
+/// with every clone of the store, because a clone is the same store read
+/// again, not a second one.
+#[derive(Debug, Clone, Default)]
+pub struct Deciding {
+    on: std::sync::Arc<std::sync::atomic::AtomicBool>,
+    operations: std::sync::Arc<std::sync::Mutex<Vec<String>>>,
+}
+
+/// The window a plan is made in. While one stands, every record operation the
+/// store serves is recorded.
+pub struct DecidingWindow(std::sync::Arc<std::sync::atomic::AtomicBool>);
+
+impl Drop for DecidingWindow {
+    fn drop(&mut self) {
+        self.0.store(false, std::sync::atomic::Ordering::Relaxed);
+    }
+}
+
+impl Deciding {
+    /// Open the window: everything served until the guard is dropped is part
+    /// of what the engine decided from.
+    pub fn open(&self) -> DecidingWindow {
+        self.on.store(true, std::sync::atomic::Ordering::Relaxed);
+        DecidingWindow(self.on.clone())
+    }
+
+    /// Record one operation, where a plan is being made.
+    pub fn served(&self, operation: &str) {
+        if !self.on.load(std::sync::atomic::Ordering::Relaxed) {
+            return;
+        }
+        if let Ok(mut held) = self.operations.lock() {
+            if !held.iter().any(|o| o == operation) {
+                held.push(operation.to_string());
+            }
+        }
+    }
+
+    /// The operations served, in the order 125 states them, so two runs of one
+    /// scenario report the same list.
+    pub fn operations(&self) -> Vec<String> {
+        let held = self.operations.lock().map(|h| h.clone()).unwrap_or_default();
+        flywheel_domain::profile::OPERATIONS
+            .iter()
+            .filter(|o| held.iter().any(|served| served == *o))
+            .map(|o| o.to_string())
+            .collect()
+    }
 }
 
 /// One effect written, with its identity, its reason and the evidence the
@@ -249,6 +322,7 @@ impl Default for Store {
             leases: BTreeMap::new(),
             heartbeats: BTreeMap::new(),
             writes: 0,
+            work_writes: 0,
             moved: vec![],
             durable: BTreeMap::new(),
             unapplicable: vec![],
@@ -266,6 +340,9 @@ impl Default for Store {
             declarations: BTreeMap::new(),
             register_aliases: BTreeMap::new(),
             decision_numbers: BTreeMap::new(),
+            deciding: Deciding::default(),
+            drifted: None,
+            described: BTreeMap::new(),
         }
     }
 }
@@ -289,8 +366,19 @@ impl Store {
         self.objects.get(id).and_then(|o| o.top_state())
     }
 
+    /// Sessions this host is running now (`record-derived.yaml` host.running).
+    /// A session that reported done, stalled or invalid has finished, whatever
+    /// its pane does: the tab and the workspace outlive it until their object
+    /// leaves every view (`atoms.yaml` end_session), and a finished session
+    /// holds no slot. One that reported blocked is still running — it waits for
+    /// its answer and is never ended by the machinery (68, 70, I5).
     fn running_sessions(&self) -> usize {
-        self.world.sessions.values().filter(|s| s.pane).count()
+        self.world
+            .sessions
+            .values()
+            .filter(|s| s.pane)
+            .filter(|s| !matches!(s.exit.as_deref(), Some("done" | "stalled" | "invalid")))
+            .count()
     }
 
     /// How many sessions this host is running, against which its bound is read
@@ -440,7 +528,22 @@ impl Store {
             "session.activity" => json!(sess.map(|s| if s.pane { s.activity.clone() } else { "none".into() }).unwrap_or_else(|| "none".into())),
             "session.exit" => json!(sess.and_then(|s| s.exit.clone()).unwrap_or_else(|| "none".into())),
             "session.idle_since" => sess.and_then(|s| s.idle_since).map(|t| json!(t.to_rfc3339()))?,
-            "session.operator_present" | "session.offers_pending" | "session.refusals_pending" => json!(false),
+            // Findings and chores the session offered through the command that
+            // no record points at yet, and their opposite: what makes
+            // `record_offers` run and what proves it did (58, 62).
+            "session.offers_pending" => json!(!flywheel_domain::offers::pending(
+                self,
+                &self.session_of(object, region)
+            )
+            .unwrap_or_default()
+            .is_empty()),
+            "session.offers_recorded" => json!(flywheel_domain::offers::pending(
+                self,
+                &self.session_of(object, region)
+            )
+            .unwrap_or_default()
+            .is_empty()),
+            "session.operator_present" | "session.refusals_pending" => json!(false),
             "session.exit_recorded" | "session.host_alive" | "session.answer_delivered" | "session.message_delivered" => json!(true),
             "session.question" => json!(sess.and_then(|s| s.question.clone())),
             "session.expected" | "session.delivered" => json!(sess.map(|s| s.deliverables.clone()).unwrap_or_default()),
@@ -469,11 +572,19 @@ impl Store {
             "elaboration.kept_since" => obj.and_then(|o| o.record.get("kept_at").cloned()).filter(|v| !v.is_null())?,
             "elaboration.type" => obj.and_then(|o| o.record.get("type").cloned())?,
             // ---- engine machines
-            "rail.unnumbered" | "sink.due" | "host.stray_places" => json!(false),
+            // A decision derived this tick with no register entry: what the
+            // rail machine reads to know it must number (15,
+            // `record-derived.yaml` rail.unnumbered).
+            "rail.unnumbered" => json!(self.register.unnumbered(&self.standing_now())),
+            "rail.numbered" => json!(!self.register.unnumbered(&self.standing_now())),
+            "sink.due" | "host.stray_places" => json!(false),
             // The projection's as-of equals the newest seq across `list(all)`,
             // or it is stale and is rewritten from its source on this tick
             // (77, 142, `record-derived.yaml` rail.status_current).
-            "rail.status_current" => json!(!self.status_body.is_empty() && self.status_as_of >= self.newest_seq()),
+            // A projection of a state nothing has written yet is as-of that
+            // nothing and is current: reading twice with nothing changed
+            // writes nothing (78).
+            "rail.status_current" => json!(self.status_as_of >= self.newest_seq()),
             "host.last_seen" => obj.and_then(|o| o.record.get("last_seen").cloned())?,
             "lease.holder" => return None,
             "response.applied" => {
@@ -597,6 +708,30 @@ impl Store {
                 self.status_committed = held.commit_status(&view.body).is_ok();
             }
         }
+    }
+
+    /// Something outside the machinery wrote into the projection. The written
+    /// view now says what the state it projects does not; it is no longer
+    /// as-of anything, so the next tick finds `rail.status_current` false,
+    /// reports the drift and writes the projection again from `list` and
+    /// `read` (136, 142).
+    pub fn drift_projection(&mut self, text: &str) {
+        self.drifted = Some(text.to_string());
+        self.status_body = format!("{}\n{text}\n", self.status_body);
+        self.status_as_of = 0;
+        if let Some(durable) = self.durable() {
+            if let Ok(mut held) = durable.lock() {
+                let _ = held.commit_status(&self.status_body);
+            }
+        }
+    }
+
+    /// Whether the projection a hand wrote into was written again from the
+    /// state it projects: the drifted text is gone, and what stands was
+    /// rendered from the source (142).
+    pub fn projection_rewritten_from_source(&self) -> Option<bool> {
+        let drifted = self.drifted.as_ref()?;
+        Some(!self.status_body.contains(drifted.as_str()) && self.status_as_of >= self.newest_seq())
     }
 
     /// Advance every started session's script by one tick.

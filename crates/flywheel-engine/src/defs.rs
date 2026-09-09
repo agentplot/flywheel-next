@@ -262,3 +262,65 @@ impl Definitions {
             .or_else(|| self.machines.get(kind))
     }
 }
+
+impl Machine {
+    /// Every atom name this machine reads or acts by: the evidence its guards
+    /// name and the effects its states and transitions call. The engine reads
+    /// no meaning from either — this is how a set that carries a machine can
+    /// carry the atoms it needs and no more.
+    pub fn atom_names(&self) -> (std::collections::BTreeSet<String>, std::collections::BTreeSet<String>) {
+        let mut evidence = std::collections::BTreeSet::new();
+        let mut effects = std::collections::BTreeSet::new();
+        for region in self.regions.values() {
+            region.atom_names(&mut evidence, &mut effects);
+        }
+        (evidence, effects)
+    }
+}
+
+impl Region {
+    fn atom_names(
+        &self,
+        evidence: &mut std::collections::BTreeSet<String>,
+        effects: &mut std::collections::BTreeSet<String>,
+    ) {
+        for state in self.states.values() {
+            for effect in state.entry.iter().chain(&state.exit) {
+                effects.insert(effect.name.clone());
+            }
+            for transition in &state.transitions {
+                guard_names(&transition.when, evidence);
+                for effect in &transition.effects {
+                    effects.insert(effect.name.clone());
+                }
+            }
+            for nested in state.regions.values() {
+                nested.atom_names(evidence, effects);
+            }
+        }
+    }
+}
+
+/// The evidence names a guard reads, however deeply it is nested.
+fn guard_names(guard: &Guard, into: &mut std::collections::BTreeSet<String>) {
+    match guard {
+        Guard::All { all } => all.iter().for_each(|g| guard_names(g, into)),
+        Guard::Any { any } => any.iter().for_each(|g| guard_names(g, into)),
+        Guard::Not { not } => guard_names(not, into),
+        Guard::Ev(e) => {
+            into.insert(e.ev.clone());
+            for other in [&e.eq_ev, &e.ne_ev, &e.gte_ev, &e.lt_ev, &e.gt_ev]
+                .into_iter()
+                .flatten()
+            {
+                into.insert(other.clone());
+            }
+        }
+        Guard::Response { .. }
+        | Guard::Final { .. }
+        | Guard::Children { .. }
+        | Guard::Parent { .. }
+        | Guard::Region { .. }
+        | Guard::Always { .. } => {}
+    }
+}

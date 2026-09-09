@@ -39,8 +39,8 @@ pub fn register(store: &impl Records) -> Result<Register> {
             .get("next")
             .and_then(|v| v.as_u64())
             .unwrap_or(1) as u32,
-        numbers: record
-            .get("numbers")
+        entries: record
+            .get("register")
             .cloned()
             .and_then(|v| serde_json::from_value(v).ok())
             .unwrap_or_default(),
@@ -55,7 +55,13 @@ pub fn set_register(
 ) -> Result<()> {
     let mut record: BTreeMap<String, Value> = BTreeMap::new();
     record.insert("next".into(), json!(register.next_number));
-    record.insert("numbers".into(), json!(register.numbers));
+    // The register as the rail machine's record names it: one entry per
+    // numbered decision, carrying its number, when it was raised, when it was
+    // retracted and the response that answered it (`engine/rail.yaml` record).
+    // `numbers` beside it is the same thing as id → number, which is what a
+    // reader that only wants the number reads.
+    record.insert("register".into(), json!(register.entries));
+    record.insert("numbers".into(), json!(register.numbers()));
     record.insert("standing".into(), json!(standing));
     let seq = store.get(RAIL)?.map(|o| o.seq).unwrap_or(0);
     let rail = Object {
@@ -108,10 +114,17 @@ pub fn rail<S: StateStore>(store: &mut S, defs: &Definitions) -> Result<Vec<Deci
     let at = now(store)?;
     crate::rail::attach(store, defs, &mut objects, at)?;
     let mut register = register(store)?;
-    let decisions = rail::derive(defs, &objects, &mut register);
-    let standing: Vec<String> = decisions.iter().map(|d| d.id.clone()).collect();
-    set_register(store, &register, &standing)?;
-    Ok(decisions)
+    // Deriving is pure, so the numbering is its own act: every decision
+    // standing without an entry takes the next number, every entry whose
+    // decision is gone is retracted, and both go back in one write of the rail
+    // record — which is what the rail machine's numbering does on a tick and
+    // what a host command holding the rail's lease does here (9, 15, I3).
+    let standing = rail::derive(defs, &objects, &register);
+    register.number_all(&standing);
+    let ids: Vec<String> = standing.iter().map(|d| d.id.clone()).collect();
+    register.retract_gone(&ids, at);
+    set_register(store, &register, &ids)?;
+    Ok(rail::derive(defs, &objects, &register))
 }
 
 // -------------------------------------------------------------- the responses

@@ -134,3 +134,67 @@ pub fn is_core_machine(name: &str) -> bool {
         .map(|d| d.machines.contains_key(name))
         .unwrap_or(false)
 }
+
+/// The engine's own machines, with the atoms they name and no others.
+///
+/// The domain is `atoms.yaml` plus every machine file outside `engine/`
+/// (model.md §2.5, 87). A scenario that names its own `machines:` replaces the
+/// domain — the contract set runs over a toy machine that shares no atom with
+/// the flywheel — and the five engine machines still run, because the lease,
+/// the rail, the sink, the host and the response are the engine's and every
+/// object is worked through them (86, 128, 148).
+pub fn engine() -> Result<Definitions> {
+    let mut shipped = Atoms::default();
+    let mut defs = Definitions::default();
+    for (path, bytes) in files() {
+        let text = std::str::from_utf8(bytes)
+            .with_context(|| format!("the embedded {path} is not text"))?;
+        if path == "atoms.yaml" {
+            shipped =
+                serde_yaml::from_str::<Atoms>(text).with_context(|| format!("parsing {path}"))?;
+            continue;
+        }
+        if !path.starts_with("engine/") || !path.ends_with(".yaml") {
+            continue;
+        }
+        let machine: Machine =
+            serde_yaml::from_str(text).with_context(|| format!("parsing {path}"))?;
+        defs.machines.insert(machine.machine.clone(), machine);
+    }
+    for machine in defs.machines.values() {
+        let (evidence, effects) = machine.atom_names();
+        for name in evidence {
+            if let Some(value) = shipped.evidence.get(&name) {
+                defs.atoms.evidence.insert(name, value.clone());
+            }
+        }
+        for name in effects {
+            let Some(value) = shipped.effects.get(&name) else { continue };
+            // The effect's proof is an atom the engine reads to know the act
+            // already happened, so it comes with it (127).
+            if let Some(proof) = shipped.proof_of(&name) {
+                if let Some(value) = shipped.evidence.get(&proof) {
+                    defs.atoms.evidence.insert(proof, value.clone());
+                }
+            }
+            defs.atoms.effects.insert(name, value.clone());
+        }
+    }
+    Ok(defs)
+}
+
+/// A set the engine's machines and atoms are folded into. What the directory
+/// carries wins: a set that defines a machine or an atom of its own keeps it.
+pub fn with_engine(mut defs: Definitions) -> Result<Definitions> {
+    let engine = engine()?;
+    for (name, machine) in engine.machines {
+        defs.machines.entry(name).or_insert(machine);
+    }
+    for (name, value) in engine.atoms.evidence {
+        defs.atoms.evidence.entry(name).or_insert(value);
+    }
+    for (name, value) in engine.atoms.effects {
+        defs.atoms.effects.entry(name).or_insert(value);
+    }
+    Ok(defs)
+}

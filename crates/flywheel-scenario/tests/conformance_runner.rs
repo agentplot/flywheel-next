@@ -585,3 +585,103 @@ fn the_host_loops_acceptance_scenarios_pass() {
         );
     }
 }
+
+/// The thirteen contract files, on the stand-in and against a local bare state
+/// repository. This is the step that admits a profile: one scenario per
+/// operation of B.1, per guarantee of B.2, and one for the binding itself,
+/// over a toy machine that shares no atom with the flywheel (168, task 3.15).
+#[test]
+fn the_contract_set_admits_the_profile() {
+    let contract = conformance_dir().join("contract");
+    let files: Vec<PathBuf> = {
+        let mut out: Vec<PathBuf> = std::fs::read_dir(&contract)
+            .expect("the contract directory is readable")
+            .flatten()
+            .map(|e| e.path())
+            .filter(|p| p.extension().is_some_and(|x| x == "yaml"))
+            .collect();
+        out.sort();
+        out
+    };
+    assert_eq!(files.len(), 13, "the contract set is thirteen files: {files:?}");
+    for profile in [conformance::Profile::StandIn, conformance::Profile::GitOnly] {
+        for path in &files {
+            let options = RunOptions {
+                definitions: Some(root().join("definitions")),
+                profile,
+                ..Default::default()
+            };
+            let outcome = conformance::run_one(path, &options);
+            assert_eq!(
+                outcome.status,
+                Status::Passed,
+                "{} failed on {:?} ({:?}):\n{}",
+                path.display(),
+                profile,
+                outcome.reason,
+                outcome.failures.join("\n")
+            );
+        }
+    }
+}
+
+/// The `flywheel` binary beside the test binary. `cargo test -p
+/// flywheel-scenario` does not build another package's binary, so build it
+/// when it is not there; the runner itself is the binary and needs none of
+/// this.
+fn flywheel_binary_beside_the_test() -> PathBuf {
+    let deps = std::env::current_exe().expect("the test binary has a path");
+    let target = deps.parent().and_then(|p| p.parent()).expect("target/debug");
+    let binary = target.join("flywheel");
+    if !binary.exists() {
+        let out = std::process::Command::new(env!("CARGO"))
+            .args(["build", "--quiet", "-p", "flywheel"])
+            .current_dir(concat!(env!("CARGO_MANIFEST_DIR"), "/../.."))
+            .output()
+            .expect("building the flywheel binary");
+        assert!(
+            binary.exists(),
+            "no flywheel binary at {}: {}",
+            binary.display(),
+            String::from_utf8_lossy(&out.stderr)
+        );
+    }
+    binary
+}
+
+/// The scenarios group 10 admits: the rail derived, numbered and retracted, a
+/// standing session offered rather than ended, a proposal that created nothing,
+/// a thread closed on the operator's response, and — against a real state
+/// repository — the rail identical after a restart and a slow host starting one
+/// session (tasks 10.7–10.11).
+#[test]
+fn the_rail_acceptance_scenarios_pass() {
+    // A scenario whose script reports through the command needs the binary,
+    // and a test is not it (D8).
+    std::env::set_var(
+        flywheel_scenario::sessions::BINARY_ENV,
+        flywheel_binary_beside_the_test(),
+    );
+    for (path, profile) in [
+        ("scenarios/S01.yaml", conformance::Profile::StandIn),
+        ("scenarios/S02.yaml", conformance::Profile::StandIn),
+        ("scenarios/S04.yaml", conformance::Profile::StandIn),
+        ("scenarios/S07.yaml", conformance::Profile::StandIn),
+        ("scenarios/S05.yaml", conformance::Profile::GitOnly),
+        ("scenarios/S06.yaml", conformance::Profile::GitOnly),
+    ] {
+        let options = RunOptions {
+            definitions: Some(root().join("definitions")),
+            profile,
+            ..Default::default()
+        };
+        let outcome = conformance::run_one(&conformance_dir().join(path), &options);
+        assert_eq!(
+            outcome.status,
+            Status::Passed,
+            "{path} failed on {profile:?} ({:?}):\n{}",
+            outcome.reason,
+            outcome.failures.join("\n")
+        );
+    }
+}

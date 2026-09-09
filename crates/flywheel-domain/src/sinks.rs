@@ -229,32 +229,26 @@ pub struct TailItem {
 /// different marks therefore have different tails, and a sink that has never
 /// delivered has the whole of it.
 pub fn tail<S: StateStore>(store: &S, defs: &Definitions, sink: &Sink) -> Result<Vec<TailItem>> {
-    let mut out: Vec<TailItem> = Vec::new();
-    for object in store.list_records(&Scope::All)? {
-        for (region, state) in &object.config {
-            let Some((_region, definition)) = flywheel_engine::tick::state_def(defs, &object, region)
-            else {
-                continue;
-            };
-            let Some(kind) = definition.tail.clone() else {
-                continue;
-            };
-            let Some(at) = object.entered_at.get(region).copied() else {
-                continue;
-            };
-            if sink.delivered_at.is_some_and(|mark| at <= mark) {
-                continue;
-            }
-            out.push(TailItem {
-                object: object.id.clone(),
-                kind,
-                state: state.clone(),
-                at,
-            });
-        }
-    }
-    out.sort_by(|a, b| a.at.cmp(&b.at).then_with(|| a.object.cmp(&b.object)));
-    Ok(out)
+    let objects: std::collections::BTreeMap<String, flywheel_engine::Object> = store
+        .list_records(&Scope::All)?
+        .into_iter()
+        .map(|o| (o.id.clone(), o))
+        .collect();
+    // The engine derives it, beside the decisions and by the same rule: a
+    // sink that has never delivered has the whole of it, and a mark newer than
+    // everything leaves none (14, 15).
+    let since = sink
+        .delivered_at
+        .unwrap_or_else(|| DateTime::<Utc>::from_timestamp_nanos(0));
+    Ok(flywheel_engine::rail::tail(defs, &objects, since)
+        .into_iter()
+        .map(|entry| TailItem {
+            object: entry.object,
+            kind: entry.kind,
+            state: entry.state,
+            at: entry.at,
+        })
+        .collect())
 }
 
 /// Advance the sink's mark to the point it has now delivered through, in one

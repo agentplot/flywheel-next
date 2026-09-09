@@ -51,7 +51,7 @@ or a command.
 - [x] 3.12 Implement the disconnected rules of D4a — keep ticking owned objects to the expiry, commit locally, take no lease, start nothing new, deliver to no sink — and report a write made while disconnected as pending; verify `cargo test -p flywheel-store-git disconnected_rules` with one host and a cut route (151, 165)
 - [x] 3.13 Implement the reconnect order — renewals first, discard local commits on an object whose lease was lost, then rebase and push; verify `cargo test -p flywheel-store-git reconnect_pushes_renewals_first` — S18 is asserted at 11.2 with two host processes
 - [x] 3.14 Push unpushed commits found at start, before the first tick, discarding those on an object no longer held and reading nothing from the working tree; verify `cargo test -p flywheel-store-git unpushed_commits_at_start` (I14, 165)
-- [ ] 3.15 Run the whole contract set against a local bare repository: `flywheel scenario run --profile git-only conformance/contract/`; verify all thirteen pass — this is the step that admits the profile (168)
+- [x] 3.15 Run the whole contract set against a local bare repository: `flywheel scenario run --profile git-only conformance/contract/`; verify all thirteen pass — this is the step that admits the profile (168)
 
 ## 4. Definitions embedded and the binding gate
 
@@ -154,17 +154,17 @@ or a command.
 
 ## 10. The rail
 
-- [ ] 10.1 Derive the rail from active states and the register on every tick; verify `flywheel scenario run --profile git-only conformance/contract/derivable.yaml` (7, `engine/rail`)
-- [ ] 10.2 Create a decision when its state becomes active and retract it when the state is left, writing the retraction on its register entry; verify `cargo test -p flywheel-engine decision_created_and_retracted` (9, I3)
-- [ ] 10.3 Number decisions in one atomic write of the rail record, never reusing a number, a re-entered state taking a new one; verify `cargo test -p flywheel-engine number_never_reused` (15)
-- [ ] 10.4 Group and fold decisions so "yes to all" is meaningful and any one answers alone; verify `cargo test -p flywheel-engine grouping_and_single_answer` (11)
-- [ ] 10.5 Derive the tail from each sink's mark with no rendering stored; verify `cargo test -p flywheel-engine tail_per_sink_mark` asserting the page's and the chat's differ (14, 15)
-- [ ] 10.6 Hold an intent to one elaboration awaiting approval and let the response correct its type; verify `cargo test -p flywheel-engine new_material_joins_the_proposal` and `response_corrects_the_type` (21, 27)
-- [ ] 10.7 Verify S01: `flywheel scenario run conformance/scenarios/S01.yaml`
-- [ ] 10.8 Verify S02: `flywheel scenario run conformance/scenarios/S02.yaml`
-- [ ] 10.9 Verify S04: `flywheel scenario run conformance/scenarios/S04.yaml`
-- [ ] 10.10 Verify S07: `flywheel scenario run conformance/scenarios/S07.yaml`
-- [ ] 10.11 Verify S05 and S06 against the real store: `flywheel scenario run --profile git-only conformance/scenarios/S05.yaml conformance/scenarios/S06.yaml`
+- [x] 10.1 Derive the rail from active states and the register on every tick; verify `flywheel scenario run --profile git-only conformance/contract/derivable.yaml` (7, `engine/rail`)
+- [x] 10.2 Create a decision when its state becomes active and retract it when the state is left, writing the retraction on its register entry; verify `cargo test -p flywheel-engine decision_created_and_retracted` (9, I3)
+- [x] 10.3 Number decisions in one atomic write of the rail record, never reusing a number, a re-entered state taking a new one; verify `cargo test -p flywheel-engine number_never_reused` (15)
+- [x] 10.4 Group and fold decisions so "yes to all" is meaningful and any one answers alone; verify `cargo test -p flywheel-engine grouping_and_single_answer` (11)
+- [x] 10.5 Derive the tail from each sink's mark with no rendering stored; verify `cargo test -p flywheel-engine tail_per_sink_mark` asserting the page's and the chat's differ (14, 15)
+- [x] 10.6 Hold an intent to one elaboration awaiting approval and let the response correct its type; verify `cargo test -p flywheel-engine new_material_joins_the_proposal` and `response_corrects_the_type` (21, 27)
+- [x] 10.7 Verify S01: `flywheel scenario run conformance/scenarios/S01.yaml`
+- [x] 10.8 Verify S02: `flywheel scenario run conformance/scenarios/S02.yaml`
+- [x] 10.9 Verify S04: `flywheel scenario run conformance/scenarios/S04.yaml`
+- [x] 10.10 Verify S07: `flywheel scenario run conformance/scenarios/S07.yaml`
+- [x] 10.11 Verify S05 and S06 against the real store: `flywheel scenario run --profile git-only conformance/scenarios/S05.yaml conformance/scenarios/S06.yaml`
 
 ## 11. Two hosts, the hash, the prompt and the phone
 

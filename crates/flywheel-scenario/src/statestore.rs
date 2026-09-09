@@ -44,6 +44,16 @@ impl Store {
         self.writes
     }
 
+    /// The same, for a write of the work: the machinery's own objects move the
+    /// line without moving this count (D5, 167).
+    fn moved_at_by_machine(&mut self, id: &str, machine: &str) -> u64 {
+        let seq = self.moved_at(id);
+        if !flywheel_domain::leases::machinery(machine) {
+            self.work_writes += 1;
+        }
+        seq
+    }
+
     /// The first top-level region of an object; the region every evidence read
     /// without one is asked against.
     fn top_region(&self, id: &str) -> String {
@@ -76,7 +86,8 @@ impl Store {
     fn rail_record(&self) -> Object {
         let mut record: BTreeMap<String, serde_json::Value> = BTreeMap::new();
         record.insert("next".into(), serde_json::json!(self.register.next_number));
-        record.insert("numbers".into(), serde_json::json!(self.register.numbers));
+        record.insert("register".into(), serde_json::json!(self.register.entries));
+        record.insert("numbers".into(), serde_json::json!(self.register.numbers()));
         record.insert("standing".into(), serde_json::json!(self.standing));
         record.insert("status_as_of".into(), serde_json::json!(self.status_as_of));
         Object {
@@ -93,6 +104,51 @@ impl Store {
         }
     }
 
+    /// The decisions standing on the store as it is now, derived from the
+    /// objects and the register alone. The rail's own decisions and the
+    /// leases' stand beside the work's, because a lease under attention is a
+    /// decision like any other (D5, 149).
+    pub fn standing_now(&self) -> Vec<flywheel_engine::DecisionInstance> {
+        let Some(defs) = self.defs.clone() else { return vec![] };
+        let mut objects = self.objects.clone();
+        let now = self.now;
+        let _ = flywheel_domain::leases::attach(self, &mut objects, now);
+        let _ = flywheel_domain::rail::attach(self, &defs, &mut objects, now);
+        flywheel_engine::rail::derive(&defs, &objects, &self.register)
+    }
+
+    /// Give every standing decision without an entry the next number, in one
+    /// write of the register and the counter. This is `number_decisions`: a
+    /// number is given once and never reused, and a decision state left and
+    /// re-entered carries a different id and so takes a new number (15).
+    pub fn number_decisions(&mut self) {
+        let standing = self.standing_now();
+        if !self.register.number_all(&standing) {
+            return;
+        }
+        self.write_rail_record();
+    }
+
+    /// Mark every entry whose decision no longer stands as retracted, on the
+    /// same record the numbers live on. A decision exists exactly while its
+    /// state is active (9, I3).
+    pub fn retract_gone(&mut self) -> Vec<String> {
+        let standing: Vec<String> = self.standing_now().into_iter().map(|d| d.id).collect();
+        let now = self.now;
+        let retracted = self.register.retract_gone(&standing, now);
+        if !retracted.is_empty() {
+            self.write_rail_record();
+        }
+        retracted
+    }
+
+    /// The register and the counter, written back as one record (15, 148).
+    fn write_rail_record(&mut self) {
+        let record = self.rail_record();
+        let seq = record.seq;
+        let _ = Records::put(self, RAIL, &record, seq);
+    }
+
     /// Take a written rail record back into the register it projects.
     fn set_rail_record(&mut self, record: &Object) {
         self.rail_config = record.config.clone();
@@ -100,9 +156,9 @@ impl Store {
         if let Some(n) = record.record.get("next").and_then(|v| v.as_u64()) {
             self.register.next_number = n as u32;
         }
-        if let Some(numbers) = record.record.get("numbers") {
-            if let Ok(numbers) = serde_json::from_value(numbers.clone()) {
-                self.register.numbers = numbers;
+        if let Some(entries) = record.record.get("register") {
+            if let Ok(entries) = serde_json::from_value(entries.clone()) {
+                self.register.entries = entries;
             }
         }
         if let Some(standing) = record.record.get("standing") {
@@ -143,6 +199,7 @@ impl Store {
 
 impl Records for Store {
     fn get(&self, id: &str) -> Result<Option<Object>> {
+        self.deciding.served("read");
         if id == RAIL {
             return Ok(Some(self.rail_record()));
         }
@@ -171,9 +228,10 @@ impl Records for Store {
                 object: object.to_string(),
                 state,
             })?;
-            return Ok(PutOutcome::Written {
-                seq: self.moved_at(id),
-            });
+            // A lease is a branch and never a file on the shared line (D5,
+            // 167), so marking one does not advance the line's write sequence:
+            // a run in which only leases moved wrote nothing (78).
+            return Ok(PutOutcome::Written { seq: self.writes });
         }
         if id == RAIL {
             self.set_rail_record(record);
@@ -191,7 +249,7 @@ impl Records for Store {
                 let mut next = record.clone();
                 next.seq = seq;
                 self.objects.insert(id.to_string(), next);
-                let _ = self.moved_at(id);
+                let _ = self.moved_at_by_machine(id, &record.machine);
             }
             return Ok(outcome);
         }
@@ -210,7 +268,7 @@ impl Records for Store {
             self.next_created += 1;
         }
         self.objects.insert(id.to_string(), next);
-        let _ = self.moved_at(id);
+        let _ = self.moved_at_by_machine(id, &record.machine);
         Ok(PutOutcome::Written { seq: held + 1 })
     }
 
@@ -230,6 +288,7 @@ impl Records for Store {
     }
 
     fn list_records(&self, scope: &Scope) -> Result<Vec<Object>> {
+        self.deciding.served("list");
         Ok(self
             .objects
             .values()
@@ -243,6 +302,7 @@ impl Records for Store {
     }
 
     fn responses(&self, id: &str) -> Result<Vec<Response>> {
+        self.deciding.served("read");
         // Responses arrive at the rail, so the rail's responses are the ones in
         // hand — which is what a tick reads before it decides anything.
         if id == RAIL {
@@ -250,10 +310,10 @@ impl Records for Store {
         }
         let numbers: Vec<u32> = self
             .register
-            .numbers
+            .entries
             .iter()
             .filter(|(decision, _)| decision.starts_with(&format!("{id}/")))
-            .map(|(_, n)| *n)
+            .map(|(_, e)| e.number)
             .collect();
         Ok(self
             .responses
@@ -267,6 +327,9 @@ impl Records for Store {
     }
 
     fn leases(&self, id: &str) -> Result<Option<LeaseRecord>> {
+        // Reading the lease record is a read; `lease` is the compare-and-swap
+        // that takes, renews and releases one (125, `record-derived.yaml`).
+        self.deciding.served("read");
         if let Some(durable) = self.durable() {
             return durable
                 .lock()
@@ -277,12 +340,14 @@ impl Records for Store {
     }
 
     fn hosts(&self) -> Result<Vec<HostRecord>> {
+        self.deciding.served("read");
         Ok(self.heartbeats.values().cloned().collect())
     }
 }
 
 impl StateStore for Store {
     fn read(&self, id: &str) -> Result<EvidenceRead> {
+        self.deciding.served("read");
         let region = self.top_region(id);
         let mut evidence = BTreeMap::new();
         // The five the record itself answers (`record-derived.yaml`).
@@ -316,6 +381,7 @@ impl StateStore for Store {
     }
 
     fn status(&self) -> Result<StatusView> {
+        self.deciding.served("status");
         // The status projection is written from `list` and `get` alone, and
         // states the point it is as of (132, 145).
         let as_of = self.as_of();
@@ -332,6 +398,7 @@ impl StateStore for Store {
     }
 
     fn write_effect(&mut self, write: &EffectWrite) -> Result<WriteOutcome> {
+        self.deciding.served("write_effect");
         if let Some(durable) = self.durable() {
             // One commit per effect, carrying its identity, reason and
             // evidence; the repeat is found in the fetched history before
@@ -393,6 +460,7 @@ impl StateStore for Store {
     }
 
     fn lease(&mut self, op: &LeaseOp) -> Result<LeaseOutcome> {
+        self.deciding.served("lease");
         if let Some(durable) = self.durable() {
             // The push to `lease/<object>` with expected-old is the
             // compare-and-swap: two hosts cannot both land one (128, 163).
@@ -480,6 +548,7 @@ impl StateStore for Store {
     }
 
     fn notify(&self, since: &ReadPoint) -> Result<Notice> {
+        self.deciding.served("notify");
         // A notice names what moved, so a host re-reads only those objects and
         // never the whole store (130).
         let mut objects: Vec<String> = self
@@ -497,6 +566,7 @@ impl StateStore for Store {
     }
 
     fn present(&mut self, presentation: &Presentation) -> Result<()> {
+        self.deciding.served("present");
         // A disconnected host delivers to no sink (151).
         if self.is_disconnected() {
             return Ok(());
@@ -520,6 +590,7 @@ impl StateStore for Store {
     }
 
     fn receive(&mut self, response: &Response) -> Result<Received> {
+        self.deciding.served("receive");
         // The same delivery twice takes effect once, whatever restarts happen
         // between the giving and the application (137, I2).
         if self.responses.iter().any(|r| r.id == response.id)

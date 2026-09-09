@@ -142,6 +142,19 @@ pub fn perform(defs: &Definitions, store: &mut Store, object: &str, region: &str
         // stating the point it is as of (132, 145, D12). It is the rail's own
         // effect, and the tick writes it again whenever what it projects moved.
         "render_status" => store.write_status(defs),
+        // Every standing decision without a number takes the next one, in one
+        // atomic write of the register and the counter (15, `engine/rail.yaml`
+        // number_decisions).
+        "number_decisions" => store.number_decisions(),
+        // One record per uncited offer, pointing at its document and citing
+        // the thread entry it came from; the session is not interrupted (58,
+        // 62, I5).
+        "record_offers" => {
+            let at = store.now;
+            let session = skey.clone();
+            let defs = defs.clone();
+            let _ = flywheel_domain::offers::record(store, &defs, &session, object, at);
+        }
         // A capture that is its own excerpt writes its one signal here, and
         // never a second: no judgment is involved (19, 112, `atoms.yaml`
         // ensure_signal).

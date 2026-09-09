@@ -138,6 +138,11 @@ pub struct EffectRecord2 {
     /// effect already written is not a second write, though the act ran (127).
     #[serde(default)]
     pub written: bool,
+    /// Whether the reconciler called the act back because its proof was gone
+    /// from the world. Such an act ran again and counts again, though its
+    /// write carries the identity it had and is no second write (73, 127).
+    #[serde(default)]
+    pub recalled: bool,
 }
 
 #[derive(Debug, Clone, serde::Serialize, serde::Deserialize)]
@@ -183,17 +188,26 @@ impl Runtime {
         let defs = self.defs.clone();
         let _ = flywheel_domain::rail::attach(&self.store, &defs, &mut objects, now);
         if !self.store.register_aliases.is_empty() {
-            let standing = rail::derive(&self.defs, &objects, &mut self.store.register.clone());
+            let standing = rail::derive(&self.defs, &objects, &self.store.register);
             for d in &standing {
                 if let Some(n) = self.store.register_aliases.get(&Runtime::decision_name(&d.object, &d.kind)) {
-                    self.store.register.numbers.insert(d.id.clone(), *n);
+                    // A scenario that states a decision's number states it as
+                    // the register already having given it (`given.register`).
+                    self.store.register.entries.insert(
+                        d.id.clone(),
+                        flywheel_engine::runtime::RegisterEntry {
+                            number: *n,
+                            since: Some(d.since),
+                            ..Default::default()
+                        },
+                    );
                     if self.store.register.next_number <= *n {
                         self.store.register.next_number = n + 1;
                     }
                 }
             }
         }
-        let mut d = rail::derive(&self.defs, &objects, &mut self.store.register);
+        let mut d = rail::derive(&self.defs, &objects, &self.store.register);
         d.extend(self.handed_back());
         self.store.standing = d.iter().map(|x| x.id.clone()).collect();
         for x in &d {
@@ -230,6 +244,7 @@ impl Runtime {
                 shows: vec![u.reason.clone()],
                 document: None,
                 since: now,
+                folds: vec![format!("response/{}", u.response)],
             });
         }
         out
@@ -256,6 +271,9 @@ impl Runtime {
     /// One pass, with what happened, and the clock moved once.
     pub fn tick_recorded(&mut self) -> TickRecord {
         let record = self.pass();
+        // One tick reports a handed-back response once, however many passes it
+        // settled over: the report is the tick's, not the pass's (6, 129, D7).
+        self.report_handed_back();
         self.store.now = self.store.now + Duration::seconds(self.store.tick_seconds);
         record
     }
@@ -269,11 +287,16 @@ impl Runtime {
         let mut record = TickRecord { tick: self.store.tick + 1, at: self.store.now, ..Default::default() };
         let mut moved: Vec<String> = Vec::new();
         for _ in 0..50 {
+            let objects = self.store.next_created;
             let pass = self.pass_with(&mut moved);
             // A self-transition is not progress: it re-enters the state it is
             // already in, so a tick that only re-entered has settled. Without
-            // this the tick would perform its effect once per pass.
-            let moved = pass.transitions.iter().any(|t| t.from != t.to);
+            // this the tick would perform its effect once per pass. An object
+            // the pass made is progress though it moved no region of its own:
+            // nothing had read it when the tick read, so its own regions and
+            // the rail's register have still to be decided upon (D7).
+            let moved = pass.transitions.iter().any(|t| t.from != t.to)
+                || self.store.next_created != objects;
             record.guards.extend(pass.guards);
             record.transitions.extend(pass.transitions);
             record.effects.extend(pass.effects);
@@ -282,6 +305,7 @@ impl Runtime {
                 break;
             }
         }
+        self.report_handed_back();
         self.store.now = self.store.now + Duration::seconds(self.store.tick_seconds);
         record
     }
@@ -312,6 +336,10 @@ impl Runtime {
         let mut record = TickRecord { tick: self.store.tick, at: self.store.now, ..Default::default() };
         self.perform(&objects, &fired, &mut record, moved);
         self.reperform_unproved(&mut record);
+        // A decision exists exactly while its state is active: one whose state
+        // was left this pass is retracted on its own register entry, which is
+        // where a late reply reads that it is gone (9, I3, 15).
+        self.store.retract_gone();
         // The projection is rewritten from its source whenever what it projects
         // moved, and stored nowhere else (77, 132, 142, D12).
         let defs = self.defs.clone();
@@ -321,7 +349,6 @@ impl Runtime {
             .iter()
             .map(|d| DecisionRecord { id: d.id.clone(), object: d.object.clone(), kind: d.kind.clone(), group: d.group.clone(), number: d.number })
             .collect();
-        self.report_handed_back();
         record
     }
 
@@ -394,9 +421,14 @@ impl Runtime {
         // Fetch first, so no host decides on a read older than the bound (165,
         // D7), and read the operator's own commits out of what came back.
         self.fetch();
+        // What the engine decides from: `list` and `read`, and nothing the
+        // store keeps privately (136, 142). The window says so of itself —
+        // every operation served while it stands is recorded.
+        let deciding = self.store.deciding.open();
         let mut objects = console::objects(&self.store, &Scope::All).unwrap_or_default();
         let at = self.store.now;
         let _ = flywheel_domain::rail::attach(&self.store, &self.defs, &mut objects, at);
+        drop(deciding);
         objects
     }
 
@@ -499,6 +531,7 @@ impl Runtime {
 
     /// Decide what fires, from the objects read and nothing else.
     fn plan(&self, objects: &BTreeMap<String, flywheel_engine::Object>) -> Vec<tick::Fired> {
+        let _deciding = self.store.deciding.open();
         let responses = Records::responses(&self.store, console::RAIL).unwrap_or_default();
         let register = console::register(&self.store).unwrap_or_default();
         let snap = Snapshot { objects, responses: &responses, register: &register, evidence: &self.store, now: self.store.now };
@@ -667,7 +700,16 @@ impl Runtime {
             // One write is one commit: cut off, it is not there at all, and no
             // reader sees half of it (135, D15). The host went with it, so the
             // lease it wrote under is free for the next host (128).
-            self.writes_attempted += 1;
+            // What a scenario counts as a write is a write of the work: the
+            // machinery's own objects tick alongside it and are not the race
+            // (D5, 134).
+            let counted = objects
+                .get(&id)
+                .map(|o| !flywheel_domain::leases::machinery(&o.machine))
+                .unwrap_or(true);
+            if counted {
+                self.writes_attempted += 1;
+            }
             if self.hooks.contains(&Hook::InterruptWrite) && !self.interrupted {
                 self.interrupted = true;
                 let holder = self.store.me();
@@ -679,7 +721,11 @@ impl Runtime {
             // again before deciding anything, and its transitions never
             // happened (134, 162).
             match self.store.put(&id, &next, base) {
-                Ok(PutOutcome::Written { .. }) => self.writes_succeeded += 1,
+                Ok(PutOutcome::Written { .. }) => {
+                    if counted {
+                        self.writes_succeeded += 1;
+                    }
+                }
                 Ok(PutOutcome::Rejected { held_seq }) => {
                     self.loser_told = true;
                     let _ = StateStore::read(&self.store, &id);
@@ -718,18 +764,36 @@ impl Runtime {
                     reason: f.note.clone(),
                 });
                 for (region, e) in commanded.iter().map(|(r, e)| (r.as_str(), e)).chain(f.effects.iter().map(|e| (f.region.as_str(), e))) {
-                    // Only an act the world actually performed is an effect the
-                    // scenario counts (72, 73).
-                    if world::perform(&self.defs, &mut self.store, &id, region, e) {
-                        let written = self.write_effect(&id, region, e, f.note.as_deref());
-                        record.effects.push(EffectRecord2 {
-                            effect_id: e.id.clone(),
-                            name: e.name.clone(),
-                            object: id.clone(),
-                            args: e.args.clone(),
-                            written,
-                        });
+                    // A region performs each act once per tick, however many
+                    // passes the tick settles over and by whichever transition
+                    // asks for it: a state whose entry performed the act does
+                    // not perform it again when its own self-transition calls
+                    // it back in the same tick, and a state that performed
+                    // nothing on entering performs it there and then (D4, D7,
+                    // 127, S6, S7).
+                    let once = format!("{id}#{region}#{}", e.name);
+                    if moved.contains(&once) {
+                        continue;
                     }
+                    moved.push(once);
+                    // The act the machine asked for, whether the world took it
+                    // or refused it: a start of a name the multiplexer already
+                    // holds is refused, and the machinery reads the refusal
+                    // rather than being told nothing happened (72, 73, S6).
+                    // What the world refused writes nothing.
+                    let taken = world::perform(&self.defs, &mut self.store, &id, region, e);
+                    let written = match taken {
+                        true => self.write_effect(&id, region, e, f.note.as_deref()),
+                        false => false,
+                    };
+                    record.effects.push(EffectRecord2 {
+                        effect_id: e.id.clone(),
+                        name: e.name.clone(),
+                        object: id.clone(),
+                        args: e.args.clone(),
+                        written,
+                        recalled: false,
+                    });
                 }
                 self.store.tail.extend(tail);
             }
@@ -839,12 +903,30 @@ impl Runtime {
                 // The region the act was performed in is in the effect's own
                 // identity: `<object>/<region>/<from>-><to>/<phase>/<name><i>`
                 // (79, 127, 167). The act runs again where it ran before.
-                let region = w
+                let parts: Vec<&str> = w
                     .effect_id
                     .strip_prefix(&format!("{}/", w.object))
-                    .and_then(|rest| rest.split('/').next())
-                    .unwrap_or("life")
-                    .to_string();
+                    .map(|rest| rest.split('/').collect())
+                    .unwrap_or_default();
+                let region = parts.first().copied().unwrap_or("life").to_string();
+                // An act belongs to the state the object entered by it. Once
+                // the object has left that state the act is not called back:
+                // a session the operator ended is not started again because
+                // its pane is gone (4, 73, 127, X01).
+                let entered = parts
+                    .get(1)
+                    .and_then(|step| step.split("->").nth(1))
+                    .unwrap_or_default();
+                let still_there = self
+                    .store
+                    .get(&w.object)
+                    .ok()
+                    .flatten()
+                    .and_then(|o| o.config.get(&region).cloned())
+                    .is_some_and(|held| held == entered);
+                if !still_there {
+                    return None;
+                }
                 // The world's own report, not evidence derived from the
                 // record: a proof the world says is absent calls the act back,
                 // and silence is not a denial (72, 73, 127).
@@ -886,6 +968,7 @@ impl Runtime {
                     object,
                     args: Default::default(),
                     written,
+                    recalled: true,
                 });
             }
         }

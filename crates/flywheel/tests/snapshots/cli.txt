@@ -38,7 +38,7 @@ DECISIONS · 2026-09-04 14:40 · tick 0 · 9 decisions
         landed   bolt/switchboard/idle-timeout            13:52
 
 $ flywheel tick 1
-9 transitions
+10 transitions
 DECISIONS · 2026-09-04 14:41 · tick 1 · 12 decisions
   APPROVE
      412  intent-proposed        intent/atlas-provider-limits             → yes · drop · split

@@ -29,8 +29,16 @@ pub fn object_of(id: &str) -> Option<&str> {
 /// sinks, the hosts and the bindings' own facts are the machinery's; the lease
 /// machine is about the work.
 pub fn leasable(object: &Object) -> bool {
-    !matches!(
-        object.machine.as_str(),
+    !machinery(&object.machine)
+}
+
+/// Whether a machine is the machinery's own rather than the work's: the rail,
+/// the sinks, the hosts, the leases, the responses and the bindings' own
+/// facts. What a scenario asserts about writes, effects and races is about the
+/// work; the machinery ticks alongside it either way.
+pub fn machinery(machine: &str) -> bool {
+    matches!(
+        machine,
         "rail" | "sink" | "host" | "fact" | "lease" | "response"
     )
 }

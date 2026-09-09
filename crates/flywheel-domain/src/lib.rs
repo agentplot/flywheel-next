@@ -14,6 +14,7 @@ pub mod sinks;
 pub mod status;
 pub mod derived;
 pub mod leases;
+pub mod offers;
 pub mod rail;
 pub mod records;
 pub mod regions;

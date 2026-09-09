@@ -33,6 +33,23 @@ pub fn start_of_time() -> DateTime<Utc> {
 /// names another (232).
 pub const DEFAULT_HOST: &str = "local";
 
+/// `now` in a seeded value or an evidence step is the run's clock at the
+/// moment it is read — the virtual one, so a scenario that says a session went
+/// idle now and then advances 31 minutes is saying one thing (D15).
+fn at_now(value: &Value, now: DateTime<Utc>) -> Value {
+    match value {
+        Value::String(text) if text == "now" => json!(now.to_rfc3339()),
+        Value::Array(items) => Value::Array(items.iter().map(|v| at_now(v, now)).collect()),
+        Value::Object(fields) => Value::Object(
+            fields
+                .iter()
+                .map(|(name, v)| (name.clone(), at_now(v, now)))
+                .collect(),
+        ),
+        _ => value.clone(),
+    }
+}
+
 /// Load the machines a scenario names: `../machines` by default, and the
 /// scenario's own `machines:` where it gives one — the contract set names the
 /// toy `lamp`, which shares no atom with the flywheel.
@@ -43,8 +60,14 @@ fn definitions(scenario: &Scenario, path: &Path, suite: &Suite, options: &RunOpt
         } else {
             path.parent().unwrap_or(Path::new(".")).join(dir)
         };
-        return flywheel_engine::load::load_dir(&resolved)
-            .with_context(|| format!("loading the machines at {}", resolved.display()));
+        // A scenario's own `machines:` replaces the domain, not the engine:
+        // the lease, the rail, the sink, the host and the response are the
+        // engine's own machines, and every object is worked through them
+        // (model.md §2.5, 86, 87, 128, 148).
+        let defs = flywheel_engine::load::load_dir(&resolved)
+            .with_context(|| format!("loading the machines at {}", resolved.display()))?;
+        return flywheel_domain::set::with_engine(defs)
+            .context("folding the engine's own machines into the set");
     }
     // The set the binary carries, unless `--definitions` names a directory
     // (D2). The override is the runner's alone: a host runs what it carries.
@@ -86,7 +109,7 @@ pub fn play(
     std::fs::create_dir_all(&places)?;
     let sessions = ScriptedSessions::new(&state, places.join("places"));
 
-    let writes_at_start = rt.store.writes;
+    let writes_at_start = rt.store.work_writes;
     let mut run = Run {
         ticks: vec![],
         decisions_after: vec![],
@@ -94,6 +117,7 @@ pub fn play(
         observations: BTreeMap::new(),
         skipped_steps: vec![],
         writes_at_start,
+        tail_after: vec![],
         profile: options.profile.name(),
         dictations: 0,
     };
@@ -106,6 +130,15 @@ pub fn play(
         play_step(&mut run, step, scenario, path, suite, options, &sessions, &state)
             .with_context(|| format!("step {number}"))?;
         play_script(&mut run, &script, index, &sessions, &state)?;
+        // As a sink that has never delivered reads it: everything that has
+        // reached done, landed, closed or dropped since before the run, which
+        // is what a scenario's `tail:` names (14).
+        let tail = flywheel_engine::rail::tail(
+            &run.runtime.defs,
+            &run.runtime.store.objects,
+            DateTime::<Utc>::from_timestamp_nanos(0),
+        );
+        run.tail_after.push(tail);
         run.decisions_after.push(
             run.runtime
                 .decisions()
@@ -434,7 +467,8 @@ pub fn seed(defs: Definitions, scenario: &Scenario, suite: &Suite) -> Result<Run
 
     for (name, per_object) in &scenario.given.evidence {
         for (object, value) in per_object {
-            store.set_given(object, name, value.clone());
+            let value = at_now(value, store.now);
+            store.set_given(object, name, value);
         }
     }
     store.world.sessions = scenario.given.sessions.clone();
@@ -448,13 +482,19 @@ pub fn seed(defs: Definitions, scenario: &Scenario, suite: &Suite) -> Result<Run
     materialize(&mut store, &scenario.given.files, suite)?;
 
     for given in &scenario.given.objects {
+        let now = store.now;
+        let record = given
+            .record
+            .iter()
+            .map(|(name, value)| (name.clone(), at_now(value, now)))
+            .collect();
         world::new_object(
             &defs,
             &mut store,
             &given.id,
             &given.machine,
             given.parent.as_deref(),
-            given.record.clone(),
+            record,
         );
     }
 
@@ -502,6 +542,7 @@ pub fn seed(defs: Definitions, scenario: &Scenario, suite: &Suite) -> Result<Run
             // this round and go round again until none can. Anything left over
             // names no region of this machine and is written as it stands, the
             // way it always was.
+            let mut described: Vec<String> = Vec::new();
             let mut left: Vec<(&String, &String)> = given.state.iter().collect();
             while !left.is_empty() {
                 let shape: Vec<String> = o.config.keys().cloned().collect();
@@ -530,18 +571,21 @@ pub fn seed(defs: Definitions, scenario: &Scenario, suite: &Suite) -> Result<Run
                     break;
                 };
                 let (_, state) = left.remove(at);
+                described.push(path.clone());
                 set_region(o, &path, state, entered);
                 let mut settled = o.clone();
                 flywheel_engine::initialise(&defs, &mut settled, entered);
                 *o = settled;
             }
             for (given_path, state) in left {
+                described.push(given_path.clone());
                 set_region(o, given_path, state, entered);
             }
             o.applied_responses = given.applied_responses.clone();
             let mut settled = o.clone();
             flywheel_engine::initialise(&defs, &mut settled, entered);
             *o = settled;
+            store.described.insert(given.id.clone(), described);
         }
     }
 
@@ -569,6 +613,54 @@ pub fn seed(defs: Definitions, scenario: &Scenario, suite: &Suite) -> Result<Run
             exists: true,
             ..Default::default()
         });
+    }
+
+    // And the sessions under it: an object seeded with a session alive has a
+    // session in the world, with the pane and the activity the state it was
+    // seeded in implies. Only where the scenario said nothing about it; what
+    // it did say stands (D15).
+    let alive: Vec<(String, String, String)> = store
+        .objects
+        .values()
+        .flat_map(|o| {
+            o.config
+                .iter()
+                .filter(|(path, state)| {
+                    // A stage's region is `sessions`, a type's is `session`;
+                    // both name one session at a time (`stage.yaml`,
+                    // `session.yaml`).
+                    path.split('.')
+                        .any(|segment| segment == "session" || segment == "sessions")
+                        && path.ends_with(".life")
+                        && state.as_str() == "alive"
+                })
+                .map(|(path, _)| {
+                    // The activity region beside it says what the session is
+                    // doing; working is what a session with none is doing.
+                    let activity = path
+                        .strip_suffix(".life")
+                        .map(|stem| format!("{stem}.life.alive.activity"))
+                        .and_then(|region| o.config.get(&region).cloned())
+                        .unwrap_or_else(|| "working".to_string());
+                    (o.id.clone(), path.clone(), activity)
+                })
+        })
+        .collect();
+    for (id, region, activity) in alive {
+        let object = store.objects.get(&id).cloned();
+        let key = match &object {
+            Some(object) => flywheel_domain::regions::session_key_of_in(&defs, object, &region),
+            None => flywheel_domain::regions::session_key(&id, &region),
+        };
+        store
+            .world
+            .sessions
+            .entry(key)
+            .or_insert(crate::store::SessionFact {
+                pane: true,
+                activity,
+                ..Default::default()
+            });
     }
 
     let mut rt = Runtime::new(defs, store);
@@ -665,13 +757,18 @@ fn play_step(
                     // `*` says this is now true of every object, so what an
                     // earlier step said about one of them by name no longer
                     // stands: the world moved, and it moved for all of them
-                    // (S23).
+                    // (S23). What a step says about one object by name joins
+                    // what stands about the rest: a world that changed for one
+                    // did not change for its siblings
+                    // (`contract/present-receive.yaml`).
                     if object == "*" {
                         for per in run.runtime.store.given.values_mut() {
                             per.remove(name);
                         }
                     }
-                    run.runtime.store.set_given(object, name, value.clone());
+                    let now = run.runtime.store.now;
+                    let value = at_now(value, now);
+                    run.runtime.store.set_given(object, name, value);
                 }
             }
         }
@@ -871,6 +968,7 @@ fn play_host(run: &mut Run, host: &HostStep) -> Result<()> {
                 .ticks
                 .iter()
                 .flat_map(|t| t.effects.iter())
+                .filter(|e| !machinery(&run.runtime.store, &e.object))
                 .map(|e| e.object.clone())
                 .collect();
             let read_them_all = !written.is_empty()
@@ -1204,9 +1302,16 @@ fn play_direct(run: &mut Run, direct: &Direct, suite: &Suite) -> Result<()> {
                 .insert("reads_after_notify_by_host".into(), reads);
         }
         Direct::Projection { object, set, .. } => {
-            for (k, v) in set {
-                run.runtime.store.set_given(object, k, v.clone());
-            }
+            // A projection is written from the state it projects and is never
+            // read back as state (77, 132, 142). What drifts is the written
+            // view, so the drift is written there: the machinery finds the
+            // projection no longer as-of the state it projects, reports it and
+            // writes it again from the source.
+            let drift: Vec<String> = set
+                .iter()
+                .map(|(field, value)| format!("{object}\t{field}\t{value}"))
+                .collect();
+            run.runtime.store.drift_projection(&drift.join("\n"));
             run.observations.insert("drift_reported".into(), json!(true));
         }
         Direct::Board { issue, column, .. } => {
@@ -1256,6 +1361,17 @@ fn play_script(
         }
     }
     Ok(())
+}
+
+/// Whether an object is the machinery's own — the rail, a sink, a host, a
+/// lease — rather than the work a scenario is about. What a scenario counts as
+/// a write, closes over as an effect or proves a fresh host can read is the
+/// work's; the machinery ticks alongside it either way (D5, 167).
+pub fn machinery(store: &crate::store::Store, object: &str) -> bool {
+    match flywheel_atoms::Records::get(store, object) {
+        Ok(Some(held)) => flywheel_domain::leases::machinery(&held.machine),
+        _ => object == flywheel_domain::RAIL,
+    }
 }
 
 /// What phase 1's bound implementations provide. Nothing beyond the store

@@ -29,7 +29,7 @@ given:
       pane: true
       activity: working
       ticks_alive: 2
-    elaboration/rail-derivation/prototype/work/1:
+    elaboration/rail-derivation/prototype/standing/1:
       pane: true
       activity: idle
       idle_since: "2026-09-04T00:40:00Z"
@@ -56,7 +56,7 @@ given:
     unit/atlas/rail-tail/wi-1/verify/1:     [{after: 1t, exit: done}]
     unit/atlas/rail-tail/wi-2/build/1:      [{after: 6t, exit: done}]
     unit/atlas/rail-tail/wi-2/verify/1:     [{after: 1t, exit: done}]
-    elaboration/atlas-provider-limits/research/work/1: [{after: 3t, exit: done}]
+    elaboration/atlas-provider-limits/research/self-closing/1: [{after: 3t, exit: done}]
   objects:
     # ---- APPROVE
     - id: intent/atlas-provider-limits

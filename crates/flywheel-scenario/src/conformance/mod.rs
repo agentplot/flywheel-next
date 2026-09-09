@@ -357,6 +357,9 @@ pub struct Run {
     /// The store's write count when the first step began, so `writes:` counts
     /// what the steps did and not what seeding put in place.
     pub writes_at_start: u64,
+    /// The tail as a sink whose mark is the start of the run reads it, at each
+    /// step boundary. Derived like the decisions and stored nowhere (14, 15).
+    pub tail_after: Vec<Vec<flywheel_engine::runtime::TailEntry>>,
     /// The profile the run bound, which is the binding a scenario about
     /// bindings is asserted against (140).
     pub profile: &'static str,

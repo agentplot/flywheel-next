@@ -263,7 +263,19 @@ fn eval_response(pattern: &str, cx: &Ctx) -> Hold {
                 let _since = parts.next();
                 let kind = parts.next();
                 let obj = parts.next();
-                obj == Some(cx.object.id.as_str()) && kind.map(|k| kinds.iter().any(|x| x == k)).unwrap_or(false)
+                let Some(kind) = kind else { continue };
+                if !kinds.iter().any(|x| x == kind) {
+                    continue;
+                }
+                // The number may name a decision several objects fold into:
+                // one number, one answer, and it applies to every object
+                // folded under it (11).
+                obj == Some(cx.object.id.as_str())
+                    || obj
+                        .and_then(|id| cx.snap.objects.get(id))
+                        .is_some_and(|first| {
+                            crate::rail::folds_together(cx.defs, first, cx.object, kind)
+                        })
             }
             ResponseKind::Dictation => r.object.as_deref() == Some(cx.object.id.as_str()),
         };

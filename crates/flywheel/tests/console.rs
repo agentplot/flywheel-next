@@ -21,12 +21,15 @@ fn the_register_is_the_rail_record() {
     let mut store = Store::default();
     let mut register = Register::default();
     register.next_number = 412;
-    register.numbers.insert("lamp/1/lamp-off".into(), 412);
+    register.entries.insert(
+        "lamp/1/lamp-off".into(),
+        flywheel_engine::runtime::RegisterEntry { number: 412, ..Default::default() },
+    );
     console::set_register(&mut store, &register, &["lamp/1/lamp-off".into()]).unwrap();
 
     let read = console::register(&store).unwrap();
     assert_eq!(read.next_number, 412);
-    assert_eq!(read.numbers.get("lamp/1/lamp-off"), Some(&412));
+    assert_eq!(read.number_of("lamp/1/lamp-off"), Some(412));
 
     // And it is reachable through `get`, not through a field.
     let record = store.get(console::RAIL).unwrap().expect("the rail record");

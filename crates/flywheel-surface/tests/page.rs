@@ -93,12 +93,13 @@ fn rail_rendered_per_request() {
     );
     // Its number, from the register, and its answers as controls (15, 311).
     let numbered = page.with_store(|store| commands::register(store).expect("the register"));
-    let number = *numbered
-        .numbers
+    let number = numbered
+        .entries
         .iter()
         .find(|(id, _)| id.starts_with("bolt/atlas/plan-rows"))
         .expect("the register numbered it")
-        .1;
+        .1
+        .number;
     assert!(
         after.contains(&format!("data-number=\"{number}\"")),
         "the page shows the number the register gave"

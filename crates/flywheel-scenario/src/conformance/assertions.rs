@@ -109,7 +109,15 @@ pub fn check(scenario: &Scenario, run: &Run, suite: &Suite) -> Vec<Failure> {
         }
     }
     for object in &then.no_transitions {
-        if let Some(t) = taken.iter().find(|t| &t.object == object) {
+        // The object did not move: no region the scenario described left the
+        // state it described. A self-transition re-enters the state it is in,
+        // and a region the scenario said nothing about settles on the first
+        // ticks from wherever its machine starts it — neither is the object
+        // moving (D15).
+        let described = run.runtime.store.described.get(object).cloned().unwrap_or_default();
+        if let Some(t) = taken.iter().find(|t| {
+            &t.object == object && t.from != t.to && described.iter().any(|r| r == &t.region)
+        }) {
             failures.push(Failure {
                 clause: "no_transitions".into(),
                 step: None,
@@ -122,13 +130,17 @@ pub fn check(scenario: &Scenario, run: &Run, suite: &Suite) -> Vec<Failure> {
     // ---- effects by atom name, with a count; a repeat must not add
     let performed: Vec<&crate::runner::EffectRecord2> =
         run.ticks.iter().flat_map(|t| t.effects.iter()).collect();
-    // What a scenario counts is acts, not attempts: a retry the world refuses —
-    // a second start of a name the multiplexer already holds — is not a second
-    // act (72, `world::perform`).
+    // What a scenario counts is the acts the machinery performed, whether the
+    // world took them or refused them: a slow host's three `start_session`
+    // calls are three acts, of which the multiplexer refused two as a name it
+    // already held (72, 73, S6). A repeat whose write carries the identity it
+    // had is still an act — the write is the no-op, and the act runs (127,
+    // `contract/write-effect.yaml`). What is suppressed before it runs, by a
+    // proof that already holds, never reaches this list at all.
     let count_of = |name: &str, object: Option<&String>| -> usize {
         performed
             .iter()
-            .filter(|e| e.written && e.name == name && object.is_none_or(|o| &e.object == o))
+            .filter(|e| e.name == name && object.is_none_or(|o| &e.object == o))
             .count()
     };
     for want in &then.effects {
@@ -144,6 +156,30 @@ pub fn check(scenario: &Scenario, run: &Run, suite: &Suite) -> Vec<Failure> {
     }
     if then.effects_closed {
         for e in &performed {
+            // The machinery's own acts — the rail numbering, the projection
+            // rewritten — are not what a scenario closes over unless it names
+            // one; the count above counts them by name wherever it does.
+            if crate::conformance::drive::machinery(&run.runtime.store, &e.object) {
+                continue;
+            }
+            // Nor is the settling of a region the scenario said nothing about:
+            // it starts where its machine starts it and reaches the state the
+            // world it was seeded in implies, which is the described state
+            // arriving rather than the run doing something (D15).
+            let region = e
+                .effect_id
+                .strip_prefix(&format!("{}/", e.object))
+                .and_then(|rest| rest.split('/').next())
+                .unwrap_or_default();
+            let described = run
+                .runtime
+                .store
+                .described
+                .get(&e.object)
+                .is_some_and(|paths| paths.iter().any(|path| path == region));
+            if !described {
+                continue;
+            }
             if !then.effects.iter().any(|w| w.r#do == e.name) {
                 failures.push(Failure {
                     clause: "effects_closed".into(),
@@ -208,8 +244,46 @@ pub fn check(scenario: &Scenario, run: &Run, suite: &Suite) -> Vec<Failure> {
                 });
             }
         }
+        // The tail at this boundary, as a sink whose mark is the start of the
+        // run reads it: what reached done, landed, closed or dropped (14).
+        if !want.tail.is_empty() {
+            let at = want.after_step.unwrap_or(run.tail_after.len());
+            let tail = run.tail_after.get(at.saturating_sub(1)).cloned().unwrap_or_default();
+            for expected in &want.tail {
+                let hit = tail.iter().any(|entry| match expected {
+                    Value::String(kind) => &entry.kind == kind,
+                    Value::Object(fields) => fields.iter().all(|(name, value)| match name.as_str() {
+                        "kind" => value.as_str() == Some(entry.kind.as_str()),
+                        "object" => value.as_str() == Some(entry.object.as_str()),
+                        "state" => value.as_str() == Some(entry.state.as_str()),
+                        "by" => value.as_str() == entry.by.as_deref(),
+                        _ => false,
+                    }),
+                    _ => false,
+                });
+                if !hit {
+                    failures.push(Failure {
+                        clause: "decisions".into(),
+                        step: label,
+                        expected: format!("the tail carries {expected}"),
+                        actual: format!(
+                            "the tail: {:?}",
+                            tail.iter().map(|e| (e.object.as_str(), e.kind.as_str())).collect::<Vec<_>>()
+                        ),
+                    });
+                }
+            }
+        }
         for (id, number) in &want.numbers {
-            let got = standing.iter().find(|d| &d.id == id).and_then(|d| d.number);
+            // A scenario names a decision the way `given.register` does —
+            // `<object>/<kind>` — and the register's own key carries the point
+            // its state was entered as well (15).
+            let got = standing
+                .iter()
+                .find(|d| {
+                    &d.id == id || &crate::runner::Runtime::decision_name(&d.object, &d.kind) == id
+                })
+                .and_then(|d| d.number);
             if got != Some(*number) {
                 failures.push(Failure {
                     clause: "decisions".into(),
@@ -305,7 +379,10 @@ pub fn check(scenario: &Scenario, run: &Run, suite: &Suite) -> Vec<Failure> {
             // Every write the steps made, over what seeding left behind: a
             // read writes nothing, and a tick that moved nothing writes
             // nothing (78, 126).
-            "total" => json!(run.runtime.store.writes.saturating_sub(run.writes_at_start)),
+            // Writes of the work. The register and the projection are the
+            // machinery's own record of what it did, written on the same line
+            // and counted separately (D5, 167).
+            "total" => json!(run.runtime.store.work_writes.saturating_sub(run.writes_at_start)),
             _ => Value::Null,
         };
         if &got != want {
@@ -534,8 +611,20 @@ pub fn observe(run: &Run, key: &str) -> Option<Value> {
         return Some(v.clone());
     }
     let store = &run.runtime.store;
-    let effects: Vec<&crate::runner::EffectRecord2> =
-        run.ticks.iter().flat_map(|t| t.effects.iter()).collect();
+    // The machinery's own acts — the rail's projection, a sink's delivery —
+    // are not what a contract scenario counts: it counts the work's (D5, 167).
+    let effects: Vec<&crate::runner::EffectRecord2> = run
+        .ticks
+        .iter()
+        .flat_map(|t| t.effects.iter())
+        .filter(|e| {
+            !store
+                .objects
+                .get(&e.object)
+                .map(|o| flywheel_domain::leases::machinery(&o.machine))
+                .unwrap_or_else(|| e.object == flywheel_domain::RAIL)
+        })
+        .collect();
     Some(match key {
         // Every act carries the identity of the effect it performs; a repeat
         // carries the same one and is not a second write (127, 167).
@@ -692,7 +781,10 @@ pub fn observe(run: &Run, key: &str) -> Option<Value> {
         }
         "read_as_of_named" => json!(true),
         "two_reads_equal" => json!(true),
-        "engine_reads_only" => json!(true),
+        // What the engine asked the store for while it was deciding: the
+        // record operations it served in that window and no other (136).
+        "engine_reads_only" => json!(store.deciding.operations()),
+        "projection_rewritten_from_source" => json!(store.projection_rewritten_from_source()?),
         "renderings_stored" => json!(0),
         "sessions_running_at_end" => json!(store
             .world
@@ -762,6 +854,46 @@ pub fn observe(run: &Run, key: &str) -> Option<Value> {
                     .as_ref()
                     .is_some_and(|p| store.objects.get(p).is_some_and(|c| c.machine == "capture"))))
         }
+        // The record points at the document and never holds what is in it
+        // (62): no field of any object carries the file's own text.
+        "finding_record_holds_text" => {
+            let bodies: Vec<&String> = store.world.files.values().filter(|b| !b.is_empty()).collect();
+            json!(store.objects.values().any(|o| o.record.values().any(|v| {
+                v.as_str()
+                    .is_some_and(|text| bodies.iter().any(|body| body.as_str() == text))
+            })))
+        }
+        // A session that offered a finding keeps working: nothing the offer
+        // caused reaches back into it (13, 58, 71, I5). A session is
+        // interrupted where its pane went or its activity stopped without the
+        // session itself reporting an exit.
+        "session_interrupted" => json!(store
+            .world
+            .sessions
+            .values()
+            .any(|s| s.exit.is_none() && (!s.pane || s.activity == "none"))),
+        // How many distinct session names the machinery started, and how many
+        // starts the multiplexer refused as a name it already held (72).
+        "distinct_session_names_started" => {
+            let mut names: Vec<&str> = run
+                .ticks
+                .iter()
+                .flat_map(|t| t.effects.iter())
+                .filter(|e| e.name == "start_session" && e.written)
+                .map(|e| e.object.as_str())
+                .collect();
+            names.sort();
+            names.dedup();
+            json!(names.len())
+        }
+        "multiplexer_refused_duplicates" => json!(store.duplicate_starts),
+        // What the run reported as failed (79). The report effect carries a
+        // failure to attention; a slow start is not one.
+        "reported_failed" => json!(run
+            .ticks
+            .iter()
+            .flat_map(|t| t.effects.iter())
+            .any(|e| e.name == "report")),
         "exit_written_through_command" => json!(!store.threads.is_empty()),
         "state_read_from_place_disk" => json!(0),
         _ => return None,

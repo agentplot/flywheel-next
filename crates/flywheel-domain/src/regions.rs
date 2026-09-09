@@ -171,14 +171,12 @@ fn session_key_in(
     region: &str,
 ) -> String {
     // Where no stage names the session, the type does (`session.yaml` id,
-    // `<owner id>/<stage or type>/<attempt>`). The operator's own session runs
-    // the type its machine fixes and records it, so its sessions are named
-    // under that; an object whose sessions sit in its own regions rather than
-    // in a type's keeps the stem those regions give them.
-    let kind = match object.machine.as_str() {
-        "operator-session" => object.record.get("type").and_then(|v| v.as_str()),
-        _ => None,
-    };
+    // `<owner id>/<stage or type>/<attempt>`): an elaboration's sessions sit
+    // in its type's regions, and the operator's own session runs the type its
+    // machine fixes and records. An object with no type of its own is named by
+    // the agent its session sub-machine gives, and failing that by the region
+    // the session sits in.
+    let kind = object.record.get("type").and_then(|v| v.as_str());
     let agent = defs.and_then(|defs| agent_of(defs, object, region));
     session_id(
         &session_stem_with(&object.id, region, kind, agent.as_deref()),
