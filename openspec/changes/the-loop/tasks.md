@@ -87,7 +87,7 @@ or a command.
 - [x] 6.3 Raise and clear the uncovered attention decision; verify `flywheel scenario run conformance/scenarios/X05.yaml` (149, 150)
 - [x] 6.4 Implement the intermittent host's away window — away with since-when, leases standing, stall clocks paused, no attention line, takeover raised only when work waits or the long bound passes; verify `cargo test -p flywheel away_raises_no_attention` and `away_with_work_waiting_raises_takeover` (150a)
 - [x] 6.5 Implement takeover: a fresh attempt on the taking host, the returning host ending its own session and reporting; verify `cargo test -p flywheel takeover_starts_attempt_two` — S13 is run at 11.2 with two processes
-- [ ] 6.6 Implement the per-host session bound with the stated waiting order and the dependency gate; verify `flywheel scenario run conformance/scenarios/S29.yaml` (31, 32, 38)
+- [x] 6.6 Implement the per-host session bound with the stated waiting order and the dependency gate; verify `flywheel scenario run conformance/scenarios/S29.yaml` (31, 32, 38)
 - [x] 6.7 Add `flywheel-workspace-recorded` implementing `Workspace` by writing the evidence each proof reads; verify `cargo test -p flywheel-workspace-recorded place_advances_without_a_repository` (93a, D8)
 - [x] 6.8 Select the `World`, `Workspace` and `Sessions` implementations from the manifest and record all three in the run record; verify `cargo test -p flywheel bindings_named_in_run_record` (93a, 139)
 - [x] 6.9 Add `flywheel-sessions-operator`: `start_session` records the session with its place and work order and starts no agent, and the rail and status view show it as the operator's to run; verify `cargo test -p flywheel-sessions-operator no_agent_started` (93b, 89)

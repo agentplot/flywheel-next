@@ -35,6 +35,26 @@ pub struct Runtime {
     pub interrupted: bool,
 }
 
+/// The regions a guard reads: the ones it names, and whether it reads the
+/// submachine running inside the state through `final:`.
+fn regions_read(guard: &flywheel_engine::defs::Guard) -> (Vec<String>, bool) {
+    use flywheel_engine::defs::Guard;
+    let mut named = Vec::new();
+    let mut reads_final = false;
+    fn walk(guard: &Guard, named: &mut Vec<String>, reads_final: &mut bool) {
+        match guard {
+            Guard::Region { region } => named.push(region.name.clone()),
+            Guard::Final { .. } => *reads_final = true,
+            Guard::All { all } => all.iter().for_each(|g| walk(g, named, reads_final)),
+            Guard::Any { any } => any.iter().for_each(|g| walk(g, named, reads_final)),
+            Guard::Not { not } => walk(not, named, reads_final),
+            _ => {}
+        }
+    }
+    walk(guard, &mut named, &mut reads_final);
+    (named, reads_final)
+}
+
 /// The response name a guard is driven by, wherever it sits in the algebra.
 fn response_of(guard: &flywheel_engine::defs::Guard) -> Option<String> {
     use flywheel_engine::defs::Guard;
@@ -510,6 +530,48 @@ impl Runtime {
         }
     }
 
+    /// Whether this transition is guarded on a region of the same object that
+    /// moved earlier in this tick — a sibling, the parent, or a child through a
+    /// `final:` guard. Such a move is the next tick's to read.
+    fn reads_a_region_that_moved(&self, id: &str, fired: &tick::Fired, moved: &[String]) -> bool {
+        if moved.is_empty() {
+            return false;
+        }
+        let Ok(Some(object)) = self.store.get(id) else {
+            return false;
+        };
+        let mut probe = object.clone();
+        probe.config.insert(fired.region.clone(), fired.from.clone());
+        let Some((_region, state)) = tick::state_def(&self.defs, &probe, &fired.region) else {
+            return false;
+        };
+        // The regions of this object that moved earlier in this tick.
+        let moved_here: Vec<&str> = moved
+            .iter()
+            .filter_map(|m| m.split_once('#'))
+            .filter(|(object, _)| *object == id)
+            .map(|(_, region)| region)
+            .collect();
+        for transition in &state.transitions {
+            if transition.to != fired.to {
+                continue;
+            }
+            // A `final:` guard is the state's own submachine concluding, not a
+            // region of the object beside it; it is read in the tick it
+            // happens, which is what S29 and S01 both count on.
+            let (named, _reads_final) = regions_read(&transition.when);
+            for name in &named {
+                if moved_here
+                    .iter()
+                    .any(|region| *region == name || region.ends_with(&format!(".{name}")))
+                {
+                    return true;
+                }
+            }
+        }
+        false
+    }
+
     /// Whether the lease machine says this host holds the object. The
     /// machinery's own objects have no lease and are always its to write.
     fn holding(&self, id: &str) -> bool {
@@ -558,6 +620,12 @@ impl Runtime {
                 }
                 here.push(f);
             }
+            // Every guard in one tick of an object reads the state taken
+            // before the region loop: a region's move this tick is visible to
+            // its siblings, its parent and its children on the object's next
+            // tick and never within the same one (model.md, the tick). A
+            // scenario expecting two dependent moves expects two ticks.
+            here.retain(|f| !self.reads_a_region_that_moved(&id, f, moved));
             if here.is_empty() {
                 continue;
             }
