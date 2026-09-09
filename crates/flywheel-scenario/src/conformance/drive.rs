@@ -67,10 +67,14 @@ pub fn play(
     let mut rt = seed(defs, scenario, suite)?;
     rt.store.tick_seconds = options.interval.num_seconds();
 
+    // One directory per run, not per scenario: two runs of one scenario at
+    // once — the suite and a test of it — must not share a working tree.
+    static RUNS: std::sync::atomic::AtomicU64 = std::sync::atomic::AtomicU64::new(0);
     let places = std::env::temp_dir().join(format!(
-        "flywheel-run-{}-{}",
+        "flywheel-run-{}-{}-{}",
         scenario.scenario.replace('/', "-"),
-        std::process::id()
+        std::process::id(),
+        RUNS.fetch_add(1, std::sync::atomic::Ordering::Relaxed)
     ));
     // `--profile git-only` binds the record operations to a state repository:
     // one bare repository with no network, and a checkout per host, so the
@@ -120,6 +124,53 @@ pub fn play(
     // behind is not a fact about the store (126, 165).
     run.runtime.fetch();
     take_reading(&mut run);
+    // The status projection as a reader with no host running finds it: the
+    // committed file on the shared line, read before the run's own directories
+    // go (145, 160, 167, S20). On a profile that keeps no files it is the body
+    // the projection wrote, which the trace carries (stand-in.yaml status).
+    let committed = match run.runtime.store.durable() {
+        Some(durable) => durable.lock().ok().and_then(|mut held| {
+            let _ = held.fetch();
+            held.committed_status().ok().flatten()
+        }),
+        None => Some(run.runtime.store.status_body.clone()).filter(|b| !b.is_empty()),
+    };
+    if let Some(body) = committed {
+        // The grouping and the holders as the view shows them, read from the
+        // same state the engine reads (132, 141, 143, 146).
+        if let Ok(status) = flywheel_domain::status::read(
+            &run.runtime.store,
+            &run.runtime.defs,
+            &flywheel_atoms::ReadPoint {
+                mark: format!("write {}", run.runtime.store.writes),
+                seq: run.runtime.store.writes,
+                at: run.runtime.store.now,
+            },
+            run.runtime.store.now,
+            chrono::Duration::minutes(5),
+            chrono::Duration::minutes(30),
+        ) {
+            let mut groups = serde_json::Map::new();
+            for group in flywheel_domain::status::GROUPS {
+                let objects = status.group(group);
+                if objects.is_empty() {
+                    continue;
+                }
+                groups.insert(group.to_string(), json!(objects));
+            }
+            run.observations
+                .insert("status_groups".into(), Value::Object(groups));
+            run.observations.insert(
+                "status_holder_shown".into(),
+                json!(status.rows.iter().all(|row| body.contains(&format!(
+                    "data-holder=\"{}\"",
+                    row.holder.as_deref().unwrap_or("none")
+                )))),
+            );
+        }
+        run.observations
+            .insert("status_written".into(), json!(body));
+    }
     let _ = std::fs::remove_dir_all(&places);
     Ok(run)
 }

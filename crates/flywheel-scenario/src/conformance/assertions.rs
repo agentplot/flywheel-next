@@ -357,11 +357,47 @@ pub fn check(scenario: &Scenario, run: &Run, suite: &Suite) -> Vec<Failure> {
 
     // ---- status
     if !then.status.is_empty() {
-        let view = run.runtime.store.status_view();
+        let store = &run.runtime.store;
+        // What `render_status` wrote, read back the way a reader with no host
+        // running reads it: the committed file where the profile keeps files,
+        // the trace where it does not (145, S20, stand-in.yaml status).
+        // What a reader with no host running found, read at the end of the run
+        // from the shared line (145, 160, 167).
+        let written = run
+            .observations
+            .get("status_written")
+            .and_then(|v| v.as_str())
+            .map(String::from);
         for (key, want) in &then.status {
             let got = match key.as_str() {
-                "as_of" => json!(view.as_of.mark),
-                "readable_with_no_host" => json!(true),
+                "as_of" => json!(store.status_as_of),
+                // Readable with no host: the projection stands where the
+                // profile keeps it, written before the last host stopped.
+                "readable_with_no_host" => json!(written.is_some()),
+                // Every object grouped, by the four groups of 141.
+                "groups" => run
+                    .observations
+                    .get("status_groups")
+                    .cloned()
+                    .unwrap_or(Value::Null),
+                // Its holder, and that host's liveness, on every row (143, 146).
+                "holder_shown" => run
+                    .observations
+                    .get("status_holder_shown")
+                    .cloned()
+                    .unwrap_or(Value::Null),
+                // It says the commit and time it is as of (145).
+                "as_of_stated" => written
+                    .as_ref()
+                    .map(|body| json!(body.contains("as of commit")))
+                    .unwrap_or(Value::Null),
+                // And that point is the last write that landed (167).
+                "as_of_is_last_write" => json!(store.status_as_of >= store.newest_seq()),
+                // Where a reader with no host running finds it.
+                "source" => match store.durable().is_some() {
+                    true => json!("status.html on main"),
+                    false => json!("the trace"),
+                },
                 _ => Value::Null,
             };
             if &got != want {

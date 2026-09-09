@@ -78,12 +78,13 @@ impl Store {
         record.insert("next".into(), serde_json::json!(self.register.next_number));
         record.insert("numbers".into(), serde_json::json!(self.register.numbers));
         record.insert("standing".into(), serde_json::json!(self.standing));
+        record.insert("status_as_of".into(), serde_json::json!(self.status_as_of));
         Object {
             id: RAIL.to_string(),
             machine: "rail".into(),
             parent: None,
-            config: Default::default(),
-            entered_at: Default::default(),
+            config: self.rail_config.clone(),
+            entered_at: self.rail_entered.clone(),
             record,
             counters: Default::default(),
             applied_responses: vec![],
@@ -94,6 +95,8 @@ impl Store {
 
     /// Take a written rail record back into the register it projects.
     fn set_rail_record(&mut self, record: &Object) {
+        self.rail_config = record.config.clone();
+        self.rail_entered = record.entered_at.clone();
         if let Some(n) = record.record.get("next").and_then(|v| v.as_u64()) {
             self.register.next_number = n as u32;
         }

@@ -158,6 +158,8 @@ impl Runtime {
         let mut objects = self.store.objects.clone();
         let now = self.store.now;
         let _ = flywheel_domain::leases::attach(&self.store, &mut objects, now);
+        let defs = self.defs.clone();
+        let _ = flywheel_domain::rail::attach(&self.store, &defs, &mut objects, now);
         if !self.store.register_aliases.is_empty() {
             let standing = rail::derive(&self.defs, &objects, &mut self.store.register.clone());
             for d in &standing {
@@ -288,6 +290,10 @@ impl Runtime {
         let mut record = TickRecord { tick: self.store.tick, at: self.store.now, ..Default::default() };
         self.perform(&objects, &fired, &mut record, moved);
         self.reperform_unproved(&mut record);
+        // The projection is rewritten from its source whenever what it projects
+        // moved, and stored nowhere else (77, 132, 142, D12).
+        let defs = self.defs.clone();
+        self.store.write_status(&defs);
         record.decisions = self
             .decisions()
             .iter()
@@ -321,6 +327,10 @@ impl Runtime {
             self.perform(&objects, &fired, &mut record, &mut Vec::new());
         }
         self.reperform_unproved(&mut record);
+        // The projection is rewritten from its source whenever what it projects
+        // moved, and stored nowhere else (77, 132, 142, D12).
+        let defs = self.defs.clone();
+        self.store.write_status(&defs);
         record.decisions = self
             .decisions()
             .iter()
@@ -362,7 +372,10 @@ impl Runtime {
         // Fetch first, so no host decides on a read older than the bound (165,
         // D7), and read the operator's own commits out of what came back.
         self.fetch();
-        console::objects(&self.store, &Scope::All).unwrap_or_default()
+        let mut objects = console::objects(&self.store, &Scope::All).unwrap_or_default();
+        let at = self.store.now;
+        let _ = flywheel_domain::rail::attach(&self.store, &self.defs, &mut objects, at);
+        objects
     }
 
     /// Read the store again, and read out of what came back anything a person

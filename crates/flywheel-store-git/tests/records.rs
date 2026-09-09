@@ -351,3 +351,23 @@ fn the_operators_own_commit_is_read_from_the_fetch() {
         "every host derives the same delivery id from the same fetch"
     );
 }
+
+/// The status projection is committed on the shared line and read back from it
+/// with no host running (132, 145, S20).
+#[test]
+fn status_is_committed_on_the_shared_line() {
+    let sandbox = Sandbox::new("status");
+    let mut store = sandbox.host("mac-mini");
+    assert_eq!(store.committed_status().unwrap(), None);
+    store.commit_status("<html>as of commit x</html>").unwrap();
+    assert_eq!(
+        store.committed_status().unwrap().as_deref(),
+        Some("<html>as of commit x</html>")
+    );
+    // A reader with no host running clones and reads the file (160, 167).
+    let reader = sandbox.host("phone");
+    assert_eq!(
+        reader.committed_status().unwrap().as_deref(),
+        Some("<html>as of commit x</html>")
+    );
+}

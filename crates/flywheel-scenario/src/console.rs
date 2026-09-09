@@ -104,7 +104,9 @@ pub fn now(store: &impl StateStore) -> Result<DateTime<Utc>> {
 /// The standing decisions, numbered. Read through `list`, numbered through the
 /// rail record, written back through it (15, 131).
 pub fn rail<S: StateStore>(store: &mut S, defs: &Definitions) -> Result<Vec<DecisionInstance>> {
-    let objects = objects(store, &Scope::All)?;
+    let mut objects = objects(store, &Scope::All)?;
+    let at = now(store)?;
+    flywheel_domain::rail::attach(store, defs, &mut objects, at)?;
     let mut register = register(store)?;
     let decisions = rail::derive(defs, &objects, &mut register);
     let standing: Vec<String> = decisions.iter().map(|d| d.id.clone()).collect();
@@ -316,7 +318,9 @@ where
     N: FnMut(&mut S, &tick::Fired, Vec<flywheel_engine::runtime::TailEntry>),
 {
     let at = now(store)?;
-    let objects = objects(store, scope)?;
+    let mut objects = objects(store, scope)?;
+    // The rail is an object of the instance, made from its own record (148).
+    flywheel_domain::rail::attach(store, defs, &mut objects, at)?;
     let responses: Vec<Response> = store.responses(RAIL).unwrap_or_default();
     let register = register(store)?;
 

@@ -541,3 +541,32 @@ fn a_scenario_that_does_not_apply_is_not_a_skip() {
     assert!(!scenario.runs_on(options.profile.name()));
     assert!(scenario.runs_on("stand-in"));
 }
+
+// ---- 6.3, 6.6, 6.17, 6.18: the group's own acceptance, in the gate
+
+/// The scenarios group 6 admits, on the profile each names. `status.yaml` and
+/// S20 run on the git-only profile because what they assert is the committed
+/// file a reader with no host running finds (D12, 145, S20).
+#[test]
+fn the_host_loops_acceptance_scenarios_pass() {
+    for (path, profile) in [
+        ("scenarios/X05.yaml", conformance::Profile::StandIn),
+        ("contract/status.yaml", conformance::Profile::GitOnly),
+        ("scenarios/S20.yaml", conformance::Profile::GitOnly),
+    ] {
+        let options = RunOptions {
+            definitions: Some(root().join("definitions")),
+            profile,
+            ..Default::default()
+        };
+        let outcome = conformance::run_one(&conformance_dir().join(path), &options);
+        assert_eq!(
+            outcome.status,
+            Status::Passed,
+            "{path} failed ({:?}, {:?}):\n{}",
+            outcome.status,
+            outcome.reason,
+            outcome.failures.join("\n")
+        );
+    }
+}

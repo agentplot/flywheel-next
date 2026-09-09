@@ -138,6 +138,10 @@ pub fn perform(defs: &Definitions, store: &mut Store, object: &str, region: &str
                 match ep { Some(e) => { o.record.insert("endpoint".into(), json!(e)); } None => { o.record.remove("endpoint"); } }
             }
         }
+        // The status projection, written from `list` and `get` alone and
+        // stating the point it is as of (132, 145, D12). It is the rail's own
+        // effect, and the tick writes it again whenever what it projects moved.
+        "render_status" => store.write_status(defs),
         "record_exit" => {
             if let Some(s) = store.world.sessions.get(&skey) {
                 if let Some(q) = &s.question { let q = q.clone(); if let Some(o) = store.objects.get_mut(object) { o.record.insert("question".into(), json!(q)); } }

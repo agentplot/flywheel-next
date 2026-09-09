@@ -98,8 +98,8 @@ or a command.
 - [x] 6.14 Record every refusal with the identity, the operation and the object, and surface it under attention; verify `cargo test -p flywheel refusal_reaches_attention` (4, 79, 81)
 - [x] 6.15 Derive the status view from `list` and `read` alone: every object grouped by queued, in progress, waiting on the operator and done, with its holder, its runner and that host's liveness, one place for the instance; verify `cargo test -p flywheel status_view_groups_every_object` (141, 143, 146)
 - [x] 6.16 Keep a question, an answer and a note on the object and show them under it on the status view; verify `cargo test -p flywheel discussion_stays_with_the_object` reading them back after the session is gone (144)
-- [ ] 6.17 Implement `render_status` as an effect of the rail object, committing the status file on the shared line with its as-of commit and time, written only by the rail's lease holder; verify `flywheel scenario run --profile git-only conformance/contract/status.yaml` (D12, 132, 145, 148)
-- [ ] 6.18 Verify S20: `flywheel scenario run --profile git-only conformance/scenarios/S20.yaml` — the committed file is readable from the state repository alone and its as-of commit is the last that landed
+- [x] 6.17 Implement `render_status` as an effect of the rail object, committing the status file on the shared line with its as-of commit and time, written only by the rail's lease holder; verify `flywheel scenario run --profile git-only conformance/contract/status.yaml` (D12, 132, 145, 148)
+- [x] 6.18 Verify S20: `flywheel scenario run --profile git-only conformance/scenarios/S20.yaml` — the committed file is readable from the state repository alone and its as-of commit is the last that landed
 - [x] 6.19 Rewrite a drifting projection from its source on the next tick and report both values; verify `cargo test -p flywheel drift_rewritten_and_reported` (77, 142)
 
 ## 7. The tool catalogue and the page

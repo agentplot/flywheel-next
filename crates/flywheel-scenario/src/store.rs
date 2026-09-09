@@ -148,6 +148,22 @@ pub struct Store {
     /// session under one name (72, 111).
     #[serde(default)]
     pub duplicate_starts: usize,
+    /// The rail object's own state and the point it entered it: the register
+    /// lives in the record, the machine's states here (148).
+    #[serde(default)]
+    pub rail_config: BTreeMap<String, String>,
+    #[serde(default)]
+    pub rail_entered: BTreeMap<String, DateTime<Utc>>,
+    /// The status projection `render_status` wrote, and the write sequence it
+    /// is as of (132, 145).
+    #[serde(default)]
+    pub status_body: String,
+    #[serde(default)]
+    pub status_as_of: u64,
+    /// Whether the projection was committed where a reader with no host can
+    /// find it (`git-only.yaml` status, S20).
+    #[serde(default)]
+    pub status_committed: bool,
     /// The most sessions this host had running at once; never above its bound
     /// (31, 32, 149). Kept with the store, so a restart does not forget it.
     #[serde(default)]
@@ -228,6 +244,11 @@ impl Default for Store {
             acting_host: None,
             disconnected: vec![],
             duplicate_starts: 0,
+            rail_config: BTreeMap::new(),
+            rail_entered: BTreeMap::new(),
+            status_body: String::new(),
+            status_as_of: 0,
+            status_committed: false,
             sessions_running_max: 0,
             merge_order: vec![],
             declarations: BTreeMap::new(),
@@ -417,7 +438,11 @@ impl Store {
             "elaboration.kept_since" => obj.and_then(|o| o.record.get("kept_at").cloned()).filter(|v| !v.is_null())?,
             "elaboration.type" => obj.and_then(|o| o.record.get("type").cloned())?,
             // ---- engine machines
-            "rail.unnumbered" | "rail.status_current" | "sink.due" | "host.stray_places" => json!(name == "rail.status_current"),
+            "rail.unnumbered" | "sink.due" | "host.stray_places" => json!(false),
+            // The projection's as-of equals the newest seq across `list(all)`,
+            // or it is stale and is rewritten from its source on this tick
+            // (77, 142, `record-derived.yaml` rail.status_current).
+            "rail.status_current" => json!(!self.status_body.is_empty() && self.status_as_of >= self.newest_seq()),
             "host.last_seen" => obj.and_then(|o| o.record.get("last_seen").cloned())?,
             "lease.holder" => return None,
             "response.applied" => {
@@ -481,6 +506,48 @@ impl Store {
             return true;
         };
         self.declarations.values().any(|d| d.covers(held))
+    }
+
+    /// The newest sequence across the objects: what a projection of them is as
+    /// of (`record-derived.yaml` rail.status_current).
+    pub fn newest_seq(&self) -> u64 {
+        self.objects.values().map(|o| o.seq).max().unwrap_or(0)
+    }
+
+    /// Write the status projection from `list` and `get` alone, stating the
+    /// point it is as of (132, 145). Where the profile keeps files it is
+    /// committed on the shared line, so the operator reads it with no host
+    /// running (S20, `git-only.yaml` status); on the stand-in the trace holds
+    /// it. `render_status` is this, and so is the end of every tick: a
+    /// projection is rewritten from its source and is never itself the truth
+    /// (77, 142).
+    pub fn write_status(&mut self, defs: &flywheel_engine::Definitions) {
+        let as_of = flywheel_atoms::ReadPoint {
+            mark: self
+                .durable()
+                .and_then(|d| d.lock().ok().map(|held| held.fetched.clone()))
+                .unwrap_or_else(|| format!("write {}", self.writes)),
+            seq: self.writes,
+            at: self.now,
+        };
+        let Ok(status) = flywheel_domain::status::read(
+            self,
+            defs,
+            &as_of,
+            self.now,
+            Duration::minutes(5),
+            Duration::minutes(30),
+        ) else {
+            return;
+        };
+        let view = flywheel_domain::status::render(&status);
+        self.status_body = view.body.clone();
+        self.status_as_of = self.newest_seq();
+        if let Some(durable) = self.durable() {
+            if let Ok(mut held) = durable.lock() {
+                self.status_committed = held.commit_status(&view.body).is_ok();
+            }
+        }
     }
 
     /// Advance every started session's script by one tick.

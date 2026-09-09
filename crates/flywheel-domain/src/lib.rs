@@ -9,6 +9,7 @@ pub mod set;
 pub mod status;
 pub mod derived;
 pub mod leases;
+pub mod rail;
 pub mod records;
 pub mod regions;
 

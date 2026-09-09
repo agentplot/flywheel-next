@@ -62,6 +62,7 @@ pub fn group_of(defs: &Definitions, object: &Object, held: bool, working: bool) 
     let mut any = false;
     let mut all_final = true;
     let mut decides = false;
+    let mut done = false;
     if let Some(machine) = machine {
         for (name, region) in &machine.regions {
             let Some(state) = object.config.get(name).and_then(|s| region.states.get(s)) else {
@@ -74,6 +75,15 @@ pub fn group_of(defs: &Definitions, object: &Object, held: bool, working: bool) 
             if state.decision.is_some() {
                 decides = true;
             }
+            // What the state puts on the SINCE list says what became of the
+            // object: done, merged, landed or dropped is finished work (14).
+            if state
+                .tail
+                .as_deref()
+                .is_some_and(|t| matches!(t, "done" | "merged" | "landed" | "dropped"))
+            {
+                done = true;
+            }
         }
         // A decision raised in a nested region is the operator's too.
         for (path, name) in &object.config {
@@ -85,7 +95,7 @@ pub fn group_of(defs: &Definitions, object: &Object, held: bool, working: bool) 
             }
         }
     }
-    if any && all_final {
+    if any && (all_final || done) {
         return "done".into();
     }
     if decides {
@@ -146,9 +156,11 @@ pub fn read<S: Records>(
 
     let mut rows = Vec::new();
     for object in &objects {
-        // The facts the recorded bindings keep are the workings of the view,
-        // not objects a person is shown.
-        if object.machine == "fact" {
+        // The status view is of the work. The machinery's own objects — the
+        // rail, the sinks, the hosts, the leases and the bindings' facts — are
+        // not what a person came to it for; the hosts have a surface of their
+        // own (239, 240).
+        if !crate::leases::leasable(object) {
             continue;
         }
         let lease = store.leases(&object.id)?;

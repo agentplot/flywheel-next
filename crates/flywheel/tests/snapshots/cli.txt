@@ -38,7 +38,7 @@ DECISIONS · 2026-09-04 14:40 · tick 0 · 9 decisions
         landed   bolt/switchboard/idle-timeout            13:52
 
 $ flywheel tick 1
-8 transitions
+9 transitions
 DECISIONS · 2026-09-04 14:41 · tick 1 · 12 decisions
   APPROVE
      412  intent-proposed        intent/atlas-provider-limits             → yes · drop · split
@@ -63,8 +63,8 @@ DECISIONS · 2026-09-04 14:41 · tick 1 · 12 decisions
         landed   bolt/switchboard/idle-timeout            13:52
 
 $ flywheel respond 412 yes
-18 transitions
-DECISIONS · 2026-09-04 14:57 · tick 17 · 11 decisions
+31 transitions
+DECISIONS · 2026-09-04 14:58 · tick 18 · 11 decisions
   APPROVE
      413  elaboration-proposed   elaboration/atlas-provider-limits/research → yes · drop · type <name> · pick <intents> · <intent>: drop
      414  elaboration-proposed   elaboration/atlas-provider-limits/prototype → yes · drop · type <name> · pick <intents> · <intent>: drop
@@ -90,7 +90,7 @@ DECISIONS · 2026-09-04 14:57 · tick 17 · 11 decisions
 
 $ flywheel dictate bolt/atlas/plan-rows land and follow
 3 transitions
-DECISIONS · 2026-09-04 15:00 · tick 20 · 11 decisions
+DECISIONS · 2026-09-04 15:01 · tick 21 · 11 decisions
   APPROVE
      413  elaboration-proposed   elaboration/atlas-provider-limits/research → yes · drop · type <name> · pick <intents> · <intent>: drop
      414  elaboration-proposed   elaboration/atlas-provider-limits/prototype → yes · drop · type <name> · pick <intents> · <intent>: drop
@@ -115,16 +115,16 @@ DECISIONS · 2026-09-04 15:00 · tick 20 · 11 decisions
         landed   bolt/switchboard/idle-timeout            13:52
 
 $ flywheel log 12
-t12   transition unit/atlas/rail-tail/wi-2                place.place.life: merging → merging
-t12   effect     unit/atlas/rail-tail/wi-2                merge_place
-t13   transition unit/atlas/rail-tail/wi-2                place.place.life: merging → merged
-t14   transition unit/atlas/rail-tail/wi-2                place.place.life: merged → removing
 t15   transition unit/atlas/rail-tail/wi-2                place.place.life: removing → removed
+t16   transition rail                                     status: current → current
+t16   effect     rail                                     render_status — the status view from list and read, stating the as-of point (145); with it the artifact views behind every object (213) and the flywheel instrument (214), both projections of the same read
 t16   transition unit/atlas/rail-tail/wi-2                life: merging → merged
-t17   create     response/page-2                          response created
-t17   dictation  bolt/atlas/plan-rows                     land and follow
-t18   transition bolt/atlas/plan-rows                     life.open.citations: moved → current
-t18   effect     bolt/atlas/plan-rows                     record_citation_choice — the bolt proceeds on the version it cites; the ledger cell is stale, so planning follows
-t19   transition bolt/atlas/plan-rows                     life.open.citations: current → moved
-t19   transition response/page-2                          life: given → applied
+t17   transition rail                                     status: current → current
+t17   effect     rail                                     render_status — the status view from list and read, stating the as-of point (145); with it the artifact views behind every object (213) and the flywheel instrument (214), both projections of the same read
+t18   create     response/page-2                          response created
+t18   dictation  bolt/atlas/plan-rows                     land and follow
+t19   transition bolt/atlas/plan-rows                     life.open.citations: moved → current
+t19   effect     bolt/atlas/plan-rows                     record_citation_choice — the bolt proceeds on the version it cites; the ledger cell is stale, so planning follows
+t20   transition bolt/atlas/plan-rows                     life.open.citations: current → moved
+t20   transition response/page-2                          life: given → applied
 
