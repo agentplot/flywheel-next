@@ -147,10 +147,10 @@ or a command.
 - [x] 9.7 Write move records with the signal id, target, reason and date, one standing move per signal, curation seeing only unmoved ones; verify `cargo test -p flywheel one_standing_move_per_signal` (107)
 - [x] 9.8 Implement the move consequences, a challenge recording the claim by name and version and attempting no ledger effect; verify `cargo test -p flywheel challenge_records_claim_only` (116, 101)
 - [x] 9.9 Charge curation on its cadence and on the unmoved threshold, catching a missed cadence up once under the idempotent key; verify `cargo test -p flywheel curation_cadence_caught_up_once` over a simulated day down (110, 231, 111)
-- [ ] 9.10 Verify S08: `flywheel scenario run conformance/scenarios/S08.yaml` — one move each, joins become proposed intents, one decision per proposed intent
-- [ ] 9.11 Show a proposed intent's weight: its signals, how many, from which sources and over what span, counted by event date; verify `cargo test -p flywheel-surface proposed_intent_shows_weight` (109, 118)
-- [ ] 9.12 Verify S23 and S24: `flywheel scenario run conformance/scenarios/S23.yaml conformance/scenarios/S24.yaml`
-- [ ] 9.13 Show unmoved signals by source with their age on the status view and discard none; verify `cargo test -p flywheel unmoved_signals_by_source` (118)
+- [x] 9.10 Verify S08: `flywheel scenario run conformance/scenarios/S08.yaml` — one move each, joins become proposed intents, one decision per proposed intent
+- [x] 9.11 Show a proposed intent's weight: its signals, how many, from which sources and over what span, counted by event date; verify `cargo test -p flywheel-surface proposed_intent_shows_weight` (109, 118)
+- [x] 9.12 Verify S23 and S24: `flywheel scenario run conformance/scenarios/S23.yaml conformance/scenarios/S24.yaml`
+- [x] 9.13 Show unmoved signals by source with their age on the status view and discard none; verify `cargo test -p flywheel unmoved_signals_by_source` (118)
 
 ## 10. The rail
 

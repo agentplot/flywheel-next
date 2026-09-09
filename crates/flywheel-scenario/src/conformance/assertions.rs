@@ -718,6 +718,31 @@ pub fn observe(run: &Run, key: &str) -> Option<Value> {
             .values()
             .filter(|o| o.machine == "capture")
             .count()),
+        // ---- the moves curation stored, and what is left unmoved (110, 107)
+        //
+        // All three read the material under the machinery's prefix, which is
+        // where the moves are written and where a person writing them by hand
+        // writes them too (203, 110).
+        "signal_moves_stored" | "signals_with_move" => {
+            json!(flywheel_domain::signals::moves(&store.world.files).len())
+        }
+        // What the run began with, less those that ended with a move. A
+        // scenario that states the count it began with has said how many
+        // signals there were; the moves say how many were judged.
+        "unmoved_after" => {
+            let began = store
+                .given
+                .values()
+                .find_map(|per| per.get("curation.unmoved_count").and_then(|v| v.as_u64()))
+                .unwrap_or(0) as usize;
+            let moved = flywheel_domain::signals::moves(&store.world.files).len();
+            json!(began.saturating_sub(moved) + flywheel_domain::signals::unmoved(&store.world.files).len())
+        }
+        // One per signal of the dropped intent, each naming the drop (117).
+        "moves_naming_drop" => json!(flywheel_domain::signals::moves(&store.world.files)
+            .iter()
+            .filter(|m| m.word() == "drop")
+            .count()),
         "signals_written" => json!(store
             .objects
             .values()

@@ -389,3 +389,102 @@ fn box_writes_one_ask_signal() {
         assert_eq!(made.len(), 1, "one signal for the capture: {made:?}");
     });
 }
+
+// ---- 9.11 a proposed intent's weight
+
+/// A proposed intent cites its signals and shows how many, from which sources
+/// and over what span, counted by event date (109, 118).
+#[test]
+fn proposed_intent_shows_weight() {
+    use flywheel_domain::signals::{self, Capture, Signal};
+
+    let (_sandbox, page) = a_page("weight");
+    let defs = flywheel_domain::set::load().expect("the embedded definitions");
+
+    // Three signals for the one intent: two from a meeting a week ago, one
+    // from a chat forward yesterday.
+    let sources = [
+        ("meeting/2026-09-02/willdan-weekly", "meeting", "2026-09-02T10:00:00+00:00", 2),
+        ("message/1421", "forwarded-message", "2026-09-08T17:30:00+00:00", 1),
+    ];
+    let mut cited: Vec<String> = vec![];
+    page.with_world(|world| {
+        for (key, source, event_at, how_many) in sources {
+            signals::write_capture(
+                world,
+                &Capture {
+                    key: key.into(),
+                    source: source.into(),
+                    event_at: event_at.into(),
+                    captured_by: "chuck".into(),
+                    raw: format!("raw://{key}"),
+                },
+            )
+            .expect("the capture");
+            for n in 1..=how_many {
+                let id = signals::signal_object(key, n);
+                signals::write_signal(
+                    world,
+                    key,
+                    n,
+                    &Signal {
+                        id: id.clone(),
+                        capture: signals::object_of(key),
+                        kind: "constraint".into(),
+                        asserted_by: "dana".into(),
+                        assertion: "one writer per provider".into(),
+                        excerpt: "one writer per provider".into(),
+                        ..Default::default()
+                    },
+                )
+                .expect("the signal");
+                cited.push(id);
+            }
+        }
+    });
+
+    // The proposed intent that cites them (110, 109).
+    let signals_cited = cited.clone();
+    page.with_store(|store| {
+        let at = commands::now(store).expect("a point");
+        commands::put_new(
+            store,
+            &defs,
+            "intent/retry-jitter",
+            "intent",
+            None,
+            [
+                ("signals".to_string(), json!(signals_cited)),
+                ("signals_count".to_string(), json!(signals_cited.len())),
+            ]
+            .into_iter()
+            .collect(),
+            at,
+        )
+        .expect("the proposed intent");
+    });
+
+    let html = page.html("/");
+    // How many, from which sources, over what span — the span counted by event
+    // date and never by when the flywheel read it (109).
+    assert!(html.contains("data-signals=\"3\""), "the count is not shown: {html}");
+    assert!(
+        html.contains("data-sources=\"forwarded-message meeting\""),
+        "the sources are not shown: {html}"
+    );
+    assert!(
+        html.contains("3 signals from forwarded-message, meeting"),
+        "the weight does not read as a sentence: {html}"
+    );
+    assert!(
+        html.contains("2026-09-02T10:00:00+00:00 to 2026-09-08T17:30:00+00:00"),
+        "the span is not shown: {html}"
+    );
+    // And it cites them, each one (109).
+    for signal in &cited {
+        assert!(
+            html.contains(&format!("<li class=\"signal\">{signal}</li>")),
+            "the intent does not cite `{signal}`"
+        );
+    }
+}

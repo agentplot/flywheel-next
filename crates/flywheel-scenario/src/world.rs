@@ -158,6 +158,58 @@ pub fn perform(defs: &Definitions, store: &mut Store, object: &str, region: &str
                 flywheel_domain::signals::ensure_signal(store, world, defs, object, &by, at)
             });
         }
+        // Every judged signal gets its one standing move, and each join becomes
+        // or grows a proposed intent (107, 109, 116, `curation.yaml` applying).
+        // The moves are the session's delivery: curation decides and the
+        // flywheel accepts its output whoever produced it (20, 110).
+        "record_moves" | "propose_intents" => {
+            let at = store.now;
+            let commits = store
+                .world
+                .sessions
+                .get(&skey)
+                .map(|s| s.commits.clone())
+                .unwrap_or_default();
+            // The capture this run read, for numbering the signals a script
+            // counted rather than named (93).
+            let key = store
+                .objects
+                .values()
+                .find(|o| o.machine == "capture")
+                .and_then(|o| o.record.get("event_key").and_then(|v| v.as_str()))
+                .map(String::from)
+                .unwrap_or_else(|| "curation".to_string());
+            let delivered = crate::delivery::curation(&commits, &key, &at.to_rfc3339());
+            match e.name.as_str() {
+                "record_moves" => {
+                    let _ = crate::bindings::with_files(store, |store, world| {
+                        flywheel_domain::signals::record_moves(store, world, &delivered.moves, at)
+                    });
+                }
+                _ => {
+                    let _ = flywheel_domain::signals::propose_intents(
+                        store,
+                        defs,
+                        &delivered.proposals,
+                        at,
+                    );
+                }
+            }
+        }
+        // Every signal a dropped intent cited keeps a move naming the drop, and
+        // they are not clustered again unless new signals join them (117).
+        "drop_signals" => {
+            let at = store.now;
+            let reason = e
+                .args
+                .get("reason")
+                .and_then(|v| v.as_str())
+                .unwrap_or("intent dropped")
+                .to_string();
+            let _ = crate::bindings::with_files(store, |store, world| {
+                flywheel_domain::signals::drop_signals(store, world, defs, object, &reason, at)
+            });
+        }
         "record_exit" => {
             if let Some(s) = store.world.sessions.get(&skey) {
                 if let Some(q) = &s.question { let q = q.clone(); if let Some(o) = store.objects.get_mut(object) { o.record.insert("question".into(), json!(q)); } }

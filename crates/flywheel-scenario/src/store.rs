@@ -107,6 +107,13 @@ pub struct Store {
     /// Decision ids standing after the last derive; used for response.decision_present.
     pub standing: Vec<String>,
     pub scenario: Option<String>,
+    /// The definitions this store's sessions are named against, so a session
+    /// the machine names an agent for is named for that agent
+    /// (`session.yaml` id, S08). Not part of what is saved: the definitions are
+    /// the binary's, and a store reloaded is named against the set that loads
+    /// it (D2).
+    #[serde(skip)]
+    pub defs: Option<std::sync::Arc<flywheel_engine::Definitions>>,
     // ---- the state store's own durable shapes (125)
     /// Object id -> its thread, in order.
     #[serde(default)]
@@ -225,6 +232,7 @@ impl Default for Store {
             register: Register::default(),
             tail: vec![],
             given: BTreeMap::new(),
+            defs: None,
             world: World::default(),
             log: vec![],
             now: Utc::now(),
@@ -262,7 +270,7 @@ impl Default for Store {
     }
 }
 
-pub use flywheel_domain::regions::{place_key, session_key, session_key_of};
+pub use flywheel_domain::regions::{place_key, session_key, session_key_of, session_key_of_in};
 
 impl Store {
     pub fn log(&mut self, kind: &str, object: &str, text: impl Into<String>) {
@@ -337,9 +345,12 @@ impl Store {
     /// session lost sends its stage round again with the attempt one higher,
     /// and the fresh session is a session of its own (150, `stage.yaml`).
     pub fn session_of(&self, object: &str, region: &str) -> String {
-        match self.objects.get(object) {
-            Some(held) => session_key_of(held, region),
-            None => session_key(object, region),
+        match (self.objects.get(object), self.defs.as_ref()) {
+            // With the definitions in hand a session the machine names an agent
+            // for is named for that agent (`session.yaml` id, S08).
+            (Some(held), Some(defs)) => session_key_of_in(defs, held, region),
+            (Some(held), None) => session_key_of(held, region),
+            (None, _) => session_key(object, region),
         }
     }
 
@@ -668,6 +679,7 @@ fn apply_entry(s: &mut SessionFact, e: &ScriptEntry, now: DateTime<Utc>) {
     if let Some(q) = &e.question { s.question = Some(q.clone()); }
     if let Some(v) = &e.verdict { s.verdict = Some(v.clone()); }
     if !e.deliverables.is_empty() { s.deliverables = e.deliverables.clone(); }
+    if !e.commits.is_empty() { s.commits = e.commits.clone(); }
 }
 
 impl EvidenceSource for Store {

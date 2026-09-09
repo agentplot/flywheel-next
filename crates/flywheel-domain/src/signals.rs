@@ -446,7 +446,7 @@ pub fn evidence<R: Reads + ?Sized>(files: &R, object: &str, name: &str) -> Optio
         // layout existed is not read as having no signals, it is not read here
         // at all, and the next source answers for it.
         "capture.signals_present" => {
-            let key = key_of(object);
+            let key = key_of(files, object);
             if files.read(&capture_path(&key)).is_none() {
                 return None;
             }
@@ -478,17 +478,18 @@ pub fn evidence<R: Reads + ?Sized>(files: &R, object: &str, name: &str) -> Optio
     })
 }
 
-/// The source-event key a capture object's id names: the object id with its
-/// separators flattened, read back through the record it points at.
-fn key_of(object: &str) -> String {
-    let flat = object.strip_prefix("capture/").unwrap_or(object);
-    // The key is the flattened id with its source restored: `meeting-2026-...`
-    // is `meeting/2026-...`. The capture record carries the key outright, so
-    // this is only how the path is found before it is read.
-    match flat.split_once('-') {
-        Some((source, rest)) => format!("{source}/{}", rest.replacen('-', "/", 1)),
-        None => flat.to_string(),
-    }
+/// The source-event key a capture object's id names.
+///
+/// Flattening a key into an object id loses where its separators were — a date
+/// carries dashes of its own — so the key is not guessed back out of the id: the
+/// capture record carries it outright, and the record whose flattened key is
+/// this id is the one that names it (111).
+fn key_of<R: Reads + ?Sized>(files: &R, object: &str) -> String {
+    captures_from(files)
+        .into_iter()
+        .find(|c| object_of(&c.key) == object)
+        .map(|c| c.key)
+        .unwrap_or_else(|| object.strip_prefix("capture/").unwrap_or(object).to_string())
 }
 
 /// Every signal with no standing move: what curation sees, and what the status
@@ -746,15 +747,14 @@ fn set<S: StateStore>(store: &mut S, id: &str, name: &str, value: Value) -> Resu
 }
 
 /// Every move the blueprints hold, by signal.
-pub fn moves<W: World + ?Sized>(world: &W) -> Result<Vec<Move>> {
+pub fn moves<R: Reads + ?Sized>(files: &R) -> Vec<Move> {
     let mut out = Vec::new();
-    let mut paths = world.list_files(BLUEPRINTS, &format!("{UNDER}/moves/"))?;
+    let mut paths = files.list(&format!("{UNDER}/moves/"));
     paths.sort();
     for path in paths {
-        let Some(bytes) = world.read_file(BLUEPRINTS, &path)? else {
+        let Some(text) = files.read(&path) else {
             continue;
         };
-        let text = String::from_utf8_lossy(&bytes).to_string();
         // A cleared move is an empty file: the signal is unmoved (107, S24).
         if let Some(record) = rec::parse(&text).first() {
             let moved = Move::from_record(record);
@@ -763,7 +763,7 @@ pub fn moves<W: World + ?Sized>(world: &W) -> Result<Vec<Move>> {
             }
         }
     }
-    Ok(out)
+    out
 }
 
 /// Every signal record the blueprints hold, whatever capture it came from.
@@ -787,4 +787,283 @@ pub fn all_signals<W: World + ?Sized>(world: &W) -> Result<Vec<Signal>> {
         }
     }
     Ok(out)
+}
+
+// -------------------------------------------- what a curation session delivers
+
+/// One proposed intent a curation run's joins produce (110, 109).
+#[derive(Debug, Clone, PartialEq, Eq, Default)]
+pub struct Proposal {
+    pub id: String,
+    /// The signals it cites, which is its weight (109).
+    pub signals: Vec<String>,
+    /// The claims its signals challenge, by name and version (116).
+    pub challenges: Vec<String>,
+}
+
+/// What one curation run delivered: a move per signal it judged, and the
+/// proposed intents its joins produce (`curation.yaml` applying).
+#[derive(Debug, Clone, PartialEq, Eq, Default)]
+pub struct Delivered {
+    pub moves: Vec<Move>,
+    pub proposals: Vec<Proposal>,
+}
+
+/// `record_moves`: every judged signal gets its one standing move (107, 116).
+///
+/// The moves are the session's delivery and not the machinery's judgment:
+/// curation decides, and the flywheel accepts its output whoever produced it
+/// (20, 110).
+pub fn record_moves<S: StateStore, W: World + ?Sized>(
+    store: &mut S,
+    world: &mut W,
+    moves: &[Move],
+    at: DateTime<Utc>,
+) -> Result<usize> {
+    let mut stored = 0;
+    for moved in moves {
+        apply_move(store, world, moved, at)?;
+        stored += 1;
+    }
+    Ok(stored)
+}
+
+/// `propose_intents`: each join becomes or grows a proposed intent (110, 109).
+///
+/// Curation never opens an intent: what it makes stands as a proposal on the
+/// rail and becomes work only on the operator's response (20, 110, 5).
+pub fn propose_intents<S: StateStore>(
+    store: &mut S,
+    defs: &Definitions,
+    proposals: &[Proposal],
+    at: DateTime<Utc>,
+) -> Result<usize> {
+    let mut made = 0;
+    for proposal in proposals {
+        let held = store.get(&proposal.id)?;
+        let mut record: BTreeMap<String, Value> =
+            held.as_ref().map(|o| o.record.clone()).unwrap_or_default();
+        // It grows: signals join the ones already cited, and none is counted
+        // twice (21, 109).
+        let mut cited: Vec<String> = record
+            .get("signals")
+            .and_then(|v| serde_json::from_value(v.clone()).ok())
+            .unwrap_or_default();
+        for signal in &proposal.signals {
+            if !cited.iter().any(|s| s == signal) {
+                cited.push(signal.clone());
+            }
+        }
+        record.insert("signals_count".into(), json!(cited.len()));
+        record.insert("signals".into(), json!(cited));
+        if !proposal.challenges.is_empty() {
+            record.insert("challenges".into(), json!(proposal.challenges));
+        }
+        match held {
+            Some(mut object) => {
+                let base = object.seq;
+                object.record = record;
+                store.put(&proposal.id, &object, base)?;
+            }
+            None => {
+                crate::commands::put_new(store, defs, &proposal.id, "intent", None, record, at)?;
+                made += 1;
+            }
+        }
+    }
+    Ok(made)
+}
+
+// ------------------------------------------------ a proposed intent's weight
+
+/// What a proposed intent weighs: the signals it cites, how many, from which
+/// sources, and over what span (109, 118).
+///
+/// The span is counted by event date — when the thing was said — and never by
+/// when the flywheel got round to reading it (109).
+#[derive(Debug, Clone, PartialEq, Eq, Default)]
+pub struct Weight {
+    pub signals: Vec<String>,
+    pub count: usize,
+    /// The sources the signals came from, each named once, in order.
+    pub sources: Vec<String>,
+    /// The earliest and latest event date among them.
+    pub first: Option<String>,
+    pub last: Option<String>,
+}
+
+impl Weight {
+    /// The span in the operator's words, or nothing where the dates are not
+    /// there to say it.
+    pub fn span(&self) -> Option<String> {
+        match (&self.first, &self.last) {
+            (Some(first), Some(last)) if first == last => Some(first.clone()),
+            (Some(first), Some(last)) => Some(format!("{first} to {last}")),
+            _ => None,
+        }
+    }
+}
+
+/// What the signals an intent cites weigh (109, 118).
+pub fn weight_of<R: Reads + ?Sized>(files: &R, cited: &[String]) -> Weight {
+    let held: BTreeMap<String, Signal> = all_signals_from(files)
+        .into_iter()
+        .map(|s| (s.id.clone(), s))
+        .collect();
+    // The captures by the object id their signals cite, so a key is read from
+    // the record that carries it and never guessed back out of an id (111).
+    let captures: BTreeMap<String, Capture> = captures_from(files)
+        .into_iter()
+        .map(|c| (object_of(&c.key), c))
+        .collect();
+    let mut weight = Weight {
+        signals: cited.to_vec(),
+        count: cited.len(),
+        ..Default::default()
+    };
+    let mut dates: Vec<String> = Vec::new();
+    for id in cited {
+        let Some(signal) = held.get(id) else { continue };
+        let Some(capture) = captures.get(&signal.capture) else {
+            continue;
+        };
+        if !capture.source.is_empty() && !weight.sources.iter().any(|s| *s == capture.source) {
+            weight.sources.push(capture.source.clone());
+        }
+        if !capture.event_at.is_empty() {
+            dates.push(capture.event_at.clone());
+        }
+    }
+    weight.sources.sort();
+    dates.sort();
+    weight.first = dates.first().cloned();
+    weight.last = dates.last().cloned();
+    weight
+}
+
+/// Every capture the material holds, read through `Reads`.
+pub fn captures_from<R: Reads + ?Sized>(files: &R) -> Vec<Capture> {
+    let mut out = Vec::new();
+    let mut paths = files.list(&format!("{UNDER}/captures/"));
+    paths.sort();
+    for path in paths {
+        let Some(text) = files.read(&path) else { continue };
+        if let Some(record) = rec::parse(&text).first() {
+            out.push(Capture::from_record(record));
+        }
+    }
+    out
+}
+
+/// Every signal record the material holds, read through `Reads`.
+pub fn all_signals_from<R: Reads + ?Sized>(files: &R) -> Vec<Signal> {
+    let mut out = Vec::new();
+    let mut paths = files.list(&format!("{UNDER}/"));
+    paths.sort();
+    for path in paths {
+        let rest = path.trim_start_matches(&format!("{UNDER}/")).to_string();
+        if RESERVED.contains(&rest.split('/').next().unwrap_or_default()) {
+            continue;
+        }
+        let Some(text) = files.read(&path) else { continue };
+        if let Some(record) = rec::parse(&text).first() {
+            let signal = Signal::from_record(record);
+            if !signal.id.is_empty() {
+                out.push(signal);
+            }
+        }
+    }
+    out
+}
+
+/// `drop_signals`: every signal a dropped intent cited keeps a move naming the
+/// drop (117, `atoms.yaml` drop_signals).
+///
+/// They are not clustered again unless new signals join them, which is what the
+/// move naming this intent records: the next curation run sees a signal with a
+/// move and does not re-judge it (107, 117).
+pub fn drop_signals<S: StateStore, W: World + ?Sized>(
+    store: &mut S,
+    world: &mut W,
+    defs: &Definitions,
+    intent: &str,
+    reason: &str,
+    at: DateTime<Utc>,
+) -> Result<usize> {
+    let cited: Vec<String> = store
+        .get(intent)?
+        .and_then(|o| o.record.get("signals").cloned())
+        .and_then(|v| serde_json::from_value(v).ok())
+        .unwrap_or_default();
+    let mut dropped = 0;
+    for named in cited {
+        // A record may cite a signal by its short name; the object it names is
+        // the signal.
+        let signal = match named.starts_with(PREFIX) {
+            true => named.clone(),
+            false => format!("{PREFIX}{named}"),
+        };
+        if store.get(&signal)?.is_none() {
+            crate::commands::put_new(store, defs, &signal, "signal", None, Default::default(), at)?;
+        }
+        apply_move(
+            store,
+            world,
+            &Move {
+                signal,
+                // The move names the drop, and the intent it was dropped from
+                // (117).
+                target: format!("drop {intent}"),
+                reason: reason.to_string(),
+                at: at.to_rfc3339(),
+            },
+            at,
+        )?;
+        dropped += 1;
+    }
+    Ok(dropped)
+}
+
+
+/// Unmoved signals from one source: how many, and the event date of the
+/// oldest, which is what its age is counted from (109, 118).
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct UnmovedSource {
+    pub source: String,
+    pub count: usize,
+    pub oldest: Option<String>,
+}
+
+/// The signals with no move, by source, with the oldest one's date (118).
+///
+/// They are shown and never discarded: a signal nobody has judged is one the
+/// operator has not seen yet, not one the machinery may forget.
+pub fn unmoved_by_source<R: Reads + ?Sized>(files: &R) -> Vec<UnmovedSource> {
+    let captures: BTreeMap<String, Capture> = captures_from(files)
+        .into_iter()
+        .map(|c| (object_of(&c.key), c))
+        .collect();
+    let mut by_source: BTreeMap<String, (usize, Option<String>)> = BTreeMap::new();
+    for signal in unmoved(files) {
+        let capture = captures.get(&signal.capture);
+        let source = capture
+            .map(|c| c.source.clone())
+            .filter(|s| !s.is_empty())
+            .unwrap_or_else(|| "unknown".into());
+        let at = capture.map(|c| c.event_at.clone()).filter(|a| !a.is_empty());
+        let entry = by_source.entry(source).or_insert((0, None));
+        entry.0 += 1;
+        entry.1 = match (entry.1.take(), at) {
+            (Some(held), Some(at)) => Some(held.min(at)),
+            (held, at) => held.or(at),
+        };
+    }
+    by_source
+        .into_iter()
+        .map(|(source, (count, oldest))| UnmovedSource {
+            source,
+            count,
+            oldest,
+        })
+        .collect()
 }

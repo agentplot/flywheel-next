@@ -37,6 +37,12 @@ pub struct Row {
 pub struct Status {
     pub as_of: ReadPoint,
     pub rows: Vec<Row>,
+    /// The signals with no move, by source, with the oldest one's date. They
+    /// are shown here and none is discarded (118).
+    pub unmoved: Vec<crate::signals::UnmovedSource>,
+    /// When the view was read, which is what an unmoved signal's age is
+    /// counted against (118).
+    pub at: DateTime<Utc>,
 }
 
 impl Status {
@@ -116,6 +122,24 @@ pub fn read<S: Records>(
     stale: Duration,
     gone: Duration,
 ) -> anyhow::Result<Status> {
+    // With no material in hand there are no unmoved signals to count; a caller
+    // that has the blueprints uses `read_with` (118).
+    let none: std::collections::BTreeMap<String, String> = Default::default();
+    read_with(store, defs, as_of, now, stale, gone, &none)
+}
+
+/// The same, with the signal material the unmoved signals are counted from
+/// (118, `blueprints.yaml` layout).
+#[allow(clippy::too_many_arguments)]
+pub fn read_with<S: Records, R: crate::signals::Reads + ?Sized>(
+    store: &S,
+    defs: &Definitions,
+    as_of: &ReadPoint,
+    now: DateTime<Utc>,
+    stale: Duration,
+    gone: Duration,
+    files: &R,
+) -> anyhow::Result<Status> {
     let objects = store.list_records(&Scope::All)?;
     let hosts = store.hosts()?;
     let liveness = |host: &str| -> Option<String> {
@@ -187,6 +211,8 @@ pub fn read<S: Records>(
     Ok(Status {
         as_of: as_of.clone(),
         rows,
+        unmoved: crate::signals::unmoved_by_source(files),
+        at: now,
     })
 }
 
@@ -230,6 +256,30 @@ pub fn render(status: &Status) -> StatusView {
         escape(&status.as_of.mark),
         status.as_of.at.to_rfc3339()
     ));
+    // The signals with no move, by source and by age. Nothing here is
+    // discarded: a signal nobody has judged is one the operator has not seen
+    // yet (118).
+    body.push_str("<section id=\"unmoved-signals\">\n<h2>unmoved signals</h2>\n");
+    if status.unmoved.is_empty() {
+        body.push_str("<p class=\"none\">nothing unmoved</p>\n");
+    }
+    for source in &status.unmoved {
+        let age = source
+            .oldest
+            .as_deref()
+            .and_then(|at| DateTime::parse_from_rfc3339(at).ok())
+            .map(|at| (status.at - at.with_timezone(&Utc)).num_days())
+            .map(|days| format!(", oldest {days}d"))
+            .unwrap_or_default();
+        body.push_str(&format!(
+            "<p class=\"unmoved\" data-source=\"{}\" data-count=\"{}\">{} from {}{age}</p>\n",
+            escape(&source.source),
+            source.count,
+            source.count,
+            escape(&source.source)
+        ));
+    }
+    body.push_str("</section>\n");
     for group in GROUPS {
         let rows: Vec<&Row> = status.rows.iter().filter(|r| r.group == group).collect();
         body.push_str(&format!(

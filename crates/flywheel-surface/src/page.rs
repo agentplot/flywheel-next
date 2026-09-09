@@ -11,8 +11,9 @@
 //! served, and its version is the binary's (307).
 
 use crate::links;
-use flywheel_atoms::StateStore;
+use flywheel_atoms::{StateStore, World};
 use flywheel_domain::{commands, status};
+use flywheel_domain::signals;
 use flywheel_domain::sinks;
 use flywheel_engine::{DecisionInstance, Definitions, Object};
 use std::collections::BTreeMap;
@@ -34,11 +35,15 @@ pub struct Read {
     /// The objects held by a host past its stale window: a link to one says the
     /// host is away and since when, rather than failing silently (308, 150a).
     pub away: BTreeMap<String, sinks::Away>,
+    /// What each proposed intent weighs: its signals, how many, from which
+    /// sources and over what span (109, 118).
+    pub weight: BTreeMap<String, signals::Weight>,
 }
 
 /// Read once, for one request (310).
-pub fn read<S: StateStore>(
+pub fn read<S: StateStore, W: World + ?Sized>(
     store: &mut S,
+    world: &W,
     defs: &Definitions,
     address: &str,
     operator: &str,
@@ -46,16 +51,34 @@ pub fn read<S: StateStore>(
     let decisions = commands::rail(store, defs)?;
     let at = commands::now(store)?;
     let as_of = store.read(flywheel_domain::RAIL)?.as_of;
-    let status = status::read(
+    let files = signals::Blueprints(world);
+    let status = status::read_with(
         store,
         defs,
         &as_of,
         at,
         chrono::Duration::minutes(5),
         chrono::Duration::minutes(30),
+        &files,
     )?;
     let objects = store.list_records(&flywheel_atoms::Scope::All)?;
     let away = sinks::away_by_object(store, at, chrono::Duration::minutes(5))?;
+    // What a proposed intent weighs, from the same material (109, 118).
+    let mut weight = BTreeMap::new();
+    for object in &objects {
+        if object.machine != "intent" {
+            continue;
+        }
+        let cited: Vec<String> = object
+            .record
+            .get("signals")
+            .and_then(|v| serde_json::from_value(v.clone()).ok())
+            .unwrap_or_default();
+        if cited.is_empty() {
+            continue;
+        }
+        weight.insert(object.id.clone(), signals::weight_of(&files, &cited));
+    }
     Ok(Read {
         decisions,
         status,
@@ -63,6 +86,7 @@ pub fn read<S: StateStore>(
         address: address.to_string(),
         operator: operator.to_string(),
         away,
+        weight,
     })
 }
 
@@ -218,6 +242,32 @@ fn dock(read: &Read) -> String {
                 escape(&away.host),
                 escape(&away.said())
             );
+        }
+        // A proposed intent shows its weight: the signals it cites, how many,
+        // from which sources and over what span, counted by event date
+        // (109, 118).
+        if let Some(weight) = read.weight.get(&object.id) {
+            let _ = write!(
+                out,
+                "<p class=\"weight\" data-signals=\"{}\" data-sources=\"{}\">{} signal{} from {}{}</p>\n",
+                weight.count,
+                escape(&weight.sources.join(" ")),
+                weight.count,
+                match weight.count {
+                    1 => "",
+                    _ => "s",
+                },
+                escape(&weight.sources.join(", ")),
+                weight
+                    .span()
+                    .map(|s| format!(", {}", escape(&s)))
+                    .unwrap_or_default()
+            );
+            out.push_str("<ul class=\"cited\">\n");
+            for signal in &weight.signals {
+                let _ = write!(out, "<li class=\"signal\">{}</li>\n", escape(signal));
+            }
+            out.push_str("</ul>\n");
         }
         // An elaboration is a surface of its own, reached from its intent, and
         // an intent lists its elaborations in order (210).

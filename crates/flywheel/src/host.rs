@@ -775,13 +775,14 @@ impl Host {
         }
         let as_of = self.store.git.as_of();
         let now = self.now();
-        let status = flywheel_domain::status::read(
+        let status = flywheel_domain::status::read_with(
             &self.store.git,
             &self.defs,
             &as_of,
             now,
             Duration::minutes(5),
             Duration::minutes(30),
+            &flywheel_domain::signals::Blueprints(&*self.store.world),
         )?;
         let view = flywheel_domain::status::render(&status);
         let held = self.store.git.committed_status()?;
@@ -802,13 +803,14 @@ impl Host {
 
     /// The status view as this host serves it, from the same read (132, 141).
     pub fn status(&self) -> Result<flywheel_domain::status::Status> {
-        flywheel_domain::status::read(
+        flywheel_domain::status::read_with(
             &self.store.git,
             &self.defs,
             &self.store.git.as_of(),
             self.now(),
             Duration::minutes(5),
             Duration::minutes(30),
+            &flywheel_domain::signals::Blueprints(&*self.store.world),
         )
     }
 
@@ -1020,6 +1022,27 @@ pub fn perform(
                 defs,
                 object,
                 &by,
+                now,
+            );
+        }
+        // Every judged signal gets its one standing move, each join becomes or
+        // grows a proposed intent, and a dropped intent's signals keep a move
+        // naming the drop (107, 109, 116, 117). What the session delivered is
+        // curation's: the flywheel accepts its output whoever produced it (20).
+        "drop_signals" => {
+            let reason = effect
+                .args
+                .get("reason")
+                .and_then(|v| v.as_str())
+                .unwrap_or("intent dropped")
+                .to_string();
+            let HostStore { git, world, .. } = store;
+            let _ = flywheel_domain::signals::drop_signals(
+                git,
+                &mut **world,
+                defs,
+                object,
+                &reason,
                 now,
             );
         }

@@ -662,6 +662,15 @@ fn play_step(
         Step::Evidence(evidence) => {
             for (name, per_object) in evidence {
                 for (object, value) in per_object {
+                    // `*` says this is now true of every object, so what an
+                    // earlier step said about one of them by name no longer
+                    // stands: the world moved, and it moved for all of them
+                    // (S23).
+                    if object == "*" {
+                        for per in run.runtime.store.given.values_mut() {
+                            per.remove(name);
+                        }
+                    }
                     run.runtime.store.set_given(object, name, value.clone());
                 }
             }

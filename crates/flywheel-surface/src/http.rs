@@ -263,7 +263,14 @@ async fn page<S: StateStore + Send + 'static>(
         );
     }
     let mut store = served.store.lock().await;
-    match page::read(&mut *store, &served.defs, &served.address, served.operator()) {
+    let world = served.world.lock().await;
+    match page::read(
+        &mut *store,
+        &**world,
+        &served.defs,
+        &served.address,
+        served.operator(),
+    ) {
         Ok(read) => (StatusCode::OK, Html(page::render(&read))),
         Err(refused) => (
             StatusCode::INTERNAL_SERVER_ERROR,

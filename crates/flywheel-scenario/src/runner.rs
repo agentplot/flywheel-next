@@ -154,7 +154,9 @@ pub struct DecisionRecord {
 }
 
 impl Runtime {
-    pub fn new(defs: Definitions, store: Store) -> Self {
+    pub fn new(defs: Definitions, mut store: Store) -> Self {
+        // The store names its sessions against these definitions (S08).
+        store.defs = Some(std::sync::Arc::new(defs.clone()));
         Runtime {
             defs,
             store,

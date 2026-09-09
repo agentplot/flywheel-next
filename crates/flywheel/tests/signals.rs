@@ -5,6 +5,7 @@
 use chrono::{DateTime, Datelike, Duration, TimeZone, Utc};
 use flywheel_atoms::{Records, World};
 use flywheel_domain::commands;
+use std::collections::BTreeMap;
 use flywheel_domain::signals::{self, Capture};
 use flywheel_scenario::bindings::FilesWorld;
 use flywheel_store_git::store::sandbox;
@@ -467,7 +468,7 @@ fn one_standing_move_per_signal() {
         "the replacement did not stand"
     );
     assert_eq!(
-        signals::moves(&world).unwrap().len(),
+        signals::moves(&signals::Blueprints(&world)).len(),
         1,
         "a signal carries two moves"
     );
@@ -723,4 +724,111 @@ fn a_host(name: &str) -> flywheel::host::Host {
         Default::default(),
         now,
     )
+}
+
+// ----------------------------------- 9.13 unmoved signals on the status view
+
+/// The status view shows the unmoved signals' count and age by source, and
+/// none of them is discarded (118).
+#[test]
+fn unmoved_signals_by_source() {
+    let instance = Instance::new("unmoved-view");
+    let mut world = instance.world();
+    let mut host = a_host("unmoved-view");
+
+    // Signals from two sources: three from a meeting a week before now, one
+    // from a chat forward the day before.
+    let now = at(0);
+    let sources = [
+        ("meeting/2026-09-02/willdan-weekly", "meeting", now - Duration::days(7), 3u64),
+        ("message/1421", "forwarded-message", now - Duration::days(1), 1),
+    ];
+    for (key, source, event_at, how_many) in sources {
+        signals::write_capture(
+            &mut world,
+            &Capture {
+                key: key.into(),
+                source: source.into(),
+                event_at: event_at.to_rfc3339(),
+                captured_by: "chuck".into(),
+                raw: format!("raw://{key}"),
+            },
+        )
+        .unwrap();
+        for n in 1..=how_many {
+            signals::write_signal(
+                &mut world,
+                key,
+                n,
+                &signals::Signal {
+                    id: signals::signal_object(key, n),
+                    capture: signals::object_of(key),
+                    kind: "ask".into(),
+                    asserted_by: "dana".into(),
+                    assertion: "something was said".into(),
+                    excerpt: "something was said".into(),
+                    ..Default::default()
+                },
+            )
+            .unwrap();
+        }
+    }
+    // One of the four is moved; the other three are not (107).
+    let moved = signals::signal_object("meeting/2026-09-02/willdan-weekly", 1);
+    signals::write_move(
+        &mut world,
+        &signals::Move {
+            signal: moved.clone(),
+            target: "attach intent/atlas-provider-limits".into(),
+            reason: "evidence".into(),
+            at: now.to_rfc3339(),
+        },
+    )
+    .unwrap();
+
+    // The status view is read from the same material (118, 141).
+    host.store.world = Box::new(instance.world());
+    host.set_now(now);
+    let status = host.status().unwrap();
+    let by_source: BTreeMap<&str, &signals::UnmovedSource> = status
+        .unmoved
+        .iter()
+        .map(|u| (u.source.as_str(), u))
+        .collect();
+    assert_eq!(
+        by_source.keys().collect::<Vec<_>>(),
+        vec![&"forwarded-message", &"meeting"],
+        "the unmoved signals are not grouped by source: {:?}",
+        status.unmoved
+    );
+    assert_eq!(by_source["meeting"].count, 2, "the moved one was counted");
+    assert_eq!(by_source["forwarded-message"].count, 1);
+    // Their age, counted from the event date (109, 118).
+    assert_eq!(
+        by_source["meeting"].oldest.as_deref(),
+        Some((now - Duration::days(7)).to_rfc3339().as_str())
+    );
+
+    // And the view says so, with the count and the age by source.
+    let view = flywheel_domain::status::render(&status);
+    assert!(
+        view.body.contains("<h2>unmoved signals</h2>"),
+        "the status view has no unmoved section: {}",
+        view.body
+    );
+    assert!(view.body.contains("data-source=\"meeting\" data-count=\"2\""), "{}", view.body);
+    assert!(view.body.contains("2 from meeting, oldest 7d"), "{}", view.body);
+    assert!(view.body.contains("1 from forwarded-message, oldest 1d"), "{}", view.body);
+
+    // None is discarded: every signal record still stands, moved or not (118).
+    let held = signals::all_signals_from(&signals::Blueprints(&instance.world()));
+    assert_eq!(held.len(), 4, "a signal was discarded: {held:?}");
+    assert_eq!(
+        signals::unmoved(&signals::Blueprints(&instance.world())).len(),
+        3
+    );
+    assert!(
+        signals::standing_move(&instance.world(), &moved).unwrap().is_some(),
+        "the moved signal lost its move"
+    );
 }

@@ -153,7 +153,7 @@ fn a_manifest_pin_is_refused_rather_than_half_honoured() {
 /// line each, with a link to the page (18, 15).
 #[test]
 fn chat_and_page_show_one_number() {
-    let (_sandbox, mut store, _world, defs, chat) = a_chat("one-number");
+    let (_sandbox, mut store, world, defs, chat) = a_chat("one-number");
     a_decision(&mut store, &defs, "bolt/atlas/plan-rows");
     a_decision(&mut store, &defs, "bolt/atlas/drop-the-tail");
 
@@ -167,7 +167,7 @@ fn chat_and_page_show_one_number() {
 
     // The numbers the register gave are the numbers the chat shows, and they
     // are the page's own (15, 18).
-    let page = flywheel_surface::page::read(&mut store, &defs, ADDRESS, "chuck").expect("the page");
+    let page = flywheel_surface::page::read(&mut store, &world, &defs, ADDRESS, "chuck").expect("the page");
     let on_page: Vec<u32> = page.decisions.iter().filter_map(|d| d.number).collect();
     let in_chat: Vec<u32> = post.lines.iter().filter_map(|l| l.number).collect();
     assert!(!in_chat.is_empty(), "the chat carried no numbered decision");
@@ -509,7 +509,7 @@ fn posted_message_carries_controls_and_link() {
     assert_eq!(record.record.get("tool").and_then(|v| v.as_str()), Some("answer"));
 
     // The page sends no push of its own: the notification is the chat's (309).
-    let page = flywheel_surface::page::read(&mut store, &defs, ADDRESS, "chuck").expect("the page");
+    let page = flywheel_surface::page::read(&mut store, &world, &defs, ADDRESS, "chuck").expect("the page");
     let html = flywheel_surface::page::render(&page);
     for pushes in ["serviceWorker", "Notification", "PushManager", "webpush"] {
         assert!(
@@ -721,7 +721,7 @@ fn routed_kind_reaches_its_sinks() {
 /// away and since when, rather than failing silently (308, 150a).
 #[test]
 fn away_link_says_so() {
-    let (_sandbox, mut store, _world, defs, chat) = a_chat("away-link");
+    let (_sandbox, mut store, world, defs, chat) = a_chat("away-link");
     a_decision(&mut store, &defs, "bolt/atlas/plan-rows");
 
     // A laptop takes the object and then goes quiet. Its lease stands (150a).
@@ -764,7 +764,7 @@ fn away_link_says_so() {
 
     // The page says it too, so the link that carried it opens on something that
     // does not fail silently (308, 150a).
-    let page = flywheel_surface::page::read(&mut store, &defs, ADDRESS, "chuck").expect("the page");
+    let page = flywheel_surface::page::read(&mut store, &world, &defs, ADDRESS, "chuck").expect("the page");
     let html = flywheel_surface::page::render(&page);
     assert!(
         html.contains("data-away-host=\"mac-mini\""),

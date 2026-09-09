@@ -68,6 +68,10 @@ pub struct SessionFact {
     pub question: Option<String>,
     pub verdict: Option<String>,
     pub deliverables: Vec<String>,
+    /// What the session committed in its place: what a real one would deliver
+    /// as records, which the stand-in carries as the lines the script gave it.
+    #[serde(default)]
+    pub commits: Vec<String>,
     pub ticks_alive: u64,
     pub idle_since: Option<DateTime<Utc>>,
     pub inbox: Vec<String>,
