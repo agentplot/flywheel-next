@@ -109,7 +109,7 @@ or a command.
 - [x] 7.3 Record every call once as a response carrying the tool, the object, who gave it and when; verify `cargo test -p flywheel-surface call_recorded_once` with a call delivered twice (153, 137)
 - [x] 7.4 Omit every tool that would assert work was done and record an arriving claim as unapplicable under attention; verify `flywheel scenario run conformance/scenarios/X08.yaml` (4, 6)
 - [x] 7.5 Implement the undo-or-defer dictation verbs plus service start and stop, each taking the transition its decision would; verify `cargo test -p flywheel-surface dictation_takes_the_decisions_transition` (4, 12)
-- [ ] 7.6 Implement `open-session`; verify `flywheel scenario run conformance/scenarios/X01.yaml` (69)
+- [x] 7.6 Implement `open-session`; verify `flywheel scenario run conformance/scenarios/X01.yaml` (69)
 - [x] 7.7 Implement `revive`; verify `flywheel scenario run conformance/scenarios/S24.yaml` (107, 12)
 - [x] 7.8 Serve the catalogue over HTTP for the page; verify `cargo test -p flywheel-surface http_call_writes_the_same_record` as the in-process caller (193)
 - [x] 7.9 Bind the host's address to the private-network router's name from the manifest, through `flywheel-world-host`'s router lookup, keeping the localhost port for the operator at the machine; verify `cargo test -p flywheel-world-host address_is_the_routers_name` and `cargo test -p flywheel-surface link_never_names_localhost` (191, 205a, 308, D10a)
