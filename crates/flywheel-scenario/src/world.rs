@@ -35,7 +35,12 @@ pub fn perform(defs: &Definitions, store: &mut Store, object: &str, region: &str
         "start_session" => {
             let s = store.world.sessions.entry(skey.clone()).or_insert_with(|| SessionFact { pane: false, activity: "working".into(), ..Default::default() });
             if !s.pane { s.pane = true; s.activity = "working".into(); s.exit = None; s.ticks_alive = 0; s.played.clear(); }
-            else { acted = false; }
+            else {
+                // A second start of the same name is refused by the
+                // multiplexer, and the machinery reads the refusal (72).
+                acted = false;
+                store.duplicate_starts += 1;
+            }
             store.play_scripts_for(&skey);
         }
         "end_session" => { if let Some(s) = store.world.sessions.get_mut(&skey) { s.pane = false; } }

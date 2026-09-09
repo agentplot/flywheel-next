@@ -78,6 +78,34 @@ pub fn seed(defs: Definitions, sc: &Scenario) -> Runtime {
             *o = o2;
         }
     }
+    // An item works its unit's type at the version the unit recorded (57), and
+    // `create_items` writes both on to the item when it makes one. A scenario
+    // that describes items directly need not repeat them.
+    let types: Vec<(String, Value, Value)> = store
+        .objects
+        .values()
+        .filter(|o| o.machine == "work-item" && !o.record.contains_key("type"))
+        .filter_map(|o| {
+            let unit = store.objects.get(o.parent.as_deref()?)?;
+            Some((
+                o.id.clone(),
+                unit.record.get("type")?.clone(),
+                unit.record
+                    .get("type_version")
+                    .cloned()
+                    .unwrap_or(Value::Null),
+            ))
+        })
+        .collect();
+    for (id, kind, version) in types {
+        if let Some(item) = store.objects.get_mut(&id) {
+            item.record.insert("type".into(), kind);
+            if !version.is_null() {
+                item.record.insert("type_version".into(), version);
+            }
+        }
+    }
+
     let mut rt = Runtime::new(defs, store);
     rt.decisions();
     rt

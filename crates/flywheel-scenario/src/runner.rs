@@ -284,6 +284,7 @@ impl Runtime {
         let now = self.store.now;
         let _ = flywheel_domain::leases::attach(&self.store, &mut objects, now);
         let fired = self.plan(&objects);
+        self.store.sessions_running_max = self.store.sessions_running_max.max(self.store.host_running());
         let mut record = TickRecord { tick: self.store.tick, at: self.store.now, ..Default::default() };
         self.perform(&objects, &fired, &mut record, moved);
         self.reperform_unproved(&mut record);
@@ -611,6 +612,11 @@ impl Runtime {
             }
             for (f, commanded, tail) in applied {
                 moved.push(format!("{id}#{}", f.region));
+                // The order items merged into the bolt's line, which is the
+                // order their ordinals state (38, 57).
+                if f.to == "merged" && !self.store.merge_order.contains(&id) {
+                    self.store.merge_order.push(id.clone());
+                }
                 self.store.log("transition", &id, format!("{}: {} → {}{}", f.region, f.from, f.to, f.note.as_ref().map(|n| format!(" — {n}")).unwrap_or_default()));
                 // The guard that matched, as the trace states it.
                 record.guards.push(GuardRecord {

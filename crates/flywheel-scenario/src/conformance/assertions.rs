@@ -571,6 +571,22 @@ pub fn observe(run: &Run, key: &str) -> Option<Value> {
             .iter()
             .filter(|e| e.held && !e.coverable)
             .count()),
+        // The bound: never more sessions running at once than the host allows
+        // (31, 32, 149).
+        "sessions_running_max" => json!(store.sessions_running_max),
+        // A second session under one name: the multiplexer refuses one, so this
+        // is zero on a store that keeps its promise (72, 111).
+        "duplicate_session_names" => json!(store.duplicate_starts),
+        // Items merge into the bolt's line in their ordinal order (38, 57).
+        "merges_in_ordinal_order" => {
+            let ordinals: Vec<i64> = store
+                .merge_order
+                .iter()
+                .filter_map(|id| store.objects.get(id))
+                .filter_map(|o| o.record.get("ordinal").and_then(|v| v.as_i64()))
+                .collect();
+            json!(ordinals.windows(2).all(|pair| pair[0] <= pair[1]))
+        }
         "writes_attempted" => json!(run.runtime.writes_attempted),
         "writes_succeeded" => json!(run.runtime.writes_succeeded),
         "loser_told" => json!(run.runtime.loser_told),

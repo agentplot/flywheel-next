@@ -143,6 +143,18 @@ pub struct Store {
     /// Hosts that cannot reach the store (151, D4a).
     #[serde(default)]
     pub disconnected: Vec<String>,
+    /// A start of a session name whose pane was already present: the
+    /// multiplexer refuses one, so this counts what would have been a second
+    /// session under one name (72, 111).
+    #[serde(default)]
+    pub duplicate_starts: usize,
+    /// The most sessions this host had running at once; never above its bound
+    /// (31, 32, 149). Kept with the store, so a restart does not forget it.
+    #[serde(default)]
+    pub sessions_running_max: usize,
+    /// The objects that reached `merged`, in the order they did (57).
+    #[serde(default)]
+    pub merge_order: Vec<String>,
     /// What each host declared it takes, by host name (149, 217).
     #[serde(default)]
     pub declarations: BTreeMap<String, flywheel_domain::derived::Declaration>,
@@ -215,6 +227,9 @@ impl Default for Store {
             presented: vec![],
             acting_host: None,
             disconnected: vec![],
+            duplicate_starts: 0,
+            sessions_running_max: 0,
+            merge_order: vec![],
             declarations: BTreeMap::new(),
             register_aliases: BTreeMap::new(),
             decision_numbers: BTreeMap::new(),
@@ -243,6 +258,36 @@ impl Store {
 
     fn running_sessions(&self) -> usize {
         self.world.sessions.values().filter(|s| s.pane).count()
+    }
+
+    /// How many sessions this host is running, against which its bound is read
+    /// (31, 32, `record-derived.yaml` host.running). A scenario that states it
+    /// is stating what the host reports; otherwise it is the panes the world
+    /// holds.
+    pub fn host_running(&self) -> usize {
+        let me = self.me();
+        let stated: Vec<u64> = self
+            .given
+            .iter()
+            .filter(|(key, _)| {
+                key.as_str() == me || key.trim_start_matches("host/") == me || self.given.len() == 1
+            })
+            .filter_map(|(_, per)| per.get("host.running").and_then(|v| v.as_u64()))
+            .collect();
+        match stated.len() {
+            1 => stated[0] as usize,
+            _ => {
+                let any: Vec<u64> = self
+                    .given
+                    .values()
+                    .filter_map(|per| per.get("host.running").and_then(|v| v.as_u64()))
+                    .collect();
+                match any.len() {
+                    1 => any[0] as usize,
+                    _ => self.running_sessions(),
+                }
+            }
+        }
     }
 
     fn deps_merged(&self, obj: &Object) -> bool {
@@ -359,7 +404,7 @@ impl Store {
             "item.send_backs" => json!(obj.and_then(|o| o.counters.get("send_backs").copied()).unwrap_or(0)),
             "item.retry_max" => json!(3),
             "item.deps_merged" | "unit.deps_merged" => json!(obj.map(|o| self.deps_merged(o)).unwrap_or(true)),
-            "item.slot_free" => json!(self.running_sessions() < self.host_bound),
+            "item.slot_free" => json!(self.host_running() < self.host_bound),
             "unit.claim_moved" | "bolt.citations_moved" | "bolt.chores_outstanding" | "bolt.hold_since_last_merge" => json!(false),
             "unit.items_exist" => json!(self.objects.values().any(|o| o.parent.as_deref() == Some(object) && o.machine == "work-item")),
             // ---- design side
@@ -520,8 +565,25 @@ fn apply_entry(s: &mut SessionFact, e: &ScriptEntry, now: DateTime<Utc>) {
 
 impl EvidenceSource for Store {
     fn evidence(&self, object: &str, region: &str, name: &str) -> Option<Value> {
-        if let Some(v) = self.given_value(object, name) {
-            return Some(v);
+        // What a scenario says about this object outright.
+        if let Some(v) = self.given.get(object).and_then(|m| m.get(name)) {
+            return Some(v.clone());
+        }
+        // A wildcard about places and sessions says what the world reports
+        // about one that exists — panes come up, places come up ready. It
+        // cannot report on one the machinery has not made yet, and so cannot
+        // prove `prepare_place` or `start_session` before either has run (127).
+        if name.starts_with("place.") || name.starts_with("session.") {
+            let made = match name.starts_with("place.") {
+                true => self.world.places.contains_key(&place_key(object, region)),
+                false => self.world.sessions.contains_key(&session_key(object, region)),
+            };
+            if !made {
+                return self.derived(object, region, name);
+            }
+        }
+        if let Some(v) = self.given.get("*").and_then(|m| m.get(name)) {
+            return Some(v.clone());
         }
         // A lease is named for the object it is on, and a scenario describes it
         // there: `lease.coverable` on `unit/atlas/u` is the lease's own

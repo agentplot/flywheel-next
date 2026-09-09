@@ -312,6 +312,35 @@ pub fn seed(defs: Definitions, scenario: &Scenario, suite: &Suite) -> Result<Run
         }
     }
 
+    // An item works its unit's type at the version the unit recorded (57), and
+    // `create_items` writes both on to the item when it makes one. A scenario
+    // that describes items directly need not repeat them.
+    let inherited: Vec<(String, Value, Value)> = store
+        .objects
+        .values()
+        .filter(|o| o.machine == "work-item" && !o.record.contains_key("type"))
+        .filter_map(|o| {
+            let unit = store.objects.get(o.parent.as_deref()?)?;
+            Some((
+                o.id.clone(),
+                unit.record.get("type")?.clone(),
+                unit.record.get("type_version").cloned().unwrap_or(Value::Null),
+            ))
+        })
+        .collect();
+    for (id, kind, version) in inherited {
+        if let Some(item) = store.objects.get_mut(&id) {
+            item.record.insert("type".into(), kind);
+            if !version.is_null() {
+                item.record.insert("type_version".into(), version);
+            }
+            let settled = item.clone();
+            let mut settled = settled;
+            flywheel_engine::initialise(&defs, &mut settled, store.now);
+            *item = settled;
+        }
+    }
+
     let mut rt = Runtime::new(defs, store);
     rt.hooks = scenario.hooks.clone();
     rt.decisions();
@@ -435,6 +464,10 @@ fn play_step(
             fresh.register_aliases = store.register_aliases;
             fresh.decision_numbers = store.decision_numbers;
             fresh.standing = store.standing;
+            fresh.declarations = store.declarations;
+            fresh.duplicate_starts = store.duplicate_starts;
+            fresh.merge_order = store.merge_order;
+            fresh.sessions_running_max = store.sessions_running_max;
             fresh.scenario = store.scenario;
             let hooks = run.runtime.hooks.clone();
             let lease_log = std::mem::take(&mut run.runtime.lease_log);
