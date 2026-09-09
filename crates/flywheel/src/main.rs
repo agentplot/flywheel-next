@@ -20,6 +20,22 @@ struct Cli {
 
 #[derive(Subcommand)]
 enum Cmd {
+    /// The release's set version, and the version of every core machine in it.
+    Version {
+        /// List the core machines the binary carries and their versions (224).
+        #[arg(long)]
+        definitions: bool,
+    },
+    /// What a host does. A host runs the set the binary carries and no other:
+    /// `--definitions` is the scenario runner's alone (D2, 223).
+    Host {
+        #[command(subcommand)]
+        cmd: HostCmd,
+        /// Refused, wherever it is written. A host runs the definitions in the
+        /// binary (223, D2).
+        #[arg(long, global = true)]
+        definitions: Option<PathBuf>,
+    },
     /// Load the machine definitions and report what was read.
     Defs,
     /// Seed the store from a scenario file (replaces the store).
@@ -108,6 +124,18 @@ fn do_report(cli: &Cli, session: &str, report: &Report) -> Result<i32> {
             1
         }
     })
+}
+
+/// What a host is asked to do. Group 5 fills these in; the binding rule they
+/// share is here from the start (D2).
+#[derive(Subcommand, Clone)]
+enum HostCmd {
+    /// Report what this host is, what set it runs, and what it refused.
+    Doctor {
+        /// A blueprints checkout to read the instance's own types from (57, 85).
+        #[arg(long)]
+        blueprints: Option<PathBuf>,
+    },
 }
 
 #[derive(Subcommand)]
@@ -229,6 +257,62 @@ async fn main() -> Result<()> {
                 println!("  {name:<22} kind={:<9} object={:<16} regions={} states={}", format!("{:?}", m.kind).to_lowercase(), m.object.clone().unwrap_or_default(), m.regions.len(), states);
             }
             println!("evidence atoms: {}  effects: {}", defs.atoms.evidence.len(), defs.atoms.effects.len());
+        }
+        Cmd::Version { definitions } => {
+            println!("flywheel {}", env!("CARGO_PKG_VERSION"));
+            println!(
+                "definition set {} · digest {:016x}",
+                flywheel_domain::set::SET_VERSION,
+                flywheel_domain::set::digest()
+            );
+            if *definitions {
+                for (name, version) in flywheel_domain::set::versions()? {
+                    println!("  {name:<22} version {version}");
+                }
+            }
+        }
+        Cmd::Host { cmd, definitions } => {
+            // A host runs the set the binary carries. The directory load is the
+            // scenario runner's, and a host that took one could not prove which
+            // set it ran (223, 224, D2).
+            if let Some(dir) = definitions {
+                anyhow::bail!(
+                    "`--definitions {}` is refused: a host runs the definitions in the binary, \
+                     so that the set it ran is provable from the bytes (223, 224, D2). \
+                     The override is the scenario runner's: `flywheel scenario run --definitions`",
+                    dir.display()
+                );
+            }
+            match cmd {
+                HostCmd::Doctor { blueprints } => {
+                    println!(
+                        "definition set {} · digest {:016x} · {} core machines",
+                        flywheel_domain::set::SET_VERSION,
+                        flywheel_domain::set::digest(),
+                        flywheel_domain::set::versions()?.len()
+                    );
+                    if let Some(dir) = blueprints {
+                        let loaded = flywheel_domain::blueprints::load_over_core(dir)?;
+                        let core = flywheel_domain::set::load()?;
+                        // A pinned `name@version` is the same machine under a
+                        // second key, not a type of its own.
+                        let own = loaded
+                            .defs
+                            .machines
+                            .keys()
+                            .filter(|k| !k.contains('@') && !core.machines.contains_key(*k))
+                            .count();
+                        println!("blueprints {} · {own} types of its own", dir.display());
+                        // A refusal is reported, never swallowed: what the
+                        // binary carries goes on running and the operator is
+                        // told what was not read (223, 79–82). Group 6 writes
+                        // these to the run record.
+                        for refusal in &loaded.refusals {
+                            println!("refused: {refusal}");
+                        }
+                    }
+                }
+            }
         }
         Cmd::Seed { scenario: path, drive } => {
             let defs = flywheel_engine::load::load_dir(&cli.defs)?;

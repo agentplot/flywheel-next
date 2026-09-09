@@ -55,13 +55,13 @@ or a command.
 
 ## 4. Definitions embedded and the binding gate
 
-- [ ] 4.1 Embed `definitions/` in the binary as core definitions and expose the set version; verify `flywheel version --definitions` prints the set version and the version of every core machine (223, 224)
-- [ ] 4.2 Add `cargo test -p flywheel-domain embedded_set_matches_definitions_dir`, hashing the embedded set against `definitions/`; verify it fails when the directory is edited without a rebuild (D2)
-- [ ] 4.3 Accept `--definitions <dir>` on the scenario runner and refuse it on `flywheel host`; verify `cargo test -p flywheel host_refuses_definitions_override` (D2)
-- [ ] 4.4 Validate a profile's binding at load: refuse one that leaves an evidence or effect name unbound or a guarantee without a named mechanism, refuse a binding naming evidence outside the atoms file, and report the name; verify `flywheel scenario run --profile git-only conformance/contract/binding.yaml` and `cargo test -p flywheel-domain incomplete_binding_is_refused` against a deliberately incomplete profile (138–140, 169, 170, `state-store/contract`)
-- [ ] 4.5 Load the instance's own type files from a blueprints checkout at the shared line; verify `cargo test -p flywheel-domain type_from_blueprints_runs` against a fixture blueprints directory, with no binary change and no host restart (57, 85)
-- [ ] 4.6 Record the extensible machine's version on each object and hold it across a type change; verify `cargo test -p flywheel-domain type_version_held_in_flight` (57, 224)
-- [ ] 4.7 Refuse a blueprints file that would override a core machine and write the refusal to the run record; verify `cargo test -p flywheel-domain core_machine_override_refused` (223)
+- [x] 4.1 Embed `definitions/` in the binary as core definitions and expose the set version; verify `flywheel version --definitions` prints the set version and the version of every core machine (223, 224)
+- [x] 4.2 Add `cargo test -p flywheel-domain embedded_set_matches_definitions_dir`, hashing the embedded set against `definitions/`; verify it fails when the directory is edited without a rebuild (D2)
+- [x] 4.3 Accept `--definitions <dir>` on the scenario runner and refuse it on `flywheel host`; verify `cargo test -p flywheel host_refuses_definitions_override` (D2)
+- [x] 4.4 Validate a profile's binding at load: refuse one that leaves an evidence or effect name unbound or a guarantee without a named mechanism, refuse a binding naming evidence outside the atoms file, and report the name; verify `flywheel scenario run --profile git-only conformance/contract/binding.yaml` and `cargo test -p flywheel-domain incomplete_binding_is_refused` against a deliberately incomplete profile (138–140, 169, 170, `state-store/contract`)
+- [x] 4.5 Load the instance's own type files from a blueprints checkout at the shared line; verify `cargo test -p flywheel-domain type_from_blueprints_runs` against a fixture blueprints directory, with no binary change and no host restart (57, 85)
+- [x] 4.6 Record the extensible machine's version on each object and hold it across a type change; verify `cargo test -p flywheel-domain type_version_held_in_flight` (57, 224)
+- [x] 4.7 Refuse a blueprints file that would override a core machine and write the refusal to the run record; verify `cargo test -p flywheel-domain core_machine_override_refused` (223)
 
 ## 5. The world, bootstrap and host join
 

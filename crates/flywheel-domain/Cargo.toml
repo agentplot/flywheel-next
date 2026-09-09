@@ -12,3 +12,4 @@ serde_json.workspace = true
 serde_yaml.workspace = true
 anyhow.workspace = true
 chrono.workspace = true
+include_dir.workspace = true

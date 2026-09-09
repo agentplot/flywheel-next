@@ -1,0 +1,22 @@
+# An instance's own unit type, composed of atoms the binary already carries: one
+# stage, one session, no change directory. Added by writing this file in the
+# blueprints and committing it — no code change, no host rebuilt (57, 85).
+machine: spike
+version: 1
+kind: template
+tier: extensible
+satisfies: [57, 60, 85]
+doc: unit type
+params:
+  place: the item's place
+regions:
+  stages:
+    initial: build
+    states:
+      build:
+        doc: one session in the item's place
+        transitions:
+          - when: {ev: session.exit, is: done}
+            to: passed
+      passed:
+        final: true

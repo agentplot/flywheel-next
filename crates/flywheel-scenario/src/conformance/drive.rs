@@ -46,14 +46,13 @@ fn definitions(scenario: &Scenario, path: &Path, suite: &Suite, options: &RunOpt
         return flywheel_engine::load::load_dir(&resolved)
             .with_context(|| format!("loading the machines at {}", resolved.display()));
     }
-    // The binary's own definition set unless `--definitions` names a directory
-    // (D2). Phase 1 embeds nothing yet, so the directory is the repository's.
-    let dir = options
-        .definitions
-        .clone()
-        .unwrap_or_else(|| std::path::PathBuf::from("definitions"));
-    flywheel_engine::load::load_dir(&dir)
-        .with_context(|| format!("loading the machines at {}", dir.display()))
+    // The set the binary carries, unless `--definitions` names a directory
+    // (D2). The override is the runner's alone: a host runs what it carries.
+    match &options.definitions {
+        Some(dir) => flywheel_engine::load::load_dir(dir)
+            .with_context(|| format!("loading the machines at {}", dir.display())),
+        None => flywheel_domain::set::load().context("loading the set the binary carries"),
+    }
 }
 
 /// Seed and play. Every way a scenario can be ill-formed is an error here, so
@@ -91,6 +90,7 @@ pub fn play(
         observations: BTreeMap::new(),
         skipped_steps: vec![],
         writes_at_start,
+        profile: options.profile.name(),
     };
     // The script is the scenario's, and entries play at the step they name.
     let script = scenario.given.script.clone();

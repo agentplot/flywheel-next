@@ -356,6 +356,9 @@ pub struct Run {
     /// The store's write count when the first step began, so `writes:` counts
     /// what the steps did and not what seeding put in place.
     pub writes_at_start: u64,
+    /// The profile the run bound, which is the binding a scenario about
+    /// bindings is asserted against (140).
+    pub profile: &'static str,
 }
 
 /// A scenario that runs against no configuration at all is a failure, never a

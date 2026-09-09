@@ -411,6 +411,26 @@ pub fn check(scenario: &Scenario, run: &Run, suite: &Suite) -> Vec<Failure> {
     failures
 }
 
+/// The binding the run's profile stands for, folded with everything it
+/// inherits. A profile the set does not carry has none.
+fn bound(run: &Run) -> Option<flywheel_domain::profile::Binding> {
+    flywheel_domain::profile::bind(&flywheel_domain::profile::Embedded, run.profile).ok()
+}
+
+/// Everything wrong with that binding, by name. A binding the set does not
+/// carry is not a binding with no faults; it is no binding, and the keys about
+/// it answer nothing.
+fn binding_faults(run: &Run) -> Vec<String> {
+    // The gate is the profile against the atoms file the set ships, not against
+    // whatever machines a scenario named: a binding is complete or not on its
+    // own terms (138, 169).
+    let Ok(defs) = flywheel_domain::set::load() else { return vec!["no set".into()] };
+    match bound(run) {
+        Some(binding) => flywheel_domain::profile::faults(&binding, &defs.atoms),
+        None => vec!["no binding".into()],
+    }
+}
+
 /// One fact about an object's lease over the whole run. The lease log is what
 /// the store answered each time a host asked to hold the object, so every fact
 /// here is something the store did rather than something the runner arranged.
@@ -481,6 +501,40 @@ pub fn observe(run: &Run, key: &str) -> Option<Value> {
             json!(ids.len())
         }
         "notify_latency_bound" => json!(store.notify_bound()),
+        // ---- the binding gate (138–140, 169, 170)
+        "machine_files_hash_equals_repository" => {
+            let dir = std::path::Path::new(env!("CARGO_MANIFEST_DIR")).join("../../definitions");
+            json!(flywheel_domain::set::digest_of_dir(&dir).ok() == Some(flywheel_domain::set::digest()))
+        }
+        "binding_covers_every_evidence_name" => json!(binding_faults(run)
+            .iter()
+            .all(|f| !f.starts_with("evidence "))),
+        "binding_covers_every_effect_name" => json!(binding_faults(run)
+            .iter()
+            .all(|f| !f.starts_with("effect "))),
+        "binding_names_no_evidence_outside_atoms" => json!(binding_faults(run)
+            .iter()
+            .all(|f| !f.starts_with("the binding names evidence"))),
+        "operations_used_by_engine" => json!(flywheel_domain::profile::OPERATIONS),
+        "guarantee_mechanisms_named_for" => {
+            let Some(binding) = bound(run) else { return None };
+            json!(flywheel_domain::profile::GUARANTEES
+                .iter()
+                .filter(|g| binding
+                    .guarantees
+                    .get(**g)
+                    .is_some_and(|m| !m.trim().is_empty()))
+                .collect::<Vec<_>>())
+        }
+        // A binding missing a mechanism is refused, and the refusal names the
+        // guarantee rather than the file.
+        "profile_rejected_when_a_guarantee_is_missing" => {
+            let Some(mut binding) = bound(run) else { return None };
+            let Ok(defs) = flywheel_domain::set::load() else { return None };
+            binding.guarantees.remove("atomic");
+            let refused = flywheel_domain::profile::admit(&binding, &defs.atoms);
+            json!(refused.is_err_and(|e| format!("{e}").contains("atomic")))
+        }
         // Every host that fetched read the same commit and derived the same
         // response from it: they agree because they read, not because anyone
         // told them (164, 166).

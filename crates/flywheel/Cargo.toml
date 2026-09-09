@@ -15,6 +15,7 @@ path = "src/main.rs"
 [dependencies]
 flywheel-engine = { path = "../flywheel-engine" }
 flywheel-atoms = { path = "../flywheel-atoms" }
+flywheel-domain = { path = "../flywheel-domain" }
 flywheel-scenario = { path = "../flywheel-scenario" }
 flywheel-surface = { path = "../flywheel-surface" }
 serde_json.workspace = true
