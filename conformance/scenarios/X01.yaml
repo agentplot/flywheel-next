@@ -17,8 +17,11 @@ when:
   - tick: {}
   - direct: {do: dictation, text: "end session chuck-1", by: chuck}
   - tick: {}
-  - evidence: {session.pane_absent: {"*": true}, place.absent: {"*": true}}
+  - evidence: {session.pane_absent: {"*": true}}
   - tick: {}
+  - tick: {}
+  - tick: {}
+  - evidence: {place.absent: {"*": true}}
   - tick: {}
 then:
   transitions:
