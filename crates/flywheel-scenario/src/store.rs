@@ -861,6 +861,26 @@ impl EvidenceSource for Store {
         if let Some(v) = self.given.get(object).and_then(|m| m.get(name)) {
             return Some(v.clone());
         }
+        // Or about the session or the place by its own name. A session's id is
+        // `<owner>/<stage or type>/<attempt>` and is also the pane's name
+        // (`session.yaml` id, 196), so a scenario saying a pane was killed by
+        // hand names it that way (X08); the same for a place. What it says
+        // there is about that session and not about its siblings, so it is read
+        // before the wildcard and never instead of what the object's own name
+        // said.
+        let named = match (name.starts_with("session."), name.starts_with("place.")) {
+            (true, _) => Some(self.session_of(object, region)),
+            (_, true) => Some(place_key(object, region)),
+            _ => None,
+        };
+        if let Some(v) = named
+            .as_ref()
+            .filter(|key| key.as_str() != object)
+            .and_then(|key| self.given.get(key))
+            .and_then(|m| m.get(name))
+        {
+            return Some(v.clone());
+        }
         // A wildcard about places and sessions says what the world reports
         // about one that exists — panes come up, places come up ready. It
         // cannot report on one the machinery has not made yet, and so cannot

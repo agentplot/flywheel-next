@@ -850,3 +850,56 @@ fn run_record_names_ran_and_skipped() {
             .any(|e| e.kind == "problem" && e.reason.starts_with("FAIL T")));
     }
 }
+
+// ---- 11.9 the whole phase-1 set
+
+/// The three the whole-set run found, kept where a change that broke them
+/// again would be caught: a decision on an object a tick created is numbered in
+/// that tick on either profile (15, D15), a pane a scenario killed by its own
+/// name is read as gone (196, X08), and a capture that stands with its proof
+/// absent acts once per tick (73, 127, S21).
+#[test]
+fn the_whole_set_acceptance_scenarios_pass() {
+    std::env::set_var(
+        flywheel_scenario::sessions::BINARY_ENV,
+        flywheel_binary_beside_the_test(),
+    );
+    for (path, profile) in [
+        ("scenarios/S04.yaml", Profile::GitOnly),
+        ("scenarios/S04.yaml", Profile::StandIn),
+        ("scenarios/X08.yaml", Profile::StandIn),
+        ("scenarios/S21.yaml", Profile::StandIn),
+        ("scenarios/S16.yaml", Profile::StandIn),
+    ] {
+        let options = RunOptions {
+            definitions: Some(root().join("definitions")),
+            profile,
+            ..Default::default()
+        };
+        let outcome = conformance::run_one(&conformance_dir().join(path), &options);
+        assert_eq!(
+            outcome.status,
+            Status::Passed,
+            "{path} failed on {profile:?} ({:?}):\n{}",
+            outcome.reason,
+            outcome.failures.join("\n")
+        );
+    }
+}
+
+/// The suite's own files sit beside the scenarios and are not ones: reading
+/// `observations.yaml` as a scenario made every directory run report one
+/// invalid file that no scenario named (D15).
+#[test]
+fn the_registry_is_not_a_scenario() {
+    let files = conformance::scenario_files(&conformance_dir()).expect("the suite is readable");
+    assert!(!files.is_empty());
+    assert!(
+        !files.iter().any(|p| p.file_name().is_some_and(|f| f == "observations.yaml")),
+        "the observation registry is not a scenario"
+    );
+    assert!(
+        files.iter().any(|p| p.file_name().is_some_and(|f| f == "S01.yaml")),
+        "and the scenarios are still found"
+    );
+}

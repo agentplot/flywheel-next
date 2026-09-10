@@ -271,6 +271,7 @@ impl Records for Store {
         if let Some(durable) = self.durable() {
             // One commit on the shared line, written with expected-old; the
             // map the world reads is the same write, kept in step (D4).
+            let fresh = !self.objects.contains_key(id);
             let outcome = durable
                 .lock()
                 .map_err(|_| anyhow!("the state repository is poisoned"))?
@@ -280,6 +281,17 @@ impl Records for Store {
                 next.seq = seq;
                 self.objects.insert(id.to_string(), next);
                 let _ = self.moved_at_by_machine(id, &record.machine);
+                // An object this store had not seen is one the pass made. The
+                // ordinal itself is the repository's, on its record; the count
+                // is what says a pass created something, and a tick that
+                // created something has not settled — its regions and the
+                // rail's register have still to be decided upon (D7). Counting
+                // it only where no repository stands behind the store would
+                // make the two profiles settle after different numbers of
+                // passes over one scenario (D15).
+                if fresh {
+                    self.next_created += 1;
+                }
             }
             return Ok(outcome);
         }
