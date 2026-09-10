@@ -104,7 +104,7 @@ observations:
   worker_endpoint_absent_because_it_serves_no_url: {profiles: [all], doc: "a service serving no URL has no endpoint, rather than an empty one (46)"}
   endpoint_shown_beside_bolt_on_page: {profiles: [all], doc: "the place's endpoint was shown beside its bolt (46)"}
   session_command_and_dictation_write_the_same_record_shape: {profiles: [all], doc: "a session's `flywheel service` and the operator's dictation wrote one record shape (48)"}
-  ran_without_live_service:     {profiles: [stand-in], doc: "the scenario ran with no live service behind it (93)"}
+  ran_without_live_service:     {profiles: [git-only], doc: "the scenario ran with no live service behind it: a bare repository on the same computer, no network, no agent (92, 93)"}
 
   # ---- construction, bolts, units and items
   items_created_once:           {profiles: [git-only], doc: "the approved unit's items were created once across racing hosts (17, 134)"}
@@ -171,6 +171,6 @@ observations:
 
   # ---- the machinery about itself
   engine_code_changed:          {profiles: [all], doc: "engine code changed to admit a new type; zero, a type is data (85, 87)"}
-  scenario_valid:               {profiles: [stand-in], doc: "the scenario a dictation produced validates against this schema (94)"}
-  trace_written:                {profiles: [stand-in], doc: "where the trace was written: `target/flywheel-trace/<profile>/<scenario>.trace.json` and the markdown rendered from it (95)"}
-  trace_lists:                  {profiles: [stand-in], doc: "what the trace lists: the transitions, the effects and the decisions the run asserts (95)"}
+  scenario_valid:               {profiles: [git-only], doc: "the scenario a dictation produced validates against this schema (94)"}
+  trace_written:                {profiles: [git-only], doc: "where the trace was written: `target/flywheel-trace/<profile>/<scenario>.trace.json` and the markdown rendered from it (95)"}
+  trace_lists:                  {profiles: [git-only], doc: "what the trace lists: the transitions, the effects and the decisions the run asserts (95)"}

@@ -487,7 +487,7 @@ for prof in sorted(glob.glob(os.path.join(ROOT, 'profiles', '*.yaml'))):
 # conformance scenarios must validate, name only real decisions and effects, and cite requirements
 sschema_path = os.path.join(ROOT, 'conformance', 'schema.json')
 obs_path = os.path.join(ROOT, 'conformance', 'observations.yaml')
-ALL_PROFILES = {'stand-in', 'git-only', 'tracker'}
+ALL_PROFILES = {'git-only', 'tracker'}
 observations = {}
 if os.path.exists(obs_path):
     observations = (yaml.safe_load(open(obs_path)) or {}).get('observations') or {}

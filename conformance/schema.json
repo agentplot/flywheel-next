@@ -9,7 +9,7 @@
   "properties": {
     "scenario": {"type": "string"},
     "title": {"type": "string"},
-    "profiles": {"type": "array", "items": {"enum": ["all", "stand-in", "git-only", "tracker"]}, "description": "the state store bindings this scenario runs on, and nothing else; the recorded-versus-real axis is `requires`"},
+    "profiles": {"type": "array", "items": {"enum": ["all", "git-only", "tracker"]}, "description": "the state store bindings this scenario runs on, and nothing else; the recorded-versus-real axis is `requires`"},
     "requires": {
       "type": "array",
       "items": {"enum": ["real-workspace", "real-sessions"]},

@@ -15,8 +15,9 @@ Two directories, plus two files that bind the vocabulary:
 - `scenarios/` — S1 to S34 of the requirements, run over the flywheel's
   own machines; X1 to X9 for the requirements the numbered scenarios
   do not reach; T1 for the tracker's direct action. The `profiles:`
-  line of each says which state stores it applies to; `all` runs on the
-  stand-in and on every real profile.
+  line of each says which state stores it applies to; `all` runs on
+  every state-store profile there is — git-only in the first build,
+  the tracker beside it in the second.
 - `schema.json` — the scenario schema. Every vocabulary in it is
   closed, so a misspelled key fails validation rather than being
   ignored in silence.
@@ -36,7 +37,7 @@ scenario outside `contract/` declares a hook.
 ```yaml
 scenario: S1
 title: approve a proposed elaboration from the phone
-profiles: [all]            # the state store binding: all, git-only, tracker, stand-in
+profiles: [all]            # the state store binding: all, git-only, tracker
 requires: [real-workspace] # optional; see "What a run must provide"
 satisfies: [1, 6, 13, 24]
 invariants: [I1, I2]
@@ -45,7 +46,7 @@ given:                     # the described state of the stores
     - {id: intent/atlas-provider-limits, machine: intent, state: {life: open, line: current, open.material: settled, open.close: not-offered}}
     - {id: elaboration/atlas-provider-limits/research-1, machine: elaboration, parent: intent/atlas-provider-limits,
        state: {life: proposed}, record: {type: self-closing, type_version: 1}}
-  evidence:                # evidence values the stand-in returns; anything unlisted is absent/false/none
+  evidence:                # evidence values the run reports; anything unlisted is absent/false/none
     session.pane: {"elaboration/atlas-provider-limits/research-1/self-closing/1": absent}
   register: {elaboration/atlas-provider-limits/research-1/elaboration-proposed: 7, next: 8}
   marks: {chat: now}
@@ -89,7 +90,7 @@ asserted absent when `effects_closed: true`.
 | `response: {decision, answer, id, by}` | a delivery through `receive`, naming the decision by id |
 | `response: {number, answer, id}` | the same, naming the number the register gave (15) |
 | `response: {object, answer, id}` | a dictation naming the object it acts on |
-| `evidence: {…}` | the world changed: set stand-in evidence |
+| `evidence: {…}` | the world changed: set the evidence the run reports |
 | `script: {…}` | seed or extend what the stand-in sessions play |
 | `notify: {…}` | a notify for an object |
 | `restart: {}` | drop every in-memory thing and start again |
@@ -230,17 +231,18 @@ done.
 ## Running
 
 ```bash
-flywheel scenario run conformance/                      # stand-in state store, stand-in sessions, every file
-flywheel scenario run --profile git-only conformance/   # against a temporary bare repository
+flywheel scenario run conformance/                      # the no-live-service run (92): git-only against a temporary bare repository, stand-in sessions, every file
+flywheel scenario run --profile git-only conformance/   # the same, named
 flywheel scenario run --profile tracker  conformance/   # against a throwaway GitHub repository (needs FLYWHEEL_SANDBOX_REPO)
 flywheel scenario run conformance/scenarios/S30.yaml --trace
 ```
 
-The stand-in state store (`flywheel-scenario`) is an in-memory map
-implementing the same `StateStore` and `World` traits; the real
-profiles run the same files with the sandbox as their store, the
-scripted `Sessions` stand-in, and a `World` whose git and wt calls run
-against sandbox repositories.
+There is no store of the runner's own. `flywheel-scenario` stands the
+bare repository up, binds `git-only.yaml` over it exactly as a host
+would, plays the scripted `Sessions` stand-in, and runs a `World`
+whose git and wt calls act on sandbox repositories; the tracker
+profile runs the same files with a throwaway GitHub repository as its
+store.
 
 ### The trace
 
