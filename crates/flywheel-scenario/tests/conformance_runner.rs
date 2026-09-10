@@ -564,6 +564,7 @@ fn a_scenario_that_does_not_apply_is_not_a_skip() {
 /// S20 run on the git-only profile because what they assert is the committed
 /// file a reader with no host running finds (D12, 145, S20).
 #[test]
+#[ignore = "group gate: cargo test --workspace -- --include-ignored"]
 fn the_host_loops_acceptance_scenarios_pass() {
     for (path, profile) in [
         ("scenarios/X05.yaml", conformance::Profile::StandIn),
@@ -593,6 +594,7 @@ fn the_host_loops_acceptance_scenarios_pass() {
 /// operation of B.1, per guarantee of B.2, and one for the binding itself,
 /// over a toy machine that shares no atom with the flywheel (168, task 3.15).
 #[test]
+#[ignore = "group gate: cargo test --workspace -- --include-ignored"]
 fn the_contract_set_admits_the_profile() {
     let contract = conformance_dir().join("contract");
     let files: Vec<PathBuf> = {
@@ -657,6 +659,7 @@ fn flywheel_binary_beside_the_test() -> PathBuf {
 /// repository — the rail identical after a restart and a slow host starting one
 /// session (tasks 10.7–10.11).
 #[test]
+#[ignore = "group gate: cargo test --workspace -- --include-ignored"]
 fn the_rail_acceptance_scenarios_pass() {
     // A scenario whose script reports through the command needs the binary,
     // and a test is not it (D8).
@@ -775,6 +778,7 @@ fn copy_tree(from: &Path, to: &Path) {
 /// definitions hash, the scenarios that ran, the subset skipped with its reason
 /// and the failures (79–82, 93a, 167, D15).
 #[test]
+#[ignore = "group gate: cargo test --workspace -- --include-ignored"]
 fn run_record_names_ran_and_skipped() {
     for profile in [Profile::StandIn, Profile::GitOnly] {
         let options = RunOptions {
@@ -859,6 +863,7 @@ fn run_record_names_ran_and_skipped() {
 /// name is read as gone (196, X08), and a capture that stands with its proof
 /// absent acts once per tick (73, 127, S21).
 #[test]
+#[ignore = "group gate: cargo test --workspace -- --include-ignored"]
 fn the_whole_set_acceptance_scenarios_pass() {
     std::env::set_var(
         flywheel_scenario::sessions::BINARY_ENV,

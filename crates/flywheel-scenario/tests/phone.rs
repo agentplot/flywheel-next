@@ -292,6 +292,7 @@ fn escape(text: &str) -> String {
 /// phone's viewport and again at the desktop's, and passes the same three
 /// assertions at both (314, 311, 193, 310, 153).
 #[test]
+#[ignore = "group gate: cargo test --workspace -- --include-ignored"]
 fn phone_pass_for_every_response_scenario() {
     if !driver::available() {
         eprintln!(

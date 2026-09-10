@@ -35,6 +35,7 @@ fn flywheel_binary() -> PathBuf {
 const SESSION: &str = "elaboration/a/1/self-closing/1";
 
 #[test]
+#[ignore = "group gate: cargo test --workspace -- --include-ignored"]
 fn scripted_exit_goes_through_the_command() {
     let dir = std::env::temp_dir().join(format!("flywheel-scripted-{}", std::process::id()));
     let _ = std::fs::remove_dir_all(&dir);

@@ -54,10 +54,29 @@ this repository.
   store and world, scenario seeding), `flywheel-surface` (the page and API),
   `flywheel` (the binary). Keep that split; add a crate rather than widening one.
 - `cargo test` is the gate. A scenario under `scenarios/` is the acceptance for
-  a change and mirrors a scenario in the model's `conformance/`.
+  a change and mirrors a scenario in the model's `conformance/`. See **Gates**.
 - Conventional Commits. Never commit `state/` or `target/`.
 - Secrets never appear in configuration or code; a host reads them from the
   place the operator put them (requirements 204, 207).
+
+## Gates
+
+Two runs, and the difference is what a test costs, never what it proves.
+
+| when | command |
+|---|---|
+| while iterating | `cargo test -p <the crate you touched>`, or `cargo test --workspace` |
+| at a group's end, and at 12.4 | `cargo test --workspace -- --include-ignored` |
+
+The default run is every test that holds the engine in process over the
+stand-in store. Marked `#[ignore = "group gate: …"]` and left out of it are the
+tests that play scenarios on the `git-only` profile, start a host as a real
+process, or shell out to the `flywheel` binary: each one is a repository, a
+clone and a push per scenario, and together they are most of the wall time. They
+are not optional — a group is not done until they pass, and 12.4 runs them.
+
+A test that reaches a real state repository or a real process is marked when it
+is written, so the default run stays the one a person runs every few minutes.
 
 ## Vocabulary
 

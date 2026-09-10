@@ -51,6 +51,7 @@ fn at(minutes: i64) -> chrono::DateTime<chrono::Utc> {
 // ---- 11.1 the harness
 
 #[test]
+#[ignore = "group gate: cargo test --workspace -- --include-ignored"]
 fn two_host_harness() {
     std::env::set_var(BINARY_ENV, flywheel_binary());
     let base = places("harness");
@@ -116,6 +117,7 @@ fn two_host_harness() {
 // ---- 11.3 one rail, one set of numbers
 
 #[test]
+#[ignore = "group gate: cargo test --workspace -- --include-ignored"]
 fn two_hosts_one_rail() {
     // The rail is derived from the active states and the register on every
     // read, and the register is the rail's record on the shared line: two hosts
@@ -184,6 +186,7 @@ fn two_hosts_one_rail() {
 // ---- 11.1a the same virtual clock, and a sweep the runner triggers
 
 #[test]
+#[ignore = "group gate: cargo test --workspace -- --include-ignored"]
 fn two_host_run_is_deterministic() {
     // The child hosts take the runner's clock through an injected clock source
     // and their sweep is triggered by the runner rather than by a timer, so ten
@@ -232,6 +235,7 @@ fn two_host_run_is_deterministic() {
 }
 
 #[test]
+#[ignore = "group gate: cargo test --workspace -- --include-ignored"]
 fn runner_holds_no_engine_under_hosts_real() {
     std::env::set_var(BINARY_ENV, flywheel_binary());
     // A scenario the embedded set covers: a host runs the definitions in the
