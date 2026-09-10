@@ -2,11 +2,12 @@
 //!
 //! The stand-in does not call the reporting command's function; it runs the
 //! binary. A scripted exit is a subprocess of `std::env::current_exe()`, its
-//! working directory the session's place, its session id in the environment
-//! under the same name the rendered work order tells a real session to use
-//! (89, D8). One path serves the in-process runner and `--hosts real` alike,
-//! and the operator's own hand-run command under 93b is the same invocation,
-//! so the phase-2 runner changes nothing about it.
+//! working directory the session's place, its session id and the host's
+//! checkout of the state repository in the environment under the same names
+//! the rendered work order tells a real session to use (89, D8). One path
+//! serves the in-process runner and `--hosts real` alike, and the operator's
+//! own hand-run command under 93b is the same invocation, so the phase-2
+//! runner changes nothing about it.
 //!
 //! Every assertion reads the thread entry the command wrote and never the
 //! script.
@@ -15,11 +16,16 @@ use crate::store::Store;
 use anyhow::{anyhow, Context, Result};
 use flywheel_atoms::scenario::ScriptEntry;
 use flywheel_atoms::{SessionPresence, Sessions, WorkOrder};
-use std::path::{Path, PathBuf};
+use std::path::PathBuf;
 use std::process::Command;
 
 /// The environment variable the work order names, and the command reads.
 pub const SESSION_ENV: &str = "FLYWHEEL_SESSION";
+
+/// Where the command writes through: this host's checkout of the state
+/// repository. Named beside the session in the work order, so a report is one
+/// command with nothing to look up (67, 89).
+pub const STATE_ENV: &str = "FLYWHEEL_STATE";
 
 /// An override for the binary the stand-in runs, so a test that is not itself
 /// the binary can point at it. Unset, the stand-in runs the process it is.
@@ -27,7 +33,8 @@ pub const BINARY_ENV: &str = "FLYWHEEL_BIN";
 
 /// The scripted `Sessions` stand-in.
 pub struct ScriptedSessions {
-    /// Where the store the command writes through lives.
+    /// The state repository's sandbox: one bare repository and a checkout per
+    /// host under it, which is where the command writes through (92, 160).
     pub state: PathBuf,
     /// The root the places sit under; a session's place is its working
     /// directory.
@@ -55,9 +62,15 @@ impl ScriptedSessions {
         self.root.join(session.replace('/', "-"))
     }
 
-    /// Run one report as the session would: the binary, the place, the id in
-    /// the environment.
-    fn run(&self, session: &str, args: &[String]) -> Result<()> {
+    /// This host's checkout of the state repository: what the command opens,
+    /// and the same directory the host itself works through.
+    pub fn checkout(&self, host: &str) -> PathBuf {
+        self.state.join(host)
+    }
+
+    /// Run one report as the session would: the binary, the place, the id and
+    /// the checkout in the environment.
+    fn run(&self, host: &str, session: &str, args: &[String]) -> Result<()> {
         let place = self.place(session);
         std::fs::create_dir_all(&place)
             .with_context(|| format!("making the place {}", place.display()))?;
@@ -65,8 +78,9 @@ impl ScriptedSessions {
         let out = Command::new(&binary)
             .current_dir(&place)
             .env(SESSION_ENV, session)
-            .arg("--state")
-            .arg(&self.state)
+            .env(STATE_ENV, self.checkout(host))
+            .arg("--host")
+            .arg(host)
             .args(args)
             .output()
             .with_context(|| format!("running {} {}", binary.display(), args.join(" ")))?;
@@ -92,7 +106,6 @@ impl ScriptedSessions {
         store: &mut Store,
         session: &str,
         entry: &ScriptEntry,
-        state_path: &Path,
     ) -> Result<()> {
         let fact = store.world.sessions.entry(session.to_string()).or_default();
         fact.scripted = true;
@@ -116,9 +129,10 @@ impl ScriptedSessions {
         if !reports {
             return Ok(());
         }
-        // The command writes through the store on disk, so what is in memory
-        // has to be there first and read back after.
-        crate::save(store, state_path)?;
+        // The command writes through this host's checkout of the state
+        // repository, and what it wrote is read back from there: the assertion
+        // reads the thread entry the command wrote and never the script (67).
+        let host = store.me();
         if let Some(kind) = &entry.exit {
             let mut args = vec!["exit".to_string(), kind.clone()];
             for d in &entry.deliverables {
@@ -129,10 +143,11 @@ impl ScriptedSessions {
                 args.push("--question".into());
                 args.push(q.clone());
             }
-            self.run(session, &args)?;
+            self.run(&host, session, &args)?;
         }
         for offer in &entry.offers {
             self.run(
+                &host,
                 session,
                 &[
                     "offer".to_string(),
@@ -143,12 +158,9 @@ impl ScriptedSessions {
             )?;
         }
         if let Some(reason) = &entry.refusal {
-            self.run(session, &["refuse".to_string(), reason.clone()])?;
+            self.run(&host, session, &["refuse".to_string(), reason.clone()])?;
         }
-        let written = crate::load(state_path)?;
-        store.threads = written.threads;
-        store.writes = written.writes;
-        store.moved = written.moved;
+        store.reread_thread(session)?;
         Ok(())
     }
 }

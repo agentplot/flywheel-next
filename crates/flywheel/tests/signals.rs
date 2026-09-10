@@ -184,8 +184,8 @@ impl Instance {
             git_host: dir.join("git-host"),
             app: "12345".into(),
             app_key_from: key_from.clone(),
+            address: "http://laptop.example".into(),
             manifest: dir.join("flywheel.yaml"),
-            state: dir.join("store.json"),
         };
         flywheel::init::run(ask).expect("the instance bootstraps");
         let instance = Instance { dir, key_from };

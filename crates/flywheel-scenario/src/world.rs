@@ -76,33 +76,33 @@ pub fn perform(defs: &Definitions, store: &mut Store, object: &str, region: &str
                 let rec = [("repository".to_string(), json!(repo)), ("name".to_string(), json!(name))].into_iter().collect();
                 new_object(defs, store, &bid, "bolt", None, rec);
             }
-            if let Some(u) = store.objects.get_mut(object) {
+            amend(store, object, |u| {
                 u.parent = Some(bid.clone());
                 let mut t = target.as_object().cloned().unwrap_or_default();
                 t.insert("bolt".into(), json!(bid));
                 u.record.insert("target".into(), Value::Object(t));
-            }
+            });
         }
         "route_unit" => {
             let b = e.args.get("bolt").and_then(|v| v.as_str()).unwrap_or("").to_string();
-            if let Some(u) = store.objects.get_mut(object) {
+            amend(store, object, |u| {
                 let mut t = u.record.get("target").and_then(|v| v.as_object().cloned()).unwrap_or_default();
                 let existing = store_bolt_by_name(&store_snapshot_bolts(&t, &b));
                 if let Some(bid) = existing { t.insert("bolt".into(), json!(bid)); t.remove("new_name"); } else { t.insert("new_name".into(), json!(b)); t.remove("bolt"); }
                 u.record.insert("target".into(), Value::Object(t));
-            }
+            });
         }
         "rename_bolt" => {
             let name = e.args.get("name").and_then(|v| v.as_str()).unwrap_or("").to_string();
-            if let Some(u) = store.objects.get_mut(object) {
+            amend(store, object, |u| {
                 let mut t = u.record.get("target").and_then(|v| v.as_object().cloned()).unwrap_or_default();
                 t.insert("new_name".into(), json!(name));
                 u.record.insert("target".into(), Value::Object(t));
-            }
+            });
         }
         "set_type" => {
             let ty = e.args.get("type").and_then(|v| v.as_str()).unwrap_or("").to_string();
-            if let Some(u) = store.objects.get_mut(object) { u.record.insert("type".into(), json!(ty)); }
+            amend(store, object, |u| { u.record.insert("type".into(), json!(ty)); });
         }
         "archive_intent" | "archive_change" => { store.world.archived.insert(object.to_string(), true); }
         "declare_services" => {
@@ -122,21 +122,23 @@ pub fn perform(defs: &Definitions, store: &mut Store, object: &str, region: &str
             let tick = store.tick;
             let f = store.world.services.entry(object.to_string()).or_default();
             if f.process != "present" { *f = ServiceFact { process: "present".into(), started_tick: tick, ..Default::default() }; }
-            if let (Some(o), Some(r)) = (store.objects.get_mut(object), moved_by) { o.record.insert("moved_by".into(), json!(r)); }
+            if let Some(r) = moved_by {
+                amend(store, object, |o| { o.record.insert("moved_by".into(), json!(r)); });
+            }
         }
         "stop_service" => {
             let moved_by = store.objects.get(object).and_then(|o| o.applied_responses.last().cloned());
             store.world.services.insert(object.to_string(), ServiceFact { process: "absent".into(), ..Default::default() });
-            if let Some(o) = store.objects.get_mut(object) {
+            amend(store, object, |o| {
                 o.record.remove("endpoint");
                 if let Some(r) = moved_by { o.record.insert("moved_by".into(), json!(r)); }
-            }
+            });
         }
         "record_service_endpoint" => {
             let ep = store.world.services.get(object).and_then(|f| f.endpoint.clone());
-            if let Some(o) = store.objects.get_mut(object) {
+            amend(store, object, |o| {
                 match ep { Some(e) => { o.record.insert("endpoint".into(), json!(e)); } None => { o.record.remove("endpoint"); } }
-            }
+            });
         }
         // The status projection, written from `list` and `get` alone and
         // stating the point it is as of (132, 145, D12). It is the rail's own
@@ -225,7 +227,10 @@ pub fn perform(defs: &Definitions, store: &mut Store, object: &str, region: &str
         }
         "record_exit" => {
             if let Some(s) = store.world.sessions.get(&skey) {
-                if let Some(q) = &s.question { let q = q.clone(); if let Some(o) = store.objects.get_mut(object) { o.record.insert("question".into(), json!(q)); } }
+                if let Some(q) = &s.question {
+                    let q = q.clone();
+                    amend(store, object, |o| { o.record.insert("question".into(), json!(q)); });
+                }
             }
         }
         _ => {}
@@ -236,12 +241,45 @@ pub fn perform(defs: &Definitions, store: &mut Store, object: &str, region: &str
 fn store_snapshot_bolts(_t: &serde_json::Map<String, Value>, name: &str) -> String { name.to_string() }
 fn store_bolt_by_name(name: &str) -> Option<String> { if name.starts_with("bolt/") { Some(name.to_string()) } else { None } }
 
+/// An object an effect made, written through the store.
+///
+/// Through `put` and never into the map alone: the store is the state
+/// repository, and an object only this process held would be gone at the next
+/// fetch, so the effect would fire again on every tick for ever (92, 125, 131).
+/// Change an object's record through the store.
+///
+/// An effect's write is a write like any other: the store is the state
+/// repository, and what only this process held would be gone at the next fetch.
+/// The transition's own commit is already made by the time an effect runs, so
+/// what the effect changes is its own to write (92, 125, 127, D4).
+fn amend(store: &mut Store, id: &str, change: impl FnOnce(&mut Object)) {
+    let Ok(Some(mut held)) = flywheel_atoms::Records::get(store, id) else {
+        return;
+    };
+    let seq = held.seq;
+    let before = held.record.clone();
+    change(&mut held);
+    // Writing what is already there is not a write (127).
+    if held.record == before {
+        return;
+    }
+    let _ = flywheel_atoms::Records::put(store, id, &held, seq);
+}
+
 pub fn new_object(defs: &Definitions, store: &mut Store, id: &str, machine: &str, parent: Option<&str>, record: std::collections::BTreeMap<String, Value>) {
     let mut o = Object { id: id.to_string(), machine: machine.to_string(), parent: parent.map(String::from), config: Default::default(), entered_at: Default::default(), record, counters: Default::default(), applied_responses: vec![], seq: 0, created: store.next_created };
-    store.next_created += 1;
     flywheel_engine::initialise(defs, &mut o, store.now);
     store.log("create", id, format!("{machine} created"));
-    store.objects.insert(id.to_string(), o);
+    // Before a repository is bound the store is being seeded, and what seeding
+    // put in the map is written into the repository the moment it is bound.
+    if store.durable().is_none() {
+        store.next_created += 1;
+        store.objects.insert(id.to_string(), o);
+        return;
+    }
+    if let Err(e) = flywheel_atoms::Records::put(store, id, &o, 0) {
+        store.log("refused", id, format!("{machine} could not be written: {e:#}"));
+    }
 }
 
 impl Store {

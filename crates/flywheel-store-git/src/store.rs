@@ -319,7 +319,7 @@ impl GitStore {
     /// The lease branches, by object.
     fn lease_record(&self, object: &str) -> Result<Option<LeaseRecord>> {
         let reference = layout::lease_ref(object);
-        let Some(sha) = git::rev(&self.repo, &format!("refs/remotes/origin/lease/{object}"))?
+        let Some(sha) = git::rev(&self.repo, &layout::lease_remote(object))?
             .or(git::rev(&self.repo, &reference)?)
         else {
             return Ok(None);
@@ -528,10 +528,14 @@ impl Records for GitStore {
         if let Some(held) = self.heartbeats.borrow().as_ref() {
             return Ok(held.clone());
         }
-        let out = self.repo.run(&["for-each-ref", "--format=%(refname)", "refs/remotes/origin/host/"])?;
+        let out = self.repo.run(&["for-each-ref", "--format=%(refname)", layout::HOSTS_REMOTE])?;
         let mut hosts = Vec::new();
         for reference in out.stdout.lines() {
-            let Some(name) = reference.rsplit('/').next() else { continue };
+            // A heartbeat branch and no other: the leaf is what says so
+            // (`git-only.yaml layout`).
+            if layout::host_of_ref(reference).is_none() {
+                continue;
+            }
             let Some(sha) = git::rev(&self.repo, reference)? else { continue };
             let Some(text) = git::show(&self.repo, &sha, layout::RECORD)? else { continue };
             if let Some(record) = rec::parse(&text).first() {
@@ -539,7 +543,6 @@ impl Records for GitStore {
                     hosts.push(host);
                 }
             }
-            let _ = name;
         }
         *self.heartbeats.borrow_mut() = Some(hosts.clone());
         Ok(hosts)
@@ -565,7 +568,7 @@ impl GitStore {
             return Ok(());
         }
         let reference = layout::host_ref(&self.host);
-        let expected = git::rev(&self.repo, &format!("refs/remotes/origin/host/{}", self.host))?
+        let expected = git::rev(&self.repo, &layout::host_remote(&self.host))?
             .unwrap_or_else(|| git::ZERO.to_string());
         let record = records::host_to_record(&HostRecord {
             host: self.host.clone(),
@@ -692,7 +695,7 @@ impl StateStore for GitStore {
             LeaseOp::Mark { object, .. } => (object.clone(), String::new()),
         };
         let reference = layout::lease_ref(&object);
-        let remote = format!("refs/remotes/origin/lease/{object}");
+        let remote = layout::lease_remote(&object);
         let expected = git::rev(&self.repo, &remote)?.unwrap_or_else(|| git::ZERO.to_string());
         let held = self.lease_record(&object)?;
 

@@ -1026,9 +1026,18 @@ impl Runtime {
         world::new_object(&self.defs, &mut self.store, &id, "capture", None, rec);
         let srec: BTreeMap<String, Value> = [("kind", json!("ask")), ("asserted_by", json!(by)), ("assertion", json!(text)), ("excerpt", json!(text)), ("subject_tags", json!([])), ("argues_with", json!([]))].into_iter().map(|(k, v)| (k.to_string(), v)).collect();
         world::new_object(&self.defs, &mut self.store, &format!("signal/page-{n}"), "signal", Some(&id), srec);
-        // The submission is the delivery: one response, already applied by the capture it made.
+        // The submission is the delivery: one response, already applied by the
+        // capture it made. Through `put`, because the store is the state
+        // repository and what only this process held would be gone at the next
+        // fetch (92, 125, 137).
         let rid = self.dictate(&id, text, by);
-        if let Some(o) = self.store.objects.get_mut(&id) { if !o.applied_responses.contains(&rid) { o.applied_responses.push(rid.clone()); } }
+        if let Ok(Some(mut held)) = Records::get(&self.store, &id) {
+            if !held.applied_responses.contains(&rid) {
+                held.applied_responses.push(rid.clone());
+                let seq = held.seq;
+                let _ = Records::put(&mut self.store, &id, &held, seq);
+            }
+        }
         let kind = if intent { "capture · intent" } else { "capture" };
         self.store.log("capture", &id, format!("{kind} from the page"));
         json!({"id": id, "kind": kind, "intent": intent, "response": rid})

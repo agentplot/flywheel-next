@@ -2,9 +2,10 @@
 //! stores, play a scenario's `when` steps against the real engine and assert
 //! the `then` clauses (94).
 //!
-//! The same runner and the same files, byte-identical, run against the stand-in
-//! store and against the git-only profile; only the store binding, the session
-//! binding (93) and the line-and-place binding (93a) differ (D15).
+//! One state store is bound: the git-only profile against a bare repository on
+//! the same computer, which is what a run with no live service standing up
+//! proves against (92). The session binding (93) and the line-and-place
+//! binding (93a) are what the profile leaves to be named (D15).
 
 pub mod assertions;
 pub mod drive;
@@ -21,29 +22,33 @@ use std::path::{Path, PathBuf};
 pub use record::RunRecord;
 pub use schema::{Observations, Suite};
 
-/// The state store binding a run uses.
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+/// The state store binding a run uses. Phase 1 has one: the run with no live
+/// service is the git-only profile against a bare repository on the same
+/// computer (92). `tracker` is named in the scenario schema and is phase 2's
+/// to bind.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Default)]
 pub enum Profile {
-    StandIn,
+    #[default]
     GitOnly,
-    Tracker,
 }
 
 impl Profile {
     pub fn name(&self) -> &'static str {
         match self {
-            Profile::StandIn => "stand-in",
             Profile::GitOnly => "git-only",
-            Profile::Tracker => "tracker",
         }
     }
 
     pub fn parse(s: &str) -> Result<Profile> {
         Ok(match s {
-            "stand-in" => Profile::StandIn,
             "git-only" => Profile::GitOnly,
-            "tracker" => Profile::Tracker,
-            other => anyhow::bail!("`{other}` is no profile; they are stand-in, git-only, tracker"),
+            "tracker" => anyhow::bail!(
+                "`tracker` is the profile phase 2 binds; this release runs on git-only alone (92)"
+            ),
+            other => anyhow::bail!(
+                "`{other}` is no profile; this release runs on git-only alone, \
+                 a bare repository on this computer with no live service (92)"
+            ),
         })
     }
 }
@@ -68,7 +73,7 @@ pub struct RunOptions {
 impl Default for RunOptions {
     fn default() -> Self {
         RunOptions {
-            profile: Profile::StandIn,
+            profile: Profile::GitOnly,
             hosts_real: false,
             definitions: None,
             trace: None,

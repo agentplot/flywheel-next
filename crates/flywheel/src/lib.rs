@@ -6,6 +6,7 @@ pub mod host;
 pub mod init;
 pub mod render_order;
 pub mod report;
+pub mod serve;
 
 /// The commands, written against the trait surface. They live in
 /// `flywheel-scenario` so the conformance runner ticks the same code the

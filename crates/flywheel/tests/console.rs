@@ -1,4 +1,7 @@
 //! The commands over the trait surface: nothing here names one store's fields.
+//!
+//! Each one runs over a state repository of its own — a bare repository on this
+//! computer and a checkout of it, which is the store this release binds (92).
 
 use chrono::Utc;
 use flywheel_scenario::console;
@@ -7,6 +10,21 @@ use flywheel_engine::runtime::Register;
 use flywheel_scenario::Store;
 use std::collections::BTreeMap;
 use std::path::PathBuf;
+
+/// A store over a state repository of its own (92, 160).
+fn a_store() -> Store {
+    let base = std::env::temp_dir().join(format!(
+        "flywheel-console-{}-{:?}",
+        std::process::id(),
+        std::thread::current().id()
+    ));
+    let _ = std::fs::remove_dir_all(&base);
+    let mut store = Store::default();
+    store
+        .bind_state_repository(&base, &["local".to_string()])
+        .expect("the state repository opens");
+    store
+}
 
 fn lamp() -> flywheel_engine::Definitions {
     let dir = PathBuf::from(concat!(env!("CARGO_MANIFEST_DIR"), "/../.."))
@@ -18,7 +36,7 @@ fn lamp() -> flywheel_engine::Definitions {
 fn the_register_is_the_rail_record() {
     // The rail's register is the rail record, reachable through `get` like
     // anything else (`profiles/record-derived.yaml`) — no seventh operation.
-    let mut store = Store::default();
+    let mut store = a_store();
     let mut register = Register::default();
     register.next_number = 412;
     register.entries.insert(
@@ -48,7 +66,7 @@ fn the_register_is_the_rail_record() {
 #[test]
 fn seed_rail_and_tick_go_through_the_store() {
     let defs = lamp();
-    let mut store = Store::default();
+    let mut store = a_store();
 
     // seed: every object through `put`.
     let mut lamp = flywheel_engine::runtime::Object {
@@ -126,7 +144,7 @@ fn a_response_number_is_never_reused() {
     // The delivery's number comes from what the store holds, so a gap in the
     // ids does not hand one back (15).
     let defs = lamp();
-    let mut store = Store::default();
+    let mut store = a_store();
     let record: BTreeMap<String, serde_json::Value> = BTreeMap::new();
     console::put_new(
         &mut store,

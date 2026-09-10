@@ -93,7 +93,7 @@ fn recorded_workspace_excludes_nine() {
             "{name} is in the acceptance table and would be skipped"
         );
         assert!(
-            scenario.runs_on(options.profile.name()) || scenario.runs_on("stand-in"),
+            scenario.runs_on(options.profile.name()),
             "{name} is in the acceptance table and applies to no path this phase runs"
         );
     }

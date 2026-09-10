@@ -43,6 +43,8 @@ impl Repo {
 
     /// Run git in this repository, and say what it said.
     pub fn run(&self, args: &[&str]) -> Result<Output> {
+        let traced = std::env::var("FLYWHEEL_GIT_TRACE").is_ok();
+        let began = std::time::Instant::now();
         let out = Command::new("git")
             .current_dir(&self.dir)
             .args(args)
@@ -56,6 +58,9 @@ impl Repo {
             .env("HOME", &self.dir)
             .output()
             .with_context(|| format!("running git {}", args.join(" ")))?;
+        if traced {
+            eprintln!("GITCALL {:>8}us {}", began.elapsed().as_micros(), args.join(" "));
+        }
         Ok(Output {
             ok: out.status.success(),
             stdout: String::from_utf8_lossy(&out.stdout).to_string(),

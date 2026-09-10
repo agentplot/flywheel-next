@@ -13,7 +13,7 @@ use flywheel_atoms::Records;
 use flywheel_engine::runtime::Object;
 use flywheel_scenario::{console, Runtime, Store};
 use flywheel_world_host::bootstrap::Bootstrap;
-use flywheel_world_host::effects;
+use flywheel_world_host::effects::{self, exists};
 use flywheel_world_host::manifest::Manifest;
 use std::path::PathBuf;
 
@@ -25,8 +25,19 @@ pub struct Init {
     pub git_host: PathBuf,
     pub app: String,
     pub app_key_from: String,
+    /// This host's one address: its name on the operator's private network,
+    /// never a localhost port, because every link a delivery carries is
+    /// written at it (191, 205a, D10a).
+    pub address: String,
     pub manifest: PathBuf,
-    pub state: PathBuf,
+}
+
+impl Init {
+    /// This host's checkout of the state repository: the one place a host keeps
+    /// it, `<root>/<instance>/flywheel-state` (205, 218).
+    pub fn checkout(&self) -> PathBuf {
+        self.root.join(&self.instance).join("flywheel-state")
+    }
 }
 
 /// What it did.
@@ -65,14 +76,29 @@ pub fn run(ask: Init) -> Result<Report> {
     };
     manifest.instance = ask.instance.clone();
 
-    let mut store = if ask.state.is_file() {
-        flywheel_scenario::load(&ask.state)?
-    } else {
-        let mut fresh = Store::default();
-        fresh.now = chrono::Utc::now();
-        fresh
-    };
+    // The record goes in the state repository, which is the only store this
+    // release binds (92, 125). The instance's own is what this run is creating,
+    // so until the machine's `create_state` has proved itself the record is
+    // kept in a scratch repository under the host's root and moved into the
+    // instance's own the moment it exists. Nothing is lost either way: every
+    // step before that proves itself against the world and not against a
+    // record (204).
+    let mut store = Store::default();
+    store.now = chrono::Utc::now();
     store.acting_host = Some(ask.host.clone());
+    let checkout = ask.checkout();
+    let scratch = ask.root.join(".flywheel-scratch").join("bootstrap-state");
+    let mut bound_to_the_instances_own = false;
+    if exists(&manifest.state.remote) {
+        store.bind_state_repository_at(
+            std::path::Path::new(&manifest.state.remote),
+            &checkout,
+            &ask.host,
+        )?;
+        bound_to_the_instances_own = true;
+    } else {
+        store.bind_state_repository(&scratch, &[ask.host.clone()])?;
+    }
 
     let id = object_id(&ask.instance);
     if store.get(&id)?.is_none() {
@@ -88,6 +114,21 @@ pub fn run(ask: Init) -> Result<Report> {
 
     let mut report = Report::default();
     let mut runtime = Runtime::new(defs, store);
+    // The machines that declare one object per instance get theirs. `curation`
+    // is one: with no object for it nothing ever reads the unmoved signals, so
+    // a capture would land for ever and no intent would be proposed (A.15,
+    // 110, `curation.yaml` singleton). Making one is idempotent — a second
+    // init finds it and writes nothing (204).
+    for name in singletons(&runtime.defs) {
+        let id = format!("{name}/{}", ask.instance);
+        if runtime.store.get(&id)?.is_some() {
+            continue;
+        }
+        let at = runtime.store.now;
+        let defs = runtime.defs.clone();
+        console::put_new(&mut runtime.store, &defs, &id, &name, Some(&object_id(&ask.instance)), Default::default(), at)?;
+        report.lines.push(format!("{id}: made"));
+    }
 
     // Tick until the machine stops moving. Each pass reads the world again, so
     // an effect that already holds fires nothing.
@@ -111,12 +152,25 @@ pub fn run(ask: Init) -> Result<Report> {
                 &ask.root,
                 &ask.app,
                 &ask.app_key_from,
+                &ask.address,
             )?;
             if did {
                 report.performed.push(effect.name.clone());
                 report.lines.push(format!("{}: done", effect.name));
                 moved = true;
             }
+        }
+        // The moment the instance's own state repository exists, the record
+        // moves into it: what the machine wrote so far is seeded there, and
+        // every write after this one is a commit on its shared line (204, C.2).
+        if !bound_to_the_instances_own && exists(&manifest.state.remote) {
+            runtime.store.durable.clear();
+            runtime.store.bind_state_repository_at(
+                std::path::Path::new(&manifest.state.remote),
+                &checkout,
+                &ask.host,
+            )?;
+            bound_to_the_instances_own = true;
         }
         let after = runtime
             .store
@@ -126,6 +180,7 @@ pub fn run(ask: Init) -> Result<Report> {
             break;
         }
     }
+    let _ = std::fs::remove_dir_all(&scratch);
 
     // A decision under attention stands until the operator acts; the machinery
     // never answers it for them (82, 207a).
@@ -144,7 +199,6 @@ pub fn run(ask: Init) -> Result<Report> {
         .template_version
         .get_or_insert_with(|| flywheel_domain::set::SET_VERSION.to_string());
     manifest.write(&ask.manifest)?;
-    flywheel_scenario::save(&runtime.store, &ask.state)?;
 
     report.lines.push(format!(
         "instance {} · {} · set {}",
@@ -161,6 +215,28 @@ pub fn run(ask: Init) -> Result<Report> {
         ));
     }
     Ok(report)
+}
+
+/// Every machine that declares one object per instance, other than the
+/// instance's own (`singleton: instance`).
+fn singletons(defs: &flywheel_engine::Definitions) -> Vec<String> {
+    let mut out: Vec<String> = defs
+        .machines
+        .iter()
+        .filter(|(name, m)| {
+            m.singleton.as_deref() == Some("instance")
+                && !name.contains('@')
+                && m.object.as_deref() != Some("instance")
+                // The rail is the machinery's own, kept at one id the whole
+                // instance shares and reached through `get` like any record
+                // (`record-derived.yaml`, D5); it is not an object init makes.
+                && name.as_str() != flywheel_domain::RAIL
+        })
+        .map(|(name, _)| name.clone())
+        .collect();
+    out.sort();
+    out.dedup();
+    out
 }
 
 /// The object as the store holds it, for a caller that wants to look.
@@ -212,7 +288,13 @@ impl Scope {
 /// counter is archived with the state, so no number is ever reused (221, 15).
 pub fn remove(ask: &Init) -> Result<Removed> {
     let manifest = Manifest::read(&ask.manifest)?;
-    let mut store = flywheel_scenario::load(&ask.state)?;
+    let mut store = Store::default();
+    store.acting_host = Some(ask.host.clone());
+    store.bind_state_repository_at(
+        std::path::Path::new(&manifest.state.remote),
+        &ask.checkout(),
+        &ask.host,
+    )?;
     let counter = console::register(&store)?.next_number;
 
     let root = manifest.instance_root(&ask.host)?;
@@ -220,8 +302,14 @@ pub fn remove(ask: &Init) -> Result<Removed> {
     std::fs::create_dir_all(&archive)?;
 
     // The state is archived, counter and all; nothing of it is thrown away.
-    let archived = archive.join("state.json");
-    flywheel_scenario::save(&store, &archived)?;
+    // The records themselves are the state repository, which stays on disk with
+    // every other repository (221) — what is written here is where to find them
+    // and the number the register would have given next, so a flywheel made
+    // after this one reuses none of its numbers (15).
+    std::fs::write(
+        archive.join("state"),
+        format!("state repository {}\n", manifest.state.remote),
+    )?;
     std::fs::write(
         archive.join("counter"),
         format!("next {counter}\n"),
@@ -240,7 +328,6 @@ pub fn remove(ask: &Init) -> Result<Removed> {
     // holds (93a, 93b).
     store.world.sessions.clear();
     store.world.places.clear();
-    flywheel_scenario::save(&store, &ask.state)?;
 
     Ok(Removed {
         archive,

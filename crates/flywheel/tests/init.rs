@@ -32,8 +32,8 @@ impl Sandbox {
             git_host: self.dir.join("git-host"),
             app: "12345".into(),
             app_key_from: self.key_from.clone(),
+            address: "http://laptop.example".into(),
             manifest: self.dir.join("flywheel.yaml"),
-            state: self.dir.join("store.json"),
         }
     }
 
@@ -201,7 +201,15 @@ fn remove_instance_keeps_counter() {
     init::run(sandbox.ask()).expect("init");
 
     let removed = init::remove(&ask).expect("removed by the operator's response");
-    assert!(removed.archive.join("state.json").is_file(), "the state is archived");
+    // The state is the state repository, which stays on disk with every other
+    // repository; the archive says where it is, so nothing of it is thrown away
+    // (221).
+    let archived = std::fs::read_to_string(removed.archive.join("state"))
+        .expect("the state is archived");
+    assert!(
+        archived.contains("willdan-state.git"),
+        "the archive names the state repository: {archived}"
+    );
     assert!(
         std::fs::read_to_string(removed.archive.join("counter"))
             .unwrap()

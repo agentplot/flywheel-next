@@ -152,32 +152,27 @@ impl RunRecord {
 ///
 /// The run's own record is not a scenario's: each scenario plays over a store
 /// of its own, and this is what the run did with all of them. It is written
-/// through a store bound the same way — a state repository on `--profile
-/// git-only`, the stand-in's own record otherwise — so the record is a record
-/// and never a file the runner wrote beside itself.
+/// through a store bound the same way — a state repository of its own — so the
+/// record is a record and never a file the runner wrote beside itself.
 pub fn write(record: &RunRecord, options: &RunOptions) -> Result<crate::store::Store> {
     let at = super::drive::start_of_time();
     let mut store = crate::store::Store::default();
     store.now = at;
-    if options.profile == super::Profile::GitOnly {
-        // Absolute: git is run from inside the checkout, and a relative remote
-        // would resolve against that and not against where the run started.
-        let base = match options.record_dir().is_absolute() {
-            true => options.record_dir(),
-            false => std::env::current_dir()
-                .context("where the run started")?
-                .join(options.record_dir()),
-        };
-        let _ = std::fs::remove_dir_all(&base);
-        std::fs::create_dir_all(&base)
-            .with_context(|| format!("making {}", base.display()))?;
-        let git = flywheel_store_git::store::sandbox(&base, RUNNER, at)
-            .context("opening the state repository the run's record is written to")?;
-        store
-            .durable
-            .insert(RUNNER.to_string(), std::sync::Arc::new(std::sync::Mutex::new(git)));
-        store.acting_host = Some(RUNNER.to_string());
-    }
+    // Absolute: git is run from inside the checkout, and a relative remote
+    // would resolve against that and not against where the run started.
+    let base = match options.record_dir().is_absolute() {
+        true => options.record_dir(),
+        false => std::env::current_dir()
+            .context("where the run started")?
+            .join(options.record_dir()),
+    };
+    let _ = std::fs::remove_dir_all(&base);
+    std::fs::create_dir_all(&base)
+        .with_context(|| format!("making {}", base.display()))?;
+    store.acting_host = Some(RUNNER.to_string());
+    store
+        .bind_state_repository(&base, &[RUNNER.to_string()])
+        .context("opening the state repository the run's record is written to")?;
     store
         .append_run(&record.entries(at))
         .context("writing the run's record")?;

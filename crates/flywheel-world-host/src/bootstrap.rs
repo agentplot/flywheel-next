@@ -162,7 +162,10 @@ impl Bootstrap {
 
     /// `register_host`: the first host's record and manifest entry. Every later
     /// host joins by its own command (204, 205).
-    pub fn register_host(manifest: &mut Manifest, host: &str, root: &Path) {
+    pub fn register_host(manifest: &mut Manifest, host: &str, root: &Path, address: &str) {
+        let router = crate::manifest::Router {
+            base: address.to_string(),
+        };
         manifest.hosts.entry(host.to_string()).or_insert_with(|| {
             crate::manifest::Host {
                 root: root.to_path_buf(),
@@ -171,9 +174,10 @@ impl Bootstrap {
                 workspace: "recorded".into(),
                 sessions: "operator".into(),
                 covers: vec![],
-                // The instance's router until the operator names this host's
-                // own, and the port 245 permits at the machine (191, 205a).
-                router: None,
+                // This host's one address, as the operator gave it: its name
+                // on their private network, never a localhost port, so a link
+                // a delivery carries opens on a phone (191, 205a, D10a).
+                router: Some(router),
                 localhost_port: 4242,
                 // What the first host is until the operator says otherwise: a
                 // laptop, running four sessions at once (31, 150a).
@@ -193,6 +197,7 @@ pub fn init(
     root: &Path,
     app_id: &str,
     key_from: &str,
+    address: &str,
     existing: Option<Manifest>,
 ) -> Result<Manifest> {
     let mut manifest = existing.unwrap_or_else(|| Manifest {
@@ -207,7 +212,7 @@ pub fn init(
         manifest.state = bootstrap.create_state(instance)?;
     }
     Bootstrap::register_app(&mut manifest, app_id, key_from);
-    Bootstrap::register_host(&mut manifest, host, root);
+    Bootstrap::register_host(&mut manifest, host, root, address);
     // The set version is stamped at initialization and at repository creation;
     // a newer set upgrades nothing on its own (208).
     manifest

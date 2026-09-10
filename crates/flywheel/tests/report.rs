@@ -1,4 +1,6 @@
-//! A session's reports, and the one path they take (65, 66, 67).
+//! A session's reports, and the one path they take (65, 66, 67). Each writes
+//! through a state repository of its own, which is the store this release
+//! binds (92).
 
 use chrono::Utc;
 use flywheel::report::{write_report, Report, Reported};
@@ -8,13 +10,28 @@ use serde_json::json;
 
 const SESSION: &str = "elaboration/a/1/self-closing/1";
 
+/// A store over a state repository of its own (92, 160).
+fn a_store() -> Store {
+    let base = std::env::temp_dir().join(format!(
+        "flywheel-report-{}-{:?}",
+        std::process::id(),
+        std::thread::current().id()
+    ));
+    let _ = std::fs::remove_dir_all(&base);
+    let mut store = Store::default();
+    store
+        .bind_state_repository(&base, &["local".to_string()])
+        .expect("the state repository opens");
+    store
+}
+
 fn write(store: &mut Store, report: &Report) -> Reported {
     write_report(store, SESSION, "chuck", Utc::now(), report).expect("the report is written")
 }
 
 #[test]
 fn exit_writes_one_thread_entry() {
-    let mut store = Store::default();
+    let mut store = a_store();
 
     // done with deliverables
     let out = write(
@@ -100,7 +117,7 @@ fn exit_writes_one_thread_entry() {
 
 #[test]
 fn exit_outside_the_five_is_refused() {
-    let mut store = Store::default();
+    let mut store = a_store();
     let out = write(
         &mut store,
         &Report::Exit {
@@ -137,7 +154,7 @@ fn exit_outside_the_five_is_refused() {
 
 #[test]
 fn a_report_with_no_session_is_an_error() {
-    let mut store = Store::default();
+    let mut store = a_store();
     let err = write_report(
         &mut store,
         "",

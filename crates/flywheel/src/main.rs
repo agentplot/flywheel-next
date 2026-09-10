@@ -1,10 +1,9 @@
 use anyhow::{Context, Result};
 use clap::{Parser, Subcommand};
-use flywheel::console;
 use flywheel::init;
 use flywheel::report::{self, Report, Reported, SESSION_ENV};
-use flywheel_scenario::{conformance, scenario, Runtime, Store};
-use std::path::PathBuf;
+use flywheel_scenario::conformance;
+use std::path::{Path, PathBuf};
 
 #[derive(Parser)]
 #[command(name = "flywheel", about = "flywheel next — prototype: seed a scenario, tick the machinery, answer decisions, serve the rail")]
@@ -12,8 +11,11 @@ struct Cli {
     /// Machine definitions directory.
     #[arg(long, global = true, default_value = "definitions")]
     defs: PathBuf,
-    /// The store file.
-    #[arg(long, global = true, default_value = "state/store.json")]
+    /// This host's checkout of the state repository, which every record
+    /// operation goes through (92, 125). A session's work order names it in the
+    /// environment, so a report inside a place needs no flag (67, 89).
+    #[arg(long, global = true, env = flywheel_scenario::sessions::STATE_ENV,
+          default_value = "state/flywheel-state")]
     state: PathBuf,
     #[command(subcommand)]
     cmd: Cmd,
@@ -51,6 +53,17 @@ enum Cmd {
         /// binary (223, D2).
         #[arg(long, global = true)]
         definitions: Option<PathBuf>,
+        /// Serve the page beside the loop, on this port: one bundle, the rail,
+        /// the capture box and the status view, rendered from this host's own
+        /// state store on every request (D10a, D11, 307). The host binds its
+        /// private-network address and this port for the operator at the
+        /// machine, and nothing else (46, 155, 245).
+        #[arg(long)]
+        serve: Option<u16>,
+        /// The instance's operators list; while it holds one entry the page is
+        /// served with no sign-in (236a, 253a).
+        #[arg(long = "operator", default_value = "operator")]
+        operators: Vec<String>,
     },
     /// Bring an instance and its first host into existence: the blueprints, the
     /// state repository, the App's installation recorded, the first host
@@ -76,36 +89,17 @@ enum Cmd {
         /// The environment variable the operator put the App's key in.
         #[arg(long, default_value = "FLYWHEEL_APP_KEY")]
         app_key_from: String,
+        /// This host's one address: what this computer is called on the
+        /// operator's private network, never a localhost port, because every
+        /// link a delivery carries is written at it (191, 205a, D10a).
+        #[arg(long, default_value = "http://localhost")]
+        address: String,
         /// Where the manifest is written.
         #[arg(long, default_value = "flywheel.yaml")]
         manifest: PathBuf,
     },
     /// Load the machine definitions and report what was read.
     Defs,
-    /// Seed the store from a scenario file (replaces the store).
-    Seed { scenario: PathBuf, /// Also run the scenario's `when` steps.
-        #[arg(long)] drive: bool },
-    /// Run ticks until nothing fires (or N ticks).
-    Tick { #[arg(default_value = "0")] n: usize },
-    /// Answer a numbered decision.
-    Respond { number: u32, answer: Vec<String> },
-    /// Dictate on an object.
-    Dictate { object: String, answer: Vec<String> },
-    /// Print the rail.
-    Rail,
-    /// Print the last N log lines.
-    Log { #[arg(default_value = "30")] n: usize },
-    /// Serve the page: one bundle, the rail, the capture box and the status
-    /// view, at the host's private-network address (307, D11).
-    Serve {
-        #[arg(long, default_value = "4242")] port: u16,
-        /// The host's address, with the instance in the path — the
-        /// private-network name its router gives it (205a, D10a).
-        #[arg(long, default_value = "http://localhost/flywheel")] address: String,
-        /// The instance's operators list; while it holds one entry the page is
-        /// served with no sign-in (236a, 253a).
-        #[arg(long = "operator", default_value = "operator")] operators: Vec<String>,
-    },
     /// Render the exact prompt a session would be handed, with no session
     /// started: the closed set of inputs of 89 for one session type, one
     /// instruction version and one scenario's job (90, 124).
@@ -142,11 +136,17 @@ enum Cmd {
         /// Who captured it; the operators list's entry by default (153).
         #[arg(long, default_value = "operator")]
         by: String,
+        /// The manifest this host reads itself from (183).
+        #[arg(long, default_value = "flywheel.yaml")]
+        manifest: PathBuf,
+        /// Which host's bindings the capture is written through (232).
+        #[arg(long, default_value = "local")]
+        name: String,
+        /// Where this host keeps its clones, in place of the manifest's own
+        /// (205, 232).
+        #[arg(long)]
+        root: Option<PathBuf>,
     },
-    /// Dump an object's configuration and record.
-    Obj { id: String },
-    /// Evaluate one evidence name for an object (and optional region path).
-    Ev { object: String, name: String, #[arg(default_value = "life")] region: String },
 
     // ---- what a session reports (65, 67). The operator runs these in phase 1
     // (93b); the scripted stand-in and the phase-2 runner run the same binary.
@@ -164,6 +164,9 @@ enum Cmd {
         text: Option<String>,
         #[arg(long, env = SESSION_ENV, default_value = "")]
         session: String,
+        /// Which host's checkout the report is written through (232).
+        #[arg(long, default_value = "local")]
+        host: String,
     },
     /// Offer a finding or a chore, pointing at its document.
     Offer {
@@ -172,31 +175,38 @@ enum Cmd {
         document: String,
         #[arg(long, env = SESSION_ENV, default_value = "")]
         session: String,
+        /// Which host's checkout the report is written through (232).
+        #[arg(long, default_value = "local")]
+        host: String,
     },
     /// Say something on the session's thread that is not an exit.
     Note {
         text: Vec<String>,
         #[arg(long, env = SESSION_ENV, default_value = "")]
         session: String,
+        /// Which host's checkout the report is written through (232).
+        #[arg(long, default_value = "local")]
+        host: String,
     },
     /// Refuse the work the session was given (43).
     Refuse {
         reason: Vec<String>,
         #[arg(long, env = SESSION_ENV, default_value = "")]
         session: String,
+        /// Which host's checkout the report is written through (232).
+        #[arg(long, default_value = "local")]
+        host: String,
     },
 }
 
-/// Write one report through the store and print what it was. A refused report
-/// is recorded and the command exits non-zero, so nothing is dropped and the
-/// caller learns (66, 80).
-fn do_report(cli: &Cli, session: &str, report: &Report) -> Result<i32> {
-    let mut store = flywheel_scenario::load(&cli.state)
-        .with_context(|| "no store; run `flywheel seed <scenario>` first")?;
+/// Write one report through the state repository and print what it was. A
+/// refused report is recorded and the command exits non-zero, so nothing is
+/// dropped and the caller learns (66, 80).
+fn do_report(cli: &Cli, host: &str, session: &str, report: &Report) -> Result<i32> {
+    let mut store = open_state(&cli.state, host)?;
     let by = std::env::var("USER").unwrap_or_else(|_| "operator".into());
     let at = chrono::Utc::now();
     let outcome = report::write_report(&mut store, session, &by, at, report)?;
-    flywheel_scenario::save(&store, &cli.state)?;
     Ok(match outcome {
         Reported::Accepted(entry) => {
             println!("{} recorded on {session}", entry.kind);
@@ -246,7 +256,7 @@ enum ScenarioCmd {
     Run {
         paths: Vec<PathBuf>,
         /// The `StateStore` binding.
-        #[arg(long, default_value = "stand-in")]
+        #[arg(long, default_value = "git-only")]
         profile: String,
         /// Every host in the scenario is a process of its own.
         #[arg(long = "hosts", value_parser = ["real"])]
@@ -261,90 +271,21 @@ enum ScenarioCmd {
     },
 }
 
-fn open(cli: &Cli) -> Result<Runtime> {
-    let defs = flywheel_engine::load::load_dir(&cli.defs)?;
-    let store = flywheel_scenario::load(&cli.state).with_context(|| "no store; run `flywheel seed <scenario>` first")?;
-    Ok(Runtime::new(defs, store))
-}
-
-/// One tick as this host runs it: the stand-in's own world moves first — the
-/// heartbeats, the scripted sessions, the tethered processes — and then the
-/// engine's pass goes through the store's operations (D7, 125). Group 6 gives
-/// this a home of its own in `flywheel host`.
-fn host_tick(rt: &mut Runtime) -> Result<usize> {
-    use flywheel_atoms::Scope;
-    rt.store.tick += 1;
-    let now = rt.store.now;
-    let hosts: Vec<String> = rt
-        .store
-        .objects
-        .values()
-        .filter(|o| o.machine == "host" && o.record.get("alive").and_then(|v| v.as_bool()).unwrap_or(true))
-        .map(|o| o.id.clone())
-        .collect();
-    for h in hosts {
-        rt.store.set_given(&h, "host.last_seen", serde_json::json!(now.to_rfc3339()));
+/// This host's checkout of the state repository, opened where the operator
+/// or the work order pointed. A directory that is no checkout is refused by
+/// name rather than cloned into: a report writes through the repository the
+/// host already made (92, 205).
+fn open_state(root: &Path, host: &str) -> Result<flywheel_store_git::GitStore> {
+    if !root.join(".git").is_dir() {
+        anyhow::bail!(
+            "{} is no checkout of the state repository: pass --state or set {}, \
+             which a session's work order names (67, 89)",
+            root.display(),
+            flywheel_scenario::sessions::STATE_ENV
+        );
     }
-    rt.store.play_scripts();
-    rt.store.play_services();
-
-    let defs = rt.defs.clone();
-    let ticked = console::tick(
-        &mut rt.store,
-        &defs,
-        &Scope::All,
-        |store, object, region, effect| flywheel_scenario::world::perform(&defs, store, object, region, effect),
-        |store, fired, tail| {
-            store.log(
-                "transition",
-                &fired.object,
-                format!(
-                    "{}: {} → {}{}",
-                    fired.region,
-                    fired.from,
-                    fired.to,
-                    fired.note.as_ref().map(|n| format!(" — {n}")).unwrap_or_default()
-                ),
-            );
-            store.tail.extend(tail);
-        },
-    )?;
-    rt.store.now = rt.store.now + chrono::Duration::seconds(rt.store.tick_seconds);
-    Ok(ticked.transitions)
-}
-
-/// Tick until nothing fires, so one response cascades as far as it can.
-fn settle(rt: &mut Runtime, max: usize) -> Result<usize> {
-    let mut total = 0;
-    for _ in 0..max {
-        let n = host_tick(rt)?;
-        total += n;
-        if n == 0 { break; }
-    }
-    Ok(total)
-}
-
-fn print_rail(rt: &mut Runtime) -> Result<()> {
-    // Through the trait surface: the objects from `list`, the numbers from the
-    // rail record (15, 131).
-    let d = console::rail(&mut rt.store, &rt.defs)?;
-    let count = d.iter().filter(|x| x.group != "attention").count();
-    println!("DECISIONS · {} · tick {} · {} decisions", rt.store.now.format("%Y-%m-%d %H:%M"), rt.store.tick, count);
-    for g in ["approve", "decide", "answer", "attention"] {
-        let rows: Vec<_> = d.iter().filter(|x| x.group == g).collect();
-        if rows.is_empty() { continue; }
-        println!("  {}", g.to_uppercase());
-        for x in rows {
-            println!("    {:>4}  {:<22} {:<40} → {}", x.number.unwrap_or(0), x.kind, x.object, x.answers.join(" · "));
-        }
-    }
-    if !rt.store.tail.is_empty() {
-        println!("  SINCE");
-        for t in rt.store.tail.iter().rev().take(8) {
-            println!("        {:<8} {:<40} {}", t.kind, t.object, t.at.format("%H:%M"));
-        }
-    }
-    Ok(())
+    flywheel_store_git::GitStore::open(root, root, host, chrono::Utc::now())
+        .with_context(|| format!("opening the state repository at {}", root.display()))
 }
 
 #[tokio::main]
@@ -367,6 +308,7 @@ async fn main() -> Result<()> {
             git_host,
             app,
             app_key_from,
+            address,
             manifest,
         } => {
             let report = init::run(init::Init {
@@ -376,8 +318,8 @@ async fn main() -> Result<()> {
                 git_host: git_host.clone(),
                 app: app.clone(),
                 app_key_from: app_key_from.clone(),
+                address: address.clone(),
                 manifest: manifest.clone(),
-                state: cli.state.clone(),
             })?;
             for line in &report.lines {
                 println!("{line}");
@@ -396,7 +338,7 @@ async fn main() -> Result<()> {
                 }
             }
         }
-        Cmd::Host { cmd, definitions, manifest, name, root } => {
+        Cmd::Host { cmd, definitions, manifest, name, root, serve, operators } => {
             // A host runs the set the binary carries. The directory load is the
             // scenario runner's, and a host that took one could not prove which
             // set it ran (223, 224, D2).
@@ -496,22 +438,44 @@ async fn main() -> Result<()> {
                         host.bindings.sessions
                     );
                     host.record_bindings();
+                    // The loop and the page are one process over one store: the
+                    // page shows what the last tick wrote, and an answer given
+                    // on it is a commit the next tick reads (D11, 132, 153).
+                    let host = std::sync::Arc::new(std::sync::Mutex::new(host));
+                    if let Some(port) = serve {
+                        let served = flywheel::serve::page_of(&host, *port, operators);
+                        for listener in flywheel::serve::listeners(&served, *port).await? {
+                            println!("page at http://{}/", listener.local_addr()?);
+                            let served = served.clone();
+                            tokio::spawn(async move {
+                                if let Err(e) =
+                                    flywheel_surface::http::serve_on(served, listener).await
+                                {
+                                    eprintln!("the page stopped serving: {e:#}");
+                                }
+                            });
+                        }
+                    }
                     // One long-lived process: the notify poll, and the sweep
                     // every 60 seconds whatever the poll says (D6, D7, 231).
                     let mut pass = 0usize;
                     loop {
-                        host.set_now(chrono::Utc::now());
-                        match host.once() {
-                            Ok(fired) => {
-                                if fired > 0 {
-                                    println!("{fired} transitions");
+                        {
+                            let mut held = host.lock().expect("the running host is poisoned");
+                            held.set_now(chrono::Utc::now());
+                            match held.once() {
+                                Ok(fired) => {
+                                    if fired > 0 {
+                                        println!("{fired} transitions");
+                                    }
                                 }
-                            }
-                            // A problem with the machinery is reported and made
-                            // no work of; the loop goes on (81).
-                            Err(e) => {
-                                host.report_problem(&format!("host/{}", host.name), &format!("{e:#}"));
-                                eprintln!("problem: {e:#}");
+                                // A problem with the machinery is reported and
+                                // made no work of; the loop goes on (81).
+                                Err(e) => {
+                                    let name = held.name.clone();
+                                    held.report_problem(&format!("host/{name}"), &format!("{e:#}"));
+                                    eprintln!("problem: {e:#}");
+                                }
                             }
                         }
                         pass += 1;
@@ -526,96 +490,43 @@ async fn main() -> Result<()> {
                 }
             }
         }
-        Cmd::Seed { scenario: path, drive } => {
-            let defs = flywheel_engine::load::load_dir(&cli.defs)?;
-            let sc = scenario::load(path)?;
-            let mut rt = scenario::seed(defs, &sc);
-            // The described world is the stand-in's (93); the objects and the
-            // register reach the store through its own operations (125, 131).
-            let objects: Vec<_> = rt.store.objects.values().cloned().collect();
-            let start = console::register(&rt.store)?.next_number;
-            let defs = rt.defs.clone();
-            console::seed(&mut rt.store, &defs, &objects, Some(start))?;
-            if *drive { scenario::drive(&mut rt, &sc); }
-            flywheel_scenario::save(&rt.store, &cli.state)?;
-            println!("seeded {} · {} objects", sc.scenario, rt.store.objects.len());
-            print_rail(&mut rt)?;
-        }
-        Cmd::Tick { n } => {
-            let mut rt = open(&cli)?;
-            let fired = if *n == 0 { settle(&mut rt, 50)? } else { let mut total = 0; for _ in 0..*n { total += host_tick(&mut rt)?; } total };
-            flywheel_scenario::save(&rt.store, &cli.state)?;
-            println!("{fired} transitions");
-            print_rail(&mut rt)?;
-        }
-        Cmd::Respond { number, answer } => {
-            let mut rt = open(&cli)?;
-            let (_, journal) = console::respond(&mut rt.store, &rt.defs, *number, &answer.join(" "), "cli")?;
-            for n in journal { rt.store.log(&n.kind, &n.object, n.text); }
-            let fired = settle(&mut rt, 50)?;
-            flywheel_scenario::save(&rt.store, &cli.state)?;
-            println!("{fired} transitions");
-            print_rail(&mut rt)?;
-        }
-        Cmd::Dictate { object, answer } => {
-            let mut rt = open(&cli)?;
-            let (_, journal) = console::dictate(&mut rt.store, &rt.defs, object, &answer.join(" "), "cli")?;
-            for n in journal { rt.store.log(&n.kind, &n.object, n.text); }
-            let fired = settle(&mut rt, 50)?;
-            flywheel_scenario::save(&rt.store, &cli.state)?;
-            println!("{fired} transitions");
-            print_rail(&mut rt)?;
-        }
-        Cmd::Rail => { let mut rt = open(&cli)?; print_rail(&mut rt)?; }
-        Cmd::Log { n } => {
-            let rt = open(&cli)?;
-            for l in rt.store.log.iter().rev().take(*n).collect::<Vec<_>>().into_iter().rev() {
-                println!("t{:<4} {:<10} {:<40} {}", l.tick, l.kind, l.object, l.text);
-            }
-        }
-        Cmd::Obj { id } => {
-            let rt = open(&cli)?;
-            match rt.store.objects.get(id) { Some(o) => println!("{}", serde_json::to_string_pretty(o)?), None => println!("no such object") }
-        }
-        Cmd::Ev { object, name, region } => {
-            use flywheel_engine::runtime::EvidenceSource;
-            let rt = open(&cli)?;
-            println!("{:?}", rt.store.evidence(object, region, name));
-        }
-        Cmd::Exit { kind, deliverables, question, text, session } => {
+        Cmd::Exit { kind, deliverables, question, text, session, host } => {
             let r = Report::Exit { kind: kind.clone(), deliverables: deliverables.clone(), question: question.clone(), text: text.clone() };
-            std::process::exit(do_report(&cli, session, &r)?);
+            std::process::exit(do_report(&cli, host, session, &r)?);
         }
-        Cmd::Offer { kind, document, session } => {
+        Cmd::Offer { kind, document, session, host } => {
             let r = Report::Offer { kind: kind.clone(), document: document.clone() };
-            std::process::exit(do_report(&cli, session, &r)?);
+            std::process::exit(do_report(&cli, host, session, &r)?);
         }
-        Cmd::Note { text, session } => {
+        Cmd::Note { text, session, host } => {
             let r = Report::Note { text: text.join(" ") };
-            std::process::exit(do_report(&cli, session, &r)?);
+            std::process::exit(do_report(&cli, host, session, &r)?);
         }
-        Cmd::Refuse { reason, session } => {
+        Cmd::Refuse { reason, session, host } => {
             let r = Report::Refuse { reason: reason.join(" ") };
-            std::process::exit(do_report(&cli, session, &r)?);
+            std::process::exit(do_report(&cli, host, session, &r)?);
         }
         // An adapter runs unattended and makes no judgment: one keyed capture
         // per source event, with a pointer to material it never copies in
         // (111, 115, 215).
-        Cmd::Capture { kind, source, by } => {
-            let mut rt = open(&cli)?;
-            let defs = rt.defs.clone();
-            let at = rt.store.now;
-            let enumerated = flywheel_scenario::bindings::with_files(&mut rt.store, |store, world| {
+        Cmd::Capture { kind, source, by, manifest, name, root } => {
+            // Through this host's own bindings: the capture is one write to the
+            // state repository and one to the blueprints under the machinery's
+            // prefix (111, 203, D8).
+            let mut host =
+                flywheel::host::Host::open(manifest, name, root.as_deref(), chrono::Utc::now())?;
+            let defs = host.defs.clone();
+            let at = host.now();
+            let enumerated = host.store.with_world(|store, world| {
                 flywheel_domain::adapters::run(
                     store,
                     world,
                     &defs,
                     &format!("{kind} {source}"),
-                    &by,
+                    by,
                     at,
                 )
             })?;
-            flywheel_scenario::save(&rt.store, &cli.state)?;
             for key in &enumerated.keys {
                 println!("{key}");
             }
@@ -650,23 +561,6 @@ async fn main() -> Result<()> {
             print!("{}", report.render());
             std::process::exit(report.exit_code());
         }
-        Cmd::Serve { port, address, operators } => {
-            let rt = open(&cli)?;
-            let served = flywheel_surface::http::Served::over(
-                rt.store,
-                Box::new(flywheel_scenario::bindings::FilesWorld::new()),
-                rt.defs,
-                operators,
-                address,
-            );
-            // The two addresses of 46 and 245: the host's own, and the port the
-            // operator at the machine uses. Nothing else is bound.
-            println!("page at {address}, and on localhost:{port} for this machine");
-            flywheel_surface::http::serve(served, &format!("127.0.0.1:{port}")).await?;
-        }
     }
     Ok(())
 }
-
-#[allow(dead_code)]
-fn _unused(_: Store) {}

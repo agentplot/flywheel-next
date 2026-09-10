@@ -1,5 +1,6 @@
-//! The rail mockup scenario driven through the stand-in: one approval cascades
-//! into items, places, sessions and a merge; one dictation retires work.
+//! The rail mockup scenario driven over a state repository of its own: one
+//! approval cascades into items, places, sessions and a merge; one dictation
+//! retires work (92).
 
 use flywheel_scenario::{scenario, Runtime};
 use std::path::{Path, PathBuf};
@@ -11,7 +12,20 @@ fn workspace() -> PathBuf {
 fn seeded() -> Runtime {
     let defs = flywheel_engine::load::load_dir(&workspace().join("definitions")).expect("definitions load");
     let sc = scenario::load(&workspace().join("scenarios/rail-mockup.yaml")).expect("scenario loads");
-    scenario::seed(defs, &sc)
+    let mut rt = scenario::seed(defs, &sc);
+    // One bare repository on this computer, and this host's checkout of it:
+    // the only state store there is (92, 160).
+    let base = std::env::temp_dir().join(format!(
+        "flywheel-cascade-{}-{:?}",
+        std::process::id(),
+        std::thread::current().id()
+    ));
+    let _ = std::fs::remove_dir_all(&base);
+    let host = rt.store.me();
+    rt.store
+        .bind_state_repository(&base, &[host])
+        .expect("the state repository opens");
+    rt
 }
 
 fn state(rt: &Runtime, id: &str) -> Option<String> {
@@ -225,10 +239,7 @@ fn the_capture_box_makes_captures_and_marks_intents_with_a_control() {
 
 #[test]
 fn a_bolt_close_yes_lands_the_bolt() {
-    let root = std::path::Path::new(env!("CARGO_MANIFEST_DIR")).join("../..");
-    let defs = flywheel_engine::load::load_dir(&root.join("definitions")).unwrap();
-    let sc = flywheel_scenario::scenario::load(&root.join("scenarios/rail-mockup.yaml")).unwrap();
-    let mut rt = flywheel_scenario::scenario::seed(defs, &sc);
+    let mut rt = seeded();
     rt.settle(50);
     let d = rt.decisions().into_iter().find(|d| d.kind == "bolt-close" && d.object == "bolt/switchboard/plan-rows").expect("close offered");
     rt.respond(d.number.unwrap(), "yes", "test");

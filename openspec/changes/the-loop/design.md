@@ -63,12 +63,12 @@ model.md §13 lays them out.
 | `flywheel-engine` | the loader, the guard algebra, regions and submachines, `plan_tick` (pure, no IO), decision derivation and the register, proofs and effect ids, the five engine machines, the generic rec reader and writer |
 | `flywheel-atoms` | the evidence and effect name registries generated from `atoms.yaml`; the `StateStore`, `World`, `Workspace` and `Sessions` traits (D8); the scenario file types |
 | `flywheel-domain` | the shipped machines embedded, the instance's type catalogue loader, the object envelope and the domain's record schemas, the work order renderer |
-| `flywheel-world-host` | `World` over git, the manifest and the host's router; `profiles/host.yaml` is its specification |
+| `flywheel-world-host` | `World` over git — `gix` for reads and object writes, the `git` binary for the guarded push and for a clone or fetch from a remote — the manifest and the host's router; `profiles/host.yaml` is its specification |
 | `flywheel-workspace-recorded` | `Workspace` as records: each line, place, merge and landing effect written as a fact in the state store (D8) |
 | `flywheel-sessions-operator` | `Sessions` with the operator as the session: the work shown on the rail, reported through `flywheel exit` (D8) |
-| `flywheel-store-git` | `StateStore` over the state repository; `profiles/git-only.yaml` is its specification |
+| `flywheel-store-git` | `StateStore` over the state repository: `gix` for reads and for writing blobs, trees, commits and refs in process, the `git` binary for the push with the expected-old guard and for the fetch; `profiles/git-only.yaml` is its specification |
 | `flywheel-surface` | the sinks (page, chat), the tool catalogue and its HTTP server, the reply grammar; `profiles/surfaces.yaml` |
-| `flywheel-scenario` | the stand-in `StateStore`, `World` and `Workspace`, the scripted `Sessions`, the conformance runner and its 390px driver, the trace renderer |
+| `flywheel-scenario` | the recorded `World` and `Workspace`, the scripted `Sessions`, the conformance runner over the git-only profile and its 390px driver, the trace renderer |
 | `flywheel` | the binary: `init`, `host`, `scenario`, `capture`, `exit`, `offer`, `note`, `refuse` |
 
 **The grep rule, stated so it can pass.** model.md §2.5 says the engine names
@@ -495,17 +495,20 @@ unmodified until phase 2 (roadmap).
 
 `flywheel scenario run` is the phase gate: it loads the definitions, seeds a
 described state of the stores, plays a scenario's `when` steps against the real
-engine and asserts the `then` clauses (94). The same runner and the same files,
-byte-identical, run against the stand-in store and against the git-only
-profile; only the store binding, the session binding (93) and the
-line-and-place binding (93a) differ. Thirteen things the suite left open are
-settled here, because the runner must be specified before it is built.
+engine and asserts the `then` clauses (94). The runner binds one state store,
+the git-only profile against a bare repository on the same computer, and the
+session binding (93) and the line-and-place binding (93a) are what the profile
+leaves to be named. Thirteen things the suite left open are settled here,
+because the runner must be specified before it is built.
 
-**Flags.** `--profile <stand-in | git-only>` chooses the `StateStore` binding,
-default stand-in, git-only running against a temporary bare repository with no
-network; `--hosts real` makes every host a process; `--definitions <dir>` loads
-machine files from a directory instead of the embedded set (D2); `--trace [dir]`
-renders the run.
+**Flags.** `--profile` names the `StateStore` binding. `git-only` is the
+runner's only profile in this phase and its default: a temporary bare
+repository on the same computer, no network and no live service, which is what
+a run with nothing else standing up proves against (92). `tracker` is named in
+the schema and refused here until phase 2 binds it. `--hosts real` makes every
+host a process; `--definitions <dir>` loads machine files from a directory
+instead of the embedded set (D2); `--trace [dir]` renders the run under
+`target/flywheel-trace/git-only/`.
 
 1. **The host step's vocabulary is closed in the schema.** `{name}` alone sets
    the acting host; at most one of `start | lose | disconnect | return`
@@ -562,8 +565,9 @@ renders the run.
    `std::env::current_exe()` with `--root <tmp>/<name>` and a port range from
    the router; the runner holds no engine and asserts only through the store,
    which is what lets two writers race on one object (134, 162, I15). Without
-   the flag the runner ticks one in-process engine per host name over a shared
-   stand-in store, and that is the only mode where `bypass_lease` is honoured.
+   the flag the runner ticks one in-process engine per host name over one
+   state repository, and that is the only mode where `bypass_lease` is
+   honoured.
 10. **Fixtures live in `conformance/fixtures/`.** Every path in `given.files`,
     in a `files` step and in a `direct` argument resolves relative to it; a
     short file may be given inline as path-to-content and is materialized into
@@ -580,11 +584,11 @@ renders the run.
     no `present:` it is the whole set.
 
 **What the suite is for, in this phase.** The thirteen `contract/` files over
-the toy `lamp` machine, on both paths, are what admit the git-only profile
-(168); the twenty-one scenarios run on the stand-in and then against git-only,
-with S13, S17 and S18 as two real host processes and the 390px pass on every
-scenario carrying a response; and the run record's definitions hash is compared
-with `definitions/`, which is itself byte-identical to the model (83, D2).
+the toy `lamp` machine are what admit the git-only profile (168); the
+twenty-one scenarios run against it, with S13, S17 and S18 as two real host
+processes and the 390px pass on every scenario carrying a response; and the run
+record's definitions hash is compared with `definitions/`, which is itself
+byte-identical to the model (83, D2).
 
 ## Risks / Trade-offs
 

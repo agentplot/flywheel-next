@@ -102,7 +102,7 @@ fn renewals_add_no_commit_to_main() {
     // old commit becomes unreachable (D5).
     let count = a
         .repo
-        .git(&["rev-list", "--count", "refs/remotes/origin/lease/lamp/1"])
+        .git(&["rev-list", "--count", "refs/remotes/origin/lease/lamp/1/lease"])
         .unwrap();
     assert_eq!(count.trim(), "1");
     let held = a.leases("lamp/1").unwrap().expect("the lease");

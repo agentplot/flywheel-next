@@ -28,7 +28,7 @@ fn scenario_from(yaml: &str) -> (Scenario, serde_json::Value) {
 const MINIMAL: &str = r#"
 scenario: T-test
 title: a scenario for the runner's own tests
-profiles: [stand-in]
+profiles: [all]
 satisfies: [94]
 given: {}
 when: [{tick: {}}]
@@ -108,13 +108,14 @@ fn unbound_observation_is_an_error() {
     assert!(err.to_string().contains("invented_key"));
 
     // A bound key a profile the scenario runs on does not answer is the same
-    // error. `items_in_tracker` is the tracker's alone.
+    // error. `items_in_tracker` is the tracker's alone, and this scenario runs
+    // on every profile.
     let yaml = MINIMAL.replace("then: {}", "then: {state_store: {items_in_tracker: []}}");
     let (scenario, _) = scenario_from(&yaml);
     let err = suite
         .check_names(&scenario, Path::new("conformance/scenarios/T-test.yaml"))
-        .expect_err("a key the stand-in does not answer is an error");
-    assert!(err.to_string().contains("stand-in profile does not answer"));
+        .expect_err("a key the git-only profile does not answer is an error");
+    assert!(err.to_string().contains("git-only profile does not answer"));
 }
 
 #[test]
@@ -198,7 +199,32 @@ fn trace_md_is_rendered_from_trace_json() {
     // And it goes under the profile's own directory by default, never beside
     // the scenario files.
     let default = RunOptions::default().trace_dir();
-    assert_eq!(default, PathBuf::from("target/flywheel-trace/stand-in"));
+    assert_eq!(default, PathBuf::from("target/flywheel-trace/git-only"));
+}
+
+// ---- 13.1 one profile
+
+/// The run with no live service is the git-only profile against a bare
+/// repository on the same computer, and it is the only one this phase binds
+/// (92). A scenario that says `all` runs on it; the tracker is named in the
+/// schema and is phase 2's to bind.
+#[test]
+fn git_only_is_the_only_profile() {
+    assert_eq!(RunOptions::default().profile, Profile::GitOnly);
+    assert_eq!(Profile::parse("git-only").unwrap(), Profile::GitOnly);
+    for refused in ["stand-in", "tracker", "in-memory"] {
+        let err = Profile::parse(refused)
+            .expect_err("this release binds one profile and refuses the rest by name");
+        assert!(err.to_string().contains(refused), "{err}");
+    }
+    // A scenario whose `profiles:` says `all` runs on it, and the run's trace
+    // goes under the profile's own directory (D15).
+    let (scenario, _) = scenario_from(MINIMAL);
+    assert!(scenario.runs_on(Profile::GitOnly.name()));
+    assert_eq!(
+        RunOptions::default().trace_dir(),
+        PathBuf::from("target/flywheel-trace/git-only")
+    );
 }
 
 // ---- 2.10 the virtual clock
@@ -553,9 +579,9 @@ fn a_scenario_that_does_not_apply_is_not_a_skip() {
         definitions: Some(root().join("definitions")),
         ..Default::default()
     };
-    let (scenario, _) = scenario_from(MINIMAL);
+    let (scenario, _) = scenario_from(&MINIMAL.replace("profiles: [all]", "profiles: [tracker]"));
     assert!(!scenario.runs_on(options.profile.name()));
-    assert!(scenario.runs_on("stand-in"));
+    assert!(scenario.runs_on("tracker"));
 }
 
 // ---- 6.3, 6.6, 6.17, 6.18: the group's own acceptance, in the gate
@@ -567,8 +593,8 @@ fn a_scenario_that_does_not_apply_is_not_a_skip() {
 #[ignore = "group gate: cargo test --workspace -- --include-ignored"]
 fn the_host_loops_acceptance_scenarios_pass() {
     for (path, profile) in [
-        ("scenarios/X05.yaml", conformance::Profile::StandIn),
-        ("scenarios/S29.yaml", conformance::Profile::StandIn),
+        ("scenarios/X05.yaml", conformance::Profile::GitOnly),
+        ("scenarios/S29.yaml", conformance::Profile::GitOnly),
         ("contract/status.yaml", conformance::Profile::GitOnly),
         ("scenarios/S20.yaml", conformance::Profile::GitOnly),
     ] {
@@ -589,8 +615,8 @@ fn the_host_loops_acceptance_scenarios_pass() {
     }
 }
 
-/// The thirteen contract files, on the stand-in and against a local bare state
-/// repository. This is the step that admits a profile: one scenario per
+/// The thirteen contract files, against a local bare state repository. This is
+/// the step that admits a profile: one scenario per
 /// operation of B.1, per guarantee of B.2, and one for the binding itself,
 /// over a toy machine that shares no atom with the flywheel (168, task 3.15).
 #[test]
@@ -608,7 +634,7 @@ fn the_contract_set_admits_the_profile() {
         out
     };
     assert_eq!(files.len(), 13, "the contract set is thirteen files: {files:?}");
-    for profile in [conformance::Profile::StandIn, conformance::Profile::GitOnly] {
+    for profile in [conformance::Profile::GitOnly] {
         for path in &files {
             let options = RunOptions {
                 definitions: Some(root().join("definitions")),
@@ -668,10 +694,10 @@ fn the_rail_acceptance_scenarios_pass() {
         flywheel_binary_beside_the_test(),
     );
     for (path, profile) in [
-        ("scenarios/S01.yaml", conformance::Profile::StandIn),
-        ("scenarios/S02.yaml", conformance::Profile::StandIn),
-        ("scenarios/S04.yaml", conformance::Profile::StandIn),
-        ("scenarios/S07.yaml", conformance::Profile::StandIn),
+        ("scenarios/S01.yaml", conformance::Profile::GitOnly),
+        ("scenarios/S02.yaml", conformance::Profile::GitOnly),
+        ("scenarios/S04.yaml", conformance::Profile::GitOnly),
+        ("scenarios/S07.yaml", conformance::Profile::GitOnly),
         ("scenarios/S05.yaml", conformance::Profile::GitOnly),
         ("scenarios/S06.yaml", conformance::Profile::GitOnly),
     ] {
@@ -709,7 +735,7 @@ fn run_record_hash_matches_definitions() {
     )
     .expect("the run is made");
     assert_eq!(
-        report.record.profile, "stand-in",
+        report.record.profile, "git-only",
         "the record names the binding the run bound"
     );
     assert_eq!(
@@ -780,7 +806,7 @@ fn copy_tree(from: &Path, to: &Path) {
 #[test]
 #[ignore = "group gate: cargo test --workspace -- --include-ignored"]
 fn run_record_names_ran_and_skipped() {
-    for profile in [Profile::StandIn, Profile::GitOnly] {
+    for profile in [Profile::GitOnly] {
         let options = RunOptions {
             profile,
             definitions: Some(root().join("definitions")),
@@ -871,10 +897,9 @@ fn the_whole_set_acceptance_scenarios_pass() {
     );
     for (path, profile) in [
         ("scenarios/S04.yaml", Profile::GitOnly),
-        ("scenarios/S04.yaml", Profile::StandIn),
-        ("scenarios/X08.yaml", Profile::StandIn),
-        ("scenarios/S21.yaml", Profile::StandIn),
-        ("scenarios/S16.yaml", Profile::StandIn),
+        ("scenarios/X08.yaml", Profile::GitOnly),
+        ("scenarios/S21.yaml", Profile::GitOnly),
+        ("scenarios/S16.yaml", Profile::GitOnly),
     ] {
         let options = RunOptions {
             definitions: Some(root().join("definitions")),

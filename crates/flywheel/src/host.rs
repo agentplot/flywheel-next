@@ -102,7 +102,7 @@ pub struct HostStore {
     /// where the captures, signals and moves live, under the machinery's
     /// prefix — so the evidence about them is read through here (111, 203,
     /// `blueprints.yaml` evidence).
-    pub world: Box<dyn World>,
+    pub world: Box<dyn World + Send>,
     pub reading: Reading,
     /// Every operation this store was asked for, in order. The run record and
     /// the fetch-first proof read it (79, 165).
@@ -142,7 +142,7 @@ impl HostStore {
     /// The world is taken out for the call and put back, so it lives in one
     /// place and is borrowed from one.
     pub fn with_world<T>(&mut self, act: impl FnOnce(&mut HostStore, &mut dyn World) -> T) -> T {
-        let mut world: Box<dyn World> =
+        let mut world: Box<dyn World + Send> =
             std::mem::replace(&mut self.world, Box::new(flywheel_scenario::bindings::FilesWorld::new()));
         let out = act(self, &mut *world);
         self.world = world;
@@ -317,7 +317,7 @@ pub struct Sinks {
     /// The address every link a delivery carries is written at (205a, 308,
     /// D10a).
     pub address: String,
-    pub channels: std::collections::BTreeMap<String, Box<dyn Channel>>,
+    pub channels: std::collections::BTreeMap<String, Box<dyn Channel + Send>>,
 }
 
 impl Sinks {
@@ -329,7 +329,7 @@ impl Sinks {
     }
 
     /// Load the channel one sink delivers through.
-    pub fn bind(&mut self, sink: &str, channel: Box<dyn Channel>) {
+    pub fn bind(&mut self, sink: &str, channel: Box<dyn Channel + Send>) {
         self.channels.insert(sink.to_string(), channel);
     }
 }
@@ -791,8 +791,13 @@ impl Host {
         // reason (model.md the tick, D7). A self-transition re-enters the state
         // it is in, so a pass that only re-entered has settled.
         let mut fired = 0;
-        for _ in 0..PASSES {
+        for pass in 0..PASSES {
+            let before = self.run.len();
             fired += self.tick(&Scope::All)?;
+            if std::env::var("FLYWHEEL_SWEEP_TRACE").is_ok() {
+                eprintln!("SWEEP pass {pass} fired {fired} moved {} entries {:?}", self.moved,
+                    self.run.iter().skip(before).filter(|e| e.kind=="write").map(|e| format!("{} {}", e.object, e.reason)).collect::<Vec<_>>());
+            }
             if !self.moved {
                 break;
             }
@@ -1353,6 +1358,7 @@ fn work_order(
     place: &str,
     object: &str,
 ) -> WorkOrder {
+    let state = store.git.repo.dir.display().to_string();
     let held = store.get(object).ok().flatten();
     let kind = held
         .as_ref()
@@ -1361,8 +1367,12 @@ fn work_order(
     let mut body = String::new();
     body.push_str(&format!("# {object}\n\n"));
     body.push_str(&format!("place: {place}\nsession: {session}\n"));
+    // The exact command, with the two things it reads from the environment: the
+    // session it reports on and this host's checkout of the state repository
+    // (67, 89, 92).
     body.push_str(&format!(
-        "report with: flywheel exit done --deliverables <list>  (FLYWHEEL_SESSION={session})\n"
+        "report with: FLYWHEEL_SESSION={session} FLYWHEEL_STATE={state} \
+         flywheel exit done --deliverable <what it delivered>\n"
     ));
     if let Some(object) = &held {
         for (name, value) in &object.record {

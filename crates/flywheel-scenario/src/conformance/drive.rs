@@ -100,13 +100,11 @@ pub fn play(
         std::process::id(),
         RUNS.fetch_add(1, std::sync::atomic::Ordering::Relaxed)
     ));
-    // `--profile git-only` binds the record operations to a state repository:
-    // one bare repository with no network, and a checkout per host, so the
-    // expected-old push is the real one (D15, 160, 168).
-    if options.profile == super::Profile::GitOnly {
-        bind_git_only(&mut rt, scenario, &places.join("state"))?;
-    }
-    let state = places.join("store.json");
+    // The record operations are bound to a state repository: one bare
+    // repository on this computer with no network, and a checkout per host, so
+    // the expected-old push is the real one (92, D15, 160, 168).
+    let state = places.join("state");
+    bind_git_only(&mut rt, scenario, &state)?;
     std::fs::create_dir_all(&places)?;
     let sessions = ScriptedSessions::new(&state, places.join("places"));
 
@@ -148,11 +146,10 @@ pub fn play(
             suite,
             options,
             &sessions,
-            &state,
             real.as_mut(),
         )
         .with_context(|| format!("step {number}"))?;
-        play_script(&mut run, &script, index, &sessions, &state)?;
+        play_script(&mut run, &script, index, &sessions)?;
         // As a sink that has never delivered reads it: everything that has
         // reached done, landed, closed or dropped since before the run, which
         // is what a scenario's `tail:` names (14).
@@ -196,15 +193,13 @@ pub fn play(
     take_reading(&mut run);
     // The status projection as a reader with no host running finds it: the
     // committed file on the shared line, read before the run's own directories
-    // go (145, 160, 167, S20). On a profile that keeps no files it is the body
-    // the projection wrote, which the trace carries (stand-in.yaml status).
-    let committed = match run.runtime.store.durable() {
-        Some(durable) => durable.lock().ok().and_then(|mut held| {
+    // go (145, 160, 167, S20).
+    let committed = run.runtime.store.durable().and_then(|durable| {
+        durable.lock().ok().and_then(|mut held| {
             let _ = held.fetch();
             held.committed_status().ok().flatten()
-        }),
-        None => Some(run.runtime.store.status_body.clone()).filter(|b| !b.is_empty()),
-    };
+        })
+    });
     if let Some(body) = committed {
         // The grouping and the holders as the view shows them, read from the
         // same state the engine reads (132, 141, 143, 146).
@@ -249,7 +244,6 @@ pub fn play(
 /// names, then write the seeded objects into it through `put`, so what the run
 /// reads afterwards is what the repository holds and nothing else (160, 168).
 fn bind_git_only(rt: &mut Runtime, scenario: &Scenario, base: &Path) -> Result<()> {
-    std::fs::create_dir_all(base)?;
     let mut hosts: Vec<String> = vec![rt.store.me()];
     for host in &scenario.given.hosts {
         if let Some(id) = host.get("id").or_else(|| host.get("name")).and_then(|v| v.as_str()) {
@@ -268,35 +262,7 @@ fn bind_git_only(rt: &mut Runtime, scenario: &Scenario, base: &Path) -> Result<(
     }
     hosts.sort();
     hosts.dedup();
-    let now = rt.store.now;
-    for host in hosts {
-        let store = flywheel_store_git::store::sandbox(base, &host, now)
-            .with_context(|| format!("opening the state repository for host {host}"))?;
-        rt.store
-            .durable
-            .insert(host, std::sync::Arc::new(std::sync::Mutex::new(store)));
-    }
-    // What seeding put in the map goes into the repository, in creation order,
-    // so the objects a scenario describes are files on the shared line before
-    // the first step runs.
-    let mut seeded: Vec<flywheel_engine::Object> = rt.store.objects.values().cloned().collect();
-    seeded.sort_by_key(|o| o.created);
-    if let Some(durable) = rt.store.durable() {
-        let mut git = durable
-            .lock()
-            .map_err(|_| anyhow!("the state repository is poisoned"))?;
-        for object in &seeded {
-            git.seed_object(object)?;
-        }
-    }
-    // Every host reads the described state before the first step: a host that
-    // never fetched is behind, and that is not what a scenario describes.
-    for durable in rt.store.durable.values() {
-        if let Ok(mut git) = durable.lock() {
-            let _ = git.fetch();
-        }
-    }
-    rt.store.refresh();
+    rt.store.bind_state_repository(base, &hosts)?;
     rt.decisions();
     Ok(())
 }
@@ -1090,7 +1056,6 @@ fn play_step(
     suite: &Suite,
     options: &RunOptions,
     sessions: &ScriptedSessions,
-    state: &Path,
     real: Option<&mut RealHosts>,
 ) -> Result<()> {
     if let Some(hosts) = real {
@@ -1280,7 +1245,7 @@ fn play_step(
         Step::Script(script) => {
             // Seed or extend what the stand-in plays; entries take effect at
             // the step they name.
-            play_script(run, script, usize::MAX, sessions, state)?;
+            play_script(run, script, usize::MAX, sessions)?;
             for (session, entries) in script {
                 run.runtime
                     .store
@@ -1902,7 +1867,6 @@ fn play_script(
     script: &BTreeMap<String, Vec<flywheel_atoms::scenario::ScriptEntry>>,
     step: usize,
     sessions: &ScriptedSessions,
-    state: &Path,
 ) -> Result<()> {
     for (session, entries) in script {
         for entry in entries {
@@ -1915,7 +1879,7 @@ fn play_script(
             if due != step {
                 continue;
             }
-            sessions.play_entry(&mut run.runtime.store, session, entry, state)?;
+            sessions.play_entry(&mut run.runtime.store, session, entry)?;
         }
     }
     Ok(())

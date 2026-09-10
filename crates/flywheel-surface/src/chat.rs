@@ -141,6 +141,16 @@ impl Channel for Box<dyn Channel> {
     }
 }
 
+impl Channel for Box<dyn Channel + Send> {
+    fn post(&mut self, post: &Post) -> Result<String> {
+        (**self).post(post)
+    }
+
+    fn reply(&mut self, to: &str, text: &str) -> Result<()> {
+        (**self).reply(to, text)
+    }
+}
+
 /// The `Channel` this release carries: every post recorded, exactly as
 /// `flywheel-workspace-recorded` records the effects of 42 (D8).
 ///

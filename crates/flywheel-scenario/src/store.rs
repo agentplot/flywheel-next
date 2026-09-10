@@ -1,7 +1,11 @@
-//! The stand-in state store: every object, response and fact in one JSON
-//! file. Sessions are played from a script; everything the machinery owns
-//! (the engine, the register, the tail, the effects) runs for real.
+//! The runner's reading of the state repository, and the world it seeds around
+//! it: the objects as the last fetch found them, the register the rail record
+//! carries, the responses in hand, and the facts a scenario described. Every
+//! record operation goes through the repository (92, 125); sessions are played
+//! from a script, and everything the machinery owns — the engine, the register,
+//! the tail, the effects — runs for real.
 
+use anyhow::Context;
 use chrono::{DateTime, Duration, Utc};
 pub use flywheel_atoms::scenario::{ScriptEntry, ServiceDecl, SessionFact};
 use flywheel_engine::runtime::{EvidenceSource, Object, Register, Response, TailEntry};
@@ -918,5 +922,61 @@ impl EvidenceSource for Store {
             return self.lease_evidence(leased, name);
         }
         self.derived(object, region, name)
+    }
+}
+
+impl Store {
+    /// Bind this store to a state repository: one bare repository under `base`
+    /// and a checkout per host, which is where every record operation goes
+    /// (92, 125, 160). What the store already holds is written into it, in
+    /// creation order, so the described state is files on the shared line
+    /// before anything runs.
+    pub fn bind_state_repository(&mut self, base: &std::path::Path, hosts: &[String]) -> anyhow::Result<()> {
+        std::fs::create_dir_all(base)?;
+        let now = self.now;
+        for host in hosts {
+            let store = flywheel_store_git::store::sandbox(base, host, now)
+                .with_context(|| format!("opening the state repository for host {host}"))?;
+            self.durable
+                .insert(host.clone(), std::sync::Arc::new(std::sync::Mutex::new(store)));
+        }
+        self.seed_the_repository()
+    }
+
+    /// The same against a state repository that already exists: the remote the
+    /// manifest names, and this host's checkout of it (160, 205).
+    pub fn bind_state_repository_at(
+        &mut self,
+        remote: &std::path::Path,
+        checkout: &std::path::Path,
+        host: &str,
+    ) -> anyhow::Result<()> {
+        let store = flywheel_store_git::GitStore::open(remote, checkout, host, self.now)
+            .with_context(|| format!("opening the state repository at {}", remote.display()))?;
+        self.durable
+            .insert(host.to_string(), std::sync::Arc::new(std::sync::Mutex::new(store)));
+        self.seed_the_repository()
+    }
+
+    fn seed_the_repository(&mut self) -> anyhow::Result<()> {
+        let mut seeded: Vec<flywheel_engine::Object> = self.objects.values().cloned().collect();
+        seeded.sort_by_key(|o| o.created);
+        if let Some(durable) = self.durable() {
+            let mut git = durable
+                .lock()
+                .map_err(|_| anyhow::anyhow!("the state repository is poisoned"))?;
+            for object in &seeded {
+                git.seed_object(object)?;
+            }
+        }
+        // Every host reads the described state before the first step: a host
+        // that never fetched is behind, and that is not what was described.
+        for durable in self.durable.values() {
+            if let Ok(mut git) = durable.lock() {
+                let _ = git.fetch();
+            }
+        }
+        self.refresh();
+        Ok(())
     }
 }

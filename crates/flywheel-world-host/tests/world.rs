@@ -38,6 +38,7 @@ impl Sandbox {
             &root,
             "12345",
             "FLYWHEEL_TEST_APP_KEY",
+            "http://mac-mini.example",
             None,
         )
         .expect("init")
@@ -333,6 +334,7 @@ fn set_version_stamped() {
         &sandbox.dir.join("mac-mini"),
         "12345",
         "FLYWHEEL_TEST_APP_KEY",
+        "http://mac-mini.example",
         Some(manifest.clone()),
     )
     .unwrap();

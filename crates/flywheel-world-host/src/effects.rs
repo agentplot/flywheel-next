@@ -53,6 +53,7 @@ pub fn perform(
     root: &Path,
     app_id: &str,
     key_from: &str,
+    address: &str,
 ) -> Result<bool> {
     let instance = manifest.instance.clone();
     Ok(match effect {
@@ -81,7 +82,7 @@ pub fn perform(
         }
         "register_host" => {
             let was = manifest.hosts.len();
-            Bootstrap::register_host(manifest, host, root);
+            Bootstrap::register_host(manifest, host, root, address);
             manifest.hosts.len() != was
         }
         // Not this crate's: the sessions, places and archive belong to the host
@@ -90,6 +91,9 @@ pub fn perform(
     })
 }
 
-fn exists(remote: &str) -> bool {
+/// Whether a repository stands at a remote. What `create_blueprints` and
+/// `create_state` prove themselves against, and what tells a caller whether the
+/// state repository is there to write through yet (204).
+pub fn exists(remote: &str) -> bool {
     !remote.is_empty() && Repo::at(Path::new(remote)).exists()
 }

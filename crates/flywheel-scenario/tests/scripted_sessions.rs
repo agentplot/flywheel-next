@@ -1,5 +1,6 @@
-//! The stand-in plays a session's reports by running the command a real
-//! session runs, and every assertion is about what that command wrote (67, 93).
+//! The scripted sessions play a session's reports by running the command a
+//! real session runs, and every assertion is about what that command wrote
+//! through the state repository (67, 92, 93).
 
 use flywheel_atoms::scenario::{Offer, ScriptEntry};
 use flywheel_atoms::Records;
@@ -34,17 +35,26 @@ fn flywheel_binary() -> PathBuf {
 
 const SESSION: &str = "elaboration/a/1/self-closing/1";
 
+/// The host whose checkout the command writes through (232).
+const HOST: &str = "local";
+
 #[test]
 #[ignore = "group gate: cargo test --workspace -- --include-ignored"]
 fn scripted_exit_goes_through_the_command() {
     let dir = std::env::temp_dir().join(format!("flywheel-scripted-{}", std::process::id()));
     let _ = std::fs::remove_dir_all(&dir);
     std::fs::create_dir_all(&dir).unwrap();
-    let state = dir.join("store.json");
+    let state = dir.join("state");
     std::env::set_var(BINARY_ENV, flywheel_binary());
 
+    // The command writes through this host's checkout of the state repository,
+    // which is the only store there is (92).
     let mut store = Store::default();
-    flywheel_scenario::save(&store, &state).unwrap();
+    let git = flywheel_store_git::store::sandbox(&state, HOST, store.now).unwrap();
+    store.acting_host = Some(HOST.to_string());
+    store
+        .durable
+        .insert(HOST.to_string(), std::sync::Arc::new(std::sync::Mutex::new(git)));
     let sessions = ScriptedSessions::new(&state, dir.join("places"));
 
     let entry = ScriptEntry {
@@ -60,7 +70,7 @@ fn scripted_exit_goes_through_the_command() {
         ..Default::default()
     };
     sessions
-        .play_entry(&mut store, SESSION, &entry, &state)
+        .play_entry(&mut store, SESSION, &entry)
         .expect("the script plays");
 
     // The assertion is about the thread the command wrote, never the script.
@@ -76,10 +86,11 @@ fn scripted_exit_goes_through_the_command() {
     );
     assert_eq!(thread[1].fields.get("document"), Some(&json!("chores/1.md")));
 
-    // The store on disk holds it too: the command wrote through the store, not
-    // into the runner's memory.
-    let on_disk = flywheel_scenario::load(&state).unwrap();
-    assert_eq!(on_disk.thread(SESSION).unwrap().len(), 2);
+    // The state repository holds it too: the command wrote through the store,
+    // not into the runner's memory (67).
+    let mut read = flywheel_store_git::store::sandbox(&state, "reader", store.now).unwrap();
+    read.fetch().unwrap();
+    assert_eq!(Records::thread(&read, SESSION).unwrap().len(), 2);
 
     // What the multiplexer reports is a world fact, not a report.
     assert!(store.world.sessions[SESSION].pane);
@@ -90,7 +101,7 @@ fn scripted_exit_goes_through_the_command() {
 
 #[test]
 fn the_command_runs_from_the_session_place() {
-    let sessions = ScriptedSessions::new("state.json", "/tmp/places");
+    let sessions = ScriptedSessions::new("/tmp/state", "/tmp/places");
     assert_eq!(
         sessions.place(SESSION),
         PathBuf::from("/tmp/places/elaboration-a-1-self-closing-1"),
