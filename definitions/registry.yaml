@@ -1,5 +1,7 @@
-# The type registry: name@version -> the file and its sha256 at registration.
-# Written by `check.py --register`; a registered file is immutable (model.md 10.7).
+# The type registry: name@version -> the file and its sha256 at registration, and
+# the instruction set: name -> the file, its version and its sha256 (224).
+# Written by `check.py --register`; a registered type file is immutable, and an
+# instruction's text moves only with its version (model.md 10.6, 10.7).
 types:
   chore@2:
     file: unit-types/chore@2.yaml
@@ -26,3 +28,268 @@ types:
     file: elaboration-types/with-operator@3.yaml
     sha256: 78a9bd99ccdc3fcc2c909100cd004b580ced0da3f98b2ca5a5bfaaff081839c9
 doc: the content hash of every extensible machine file at registration; check.py fails a file whose hash moved (model.md 10.7). Add a version with `check.py --register`; never edit an entry
+instructions:
+  flywheel/agents/builder.md:
+    file: agents/builder.md
+    version: 1
+    sha256: 951054b8a685e74c279af648c95cd17ca5a555351b024462045188bb5b4bb60e
+  flywheel/agents/capture-reader.md:
+    file: agents/capture-reader.md
+    version: 1
+    sha256: 6663f1156ca8d106b8ae6a5ea65e0578c62be02513af8df6967aa92b775e2e73
+  flywheel/agents/chore-fixer.md:
+    file: agents/chore-fixer.md
+    version: 1
+    sha256: a85aa60cf8c6e19571cdf08b8102f6f19c3fe1f73b62479f1419bedcac851f91
+  flywheel/agents/curator.md:
+    file: agents/curator.md
+    version: 1
+    sha256: b34c8ab1ec43e7ceac5ed8ec3df97110042a151e9989adf8caa518b3d1cf60d0
+  flywheel/agents/fundamentals.md:
+    file: agents/fundamentals.md
+    version: 1
+    sha256: a854099ddb01fa7ab480641d4e088c0f0829c0a5824b646c4874cfb50e1b45ac
+  flywheel/agents/operator-console.md:
+    file: agents/operator-console.md
+    version: 1
+    sha256: 506434c196ed0790cd4ec28bbfea1f3027621390f467d05a2821a753f264241b
+  flywheel/agents/planner.md:
+    file: agents/planner.md
+    version: 1
+    sha256: a4f8e44ce4aca71f1aa1bec1bec2f520b543916057622585e85844ee108ef93f
+  flywheel/agents/reviewer.md:
+    file: agents/reviewer.md
+    version: 1
+    sha256: 0cacc8b18f09e0e9acd81c4dac05614940cb2256c1748e9806a363dad0bc0d05
+  flywheel/agents/self-closing.md:
+    file: agents/self-closing.md
+    version: 1
+    sha256: 1e99b823c5bf4dbd23aa46157070b8631aede13611e2e5f5c045a59e356f0af6
+  flywheel/agents/spec-writer.md:
+    file: agents/spec-writer.md
+    version: 1
+    sha256: 35ba32835875ba7c23e88595076d10a632785b11cf3da5b9c8a811dfd608b6df
+  flywheel/agents/standing.md:
+    file: agents/standing.md
+    version: 1
+    sha256: 99b0326c8f843bfdfbda3949266c355d1509f8c742964809d42d36479a808abd
+  flywheel/agents/tester.md:
+    file: agents/tester.md
+    version: 1
+    sha256: 05be49bfdf0b8e8f67f00d7b92108bd616ba89bb42b90247c3fdca587af91cc8
+  flywheel/agents/verifier.md:
+    file: agents/verifier.md
+    version: 1
+    sha256: 61a2169d5a6d9a4c1361b8d2d14010790ec5c8e9233fcfd5116855c4c0d026ca
+  flywheel/agents/with-operator.md:
+    file: agents/with-operator.md
+    version: 1
+    sha256: 899a01b60a9a0d5f7e388f35c43856fbe7cf1fd5b693dd88c94a73a7794cc5ce
+  flywheel/instructions/claim-granularity.md:
+    file: instructions/claim-granularity.md
+    version: 1
+    sha256: 9a55b8c7411ca0bc167a7952a5cc49e115c80d486d8bd499c65ca9fee3d81a6f
+  flywheel/instructions/construction.md:
+    file: instructions/construction.md
+    version: 1
+    sha256: 0f907cb3a5c69e83bfcc40029807a8d61b44410825dd193246f1e431f6bd60cc
+  flywheel/instructions/design-conclusion.md:
+    file: instructions/design-conclusion.md
+    version: 1
+    sha256: a65b386b3730d9748ac6a07c062e77a86026689299b56b87c5669c11042a09a7
+  flywheel/instructions/fundamentals.md:
+    file: instructions/fundamentals.md
+    version: 1
+    sha256: 485a9a33ce48ecb75203704890ec8df53a96d66f3710bbccfbb7eb31bdde8323
+  flywheel/schemas/book-chapter.md:
+    file: schemas/book-chapter.md
+    version: 1
+    sha256: 38cef6ef67becc7646518da73125d6eb99e1c6dc8b3be86fc56eef922ecc2a22
+  flywheel/schemas/claim.md:
+    file: schemas/claim.md
+    version: 1
+    sha256: dd873e2de0ac9e67911b0c9cb7e065a8e5469468d3004d5afa30466e8acab0b3
+  flywheel/schemas/context-map.md:
+    file: schemas/context-map.md
+    version: 1
+    sha256: 51a2e565683107f8550445379160ab3c19b3df6109c51419dfdf329e2bcc2a64
+  flywheel/schemas/diagram-conceptual.md:
+    file: schemas/diagram-conceptual.md
+    version: 1
+    sha256: ce4c35d4b764924d71203665b56fcc2af3c78772f45f770a05913dd3a9e4ad75
+  flywheel/schemas/diagram-logical.md:
+    file: schemas/diagram-logical.md
+    version: 1
+    sha256: b95aa0302236483d67b9cdaec8ee14680d863945680ca976100063542b9294ac
+  flywheel/schemas/fundamentals-part.md:
+    file: schemas/fundamentals-part.md
+    version: 1
+    sha256: 9175622f2410e21168d4eacc80ffd35e3a6f55b309ec8a4a546e3908d73944ca
+  flywheel/schemas/intent-proposal.md:
+    file: schemas/intent-proposal.md
+    version: 1
+    sha256: f87159f3b7b1c13ad9755e8d2af30eccaaed3e313b04734cfb42915441eb0cef
+  flywheel/schemas/move.md:
+    file: schemas/move.md
+    version: 1
+    sha256: 17235dd636d9de3373d59cf679281ed5359a3e9e25bec76a4793cd5b390e408a
+  flywheel/schemas/proposal.md:
+    file: schemas/proposal.md
+    version: 1
+    sha256: 03d756a29a1863501f808b5b50b1d971e15962bf55a247e64146026066550959
+  flywheel/schemas/signal.md:
+    file: schemas/signal.md
+    version: 1
+    sha256: 8560cbdd1511b09e2b55dd7f9974ab39bfd9614d5131742a6d6811b1d908650d
+  flywheel/schemas/surface-specification.md:
+    file: schemas/surface-specification.md
+    version: 1
+    sha256: 0ac822f9f2f9a40011c0a333996235ca9592d0588d54af17f8d6b7d527060e21
+  flywheel/schemas/units/chore/fix.md:
+    file: schemas/units/chore/fix.md
+    version: 1
+    sha256: e9967f61e69f74db69e105b35c839de95f26fa4588b5d9451ab551e89e11fc69
+  flywheel/schemas/units/default/apply.md:
+    file: schemas/units/default/apply.md
+    version: 1
+    sha256: 1714daa38a7276b4663204e3708beebf94e000c817d5a05bdf8ae4d824414fce
+  flywheel/schemas/units/default/ff.md:
+    file: schemas/units/default/ff.md
+    version: 1
+    sha256: 322ffdbd2f2ec0e4bc75a3a94493bbab3d132ee3ab61dcc7942f9656c1932ffc
+  flywheel/schemas/units/default/verify.md:
+    file: schemas/units/default/verify.md
+    version: 1
+    sha256: 071449b3878f725ad0929bc8b1d4b6d6c37ca2e115cfee483df524215d568588
+  flywheel/schemas/units/fast/apply.md:
+    file: schemas/units/fast/apply.md
+    version: 1
+    sha256: 0694f40f2556e5f011f885b5451feb58c2990a19e6f9b546706e37926677db4f
+  flywheel/schemas/units/fast/ff.md:
+    file: schemas/units/fast/ff.md
+    version: 1
+    sha256: f29d92b7cf623fadee3b889bbc15645ba8840e5d567a5ae91a93d12e719e13e0
+  flywheel/schemas/units/persona-test/apply.md:
+    file: schemas/units/persona-test/apply.md
+    version: 1
+    sha256: 999eafdc3413751d085ea10aba62e832a16687c1c4a8e0614463b0332e349abd
+  flywheel/schemas/units/persona-test/ff.md:
+    file: schemas/units/persona-test/ff.md
+    version: 1
+    sha256: 3c36963a8e5914668d523def05b1e6075c88c3c1d00ef4a5d0426c189cc21f9a
+  flywheel/schemas/units/persona-test/review.md:
+    file: schemas/units/persona-test/review.md
+    version: 1
+    sha256: 7a8a8b16892bd634a845a8cbf6c012da2f839863cb96a30fbbf4f96d201edb87
+  flywheel/schemas/units/persona-test/test.md:
+    file: schemas/units/persona-test/test.md
+    version: 1
+    sha256: 6d230dd170595b039ce4b1db94308fcb557f121c3ac7dae22712d5b416db1719
+  flywheel/schemas/verdict.md:
+    file: schemas/verdict.md
+    version: 1
+    sha256: dffaa5db749f68d009b09b0d67c6e2abbd757e5c863a14ebc0f19901dc9599e2
+  flywheel/skills/builder/SKILL.md:
+    file: skills/builder/SKILL.md
+    version: 1
+    sha256: fead815b7f4ac40f980d3cf092d3b604b331f832a0b0e26dafa2ea360e4adfeb
+  flywheel/skills/capture-reader/SKILL.md:
+    file: skills/capture-reader/SKILL.md
+    version: 1
+    sha256: 80c8ea10f4d58f44e3d3ca84cb140e061095936a661904a4163f81e3e60a2af1
+  flywheel/skills/chore-fixer/SKILL.md:
+    file: skills/chore-fixer/SKILL.md
+    version: 1
+    sha256: af8d6246d5d1e00310a7bc27e601112b0c4523ea6da16851d201128d05c31161
+  flywheel/skills/curator/SKILL.md:
+    file: skills/curator/SKILL.md
+    version: 1
+    sha256: 1434b3b1845c3754d31b720ccba3477ace9b1bb01fac6444965c920fbc407b90
+  flywheel/skills/fundamentals/SKILL.md:
+    file: skills/fundamentals/SKILL.md
+    version: 1
+    sha256: e2801d4e9f0b495adaec877c4d9935ab5428fb1042b8304997f6d8157ca5f139
+  flywheel/skills/operator-console/SKILL.md:
+    file: skills/operator-console/SKILL.md
+    version: 1
+    sha256: e5027c2f55116976e1b05e3caeb36de99fcc3b3e8feafa721c1b3737b205c671
+  flywheel/skills/planner/SKILL.md:
+    file: skills/planner/SKILL.md
+    version: 1
+    sha256: b7c8f50290cd5978bc77073ea5d036132d9cbc29dbc4d0d15cd7a8dc67f5f2f1
+  flywheel/skills/producers/book-chapter/SKILL.md:
+    file: skills/producers/book-chapter/SKILL.md
+    version: 1
+    sha256: 7151bb55cdb04a52455c9eb6208994789ad5f3fcbffdc24060542f6d8c10c43b
+  flywheel/skills/producers/claim/SKILL.md:
+    file: skills/producers/claim/SKILL.md
+    version: 1
+    sha256: a4f94322337199ff595c6c275777047e5950818606e4bfab33c0641fe5c22563
+  flywheel/skills/producers/conceptual-diagram/SKILL.md:
+    file: skills/producers/conceptual-diagram/SKILL.md
+    version: 1
+    sha256: 50af0bdd21fa7a4cf2e0d0260067219b79015363118ae1ec9bf74c0d01bd0c79
+  flywheel/skills/producers/context-map/SKILL.md:
+    file: skills/producers/context-map/SKILL.md
+    version: 1
+    sha256: 2cd193649b84f1b1d25f5477f431d0123a53178f883f3217ea45abadcfa67b05
+  flywheel/skills/producers/fundamentals-part/SKILL.md:
+    file: skills/producers/fundamentals-part/SKILL.md
+    version: 1
+    sha256: 3e904e9716ac028977ceb9f6d550d071d18e4766f04801e2209a152deb08dbae
+  flywheel/skills/producers/intent-proposal/SKILL.md:
+    file: skills/producers/intent-proposal/SKILL.md
+    version: 1
+    sha256: bde1dcdb15c68d47feebc76162b7b667e8f2b7433fa9a8a1547bb4f18adc8590
+  flywheel/skills/producers/logical-diagram/SKILL.md:
+    file: skills/producers/logical-diagram/SKILL.md
+    version: 1
+    sha256: 2e936c38b88ba76a4e138a2973675709f4ecb228818c87ba236caea0052de1ba
+  flywheel/skills/producers/move/SKILL.md:
+    file: skills/producers/move/SKILL.md
+    version: 1
+    sha256: 7c2e1e358274ef33c43b67d26a8a2a3e3c44c5b3af28992113ebfb81be30fbf5
+  flywheel/skills/producers/proposal-document/SKILL.md:
+    file: skills/producers/proposal-document/SKILL.md
+    version: 1
+    sha256: 8738b091219eb8bb9bd0942f048979028c3d43ce388f6b2d85d6a323be79f557
+  flywheel/skills/producers/signal/SKILL.md:
+    file: skills/producers/signal/SKILL.md
+    version: 1
+    sha256: da2f21d7c6097e3e423f491b413119d1c85ce3f38aef97f17a141cae3a7fa1b9
+  flywheel/skills/producers/surface-specification/SKILL.md:
+    file: skills/producers/surface-specification/SKILL.md
+    version: 1
+    sha256: 4bdbbca9013089d6dd77433b713cb8a9166252178271c5a18a73d1d93b501e2c
+  flywheel/skills/producers/verdict/SKILL.md:
+    file: skills/producers/verdict/SKILL.md
+    version: 1
+    sha256: 9dcab634846808fb99d7f7feb92deb919a824554851cc50193917c2d64de19f0
+  flywheel/skills/reviewer/SKILL.md:
+    file: skills/reviewer/SKILL.md
+    version: 1
+    sha256: bf1b1c1432e3b3e41886f805c5c78154a792c395accf157c69912f5013f9a1f0
+  flywheel/skills/self-closing/SKILL.md:
+    file: skills/self-closing/SKILL.md
+    version: 1
+    sha256: 40cb7fe94299c4cb306ea1838d7958bb3607a49e8ab4ec6456032f5e5cfd922a
+  flywheel/skills/spec-writer/SKILL.md:
+    file: skills/spec-writer/SKILL.md
+    version: 1
+    sha256: d429947b4cea23777038b7e112c5cb3aa94ff8aa97f8f2256f2306e1e1835429
+  flywheel/skills/standing/SKILL.md:
+    file: skills/standing/SKILL.md
+    version: 1
+    sha256: 20b0c283c225f5d548e2e81cc5267814697cb399cce345bb0fe23bb249d145cf
+  flywheel/skills/tester/SKILL.md:
+    file: skills/tester/SKILL.md
+    version: 1
+    sha256: c1543335f9bbd501c4307df34d9eae133bcf14b65d2cdb555384314c1e0629de
+  flywheel/skills/verifier/SKILL.md:
+    file: skills/verifier/SKILL.md
+    version: 1
+    sha256: 6b8a91f6105942e390017e1e6733f9cbe33dc2272f928d00eaf61c1c06e3b0bd
+  flywheel/skills/with-operator/SKILL.md:
+    file: skills/with-operator/SKILL.md
+    version: 1
+    sha256: b199f205ed93a510de772e35cb9984e30d001d2ed40ea23bc1ce0c0fd3783bbf

@@ -17,6 +17,13 @@ the requirements.
 - every diagram in ../diagrams/*.svg names states (data-state="machine.state"), decision kinds
   (data-decision) and effects (data-effect) that exist, so a picture cannot drift from the runtime (83)
 - every profile marked complete binds every evidence and effect name (140)
+- the shipped instruction set in ../instructions/: every file carries front matter (name, kind,
+  path, version, set, satisfies), its `path` and its place in the directory agree (the directory
+  mirrors the blueprints prefix), its `set` is one this release ships, and its text moves only
+  when its version moves — the hashes are in registry.yaml under `instructions:` (88, 119, 123,
+  224). Every `flywheel/{schemas,instructions,skills,agents}/…` path a profile names resolves to
+  a file there; every default instruction set.yaml or a type's `instructions:` names resolves;
+  and every agent a machine or a stage names has both a skill and a definition (89, 190)
 - every conformance scenario validates against ../conformance/schema.json and names only real decision
   kinds and effects; every asserted transition's from and to are states of one region of the object's
   machine, submachines expanded, and `region:` on the entry says which when a name is ambiguous; every `then.state_store` key is bound in ../conformance/observations.yaml, for
@@ -104,6 +111,7 @@ def sha256(path):
 machines = {}          # name -> (path, m): the highest version of each name
 versions = {}          # name -> {version: (path, m)}
 tiers = {}             # name -> tier
+type_dirs = {}         # name -> the extensible directory it lives in
 for path in sorted(glob.glob(os.path.join(HERE, '**', '*.yaml'), recursive=True)):
     if os.path.basename(path) in ('atoms.yaml', 'registry.yaml'):
         continue
@@ -145,6 +153,8 @@ for path in sorted(glob.glob(os.path.join(HERE, '**', '*.yaml'), recursive=True)
             bad.append(f"{rel}: retired is for extensible machines only")
     versions.setdefault(name, {})[version] = (path, m)
     tiers[name] = tier
+    if subdir in EXTENSIBLE_DIRS:
+        type_dirs[name] = subdir
     cite(m.get('satisfies'), f"machine {name}@{version}" if tier == 'extensible' else f"machine {name}")
 for name, vs in versions.items():
     machines[name] = vs[max(vs)]
@@ -152,15 +162,157 @@ for key, entry in registered.items():
     n, _, v = key.rpartition('@')
     if not v.isdigit() or int(v) not in versions.get(n, {}):
         bad.append(f"registry.yaml: {key} is registered but no file declares it; a registered version is retired with `retired: true`, never deleted")
-if register and unregistered:
+# ---- the shipped instruction set (model.md 10.6, instructions/README.md)
+# The schemas, the default instructions and the skills live in ../instructions/,
+# laid out as the blueprints prefix: cut `flywheel/` off a file's `path` and what
+# is left is where the file sits. Every file carries front matter — name, kind,
+# path, version, set, satisfies — and the registry records its hash, so text that
+# moves while its version stands still is a finding (123). Nothing here is read
+# by the engine: the engine resolves a name to a path and a version (119).
+INSTRUCTIONS = os.path.join(ROOT, 'instructions')
+INSTRUCTION_KINDS = {'instruction', 'schema', 'skill', 'agent'}
+PERSONA_AGENT = 'tester'   # a persona is data in the order; the agent is the stage's own (profiles/context.yaml ruling 20)
+instructions = {}      # flywheel/<path> -> {name, kind, version, file}: a name is unique per kind,
+                       # a path is unique outright, so the path is the key and the registry's too
+set_version = None
+registered_instr = registry.get('instructions') or {}
+unregistered_instr = {}
+if not os.path.isdir(INSTRUCTIONS):
+    bad.append("instructions/ not found; it is where the instructions live (91)")
+else:
+    iset_path = os.path.join(INSTRUCTIONS, 'set.yaml')
+    iset = yaml.safe_load(open(iset_path)) if os.path.exists(iset_path) else None
+    if not iset:
+        bad.append("instructions/set.yaml not found; the release's set version and the defaults a type carries live there (224)")
+    else:
+        set_version = iset.get('set')
+        if not isinstance(set_version, int) or set_version < 1:
+            bad.append("instructions/set.yaml: `set` must be the release's set version, an integer (224)")
+    for path in sorted(glob.glob(os.path.join(INSTRUCTIONS, '**', '*.md'), recursive=True)):
+        rel = os.path.relpath(path, INSTRUCTIONS)
+        if rel == 'README.md':
+            continue
+        text = open(path).read()
+        m = re.match(r'^---\n(.*?)\n---\n', text, re.S)
+        if not m:
+            bad.append(f"instructions/{rel}: no front matter; every file carries name, kind, path, version, set and satisfies (224)")
+            continue
+        fm = yaml.safe_load(m.group(1)) or {}
+        where = f"instruction {fm.get('name', rel)}"
+        for k in ('name', 'kind', 'path', 'version', 'set'):
+            if k not in fm:
+                bad.append(f"instructions/{rel}: front matter has no {k}")
+        cite(fm.get('satisfies'), where)
+        if 'name' not in fm or 'path' not in fm or 'version' not in fm or 'set' not in fm:
+            continue
+        if fm['kind'] not in INSTRUCTION_KINDS:
+            bad.append(f"instructions/{rel}: kind {fm['kind']!r} is not one of {sorted(INSTRUCTION_KINDS)}")
+        if fm['path'] != 'flywheel/' + rel:
+            bad.append(f"instructions/{rel}: path {fm['path']} and the file's place disagree; the directory mirrors the prefix, so path must be flywheel/{rel}")
+        if not isinstance(fm['version'], int) or fm['version'] < 1:
+            bad.append(f"instructions/{rel}: version must be an integer from 1 (123)")
+        if set_version is not None and (not isinstance(fm['set'], int) or not 1 <= fm['set'] <= set_version):
+            bad.append(f"instructions/{rel}: set {fm['set']!r} is not a set this release ships; the release's is {set_version} (224)")
+        if not text[m.end():].strip():
+            bad.append(f"instructions/{rel}: front matter and no text")
+        if fm['path'] in instructions:
+            bad.append(f"instructions/{rel}: {fm['path']} is already declared by {instructions[fm['path']]['file']}")
+            continue
+        instructions[fm['path']] = {'name': fm['name'], 'kind': fm['kind'], 'version': fm['version'], 'file': rel}
+        h = sha256(path)
+        prev = registered_instr.get(fm['path'])
+        if prev and prev.get('version') == fm['version'] and prev.get('sha256') != h:
+            bad.append(f"instructions/{rel}: the text moved and version is still {fm['version']}; changing an instruction moves its version, so a session started before it and one after can be told apart (123)")
+        elif not prev or prev.get('version') != fm['version'] or prev.get('sha256') != h:
+            unregistered_instr[fm['path']] = {'file': rel, 'version': fm['version'], 'sha256': h}
+            if not register:
+                bad.append(f"instructions/{rel}: {fm['name']}@{fm['version']} is not registered; run `check.py --register` to record it in registry.yaml (224)")
+    for ipath in registered_instr:
+        if ipath not in instructions:
+            bad.append(f"registry.yaml: instruction {ipath} is registered but no file declares it")
+
+    # every path a profile names resolves to a file here; a placeholder like
+    # `flywheel/schemas/units/<type>/<step>.md` names no one file and is not matched
+    NAMED_PATH = re.compile(r'flywheel/(?:schemas|instructions|skills|agents)/[A-Za-z0-9@/._-]+\.md')
+    for prof in sorted(glob.glob(os.path.join(ROOT, 'profiles', '*.yaml'))):
+        for ref in sorted(set(NAMED_PATH.findall(open(prof).read()))):
+            if ref not in instructions:
+                bad.append(f"{os.path.basename(prof)}: names {ref}, which the shipped instruction set has not (88, 119)")
+
+    def resolve_instruction(ref, where):
+        """a default instruction named by a type or by set.yaml: `name` or `name@version`"""
+        n, at, v = ref.rpartition('@')
+        n = n if at else ref
+        e = instructions.get(f"flywheel/instructions/{n}.md")
+        if e is None:
+            bad.append(f"{where}: names {ref}, which the shipped instruction set has not")
+        elif at and v.isdigit() and int(v) != e['version']:
+            bad.append(f"{where}: names {ref}, but the set carries {n}@{e['version']}")
+
+    # the defaults a type carries when its file names none (120), and the type's own list
+    carries = (iset or {}).get('carries') or {}
+    for key in ('elaboration-types', 'unit-types'):
+        for ref in carries.get(key) or []:
+            resolve_instruction(ref, f"set.yaml carries.{key}")
+    for tname, refs in (carries.get('by-name') or {}).items():
+        if tname not in versions:
+            bad.append(f"set.yaml carries.by-name: {tname} names no machine")
+        for ref in refs or []:
+            resolve_instruction(ref, f"set.yaml carries.by-name.{tname}")
+    for name, vs in versions.items():
+        for v, (path, m) in vs.items():
+            for ref in m.get('instructions') or []:
+                resolve_instruction(ref, f"machine {name}@{v} instructions")
+            if 'instructions' in m and tiers.get(name) != 'extensible':
+                bad.append(f"machine {name}: instructions is for extensible machines only")
+
+    # every agent a machine or a stage names has a skill and a definition (89, 190)
+    def agents_of(m, mname):
+        out = set()
+        def params(st):
+            p = (st or {}).get('params') or {}
+            for key in ('agent', 'agents'):
+                v = p.get(key)
+                for a in ([v] if isinstance(v, str) else v if isinstance(v, list) else []):
+                    if not isinstance(a, str) or a.startswith('$'):
+                        continue
+                    if a != 'by-type':
+                        out.add(a)
+                    elif tiers.get(mname) == 'extensible':
+                        out.add(mname)          # a type's own by-type agent is the type (context.yaml ruling 3)
+                    else:
+                        out.update(n for n, d in type_dirs.items() if d == 'elaboration-types')
+                if isinstance(v, dict) and v.get('rule'):
+                    out.add(PERSONA_AGENT)
+        def walk(region):
+            for sn, st in (region.get('states') or {}).items():
+                params(st)
+                for rg in ((st or {}).get('regions') or {}).values():
+                    walk(rg)
+        for region in m['regions'].values():
+            walk(region)
+        return out
+    for name, vs in versions.items():
+        for v, (path, m) in vs.items():
+            for a in sorted(agents_of(m, name)):
+                for want, kind in ((f"flywheel/skills/{a}/SKILL.md", 'skill'), (f"flywheel/agents/{a}.md", 'agent')):
+                    if want not in instructions:
+                        bad.append(f"machine {name}@{v}: names agent {a}, whose {kind} {want} the instruction set has not (89)")
+
+if register and (unregistered or unregistered_instr):
     registered.update(unregistered)
     registry['types'] = dict(sorted(registered.items()))
+    if unregistered_instr:
+        registered_instr.update(unregistered_instr)
+        registry['instructions'] = dict(sorted(registered_instr.items()))
     registry.setdefault('doc', 'the content hash of every extensible machine file at registration; check.py fails a file whose hash moved (model.md 10.7). Add a version with `check.py --register`; never edit an entry')
     with open(REGISTRY, 'w') as f:
-        f.write('# The type registry: name@version -> the file and its sha256 at registration.\n')
-        f.write('# Written by `check.py --register`; a registered file is immutable (model.md 10.7).\n')
+        f.write('# The type registry: name@version -> the file and its sha256 at registration, and\n')
+        f.write('# the instruction set: name -> the file, its version and its sha256 (224).\n')
+        f.write('# Written by `check.py --register`; a registered type file is immutable, and an\n')
+        f.write("# instruction's text moves only with its version (model.md 10.6, 10.7).\n")
         yaml.safe_dump(registry, f, sort_keys=False, width=200)
-    print(f"registered {len(unregistered)}: {', '.join(sorted(unregistered))}")
+    print(f"registered {len(unregistered)} types, {len(unregistered_instr)} instructions")
 
 def resolve_machine_ref(ref):
     """a `machine:` reference -> the (name, version) it names, or None when it names nothing"""
@@ -422,6 +574,8 @@ nclauses = sum(len(v) for v in req_clauses.values())
 print(f"scenarios: {nscen} · requirements: {len(req_numbers)} (+{nclauses} clauses) · cited: {len(cited)} · uncited: {len(uncited)}")
 print(f"observations: {len(observations)} bound · {len(observed)} asserted")
 print(f"machines: {len(machines)} · evidence: {len(evidence)} · effects: {len(effects)} · decision kinds: {len(decisions)}")
+kinds = {k: sum(1 for e in instructions.values() if e['kind'] == k) for k in sorted(INSTRUCTION_KINDS)}
+print(f"instructions: {len(instructions)} files at set {set_version} · " + " · ".join(f"{v} {k}" for k, v in kinds.items()))
 for k, v in sorted(decisions.items()): print(f"  decision {k}: {', '.join(v)}")
 for b in bad: print("FAIL", b)
 sys.exit(1 if bad else 0)

@@ -12,7 +12,11 @@
 # since `archive_change` runs it at the item's merge. An instance replaces or adds a producer per
 # deliverable in the manifest — `flywheel.yaml` deliverables.<name>.producer,
 # .schema or .surface — without touching the engine (119); the engine reads
-# only the resolved names and paths, never the text. Changing a producer, here
+# only the resolved names and paths, never the text. Every producer and schema
+# path below is a file of the shipped instruction set (`../instructions/` in this
+# model, `flywheel/` in the blueprints), carrying its own version and the set it
+# was written against; the work order names each as name@version, and check.py
+# fails a path the set has not (88, 119, 224). Changing a producer, here
 # or in the manifest, is a chore on the blueprints (123). Not a profile on its
 # own; every profile inherits it, since it binds no evidence and no effect.
 # (190)

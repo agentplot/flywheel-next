@@ -83,6 +83,14 @@
       },
       "description": "attributes the object's record carries beside its state, with a type word. Counters and versions live here, not as states."
     },
+    "instructions": {
+      "type": "array",
+      "items": {
+        "type": "string",
+        "pattern": "^[a-z][a-z0-9-]*(@[0-9]+)?$"
+      },
+      "description": "extensible only: the default instructions (120) this type's sessions carry, by name or name@version, resolved in the shipped instruction set (instructions/set.yaml). Omitted means the set's `carries:` rule for the type's directory, which is what every shipped type uses; a type names this only to carry something other than its tier's defaults (119, 223)."
+    },
     "doc": {
       "type": "string"
     },
