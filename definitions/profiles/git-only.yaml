@@ -22,8 +22,8 @@ layout:
   asks:       "`asks/<id>.rec`"
   pages:      "`status.html`, rebuilt by render_status; it says the commit and time it is as of. The page is served from the register and the objects and never committed (15)"
   run_record: "`runs/<host>/<date>.rec`"
-  leases:     "branch `lease/<object id>` holding one orphan commit whose tree is the lease record; renewal replaces the commit with `--force-with-lease`; old commits are unreachable and garbage-collected, so renewals every minute for months add nothing to main. A sink's presenter lease is `lease/sink/<name>`"
-  hosts:      "branch `host/<host id>` the same way, one commit = the heartbeat; the dispatcher heartbeats as `host/dispatcher`"
+  leases:     "branch `lease/<object id>/lease` holding one orphan commit whose tree is the lease record; renewal replaces the commit with `--force-with-lease`; old commits are unreachable and garbage-collected, so renewals every minute for months add nothing to main. A sink's presenter lease is `lease/sink/<name>`"
+  hosts:      "branch `host/<host id>/heartbeat` the same way, one commit = the heartbeat; the dispatcher heartbeats as `host/dispatcher/heartbeat`. The fixed leaf on both branch families is load-bearing: object ids nest (`unit/atlas/rail-tail` owns `unit/atlas/rail-tail/wi-1`), and git refuses a ref whose name is a directory prefix of another, so `lease/<id>` alone could never hold a unit and its item at once; with the leaf, `lease/unit/atlas/rail-tail/lease` and `lease/unit/atlas/rail-tail/wi-1/lease` are siblings"
 
 records:
   get:    "read `objects/<kind>/<id>/object.rec` at the host's fetched `origin/main`"
@@ -31,12 +31,12 @@ records:
   append: "append to `thread.rec`, same commit path"
   list:   "`git ls-tree -r origin/main objects/<kind>/` after fetch; `git diff --name-only <old>..<new>` after a fetch names the objects whose records moved, so a host re-reads only those"
   responses: "`responses/*.rec` whose object, or whose number through the rail's register, names the object"
-  leases: "`git ls-remote origin refs/heads/lease/<id>` then the blob; hosts() = `refs/heads/host/*`"
+  leases: "`git ls-remote origin refs/heads/lease/<id>/lease` then the blob; hosts() = `refs/heads/host/*/heartbeat`"
 
 contract:
   read:     "the files as of `origin/main` after `git fetch` (before every tick, on every notify, and at least every 30s); a read writes nothing"
   write_effect: "one commit per effect on main whose message carries the effect id, reason and evidence; a repeat is found by `git log --grep=<effect id>` on the fetched main before committing and changes nothing"
-  lease:    "the push is the compare-and-swap: take = push `lease/<id>` with expected-old = zero (or = the expired holder's commit); renew = push with expected-old = own commit; release = delete the branch with expected-old = own commit. A host pushes a lease only for an object its manifest declaration covers (149); a sink pinned in the manifest is taken only by the pinned presenter. A rejected push means another host holds it; the loser fetches and reads again. Expiry: the lease commit's renewed_at older than 24h, or the holder's host decision answered takeover"
+  lease:    "the push is the compare-and-swap: take = push `lease/<id>/lease` with expected-old = zero (or = the expired holder's commit); renew = push with expected-old = own commit; release = delete the branch with expected-old = own commit. A host pushes a lease only for an object its manifest declaration covers (149); a sink pinned in the manifest is taken only by the pinned presenter. A rejected push means another host holds it; the loser fetches and reads again. Expiry: the lease commit's renewed_at older than 24h, or the holder's host decision answered takeover"
   present:  "as surfaces.yaml: the presenter of the chat sink posts to Discord, the presenter of the page sink serves `/rail`; a decision with a document is opened in plannotator from the page"
   receive:  "the presenter that received it turns a Discord reply naming a number, a button press, a page choice, or a plannotator annotation into `responses/<id>.rec` committed on main; the ✅ reaction is added when the push lands (154). The operator's own commit editing an object file is a response with id `commit/<sha>`, read by every host at its next fetch (S19). A response for a decision that is gone becomes a response object in `unapplicable` and comes back once under attention"
   notify:   "the git host's push webhook to each host's `/hook` over a Tailscale Funnel; without one, `git ls-remote origin main` every 30s (one round trip, no history read). Bound: 30s. Discord messages and herdr pane events notify locally"
@@ -50,3 +50,16 @@ guarantees:
   derivable: "the tree at origin/main plus the lease and host branches is everything read; the pages are written from it"
   response_once: "the response file is named by its delivery id, so a second delivery writes the same file (no-op); applied_responses is in the same commit as the state change"
   disconnected: "a host with no route to the git host keeps ticking the objects whose leases it holds (leases expire at 24h, so it may continue up to 24h); it commits locally and may not take a new lease, start a session for an object it does not hold, deliver to a sink, or expire another host's leases. On reconnect it pushes its lease renewals first (a rejection means it lost the object: it ends its own panes for that object, reports, and discards its local commits on it), then rebases and pushes its main commits (S18)"
+
+# How the runner is told what a tick spent (conformance/contract/cost.yaml).
+# The store counts the external processes it spawns and the fetch, push and
+# renewal calls it makes, per tick, and hands the counts to the runner beside
+# the tick's trace. These numbers are the mechanism above stated as a cost;
+# they are the profile's promise, not a tuning, so a binding that reaches the
+# right outcomes by other means fails here.
+observations:
+  fetches_per_tick:        "the `git fetch` calls, counted: one before the tick, plus the fetch `records.put` takes to rebase a rejected push. Nothing else fetches — a push that lands reports the head it landed on, so no fetch follows it"
+  pushes_per_tick:         "the `git push` calls: one per effect commit on main (167), and one `--force-with-lease` on `lease/<id>/lease` per lease whose renewal is due (163)"
+  lease_renewals_per_tick: "the renewal pushes among them. A lease branch is renewed once a minute while its holder works, never once per pass over the object it covers (128, 150)"
+  read_processes_per_tick: "processes the read path spawns: zero. Reads are `gix` over the tree at the fetched `origin/main` in the host's own process, never `git show`, `git cat-file` or `git log` per object"
+  subprocesses_per_tick:   "every external process the store spawns in a tick: the fetch, plus one push per commit and per renewal due, and nothing else. Two on a tick that writes once; one on a tick that writes nothing"

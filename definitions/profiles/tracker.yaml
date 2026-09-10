@@ -51,3 +51,13 @@ guarantees:
   atomic:   "one PATCH of the body is one write; the fenced block is replaced whole; a comment is one POST"
   derivable: "the body block and comments are the only things read; labels, milestones, decision issues and the board are written from them"
   response_once: "the response id is the delivery id; the op-response comment is searched by id before posting (a second delivery finds it); the object's applied_responses is written in the same body PATCH as the state change"
+
+# How the runner is told what a tick spent (conformance/contract/cost.yaml).
+# This store spends HTTP calls rather than processes; it counts them per tick
+# and hands the counts to the runner beside the tick's trace.
+observations:
+  fetches_per_tick:        "the conditional `issues?since=<last list point>` the tick makes before deciding, counted: one, its ETag making an unchanged scope free"
+  pushes_per_tick:         "the write calls: the body PATCH, comment POST or milestone change per effect (167), and the holder's lease comment edit per renewal due"
+  lease_renewals_per_tick: "the lease comment edits among them; the holder edits its own comment on the renewal's cadence, never once per pass over the object (128, 150)"
+  read_processes_per_tick: "zero, always: every read is an `octocrab` call in the host's own process; `gh` is not used"
+  subprocesses_per_tick:   "zero, always, for the same reason, so this store meets any process bound; its cost is `fetches_per_tick` and `pushes_per_tick`, the HTTP calls it counts"

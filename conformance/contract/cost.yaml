@@ -1,0 +1,41 @@
+scenario: B.3.169-cost
+title: a binding spends what its profile's mechanism says it spends; the edges of a tick are the promise, not a tuning
+profiles: [all]
+satisfies: [128, 150, 165, 167, 168, 169]
+machines: ./contract/lamp
+given:
+  # Three objects, every one covered by the acting host's declaration, and the
+  # leases already held and renewed at now, so nothing in the run comes due.
+  # Nothing stands in for anything: the lamp machine has no session and no
+  # place, so what a tick spends here is the state store's own spending.
+  objects:
+    - {id: lamp/1, machine: lamp, state: {power: "off"}}
+    - {id: lamp/2, machine: lamp, state: {power: "off"}}
+    - {id: lamp/3, machine: lamp, state: {power: "off"}}
+  evidence: {lamp.switch: {lamp/1: down, lamp/2: down, lamp/3: down}}
+  hosts: [{name: local, bound: 3}]
+  leases:
+    - {object: lamp/1, holder: local, renewed_at: now}
+    - {object: lamp/2, holder: local, renewed_at: now}
+    - {object: lamp/3, holder: local, renewed_at: now}
+  register: {lamp/1/lamp-off: 1, lamp/2/lamp-off: 2, lamp/3/lamp-off: 3, next: 4}
+  marks: {chat: now}          # the three decisions are already delivered, so no tick delivers one
+when:
+  # Ten seconds a tick: thirty in all, under the minute a renewal waits and
+  # under the bound a read may be stale by, so every fetch in the run is the
+  # one a tick takes before it decides (165) and no lease is due (128, 150).
+  - tick: {interval: 10s}                   # nothing moves
+  - evidence: {lamp.switch: {lamp/3: up}}
+  - tick: {interval: 10s}                   # one transition, one effect, one commit; the retired
+                                            # number rides in the same commit as the state change
+  - evidence: {lamp.lit: {lamp/3: true}}    # the world shows the proof, so the effect is not repeated
+  - tick: {interval: 10s}                   # nothing moves
+then:
+  transitions: [{object: lamp/3, from: "off", to: "on"}]
+  effects: [{do: light, count: 1}]
+  state_store:
+    fetches_per_tick: 1
+    pushes_per_tick: [0, 1, 0]
+    lease_renewals_per_tick: 0
+    read_processes_per_tick: 0
+    subprocesses_per_tick: 2

@@ -54,6 +54,15 @@ observations:
   profile_rejected_when_a_guarantee_is_missing: {profiles: [all], doc: "a binding missing a guarantee is refused rather than admitted (140, exit 3)"}
   machine_files_hash_equals_repository: {profiles: [all], doc: "the machine files the run loaded hash to the repository's, so the profile was tested against the model (92-95)"}
 
+  # ---- what a tick costs: the profile's own mechanism, measured at the edges
+  # of a tick. A value is one number when every tick of the scenario spent the
+  # same, and a list in tick order when they differ.
+  fetches_per_tick:            {profiles: [all], doc: "how many times a tick brought the shared line up to date before deciding; one, and a rejected write's own re-read, since a read is the line as of that point and re-reading it costs nothing (126, 165)"}
+  pushes_per_tick:             {profiles: [all], doc: "the writes a tick sent to the central service: one per effect (167) and one per lease actually due (128), and none at all on a tick that moved nothing (78, 131)"}
+  lease_renewals_per_tick:     {profiles: [all], doc: "the renewals among those writes; a lease is renewed on its own cadence while its holder works, so a tick with none due renews none (128, 150)"}
+  read_processes_per_tick:     {profiles: [all], doc: "external processes the read path spawned in a tick; zero, because a read is the state as of the point the tick fetched, not a call per object (126, 165)"}
+  subprocesses_per_tick:       {profiles: [all], doc: "the most external processes any one tick spawned, which is the bound the profile's mechanism sets and the profile states in its own binding (169)"}
+
   # ---- the rail, its register and its delivery
   page_numbers:                 {profiles: [all], doc: "the decision numbers the page showed (15)"}
   chat_numbers:                 {profiles: [all], doc: "the decision numbers the chat showed; the same list as the page's (15, 18)"}
