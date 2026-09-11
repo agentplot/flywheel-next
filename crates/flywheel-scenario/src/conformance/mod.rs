@@ -414,9 +414,10 @@ pub fn run_one(path: &Path, options: &RunOptions) -> Outcome {
                 .iter()
                 .map(|f| f.render(&scenario, trace_path.as_deref()))
                 .collect();
-            // The run is asserted against the state repository it bound, so its
-            // directories go only once every assertion has read them (167).
-            if !options.keep_places && std::env::var("KEEP").is_err() {
+            // A run's directories stand while it is asserted — the run record
+            // and every object a clause reads are files under them — and go
+            // once every assertion has read them (167, D15).
+            if !run.keep_places {
                 let _ = std::fs::remove_dir_all(&run.places);
             }
             Outcome {
@@ -471,9 +472,12 @@ pub struct Run {
     /// against these.
     pub offline: std::collections::BTreeMap<String, Vec<(chrono::DateTime<chrono::Utc>, Option<chrono::DateTime<chrono::Utc>>)>>,
     /// The run's own directories: the state repository it bound and the places
-    /// it made. Removed once the run has been asserted, unless the caller keeps
-    /// them.
+    /// it made. They outlive the run itself, because what a scenario asserts is
+    /// read from the state repository under them; they go when the run does,
+    /// unless the caller asked to keep them.
     pub places: std::path::PathBuf,
+    /// Whether to leave those directories behind for a person to look at.
+    pub keep_places: bool,
     /// Every host's run record on the shared line, read once when the last step
     /// had been played and every host had stopped. What a scenario asserts is
     /// read from here rather than from the repository afterwards: a record the

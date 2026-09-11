@@ -17,3 +17,6 @@ pub mod world;
 
 pub use runner::Runtime;
 pub use store::Store;
+
+#[cfg(test)]
+mod tests;

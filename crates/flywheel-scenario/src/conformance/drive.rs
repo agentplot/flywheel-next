@@ -106,6 +106,7 @@ pub fn play(
     let state = places.join("state");
     bind_git_only(&mut rt, scenario, &state)?;
     std::fs::create_dir_all(&places)?;
+    seed_session_facts(&mut rt)?;
     let sessions = ScriptedSessions::new(&state, places.join("places"));
 
     // `--hosts real`: every host the scenario names is a process of its own,
@@ -132,6 +133,7 @@ pub fn play(
         read_at: Default::default(),
         offline: Default::default(),
         places: places.clone(),
+        keep_places: options.keep_places,
         record: vec![],
     };
     // The script is the scenario's, and entries play at the step they name.
@@ -204,6 +206,7 @@ pub fn play(
         run.record = held
             .all_run_records()
             .context("reading what the hosts did from the shared line")?;
+
     }
     // The status projection as a reader with no host running finds it: the
     // committed file on the shared line, read before the run's own directories
@@ -802,6 +805,31 @@ fn sessions_described(rt: &Runtime) -> Vec<(String, String, String)> {
         .collect()
 }
 
+/// A described state includes the sessions under it: an object seeded with a
+/// session alive has one, recorded against the host holding its lease, because
+/// that is the host running it (93b, 147). The record is the store's and not
+/// the world's, so every profile and both host bindings read the same fact.
+fn seed_session_facts(rt: &mut Runtime) -> Result<()> {
+    let now = rt.store.now;
+    let described = sessions_described(rt);
+    for (object, region, session) in described {
+        let host = rt
+            .store
+            .leases
+            .get(&object)
+            .map(|l| l.holder.clone())
+            .unwrap_or_else(|| rt.store.me());
+        let order = flywheel_atoms::WorkOrder {
+            session: session.clone(),
+            kind: "work".into(),
+            place: flywheel_domain::regions::place_key(&object, &region),
+            body: String::new(),
+        };
+        flywheel_sessions_operator::start(&mut rt.store, &host, now, &order)?;
+    }
+    Ok(())
+}
+
 /// The hosts a scenario names, in the order it named them; the single host
 /// `local` where it names none (232, D15).
 pub fn host_names(scenario: &Scenario) -> Vec<String> {
@@ -866,28 +894,6 @@ fn start_real(rt: &mut Runtime, scenario: &Scenario, places: &Path) -> Result<Re
                 object: object.clone(),
                 state: held.state.clone(),
             })?;
-        }
-        // A described state includes the sessions under it: an object seeded
-        // with a session alive has one, recorded against the host holding its
-        // lease, because that is the host running it (93b, 147).
-        for (object, region, session) in sessions_described(rt) {
-            let host = rt
-                .store
-                .leases
-                .get(&object)
-                .map(|l| l.holder.clone())
-                .unwrap_or_else(|| rt.store.me());
-            flywheel_sessions_operator::start(
-                &mut *git,
-                &host,
-                now,
-                &flywheel_atoms::WorkOrder {
-                    session: session.clone(),
-                    kind: "work".into(),
-                    place: flywheel_domain::regions::place_key(&object, &region),
-                    body: String::new(),
-                },
-            )?;
         }
     }
     // What the scenario said each host is, as manifest entries: a host is what

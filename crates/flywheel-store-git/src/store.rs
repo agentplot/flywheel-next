@@ -765,7 +765,13 @@ impl GitStore {
     /// A lease whose holder stopped renewing past the expiry is free to take
     /// (128, 163).
     pub fn lease_expired(&self, lease: &LeaseRecord) -> bool {
-        self.now - lease.renewed_at > self.lease_expiry
+        // A lease its machine put at `expired` is expired whatever the clock
+        // says: the gone host's decision answered takeover reaches that state
+        // at once, and a lease nobody holds is nobody's (128, 150,
+        // `lease.yaml` stale).
+        lease.state == "expired"
+            || lease.holder.is_empty()
+            || self.now - lease.renewed_at > self.lease_expiry
     }
 
     /// A lease not renewed inside the stale window is shown as stale, which is
@@ -1228,10 +1234,15 @@ impl GitStore {
             // pushes when the route comes back, and its entries are in it
             // (161, D4a).
             Landed::Written { .. } | Landed::Pending { .. } => Ok(()),
-            // Three rejections, or a race lost: the commit is not on the shared
-            // line and the tree that held it is gone. The entries stay owed
-            // (`git-only.yaml records.put`).
+            // Three rejections, or a race lost: the commit did not land. It is
+            // discarded here rather than left on the local branch, because a
+            // later push of this host's chain would carry it and the entries
+            // would be said twice; they stay owed and the next append says them
+            // once (127, `git-only.yaml records.put`).
             Landed::Lost | Landed::Refused => {
+                if !self.fetched.is_empty() && self.fetched != git::ZERO {
+                    self.hard_reset(&self.fetched.clone())?;
+                }
                 self.owed_run = owed;
                 Ok(())
             }

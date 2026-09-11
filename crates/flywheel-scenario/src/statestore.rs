@@ -636,7 +636,13 @@ impl Store {
     /// take (128, 163). The window is the engine's, read from the manifest at
     /// load; the release's default is 24 hours.
     pub fn lease_expired(&self, lease: &LeaseRecord) -> bool {
-        self.now - lease.renewed_at > chrono::Duration::hours(24)
+        // A lease its machine put at `expired` is expired whatever the clock
+        // says: the gone host's decision answered takeover reaches that state
+        // at once, and a lease nobody holds is nobody's (128, 150,
+        // `lease.yaml` stale).
+        lease.state == "expired"
+            || lease.holder.is_empty()
+            || self.now - lease.renewed_at > chrono::Duration::hours(24)
     }
 
     /// The bound the profile states for notification: a host learns what moved

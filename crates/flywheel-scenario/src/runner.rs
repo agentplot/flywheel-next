@@ -322,11 +322,83 @@ impl Runtime {
                 break;
             }
         }
+        self.take_over_released(&mut record);
+        self.report_takeovers(&mut record);
         self.report_handed_back();
         let _ = StateStore::end_tick(&mut self.store);
         record.cost = StateStore::cost(&self.store);
         self.store.now = self.store.now + Duration::seconds(self.store.tick_seconds);
         record
+    }
+
+    /// The sessions a host that is gone or released was running are this host's
+    /// to take over: the next attempt is started here and the returning host
+    /// reads that it lost (150, `session.yaml` id).
+    fn take_over_released(&mut self, record: &mut TickRecord) {
+        let now = self.store.now;
+        let me = self.store.me();
+        let released: Vec<String> = Records::list_records(&self.store, &Scope::All)
+            .unwrap_or_default()
+            .into_iter()
+            .filter(|o| o.machine == "host")
+            .filter(|o| {
+                matches!(
+                    o.config.get("life").map(String::as_str),
+                    Some("released") | Some("gone")
+                )
+            })
+            .map(|o| o.id.trim_start_matches("host/").to_string())
+            .filter(|host| host != &me)
+            .collect();
+        let _ = record;
+        for host in released {
+            for session in flywheel_sessions_operator::of_host(&self.store, &host) {
+                let _ = flywheel_sessions_operator::take_over(&mut self.store, &session, &me, now);
+                // The pane went with the host that was running it: what the
+                // world reports about a session it no longer runs is nothing,
+                // and the fresh attempt is a session of its own (150, 72).
+                self.store.world.sessions.remove(&session);
+            }
+        }
+    }
+
+    /// A session this host was running that another host took over: it ends its
+    /// own session and reports, and starts nothing again — the fresh attempt is
+    /// the taking host's (150).
+    fn report_takeovers(&mut self, record: &mut TickRecord) {
+        let now = self.store.now;
+        let me = self.store.me();
+        let taken: Vec<flywheel_engine::Object> = Records::list_records(&self.store, &Scope::All)
+            .unwrap_or_default()
+            .into_iter()
+            .filter(|o| o.id.starts_with("fact/session/"))
+            .filter(|o| o.record.get("host").and_then(|v| v.as_str()) == Some(me.as_str()))
+            .filter(|o| o.record.get("taken_over_by").is_some_and(|v| !v.is_null()))
+            .filter(|o| !o.record.get("reported_by_holder").is_some_and(|v| !v.is_null()))
+            .collect();
+        for fact in taken {
+            let session = fact.id.trim_start_matches("fact/session/").to_string();
+            let _ = flywheel_sessions_operator::end(&mut self.store, &session, now);
+            let _ = flywheel_sessions_operator::set(
+                &mut self.store,
+                &session,
+                &[("reported_by_holder", json!(now.to_rfc3339()))],
+            );
+            if let Some(fact) = self.store.world.sessions.get_mut(&session) {
+                fact.pane = false;
+            }
+            // Ending its own is an act like any other, and the record says so:
+            // the returning host closed the session it was running and started
+            // nothing again (79, 150, 167).
+            record.effects.push(EffectRecord2 {
+                effect_id: format!("{session}/end_session"),
+                name: "end_session".into(),
+                object: session.clone(),
+                args: Default::default(),
+                written: true,
+                recalled: false,
+            });
+        }
     }
 
     /// One plan-apply-perform pass. The clock does not move here.
@@ -822,6 +894,19 @@ impl Runtime {
                 }
                 self.store.tail.extend(tail);
             }
+        }
+        // What an effect moved out of band, said in the same record and after
+        // the write that caused it (79, 150, 167).
+        for (object, from, to) in std::mem::take(&mut self.store.marked) {
+            record.transitions.push(TransitionRecord {
+                object,
+                region: "hold".into(),
+                from,
+                to,
+                response: None,
+                reason: None,
+                host: Some(self.store.me()),
+            });
         }
     }
 

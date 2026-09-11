@@ -253,7 +253,7 @@ impl RealHosts {
             .arg("--driven")
             .stdin(Stdio::piped())
             .stdout(Stdio::piped())
-            .stderr(if std::env::var("SHOWERR").is_ok() { Stdio::inherit() } else { Stdio::piped() })
+            .stderr(Stdio::piped())
             .spawn()
             .with_context(|| format!("starting host `{name}` as {}", binary.display()))?;
         let input = child.stdin.take().ok_or_else(|| anyhow!("no input to host `{name}`"))?;
@@ -333,12 +333,16 @@ impl RealHosts {
     /// Sweep the named hosts, in the order named. The runner triggers the
     /// sweep; nothing in the child keeps time (D7, D15).
     pub fn sweep(&mut self, names: &[String]) -> Result<usize> {
+        self.drive(names, "sweep")
+    }
+
+    fn drive(&mut self, names: &[String], command: &str) -> Result<usize> {
         let mut fired = 0;
         for name in names {
             if !self.running.contains_key(name) {
                 continue;
             }
-            let said = self.tell(name, "sweep")?;
+            let said = self.tell(name, command)?;
             fired += said
                 .split_whitespace()
                 .nth(1)
@@ -352,6 +356,10 @@ impl RealHosts {
     /// waited on, so they plan from the one read they share and their writes
     /// race. That is what puts two writers on one object (134, 162, I15).
     pub fn sweep_concurrently(&mut self, names: &[String]) -> Result<usize> {
+        self.drive_concurrently(names, "sweep")
+    }
+
+    fn drive_concurrently(&mut self, names: &[String], command: &str) -> Result<usize> {
         let running: Vec<String> = names
             .iter()
             .filter(|n| self.running.contains_key(*n))
@@ -362,7 +370,7 @@ impl RealHosts {
                 .running
                 .get_mut(name)
                 .ok_or_else(|| anyhow!("host `{name}` is not running"))?;
-            writeln!(process.input, "sweep")?;
+            writeln!(process.input, "{command}")?;
             process.input.flush()?;
         }
         let mut fired = 0;
@@ -373,11 +381,11 @@ impl RealHosts {
                 .ok_or_else(|| anyhow!("host `{name}` is not running"))?;
             let mut line = String::new();
             if process.output.read_line(&mut line)? == 0 {
-                bail!("host `{name}` stopped without answering `sweep`");
+                bail!("host `{name}` stopped without answering `{command}`");
             }
             let line = line.trim();
             if let Some(why) = line.strip_prefix("err ") {
-                bail!("host `{name}` refused `sweep`: {why}");
+                bail!("host `{name}` refused `{command}`: {why}");
             }
             fired += line
                 .split_whitespace()

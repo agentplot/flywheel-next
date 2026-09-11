@@ -212,6 +212,12 @@ pub struct Store {
     /// of itself.
     #[serde(skip)]
     pub deciding: Deciding,
+    /// Moves an effect made out of band, as `(lease object, from, to)`: a lease
+    /// the expiry effect put at `expired` moved because the effect put it
+    /// there, and a move nothing recorded would be a move no reader could find
+    /// (79, 150, 167, `lease.yaml` stale).
+    #[serde(default)]
+    pub marked: Vec<(String, String, String)>,
     /// What a hand wrote into the projection, where a scenario made one drift
     /// (136, 142).
     #[serde(default)]
@@ -319,6 +325,7 @@ impl Default for Store {
             defs: None,
             world: World::default(),
             log: vec![],
+            marked: vec![],
             now: Utc::now(),
             tick: 0,
             tick_seconds: 60,

@@ -611,7 +611,9 @@ fn lease_fact(run: &Run, object: &str, key: &str) -> Option<Value> {
                 .trim_start_matches("touched_by_")
                 .trim_end_matches("_before_expiry")
                 .replace('_', "-");
-            if events.iter().any(|e| e.holder == who && !e.expired) {
+            // Taking a lease another host still held un-expired is the touch;
+            // renewing its own and taking one nobody held are not (128, 150).
+            if events.iter().any(|e| e.holder == who && e.held && e.doubled) {
                 return Some(json!(true));
             }
             let held = Records::leases(&run.runtime.store, object).ok().flatten();

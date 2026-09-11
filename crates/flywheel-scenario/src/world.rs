@@ -41,9 +41,73 @@ pub fn perform(defs: &Definitions, store: &mut Store, object: &str, region: &str
                 acted = false;
                 store.duplicate_starts += 1;
             }
+            // The session record is the store's, not the world's: which host
+            // runs a session, when it started and which attempt it is are read
+            // off `fact/session/<id>` by the rail, the status view and every
+            // assertion about them (93b, 150, `session.yaml` id).
+            if acted {
+                let (host, now) = (store.me(), store.now);
+                let _ = flywheel_sessions_operator::start(
+                    store,
+                    &host,
+                    now,
+                    &flywheel_atoms::WorkOrder {
+                        session: skey.clone(),
+                        kind: "work".into(),
+                        place: pkey.clone(),
+                        body: String::new(),
+                    },
+                );
+            }
             store.play_scripts_for(&skey);
         }
-        "end_session" => { if let Some(s) = store.world.sessions.get_mut(&skey) { s.pane = false; } }
+        "end_session" => {
+            if let Some(s) = store.world.sessions.get_mut(&skey) { s.pane = false; }
+            let now = store.now;
+            let _ = flywheel_sessions_operator::end(store, &skey, now);
+        }
+        // The leases a gone host held are released and the sessions it was
+        // running are closed: the host that takes over starts a fresh attempt,
+        // and the returning host reads that it lost (150, `session.yaml` id).
+        "expire_leases" => {
+            let gone = object.strip_prefix("host/").unwrap_or(object).to_string();
+            let (host, now) = (store.me(), store.now);
+            let held: Vec<(String, String)> = flywheel_atoms::Records::list_records(
+                store,
+                &flywheel_atoms::Scope::All,
+            )
+            .unwrap_or_default()
+            .into_iter()
+            .filter_map(|o| {
+                let lease = flywheel_atoms::Records::leases(store, &o.id).ok().flatten()?;
+                (lease.holder == gone).then(|| (o.id, lease.state))
+            })
+            .collect();
+            for (id, was) in held {
+                let _ = flywheel_atoms::StateStore::lease(
+                    store,
+                    &flywheel_atoms::LeaseOp::Release { object: id.clone(), holder: gone.clone() },
+                );
+                let _ = flywheel_atoms::StateStore::lease(
+                    store,
+                    &flywheel_atoms::LeaseOp::Mark { object: id.clone(), state: "expired".into() },
+                );
+                // The lease reached `expired` because this effect put it there,
+                // which is the rule the machine names for work a session is
+                // behind (150, `lease.yaml` stale). A move nothing recorded
+                // would be a move no reader could find (79, 167).
+                store.marked.push((
+                    flywheel_domain::leases::id_for(&id),
+                    was,
+                    "expired".to_string(),
+                ));
+            }
+            for session in flywheel_sessions_operator::of_host(store, &gone) {
+                let _ = flywheel_sessions_operator::take_over(store, &session, &host, now);
+                // The pane went with the host that was running it (150, 72).
+                store.world.sessions.remove(&session);
+            }
+        }
         "deliver_answer" => {
             let ans = e.args.get("text").and_then(|v| v.as_str()).unwrap_or("").to_string();
             if let Some(s) = store.world.sessions.get_mut(&skey) { s.inbox.push(ans); s.exit = None; s.activity = "working".into(); s.question = None; }
