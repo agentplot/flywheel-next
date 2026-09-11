@@ -80,8 +80,9 @@ pub fn host_remote(host: &str) -> String {
     format!("refs/remotes/origin/host/{host}/{HEARTBEAT}")
 }
 
-/// Every host's heartbeat branch, as a pattern.
-pub const HOSTS_REMOTE: &str = "refs/remotes/origin/host/*/heartbeat";
+/// Where every host's heartbeat branch is, as a prefix; the leaf is what tells
+/// a heartbeat from anything else under it.
+pub const HOSTS_PREFIX: &str = "refs/remotes/origin/host/";
 
 /// The leaf every lease branch ends in.
 pub const LEAF: &str = "lease";
@@ -98,6 +99,7 @@ pub fn host_of_ref(reference: &str) -> Option<&str> {
 }
 
 /// The shared line: the only branch a host reads state from.
+pub const SHARED_LINE: &str = "main";
 pub const MAIN: &str = "refs/heads/main";
 pub const ORIGIN_MAIN: &str = "origin/main";
 

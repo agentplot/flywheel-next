@@ -79,9 +79,11 @@ impl ScriptedSessions {
             .current_dir(&place)
             .env(SESSION_ENV, session)
             .env(STATE_ENV, self.checkout(host))
+            // `--host` belongs to the report command, so it comes after it, as
+            // the operator would type it.
+            .args(args)
             .arg("--host")
             .arg(host)
-            .args(args)
             .output()
             .with_context(|| format!("running {} {}", binary.display(), args.join(" ")))?;
         // A refused report exits non-zero and is still recorded (80); that is

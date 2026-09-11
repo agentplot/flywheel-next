@@ -68,6 +68,11 @@ pub struct RunOptions {
     /// How far one tick moves the virtual clock; D7's 60-second sweep by
     /// default.
     pub interval: chrono::Duration,
+    /// Leave the run's own directories where they are, for a caller that goes
+    /// on using the store the run bound — the 390px pass answers the decision
+    /// through the page after the steps are played (314, D15). The caller
+    /// removes `Run::places` when it is done.
+    pub keep_places: bool,
 }
 
 impl Default for RunOptions {
@@ -79,6 +84,7 @@ impl Default for RunOptions {
             trace: None,
             tracing: false,
             interval: chrono::Duration::seconds(60),
+            keep_places: false,
         }
     }
 }
@@ -459,6 +465,9 @@ pub struct Run {
     /// scenario asks about what a host did while it was offline is answered
     /// against these.
     pub offline: std::collections::BTreeMap<String, Vec<(chrono::DateTime<chrono::Utc>, Option<chrono::DateTime<chrono::Utc>>)>>,
+    /// The run's own directories: the state repository it bound and the places
+    /// it made. Removed when the run ends unless the caller keeps them.
+    pub places: std::path::PathBuf,
     /// How many entries of each host's run record have been read into `ticks`,
     /// so each pass reads only what was written since the last one. One host
     /// appends to its own file and never to another's, which is why the mark is

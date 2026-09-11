@@ -961,12 +961,25 @@ impl Store {
     fn seed_the_repository(&mut self) -> anyhow::Result<()> {
         let mut seeded: Vec<flywheel_engine::Object> = self.objects.values().cloned().collect();
         seeded.sort_by_key(|o| o.created);
+        let leases: Vec<flywheel_atoms::LeaseRecord> = self.leases.values().cloned().collect();
         if let Some(durable) = self.durable() {
             let mut git = durable
                 .lock()
                 .map_err(|_| anyhow::anyhow!("the state repository is poisoned"))?;
-            for object in &seeded {
-                git.seed_object(object)?;
+            git.seed_objects(&seeded)?;
+            // A lease the scenario described as held is held, on its own branch
+            // where every host reads it: taking one puts its machine at `free`,
+            // so the state it was described in is marked after the take (D5,
+            // 128).
+            for held in &leases {
+                flywheel_atoms::StateStore::lease(&mut *git, &flywheel_atoms::LeaseOp::Take {
+                    object: held.object.clone(),
+                    holder: held.holder.clone(),
+                })?;
+                flywheel_atoms::StateStore::lease(&mut *git, &flywheel_atoms::LeaseOp::Mark {
+                    object: held.object.clone(),
+                    state: held.state.clone(),
+                })?;
             }
         }
         // Every host reads the described state before the first step: a host

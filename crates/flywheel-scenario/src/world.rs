@@ -272,7 +272,7 @@ pub fn new_object(defs: &Definitions, store: &mut Store, id: &str, machine: &str
     store.log("create", id, format!("{machine} created"));
     // Before a repository is bound the store is being seeded, and what seeding
     // put in the map is written into the repository the moment it is bound.
-    if store.durable().is_none() {
+    if store.durable().is_none() || std::env::var("FLYWHEEL_NEW_MAP").is_ok() {
         store.next_created += 1;
         store.objects.insert(id.to_string(), o);
         return;

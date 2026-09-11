@@ -15,7 +15,7 @@ use std::path::Path;
 
 /// What the world reports about an instance right now. Each name is one of
 /// `atoms.yaml`'s, read the way `profiles/host.yaml` says (204, 207).
-pub fn evidence(manifest: &Manifest) -> BTreeMap<String, Value> {
+pub fn evidence(manifest: &Manifest, placed: Option<&str>) -> BTreeMap<String, Value> {
     let mut out = BTreeMap::new();
     out.insert(
         "instance.blueprints_ready".into(),
@@ -33,7 +33,7 @@ pub fn evidence(manifest: &Manifest) -> BTreeMap<String, Value> {
     // something an agent can make true (207, 207a).
     out.insert(
         "instance.app_installed".into(),
-        json!(Bootstrap::app_installed(manifest)),
+        json!(Bootstrap::app_installed(manifest, placed)),
     );
     out.insert("instance.app_id".into(), json!(manifest.app.id));
     out.insert(

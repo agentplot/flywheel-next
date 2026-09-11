@@ -63,20 +63,42 @@ this repository.
 
 Two runs, and the difference is what a test costs, never what it proves.
 
-| when | command |
-|---|---|
-| while iterating | `cargo test -p <the crate you touched>`, or `cargo test --workspace` |
-| at a group's end, and at 12.4 | `cargo test --workspace -- --include-ignored` |
+| when | command | costs |
+|---|---|---|
+| while iterating | `cargo test -p <the crate you touched>`, or `cargo test --workspace` | 126 s of test time |
+| at a group's end, and at 12.4 | `cargo test --workspace -- --include-ignored` | 335 s |
 
-The default run is every test that holds the engine in process over the
-stand-in store. Marked `#[ignore = "group gate: …"]` and left out of it are the
-tests that play scenarios on the `git-only` profile, start a host as a real
-process, or shell out to the `flywheel` binary: each one is a repository, a
-clone and a push per scenario, and together they are most of the wall time. They
-are not optional — a group is not done until they pass, and 12.4 runs them.
+Every test runs over a real state repository: a bare repository on this
+computer and a checkout of it, which is the only store this release binds (92).
+A tick spends one `git fetch` and at most one `git push`; everything else —
+reading the checkout, writing blobs, trees, commits and refs — happens in
+process through `gix`, so a test is not paying for a process per read
+(`git-only.yaml` cost, 169). `conformance/contract/cost.yaml` is what holds
+that: it asserts the counts the store keeps of itself.
 
-A test that reaches a real state repository or a real process is marked when it
-is written, so the default run stays the one a person runs every few minutes.
+Marked `#[ignore = "group gate: …"]` and left out of the default run are only
+the tests that **start a process of their own**: a host under `--hosts real`, a
+headless browser for the 390px pass, or the `flywheel` binary itself. They are
+not optional — a group is not done until they pass, and 12.4 runs them.
+
+Where the time goes, so a change that costs something is noticed:
+
+| binary | default | with the ignored |
+|---|---|---|
+| `flywheel-scenario/tests/cascade.rs` | 41 s | 41 s |
+| `flywheel/tests/host.rs` | 25 s | 23 s |
+| `flywheel-scenario/tests/conformance_runner.rs` | 9 s | 28 s |
+| `flywheel/tests/init.rs` | 9 s | 9 s |
+| `flywheel-store-git/tests/disconnected.rs` | 8 s | 8 s |
+| `flywheel-surface/tests/dictation.rs` | 7 s | 7 s |
+| `flywheel/tests/signals.rs` | 7 s | 7 s |
+| `flywheel-scenario/tests/phone.rs` | — | 133 s |
+| `flywheel-scenario/tests/real_hosts.rs` | — | 48 s |
+| everything else | under 4 s each | |
+
+A test that reaches a real process is marked when it is written, so the default
+run stays the one a person runs every few minutes. A test never sleeps: the
+clock is virtual and moves for a `clock` step and a tick interval alone (D15).
 
 ## Vocabulary
 

@@ -23,6 +23,7 @@
 
 pub mod git;
 pub mod layout;
+pub mod objects;
 pub mod store;
 
 pub use store::GitStore;

@@ -31,18 +31,34 @@ impl Output {
 }
 
 /// A git repository on disk.
-#[derive(Debug, Clone)]
+///
+/// Every process the machinery spawns at a repository goes through `run`, and
+/// `spawned` counts them: what a tick costs is a fact the profile states and
+/// the store answers for, not a guess (169, `git-only.yaml` cost).
+#[derive(Debug, Clone, Default)]
 pub struct Repo {
     pub dir: PathBuf,
+    pub spawned: std::sync::Arc<std::sync::atomic::AtomicU32>,
 }
 
 impl Repo {
     pub fn at(dir: impl Into<PathBuf>) -> Repo {
-        Repo { dir: dir.into() }
+        Repo {
+            dir: dir.into(),
+            spawned: Default::default(),
+        }
+    }
+
+    /// How many processes this repository has been asked for.
+    pub fn spawned(&self) -> u32 {
+        self.spawned.load(std::sync::atomic::Ordering::Relaxed)
     }
 
     /// Run git in this repository, and say what it said.
     pub fn run(&self, args: &[&str]) -> Result<Output> {
+        self.spawned.fetch_add(1, std::sync::atomic::Ordering::Relaxed);
+        // `FLYWHEEL_GIT_TRACE=1` prints every process and what it cost, which
+        // is how the cost the profile states is checked by hand (169).
         let traced = std::env::var("FLYWHEEL_GIT_TRACE").is_ok();
         let began = std::time::Instant::now();
         let out = Command::new("git")
@@ -191,6 +207,9 @@ pub fn push_expecting(
     let lease = format!("--force-with-lease={remote_ref}:{expected_old}");
     let spec = format!("{local}:{remote_ref}");
     let out = repo.run(&["push", "--quiet", &lease, "origin", &spec])?;
+    if !out.ok && std::env::var("FLYWHEEL_GIT_TRACE").is_ok() {
+        eprintln!("PUSHFAIL {spec}: {}", out.stderr.replace('\n', " / "));
+    }
     Ok(out.ok)
 }
 
@@ -202,14 +221,14 @@ pub fn delete_expecting(repo: &Repo, remote_ref: &str, expected_old: &str) -> Re
     Ok(out.ok)
 }
 
-/// Write a file into the checkout and stage it.
+/// Write a file into the checkout. Nothing is staged: the commit's tree is
+/// written from the checkout itself, in process (169, model.md §13).
 pub fn stage(repo: &Repo, path: &str, content: &str) -> Result<()> {
     let full = repo.dir.join(path);
     if let Some(parent) = full.parent() {
         std::fs::create_dir_all(parent)?;
     }
     std::fs::write(&full, content).with_context(|| format!("writing {}", full.display()))?;
-    repo.git(&["add", "--", path])?;
     Ok(())
 }
 

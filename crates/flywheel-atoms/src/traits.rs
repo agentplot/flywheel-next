@@ -197,7 +197,45 @@ pub struct StatusView {
 
 /// The operations of 125, and the engine needs no others. Present and receive
 /// are two, so the trait is eight methods over the six record operations (D3).
+/// What one tick cost the store: the processes it spawned and the calls it
+/// made (169, `git-only.yaml` cost).
+///
+/// A binding spends what its profile's mechanism says it spends, and the edges
+/// of a tick are the promise: one read of the shared line before anything is
+/// decided, one write per effect, and a renewal only when one is due. The store
+/// counts its own spending, so what a scenario asserts is what happened and not
+/// what a harness watched from outside.
+#[derive(Debug, Clone, Copy, Default, PartialEq, Eq, Serialize, Deserialize)]
+pub struct Cost {
+    /// Times the shared line was brought up to date before deciding (165).
+    pub fetches: u32,
+    /// Writes sent to the central service: one per effect (167), one per lease
+    /// actually due (128).
+    pub pushes: u32,
+    /// The renewals among those writes (128, 150).
+    pub lease_renewals: u32,
+    /// External processes the read path spawned; none (126, 165).
+    pub read_processes: u32,
+    /// Every external process the store spawned, whatever it was for (169).
+    pub subprocesses: u32,
+}
+
 pub trait StateStore: Records {
+    /// Begin counting a tick's cost afresh. A store that spends nothing
+    /// external need not implement either of these (169).
+    fn begin_tick(&mut self) {}
+
+    /// What this tick has cost so far.
+    fn cost(&self) -> Cost {
+        Cost::default()
+    }
+
+    /// The tick is over: what it wrote goes at the shared line, in one write
+    /// (167, 169). A store that writes as it goes need not implement it.
+    fn end_tick(&mut self) -> Result<()> {
+        Ok(())
+    }
+
     /// Read an object's evidence as of a point the store names, writing
     /// nothing (126).
     fn read(&self, id: &str) -> Result<EvidenceRead>;

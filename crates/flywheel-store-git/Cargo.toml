@@ -12,3 +12,7 @@ serde.workspace = true
 serde_json.workspace = true
 anyhow.workspace = true
 chrono.workspace = true
+# Reads and object writes in process, as `git-only.yaml` and model.md §13 name
+# them. The `git` binary stays for exactly two things: the fetch from a remote
+# and the push with the expected-old guard.
+gix = { version = "0.87", default-features = false, features = ["max-performance-safe", "sha1", "basic", "revision"] }

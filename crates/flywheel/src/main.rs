@@ -318,6 +318,9 @@ async fn main() -> Result<()> {
                 git_host: git_host.clone(),
                 app: app.clone(),
                 app_key_from: app_key_from.clone(),
+                // The command line reads it from where the operator placed it
+                // (207a).
+                app_key: None,
                 address: address.clone(),
                 manifest: manifest.clone(),
             })?;
@@ -555,6 +558,7 @@ async fn main() -> Result<()> {
                 trace: trace.as_ref().filter(|t| !t.is_empty()).map(PathBuf::from),
                 tracing: trace.is_some(),
                 interval: chrono::Duration::seconds(60),
+                keep_places: false,
             };
             let paths = if paths.is_empty() { vec![PathBuf::from("conformance")] } else { paths.clone() };
             let report = conformance::run(&paths, &options)?;

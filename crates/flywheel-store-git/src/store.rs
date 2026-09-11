@@ -3,6 +3,7 @@
 
 use crate::git::{self, Repo};
 use crate::layout;
+use crate::objects;
 use anyhow::{anyhow, bail, Context, Result};
 use chrono::{DateTime, Duration, Utc};
 use flywheel_atoms::{
@@ -25,6 +26,12 @@ pub const OPERATOR: &str = "operator commit";
 /// How many times a rejected push is rebased and retried before the host
 /// reports and re-reads (`git-only.yaml records.put`).
 pub const RETRIES: usize = 3;
+
+/// How often a lease is renewed while its holder works. Once a minute, whatever
+/// happens in between: a lease covers an object for the whole time a session
+/// runs on it, and a renewal per pass would be a write per pass with nothing to
+/// say (128, 150, `git-only.yaml` records.leases).
+pub const RENEW_EVERY: Duration = Duration::minutes(1);
 
 /// The state repository as one host sees it.
 #[derive(Debug)]
@@ -52,6 +59,20 @@ pub struct GitStore {
     /// What this run has done, for the observations a scenario asserts.
     pub writes_attempted: usize,
     pub writes_rejected: usize,
+    /// What this tick has cost: the two kinds of process a tick makes, and the
+    /// renewals among the pushes (169, `git-only.yaml` cost).
+    fetches: u32,
+    pushes: u32,
+    lease_renewals: u32,
+    /// What the repository had spawned when this tick began, so the count is
+    /// this tick's and not the run's.
+    spawned_at_tick: u32,
+    /// The objects this tick's commits were written against, by the sequence
+    /// each was read at: what tells a lost race from a stale base when the
+    /// tick's one push is refused (134, 162, I15).
+    guards: BTreeMap<String, u64>,
+    /// Whether a tick is open. Its writes are one push, made when it ends.
+    in_tick: bool,
     pub reread_after_rejection: bool,
     pub reads_since_notify: usize,
     /// Effect ids written locally but not yet landed (161, D4a).
@@ -64,6 +85,9 @@ pub struct GitStore {
     /// without the shared line moving, so this is discarded on every fetch and
     /// on every write of a heartbeat or a lease (D5).
     heartbeats: RefCell<Option<Vec<HostRecord>>>,
+    /// The repository itself, held open: refs, trees, blobs and the commits
+    /// this host writes, all in process (`git-only.yaml`, model.md §13).
+    odb: gix::Repository,
 }
 
 impl GitStore {
@@ -74,6 +98,7 @@ impl GitStore {
         } else {
             git::clone(remote, root)?
         };
+        let repo_dir = repo.dir.clone();
         let mut store = GitStore {
             repo,
             host: host.to_string(),
@@ -86,11 +111,18 @@ impl GitStore {
             shared: BTreeMap::new(),
             writes_attempted: 0,
             writes_rejected: 0,
+            fetches: 0,
+            pushes: 0,
+            lease_renewals: 0,
+            spawned_at_tick: 0,
+            guards: BTreeMap::new(),
+            in_tick: false,
             reread_after_rejection: false,
             reads_since_notify: 0,
             pending: vec![],
             read_at: RefCell::new((String::new(), BTreeMap::new(), BTreeMap::new())),
             heartbeats: RefCell::new(None),
+            odb: objects::open(&repo_dir)?,
         };
         store.fetch()?;
         Ok(store)
@@ -101,18 +133,34 @@ impl GitStore {
     pub fn fetch(&mut self) -> Result<String> {
         if !self.disconnected {
             // A fetch that cannot reach the git host is not an error: the host
-            // keeps working what it already holds (151).
-            let _ = self.repo.run(&["fetch", "--quiet", "origin"]);
+            // keeps working what it already holds (151). One process, at the
+            // start of a tick (165, 169).
+            self.fetches += 1;
+            // The refspec is stated rather than left to the clone's own
+            // configuration: the remote-tracking refs are what every read's
+            // point and every write's expected-old are taken from (165, 134).
+            let _ = self.repo.run(&[
+                "fetch",
+                "--quiet",
+                "--prune",
+                "origin",
+                "+refs/heads/*:refs/remotes/origin/*",
+            ]);
         }
         // A host with no route reads its own line: its local commits are
         // intentions, not facts (161), but they are the state it is working
         // and it must read back what it wrote or it would decide the same
         // thing again on every tick (151, D4a).
         self.fetched = match self.disconnected {
-            true => git::rev(&self.repo, "HEAD")?.or(git::rev(&self.repo, layout::ORIGIN_MAIN)?),
-            false => git::rev(&self.repo, layout::ORIGIN_MAIN)?.or(git::rev(&self.repo, "HEAD")?),
+            true => objects::rev(&self.odb, "HEAD")?.or(self.shared_head()?),
+            false => self.shared_head()?.or(objects::rev(&self.odb, "HEAD")?),
         }
         .unwrap_or_else(|| git::ZERO.to_string());
+        // The checkout is what every read is answered from, so it goes to what
+        // came back — unless this host's own commits are ahead of it, which are
+        // intentions it keeps (161, D4a, 169).
+        self.forget();
+        self.on_fetched_head()?;
         // What the world reports comes down the shared line with everything
         // else, so a host that has just fetched answers the same evidence as
         // every other host of this instance (B.3, 136).
@@ -120,6 +168,31 @@ impl GitStore {
         // The refs moved with the fetch, so what was read of them is read again.
         *self.heartbeats.borrow_mut() = None;
         Ok(self.fetched.clone())
+    }
+
+    /// Where the shared line stands, as the fetch left it.
+    ///
+    /// The remote-tracking ref where the ref store holds one, and what the
+    /// fetch itself said otherwise: `FETCH_HEAD` names the head of every branch
+    /// the fetch brought, which is a file read and not a process (165, 169).
+    fn shared_head(&self) -> Result<Option<String>> {
+        if let Some(sha) = objects::rev(&self.odb, layout::ORIGIN_MAIN)? {
+            return Ok(Some(sha));
+        }
+        let path = self.repo.dir.join(".git").join("FETCH_HEAD");
+        let Ok(text) = std::fs::read_to_string(&path) else {
+            return Ok(None);
+        };
+        for line in text.lines() {
+            let mut parts = line.split('\t');
+            let Some(sha) = parts.next() else { continue };
+            let _merge = parts.next();
+            let what = parts.next().unwrap_or_default();
+            if what.contains(&format!("branch '{}'", layout::SHARED_LINE)) {
+                return Ok(Some(sha.trim().to_string()));
+            }
+        }
+        Ok(None)
     }
 
     /// The world's answers as the shared line holds them.
@@ -158,7 +231,7 @@ impl GitStore {
             }
         }
         self.on_fetched_head()?;
-        git::stage(&self.repo, layout::GIVEN, &text)?;
+        self.write_file(layout::GIVEN, &text)?;
         self.commit_and_push(&format!(
             "{object} {name}\n\nreason: what the world reports, which this profile inherits (B.3)"
         ))?;
@@ -185,10 +258,12 @@ impl GitStore {
 
     /// One file as of the fetched commit.
     ///
-    /// A commit is immutable, so what a path holds at one is read once and
-    /// remembered: a tick reads the same object under a dozen guards, and a
-    /// read that has already been answered is not a fact that can have changed
-    /// (126, 135). The memory is discarded whenever the fetched point moves.
+    /// The checkout is at that commit — a fetch puts it there and every write
+    /// this host makes goes through the tree — so a read is a file read and no
+    /// process is spawned on the read path (126, 135, 169, `git-only.yaml`
+    /// cost). A commit is immutable, so what a path holds at one is read once
+    /// and remembered: a tick reads the same object under a dozen guards. The
+    /// memory is discarded whenever the fetched point moves.
     fn read_file(&self, path: &str) -> Result<Option<String>> {
         if self.fetched.is_empty() || self.fetched == git::ZERO {
             return Ok(None);
@@ -201,7 +276,11 @@ impl GitStore {
                 }
             }
         }
-        let text = git::show(&self.repo, &self.fetched, path)?;
+        let text = match std::fs::read(self.repo.dir.join(path)) {
+            Ok(body) => Some(String::from_utf8_lossy(&body).to_string()),
+            Err(e) if e.kind() == std::io::ErrorKind::NotFound => None,
+            Err(e) => return Err(e).with_context(|| format!("reading {path}")),
+        };
         let mut read = self.read_at.borrow_mut();
         if read.0 != self.fetched {
             read.0 = self.fetched.clone();
@@ -213,7 +292,7 @@ impl GitStore {
     }
 
     /// The paths under a prefix as of the fetched commit, remembered the same
-    /// way and for the same reason.
+    /// way and for the same reason: a directory listing of the checkout.
     fn tree(&self, prefix: &str) -> Result<Vec<String>> {
         {
             let read = self.read_at.borrow();
@@ -223,7 +302,9 @@ impl GitStore {
                 }
             }
         }
-        let paths = git::ls_tree(&self.repo, self.at(), prefix)?;
+        let mut paths = Vec::new();
+        under(&self.repo.dir, prefix.trim_end_matches('/'), &mut paths);
+        paths.sort();
         let mut read = self.read_at.borrow_mut();
         if read.0 != self.at() {
             read.0 = self.at().to_string();
@@ -234,25 +315,88 @@ impl GitStore {
         Ok(paths)
     }
 
-    /// Put the checkout on a local branch at the fetched head, ready to commit.
+    /// Put the checkout on the fetched head, ready to commit. In process: the
+    /// paths that differ are written or removed and the branch is moved, which
+    /// is what `git reset --hard` does without the process (169).
     fn on_fetched_head(&self) -> Result<()> {
         if self.fetched.is_empty() || self.fetched == git::ZERO {
             return Ok(());
         }
         // Only move to the fetched head when nothing local is ahead of it: a
         // disconnected host's own commits are intentions it keeps (161, D4a).
-        let head = git::rev(&self.repo, "HEAD")?;
+        let head = objects::rev(&self.odb, "HEAD")?;
         if head.as_deref() == Some(self.fetched.as_str()) {
             return Ok(());
         }
-        let behind = self
-            .repo
-            .run(&["merge-base", "--is-ancestor", "HEAD", &self.fetched])?
-            .ok;
+        let behind = match &head {
+            Some(head) => objects::reaches(&self.odb, head, &self.fetched)?,
+            None => true,
+        };
         if behind {
-            self.repo.git(&["reset", "--hard", "--quiet", &self.fetched])?;
+            self.hard_reset(&self.fetched)?;
         }
         Ok(())
+    }
+
+    /// Put the branch and the working tree at one commit.
+    fn hard_reset(&self, to: &str) -> Result<()> {
+        let from = objects::rev(&self.odb, "HEAD")?.unwrap_or_default();
+        objects::put_worktree_at(&self.odb, &self.repo.dir, &from, to)?;
+        objects::set_ref(&self.odb, layout::MAIN, to, None)?;
+        self.read_at.borrow_mut().0 = String::new();
+        Ok(())
+    }
+
+    /// Push a local commit at a remote ref, expecting it where we left it. The
+    /// one process a write makes, and the compare-and-swap the whole profile
+    /// rests on (128, 134, 162, I15, 169).
+    fn push(&mut self, remote_ref: &str, expected_old: &str) -> Result<bool> {
+        self.pushes += 1;
+        // The local branch by name, not `HEAD`: a push whose source is the
+        // branch is what moves this host's remote-tracking ref for it, and the
+        // tracking ref is what the next write's expected-old is read from
+        // (134, 162, 165).
+        git::push_expecting(&self.repo, layout::MAIN, remote_ref, expected_old)
+    }
+
+    /// What a push that landed leaves behind: the shared line is where this
+    /// host just put it, so nothing is fetched (165, 169).
+    fn landed(&mut self, sha: &str) {
+        self.fetched = sha.to_string();
+        self.forget();
+    }
+
+    /// Forget what was read at the old point. A commit is immutable, so a read
+    /// is remembered while the point stands and dropped the moment it moves
+    /// (126, 135).
+    fn forget(&self) {
+        let mut read = self.read_at.borrow_mut();
+        read.0 = String::new();
+        read.1.clear();
+        read.2.clear();
+    }
+
+    /// Write one file into the checkout. The commit's tree is written from the
+    /// checkout, so this is the whole of a staged write (169).
+    fn write_file(&self, path: &str, body: &str) -> Result<()> {
+        git::stage(&self.repo, path, body)?;
+        self.forget();
+        Ok(())
+    }
+
+    /// Commit the checkout as it stands on the local branch, in process.
+    fn commit_worktree(&self, message: &str) -> Result<String> {
+        let parent = objects::rev(&self.odb, "HEAD")?.unwrap_or_default();
+        let tree = objects::write_tree(&self.odb, &self.repo.dir)?;
+        let sha = objects::write_commit(
+            &self.odb,
+            tree,
+            std::slice::from_ref(&parent),
+            message,
+            self.now,
+        )?;
+        objects::set_ref(&self.odb, layout::MAIN, &sha, None)?;
+        Ok(sha)
     }
 
     /// Commit what has been staged and push `main` with expected-old. On
@@ -272,11 +416,41 @@ impl GitStore {
         message: &str,
         guard: Option<(&str, u64)>,
     ) -> Result<Landed> {
-        let sha = git::commit(&self.repo, message, self.now)?;
+        let sha = self.commit_worktree(message)?;
         self.writes_attempted += 1;
+        if let Some((id, base_seq)) = guard {
+            self.guards.insert(id.to_string(), base_seq);
+        }
         if self.disconnected {
             // A local commit is an intention, not a fact (161).
             return Ok(Landed::Pending { sha });
+        }
+        // Inside a tick the commit is made here and the push is the tick's:
+        // one write to the central service per tick, carrying every commit the
+        // tick made, which is what the profile's mechanism spends (167, 169,
+        // `git-only.yaml` cost). Outside one — seeding, a report from a place,
+        // a call from the page — the write goes at the shared line at once,
+        // because nothing else will send it.
+        match self.in_tick {
+            true => Ok(Landed::Written { sha }),
+            false => self.flush(),
+        }
+    }
+
+    /// Send this tick's commits at the shared line, once. On rejection: fetch,
+    /// look at what moved, replay and push again; three rejections report and
+    /// re-read (`git-only.yaml records.put`, D4, 134, 162).
+    ///
+    /// An object another writer moved under us is a loss, not a rebase: putting
+    /// this host's state over one it never read is the thing the guard is for
+    /// (134, 162, I15).
+    pub fn flush(&mut self) -> Result<Landed> {
+        let guards = std::mem::take(&mut self.guards);
+        let Some(mut sha) = objects::rev(&self.odb, "HEAD")? else {
+            return Ok(Landed::Written { sha: String::new() });
+        };
+        if self.disconnected || sha == self.fetched {
+            return Ok(Landed::Written { sha });
         }
         for attempt in 0..RETRIES {
             let expected = if self.fetched.is_empty() {
@@ -284,8 +458,11 @@ impl GitStore {
             } else {
                 self.fetched.clone()
             };
-            if git::push_expecting(&self.repo, "HEAD", layout::MAIN, &expected)? {
-                self.fetch()?;
+            if self.push(layout::MAIN, &expected)? {
+                // A push that landed is the new shared line: there is nothing
+                // to fetch, and the read this host holds is still the one it
+                // just wrote (165, 169).
+                self.landed(&sha);
                 return Ok(Landed::Written { sha });
             }
             self.writes_rejected += 1;
@@ -294,39 +471,70 @@ impl GitStore {
             self.fetch()?;
             self.reread_after_rejection = true;
             let onto = self.fetched.clone();
-            if let Some((id, base_seq)) = guard {
+            for (id, base_seq) in &guards {
                 let held = self.get(id)?.map(|o| o.seq).unwrap_or(0);
-                if held != base_seq {
-                    self.repo.git(&["reset", "--hard", "--quiet", &onto])?;
+                if held != *base_seq {
+                    self.hard_reset(&onto)?;
                     return Ok(Landed::Lost);
                 }
             }
             if attempt + 1 == RETRIES {
                 break;
             }
-            if !self.repo.run(&["rebase", "--quiet", &onto])?.ok {
-                let _ = self.repo.run(&["rebase", "--abort"]);
-                // A rebase that conflicts on content is a loss: the host
-                // discards its local commit and takes what it found (3, 164,
-                // I15, S19).
-                self.repo.git(&["reset", "--hard", "--quiet", &onto])?;
+            if !self.replay_onto(&sha, &onto)? {
+                // Two writers on one file is a loss: the host discards its
+                // local commits and takes what it found (3, 164, I15, S19).
+                self.hard_reset(&onto)?;
                 return Ok(Landed::Lost);
             }
+            sha = self.commit_worktree("this tick's writes, replayed on what it found")?;
         }
         Ok(Landed::Refused)
+    }
+
+    /// Put this host's own commit on top of what it found, in process: the
+    /// paths its commit touched written over the new base. A path the other
+    /// writer touched too is a content conflict, and a conflict is a loss
+    /// (3, 134, 164, I15).
+    fn replay_onto(&mut self, ours: &str, onto: &str) -> Result<bool> {
+        let parent = objects::first_parent(&self.odb, ours)?;
+        let mine = objects::changed_paths(&self.odb, &parent, ours)?;
+        let theirs = objects::changed_paths(&self.odb, &parent, onto)?;
+        if mine.iter().any(|path| theirs.contains(path)) {
+            return Ok(false);
+        }
+        self.hard_reset(onto)?;
+        for path in &mine {
+            let full = self.repo.dir.join(path);
+            match objects::blob_at(&self.odb, ours, path)? {
+                Some(body) => {
+                    if let Some(parent) = full.parent() {
+                        std::fs::create_dir_all(parent)?;
+                    }
+                    std::fs::write(&full, body)
+                        .with_context(|| format!("writing {}", full.display()))?;
+                }
+                None => {
+                    let _ = std::fs::remove_file(&full);
+                }
+            }
+        }
+        self.forget();
+        Ok(true)
     }
 
     /// The lease branches, by object.
     fn lease_record(&self, object: &str) -> Result<Option<LeaseRecord>> {
         let reference = layout::lease_ref(object);
-        let Some(sha) = git::rev(&self.repo, &layout::lease_remote(object))?
-            .or(git::rev(&self.repo, &reference)?)
+        let Some(sha) = objects::rev(&self.odb, &layout::lease_remote(object))?
+            .or(objects::rev(&self.odb, &reference)?)
         else {
             return Ok(None);
         };
-        let Some(text) = git::show(&self.repo, &sha, layout::RECORD)? else {
+        let Some(body) = objects::blob_at(&self.odb, &sha, layout::RECORD)? else {
             return Ok(None);
         };
+        let text = String::from_utf8_lossy(&body).to_string();
         let parsed = rec::parse(&text);
         let Some(record) = parsed.first() else {
             return Ok(None);
@@ -336,56 +544,23 @@ impl GitStore {
 
     /// Write one orphan commit whose tree is the record, and push the branch
     /// with expected-old. The push *is* the compare-and-swap (D5).
-    fn put_orphan(&self, reference: &str, record: &rec::Record, expected: &str) -> Result<bool> {
-        // One orphan commit whose tree is the record. Built through a
-        // temporary index so the host's checkout is untouched: a lease renewal
-        // must not disturb the work in the tree (D5).
+    ///
+    /// The blob, the tree, the commit and the local ref are written in process,
+    /// so a renewal costs one process and disturbs nothing in the checkout: a
+    /// lease branch is never a file on `main` and never touches the work in the
+    /// tree (D5, 169).
+    fn put_orphan(&mut self, reference: &str, record: &rec::Record, expected: &str) -> Result<bool> {
         let text = rec::write(std::slice::from_ref(record));
-        let scratch = self.repo.dir.join(".git").join("flywheel-orphan.rec");
-        std::fs::write(&scratch, &text)?;
-        let hash = self
-            .repo
-            .git(&["hash-object", "-w", &scratch.to_string_lossy()])?
-            .trim()
-            .to_string();
-        let _ = std::fs::remove_file(&scratch);
-
-        let index = self.repo.dir.join(".git").join("flywheel-orphan.index");
-        let _ = std::fs::remove_file(&index);
-        let with_index = |args: &[&str]| -> Result<String> {
-            let out = std::process::Command::new("git")
-                .current_dir(&self.repo.dir)
-                .env("GIT_INDEX_FILE", &index)
-                .env("GIT_AUTHOR_NAME", "flywheel")
-                .env("GIT_AUTHOR_EMAIL", "flywheel@localhost")
-                .env("GIT_COMMITTER_NAME", "flywheel")
-                .env("GIT_COMMITTER_EMAIL", "flywheel@localhost")
-                .args(args)
-                .output()?;
-            if !out.status.success() {
-                bail!("git {}: {}", args.join(" "), String::from_utf8_lossy(&out.stderr));
-            }
-            Ok(String::from_utf8_lossy(&out.stdout).trim().to_string())
-        };
-        with_index(&[
-            "update-index",
-            "--add",
-            "--cacheinfo",
-            &format!("100644,{hash},{}", layout::RECORD),
-        ])?;
-        let tree = with_index(&["write-tree"])?;
-        let _ = std::fs::remove_file(&index);
-
-        let commit = self
-            .repo
-            .git(&[
-                "commit-tree",
-                &tree,
-                "-m",
-                &format!("{reference} at {}", self.now.to_rfc3339()),
-            ])?
-            .trim()
-            .to_string();
+        let tree = objects::write_one_file_tree(&self.odb, layout::RECORD, &text)?;
+        let commit = objects::write_commit(
+            &self.odb,
+            tree,
+            &[],
+            &format!("{reference} at {}", self.now.to_rfc3339()),
+            self.now,
+        )?;
+        objects::set_ref(&self.odb, reference, &commit, None)?;
+        self.pushes += 1;
         git::push_expecting(&self.repo, &commit, reference, expected)
     }
 }
@@ -444,9 +619,7 @@ impl Records for GitStore {
         self.on_fetched_head()?;
         let mut next = record.clone();
         next.seq = held + 1;
-        git::stage(
-            &self.repo,
-            &layout::object(id),
+        self.write_file(&layout::object(id),
             &envelope::write_all(std::slice::from_ref(&next)),
         )?;
         let message = format!("{id} seq {}\n\nreason: state written", next.seq);
@@ -469,7 +642,7 @@ impl Records for GitStore {
         // Append-only: the thread is the object's history and nothing rewrites
         // it (144).
         existing.push_str(&written);
-        git::stage(&self.repo, &path, &existing)?;
+        self.write_file(&path, &existing)?;
         self.commit_and_push(&format!("{id} thread {}", entry.kind))?;
         Ok(())
     }
@@ -528,16 +701,15 @@ impl Records for GitStore {
         if let Some(held) = self.heartbeats.borrow().as_ref() {
             return Ok(held.clone());
         }
-        let out = self.repo.run(&["for-each-ref", "--format=%(refname)", layout::HOSTS_REMOTE])?;
         let mut hosts = Vec::new();
-        for reference in out.stdout.lines() {
+        for (reference, sha) in objects::refs_under(&self.odb, layout::HOSTS_PREFIX)? {
             // A heartbeat branch and no other: the leaf is what says so
             // (`git-only.yaml layout`).
-            if layout::host_of_ref(reference).is_none() {
+            if layout::host_of_ref(&reference).is_none() {
                 continue;
             }
-            let Some(sha) = git::rev(&self.repo, reference)? else { continue };
-            let Some(text) = git::show(&self.repo, &sha, layout::RECORD)? else { continue };
+            let Some(body) = objects::blob_at(&self.odb, &sha, layout::RECORD)? else { continue };
+            let text = String::from_utf8_lossy(&body).to_string();
             if let Some(record) = rec::parse(&text).first() {
                 if let Ok(host) = records::host_from_record(record) {
                     hosts.push(host);
@@ -568,7 +740,7 @@ impl GitStore {
             return Ok(());
         }
         let reference = layout::host_ref(&self.host);
-        let expected = git::rev(&self.repo, &layout::host_remote(&self.host))?
+        let expected = objects::rev(&self.odb, &layout::host_remote(&self.host))?
             .unwrap_or_else(|| git::ZERO.to_string());
         let record = records::host_to_record(&HostRecord {
             host: self.host.clone(),
@@ -577,7 +749,6 @@ impl GitStore {
             intermittent,
         });
         self.put_orphan(&reference, &record, &expected)?;
-        let _ = self.repo.run(&["fetch", "--quiet", "origin"]);
         *self.heartbeats.borrow_mut() = None;
         Ok(())
     }
@@ -586,6 +757,36 @@ impl GitStore {
 // ------------------------------------------------------------ the state store
 
 impl StateStore for GitStore {
+    /// The tick's writes go at the shared line here, in one push (167, 169).
+    fn end_tick(&mut self) -> Result<()> {
+        self.in_tick = false;
+        self.flush()?;
+        Ok(())
+    }
+
+    /// A tick's cost is counted from here (169, `git-only.yaml` cost).
+    fn begin_tick(&mut self) {
+        self.in_tick = true;
+        self.fetches = 0;
+        self.pushes = 0;
+        self.lease_renewals = 0;
+        self.spawned_at_tick = self.repo.spawned();
+    }
+
+    /// What this tick has cost. The read path spawns nothing: a read is the
+    /// checkout as of the point the tick fetched, never a call per object
+    /// (126, 165, 169).
+    fn cost(&self) -> flywheel_atoms::Cost {
+        let spawned = self.repo.spawned().saturating_sub(self.spawned_at_tick);
+        flywheel_atoms::Cost {
+            fetches: self.fetches,
+            pushes: self.pushes,
+            lease_renewals: self.lease_renewals,
+            read_processes: spawned.saturating_sub(self.fetches + self.pushes),
+            subprocesses: spawned,
+        }
+    }
+
     fn read(&self, id: &str) -> Result<EvidenceRead> {
         let object = self.get(id)?;
         let mut evidence: BTreeMap<String, Value> = BTreeMap::new();
@@ -646,7 +847,7 @@ impl StateStore for GitStore {
         // before committing, and changes nothing (127).
         if !self.fetched.is_empty()
             && self.fetched != git::ZERO
-            && git::log_grep(&self.repo, &self.fetched, &write.effect_id)?
+            && objects::message_holds(&self.odb, &self.fetched, &write.effect_id)?
         {
             return Ok(WriteOutcome::AlreadyWritten {
                 effect_id: write.effect_id.clone(),
@@ -696,7 +897,7 @@ impl StateStore for GitStore {
         };
         let reference = layout::lease_ref(&object);
         let remote = layout::lease_remote(&object);
-        let expected = git::rev(&self.repo, &remote)?.unwrap_or_else(|| git::ZERO.to_string());
+        let expected = objects::rev(&self.odb, &remote)?.unwrap_or_else(|| git::ZERO.to_string());
         let held = self.lease_record(&object)?;
 
         match op {
@@ -707,6 +908,14 @@ impl StateStore for GitStore {
                 if let Some(h) = &held {
                     if !h.holder.is_empty() && h.holder != holder && !self.lease_expired(h) {
                         return Ok(LeaseOutcome::HeldByAnother(h.clone()));
+                    }
+                    // Taking a lease this host already holds is renewing it,
+                    // and a renewal that is not due changes nothing, so it is
+                    // not a write: a host asks for what it holds on every pass
+                    // over the object, and the branch moves once a minute
+                    // (127, 128, 150, `git-only.yaml` records.leases).
+                    if h.holder == holder && self.now - h.renewed_at < RENEW_EVERY {
+                        return Ok(LeaseOutcome::Held(h.clone()));
                     }
                 }
                 let record = LeaseRecord {
@@ -727,7 +936,6 @@ impl StateStore for GitStore {
                 };
                 let landed =
                     self.put_orphan(&reference, &records::lease_to_record(&record), &expected)?;
-                let _ = self.repo.run(&["fetch", "--quiet", "origin"]);
                 if landed {
                     Ok(LeaseOutcome::Held(record))
                 } else {
@@ -751,12 +959,19 @@ impl StateStore for GitStore {
                     // Renewals push first on reconnect (165, D4a).
                     return Ok(LeaseOutcome::Held(h));
                 }
+                // A lease is renewed on its own cadence while its holder
+                // works, never once per pass over the object it covers: a
+                // renewal that is not due is not a write (127, 128, 150,
+                // `git-only.yaml` records.leases).
+                if self.now - h.renewed_at < RENEW_EVERY {
+                    return Ok(LeaseOutcome::Held(h));
+                }
                 let record = LeaseRecord {
                     renewed_at: self.now,
                     ..h
                 };
+                self.lease_renewals += 1;
                 self.put_orphan(&reference, &records::lease_to_record(&record), &expected)?;
-                let _ = self.repo.run(&["fetch", "--quiet", "origin"]);
                 Ok(LeaseOutcome::Held(record))
             }
             LeaseOp::Release { .. } => {
@@ -765,8 +980,9 @@ impl StateStore for GitStore {
                         Ok(LeaseOutcome::HeldByAnother(h.clone()))
                     }
                     _ => {
+                        objects::delete_ref(&self.odb, &reference).ok();
+                        self.pushes += 1;
                         git::delete_expecting(&self.repo, &reference, &expected)?;
-                        let _ = self.repo.run(&["fetch", "--quiet", "--prune", "origin"]);
                         Ok(LeaseOutcome::Released)
                     }
                 }
@@ -781,7 +997,6 @@ impl StateStore for GitStore {
                     state: state.clone(),
                 };
                 self.put_orphan(&reference, &records::lease_to_record(&record), &expected)?;
-                let _ = self.repo.run(&["fetch", "--quiet", "origin"]);
                 Ok(LeaseOutcome::Held(record))
             }
         }
@@ -790,7 +1005,7 @@ impl StateStore for GitStore {
     fn notify(&self, since: &ReadPoint) -> Result<Notice> {
         // After a fetch, `git diff --name-only <old>..<new>` names the object
         // files that moved, so a host re-reads only those (130, 166).
-        let mut objects: Vec<String> = git::diff_names(&self.repo, &since.mark, self.at())?
+        let mut objects: Vec<String> = objects::changed_paths(&self.odb, &since.mark, self.at())?
             .iter()
             .filter_map(|p| layout::touched(p).map(str::to_string))
             .collect();
@@ -822,9 +1037,7 @@ impl StateStore for GitStore {
             });
         }
         self.on_fetched_head()?;
-        git::stage(
-            &self.repo,
-            &path,
+        self.write_file(&path,
             &rec::write(std::slice::from_ref(&records::response_to_record(response))),
         )?;
         // Written before the transition it causes fires (129, 153).
@@ -841,67 +1054,61 @@ impl StateStore for GitStore {
 impl GitStore {
     /// Commits on `main` this host has made that the git host does not hold.
     pub fn unpushed(&self) -> Result<Vec<String>> {
-        let Some(head) = git::rev(&self.repo, "HEAD")? else {
+        let Some(head) = objects::rev(&self.odb, "HEAD")? else {
             return Ok(vec![]);
         };
         if self.fetched.is_empty() || self.fetched == git::ZERO {
             return Ok(vec![head]);
         }
-        let range = format!("{}..HEAD", self.fetched);
-        let out = self.repo.run(&["rev-list", &range])?;
-        Ok(out
-            .stdout
-            .lines()
-            .map(str::to_string)
-            .filter(|l| !l.is_empty())
-            .collect())
+        objects::commits_between(&self.odb, &self.fetched, &head)
     }
 
-    /// Push the commits made while there was no route. A rejection is rebased
+    /// Push the commits made while there was no route. A rejection is replayed
     /// and retried like any other write (165, D4a).
     pub fn push_unpushed(&mut self) -> Result<bool> {
         if self.disconnected || self.unpushed()?.is_empty() {
             return Ok(false);
         }
+        // The fetch that starts a reconnect: what landed while the route was
+        // down is not this host's to discard (165, D4a). The checkout keeps
+        // this host's own commits, which are ahead of it.
+        let ours = objects::rev(&self.odb, "HEAD")?.unwrap_or_default();
         self.fetch()?;
+        let mut ours = ours;
         for _ in 0..RETRIES {
             let expected = if self.fetched.is_empty() {
                 git::ZERO.to_string()
             } else {
                 self.fetched.clone()
             };
-            // What landed while the route was down is not this host's to
-            // discard: its own commits go on top of what it finds, and the push
-            // that follows carries both (134, 165, D4a).
+            // Its own commits go on top of what it finds, and the push that
+            // follows carries both (134, 165, D4a).
             if !self.fetched.is_empty()
                 && self.fetched != git::ZERO
-                && !self
-                    .repo
-                    .run(&["merge-base", "--is-ancestor", &self.fetched, "HEAD"])?
-                    .ok
+                && !objects::reaches(&self.odb, &self.fetched, &ours)?
             {
                 let onto = self.fetched.clone();
-                if !self.repo.run(&["rebase", "--quiet", &onto])?.ok {
+                if !self.replay_onto(&ours, &onto)? {
                     // A conflict on content is a loss: the other commit stands
                     // and this host re-reads (3, 164, I15).
-                    let _ = self.repo.run(&["rebase", "--abort"]);
-                    self.repo.git(&["reset", "--hard", "--quiet", &onto])?;
+                    self.hard_reset(&onto)?;
                     return Ok(false);
                 }
+                ours = self.commit_worktree(&format!("{} replayed", &ours[..7.min(ours.len())]))?;
             }
-            if git::push_expecting(&self.repo, "HEAD", layout::MAIN, &expected)? {
-                self.fetch()?;
+            if self.push(layout::MAIN, &expected)? {
+                self.landed(&ours);
                 self.pending.clear();
                 return Ok(true);
             }
             self.fetch()?;
             self.reread_after_rejection = true;
             let onto = self.fetched.clone();
-            if !self.repo.run(&["rebase", "--quiet", &onto])?.ok {
-                let _ = self.repo.run(&["rebase", "--abort"]);
-                self.repo.git(&["reset", "--hard", "--quiet", &onto])?;
+            if !self.replay_onto(&ours, &onto)? {
+                self.hard_reset(&onto)?;
                 return Ok(false);
             }
+            ours = self.commit_worktree(&format!("{} replayed", &ours[..7.min(ours.len())]))?;
         }
         Ok(false)
     }
@@ -940,7 +1147,7 @@ impl GitStore {
             .unwrap_or_default();
         held.extend(entries.iter().map(records::run_to_record));
         self.on_fetched_head()?;
-        git::stage(&self.repo, &path, &rec::write(&held))?;
+        self.write_file(&path, &rec::write(&held))?;
         self.commit_and_push(&format!(
             "run record: {} {} on {}\n\nreason: what this host did and why (79)",
             entries.len(),
@@ -1001,11 +1208,16 @@ impl GitStore {
     /// Commit the status projection on the shared line, stating the commit and
     /// time it is as of. Only the rail's lease holder writes it (D12, 132, 145).
     pub fn commit_status(&mut self, body: &str) -> Result<()> {
-        if self.read_file(layout::STATUS)?.as_deref() == Some(body) {
+        // The projection is rewritten whenever what it projects moved, and the
+        // point it is as of is not something it projects: a body that differs
+        // only in its stamp is the body that is already there, and writing what
+        // is already there is not a write (77, 78, 127, 131, 142, D12).
+        let held = self.read_file(layout::STATUS)?;
+        if held.as_deref().map(without_the_stamp) == Some(without_the_stamp(body)) {
             return Ok(());
         }
         self.on_fetched_head()?;
-        git::stage(&self.repo, layout::STATUS, body)?;
+        self.write_file(layout::STATUS, body)?;
         self.commit_and_push(&format!(
             "{}\n\nreason: the status view is rewritten from its source on every tick (77, 132)",
             layout::STATUS
@@ -1020,23 +1232,12 @@ impl GitStore {
         if self.fetched.is_empty() || self.fetched == git::ZERO {
             return Ok(None);
         }
-        let out = self.repo.run(&[
-            "log",
-            "-1",
-            "--format=%H",
-            &self.fetched,
-            "--",
-            "objects",
-        ])?;
-        Ok(out.stdout.split_whitespace().next().map(String::from))
+        Ok(objects::newest_touching(&self.odb, &self.fetched, "objects")?.map(|(sha, _)| sha))
     }
 
     /// Whether one commit is in another's history.
     pub fn is_ancestor(&self, older: &str, newer: &str) -> bool {
-        self.repo
-            .run(&["merge-base", "--is-ancestor", older, newer])
-            .map(|said| said.ok)
-            .unwrap_or(false)
+        objects::reaches(&self.odb, older, newer).unwrap_or(false)
     }
 
     /// The status file as it stands on the shared line: what the operator reads
@@ -1071,9 +1272,7 @@ impl GitStore {
     /// the machinery made (3, 159, 164).
     pub fn commit_as_operator(&mut self, object: &Object, delivery: &str, by: &str) -> Result<()> {
         self.on_fetched_head()?;
-        git::stage(
-            &self.repo,
-            &layout::object(&object.id),
+        self.write_file(&layout::object(&object.id),
             &envelope::write_all(std::slice::from_ref(object)),
         )?;
         self.commit_and_push(&format!("{OPERATOR} {delivery} by {by}"))?;
@@ -1087,19 +1286,36 @@ impl GitStore {
         if self.fetched.is_empty() || self.fetched == git::ZERO {
             return Ok(None);
         }
-        let subject = self.repo.git(&[
-            "log",
-            "-1",
-            "--format=%s",
-            &self.fetched,
-            "--",
-            &layout::object(id),
-        ])?;
+        let Some((_, subject)) =
+            objects::newest_touching(&self.odb, &self.fetched, &layout::object(id))?
+        else {
+            return Ok(None);
+        };
         let subject = subject.trim();
         let Some(rest) = subject.strip_prefix(OPERATOR) else {
             return Ok(None);
         };
         Ok(rest.split_whitespace().next().map(String::from))
+    }
+
+    /// Put many described objects on the shared line in one commit: a described
+    /// state is one write, not one per object (94, D15).
+    pub fn seed_objects(&mut self, objects: &[Object]) -> Result<()> {
+        if objects.is_empty() {
+            return Ok(());
+        }
+        let was = self.in_tick;
+        self.in_tick = true;
+        let outcome = (|| -> Result<()> {
+            for object in objects {
+                self.seed_object(object)?;
+            }
+            Ok(())
+        })();
+        self.in_tick = was;
+        outcome?;
+        self.flush()?;
+        Ok(())
     }
 
     /// Put a described state in place: the envelope exactly as given, sequence
@@ -1108,9 +1324,7 @@ impl GitStore {
     /// (94, D15).
     pub fn seed_object(&mut self, object: &Object) -> Result<()> {
         self.on_fetched_head()?;
-        git::stage(
-            &self.repo,
-            &layout::object(&object.id),
+        self.write_file(&layout::object(&object.id),
             &envelope::write_all(std::slice::from_ref(object)),
         )?;
         self.commit_and_push(&format!("{} seeded\n\nreason: the scenario's given state", object.id))?;
@@ -1139,4 +1353,40 @@ pub fn sandbox(base: &Path, host: &str, now: DateTime<Utc>) -> Result<GitStore> 
         let _ = store.commit_and_push("the state repository's shared line");
     }
     Ok(store)
+}
+
+/// Every file under a prefix of the checkout, by path, `.git` left out. What
+/// `list` reads, with no process on the read path (131, 169).
+fn under(root: &Path, prefix: &str, into: &mut Vec<String>) {
+    let dir = match prefix.is_empty() {
+        true => root.to_path_buf(),
+        false => root.join(prefix),
+    };
+    let Ok(entries) = std::fs::read_dir(&dir) else {
+        return;
+    };
+    for entry in entries.flatten() {
+        let name = entry.file_name().to_string_lossy().to_string();
+        if name == ".git" {
+            continue;
+        }
+        let path = match prefix.is_empty() {
+            true => name,
+            false => format!("{prefix}/{name}"),
+        };
+        match entry.path().is_dir() {
+            true => under(root, &path, into),
+            false => into.push(path),
+        }
+    }
+}
+
+/// A status body without the line stating the point it is as of, which is what
+/// tells a projection that moved from one that only says when it was read
+/// (77, 145).
+fn without_the_stamp(body: &str) -> String {
+    body.lines()
+        .filter(|line| !line.contains("as-of") && !line.contains("as of"))
+        .collect::<Vec<_>>()
+        .join("\n")
 }

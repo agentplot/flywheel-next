@@ -51,7 +51,7 @@ fn seed(host: &mut Host, id: &str, machine: &str, states: &[(&str, &str)], recor
     if object.config.is_empty() {
         flywheel_engine::initialise(&host.defs, &mut object, host.now());
     }
-    host.store.git.seed_object(&object).unwrap();
+    host.store.git.seed_objects(std::slice::from_ref(&object)).unwrap();
 }
 
 /// One request, spoken over a socket, so what is asserted is what a client

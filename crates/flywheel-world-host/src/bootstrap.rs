@@ -141,7 +141,18 @@ impl Bootstrap {
     /// Whether the App's installation is seen through the git host. Until it
     /// is, the instance stands at a decision under attention and no agent acts
     /// (204, 207, 82).
-    pub fn app_installed(manifest: &Manifest) -> bool {
+    /// Whether the App's key is where the operator put it.
+    ///
+    /// The manifest names the place and never holds the key (204, 207); the
+    /// machinery only ever asks whether it is there, and never puts it there
+    /// itself (207a). `placed` is for a caller that has already read it — a
+    /// host that read it once at load, a test that must not write to the
+    /// process's own environment; with none, the environment the manifest
+    /// names is the place.
+    pub fn app_installed(manifest: &Manifest, placed: Option<&str>) -> bool {
+        if let Some(key) = placed {
+            return !key.trim().is_empty();
+        }
         match &manifest.app.key_from {
             Some(from) => std::env::var(from).map(|k| !k.trim().is_empty()).unwrap_or(false),
             None => false,

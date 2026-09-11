@@ -167,16 +167,17 @@ fn a_key_never_shadows_the_layout() {
 
 /// An instance on disk: real git repositories, so a test can read the history
 /// of the file a record was written to (113, 167).
+/// The operator's key is handed over rather than put in the process's own
+/// environment: the manifest names where the operator placed it and the
+/// machinery only asks whether it is there (207, 207a).
 struct Instance {
     dir: std::path::PathBuf,
-    key_from: String,
 }
 
 impl Instance {
     fn new(name: &str) -> Instance {
         let dir = dir(&format!("instance-{name}"));
         let key_from = format!("FLYWHEEL_SIGNALS_KEY_{}", name.to_uppercase());
-        std::env::set_var(&key_from, "the operator placed this");
         let ask = flywheel::init::Init {
             instance: "willdan".into(),
             host: "mac-mini".into(),
@@ -184,11 +185,12 @@ impl Instance {
             git_host: dir.join("git-host"),
             app: "12345".into(),
             app_key_from: key_from.clone(),
+            app_key: Some("the operator placed this".into()),
             address: "http://laptop.example".into(),
             manifest: dir.join("flywheel.yaml"),
         };
         flywheel::init::run(ask).expect("the instance bootstraps");
-        let instance = Instance { dir, key_from };
+        let instance = Instance { dir };
         // The host joins by one command, which is what puts the clones and the
         // one checkout per shared line under the root (205).
         let mut world = instance.world();
@@ -223,7 +225,6 @@ impl Instance {
 
 impl Drop for Instance {
     fn drop(&mut self) {
-        std::env::remove_var(&self.key_from);
         let _ = std::fs::remove_dir_all(&self.dir);
     }
 }

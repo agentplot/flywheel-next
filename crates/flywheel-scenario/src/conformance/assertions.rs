@@ -824,7 +824,28 @@ pub fn observe(run: &Run, scenario: &Scenario, key: &str) -> Option<Value> {
                 .unwrap_or_else(|| e.object == flywheel_domain::RAIL)
         })
         .collect();
+    // What each tick cost the store, as the store counted it: a binding spends
+    // what its profile's mechanism says it spends, and the edges of a tick are
+    // the promise (169, `git-only.yaml` cost).
+    let costs: Vec<flywheel_atoms::Cost> = run.ticks.iter().map(|t| t.cost).collect();
+    let per_tick = |of: fn(&flywheel_atoms::Cost) -> u32| -> Value {
+        let each: Vec<u32> = costs.iter().map(of).collect();
+        // One number where every tick spent the same, the list otherwise: a
+        // scenario says `1` when it means every tick and `[0, 1, 0]` when it
+        // means these ticks.
+        match each.first() {
+            Some(first) if each.iter().all(|n| n == first) => json!(first),
+            _ => json!(each),
+        }
+    };
     Some(match key {
+        "fetches_per_tick" => per_tick(|c| c.fetches),
+        "pushes_per_tick" => per_tick(|c| c.pushes),
+        "lease_renewals_per_tick" => per_tick(|c| c.lease_renewals),
+        "read_processes_per_tick" => per_tick(|c| c.read_processes),
+        // The most any one tick spawned, which is the bound the profile's
+        // mechanism sets (169).
+        "subprocesses_per_tick" => json!(costs.iter().map(|c| c.subprocesses).max().unwrap_or(0)),
         // Every act carries the identity of the effect it performs; a repeat
         // carries the same one and is not a second write (127, 167).
         "writes_with_effect_id" => json!(effects.len()),

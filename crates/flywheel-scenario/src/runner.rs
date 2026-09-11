@@ -102,6 +102,10 @@ pub struct TickRecord {
     pub effects: Vec<EffectRecord2>,
     #[serde(default)]
     pub decisions: Vec<DecisionRecord>,
+    /// What this tick cost the store, as the store counted it (169,
+    /// `git-only.yaml` cost).
+    #[serde(default)]
+    pub cost: flywheel_atoms::Cost,
 }
 
 pub fn epoch() -> chrono::DateTime<chrono::Utc> {
@@ -275,10 +279,14 @@ impl Runtime {
 
     /// One pass, with what happened, and the clock moved once.
     pub fn tick_recorded(&mut self) -> TickRecord {
-        let record = self.pass();
+        StateStore::begin_tick(&mut self.store);
+        self.fetch();
+        let mut record = self.pass();
         // One tick reports a handed-back response once, however many passes it
         // settled over: the report is the tick's, not the pass's (6, 129, D7).
         self.report_handed_back();
+        let _ = StateStore::end_tick(&mut self.store);
+        record.cost = StateStore::cost(&self.store);
         self.store.now = self.store.now + Duration::seconds(self.store.tick_seconds);
         record
     }
@@ -289,6 +297,10 @@ impl Runtime {
     /// for the whole tick, which is the second of the two reasons it ever
     /// moves (D15).
     pub fn tick_settled(&mut self) -> TickRecord {
+        StateStore::begin_tick(&mut self.store);
+        // Fetch first, so no host decides on a read older than the bound, and
+        // read the operator's own commits out of what came back (164, 165).
+        self.fetch();
         let mut record = TickRecord { tick: self.store.tick + 1, at: self.store.now, ..Default::default() };
         let mut moved: Vec<String> = Vec::new();
         for _ in 0..50 {
@@ -311,6 +323,8 @@ impl Runtime {
             }
         }
         self.report_handed_back();
+        let _ = StateStore::end_tick(&mut self.store);
+        record.cost = StateStore::cost(&self.store);
         self.store.now = self.store.now + Duration::seconds(self.store.tick_seconds);
         record
     }
@@ -423,9 +437,14 @@ impl Runtime {
         for h in hosts { self.store.set_given(&h, "host.last_seen", json!(now.to_rfc3339())); }
         self.store.play_scripts();
         self.store.play_services();
-        // Fetch first, so no host decides on a read older than the bound (165,
-        // D7), and read the operator's own commits out of what came back.
-        self.fetch();
+        // The shared line was brought up to date at the start of the tick, and
+        // a pass reads what the tick read: one fetch a tick, whatever it
+        // settles over (165, D7, 169). The record is read again so a pass sees
+        // what the pass before it wrote, and the operator's own commits are
+        // read out of it here as they are out of a fetch (164).
+        let before = self.store.objects.clone();
+        self.store.reread(false);
+        self.read_operator_commits(&before);
         // What the engine decides from: `list` and `read`, and nothing the
         // store keeps privately (136, 142). The window says so of itself —
         // every operation served while it stands is recorded.

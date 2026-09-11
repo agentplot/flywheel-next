@@ -25,6 +25,11 @@ fn seeded() -> Runtime {
     rt.store
         .bind_state_repository(&base, &[host])
         .expect("the state repository opens");
+    // Ten seconds a tick. The cascade is what these assert, and a lease branch
+    // is renewed once a minute while its holder works (128, 150): at the
+    // sweep's own interval every tick would renew every lease it holds, which
+    // is a write per object per tick and none of what is being read here.
+    rt.store.tick_seconds = 5;
     rt
 }
 
@@ -50,7 +55,7 @@ fn number_of(rt: &mut Runtime, object: &str, kind: &str) -> Option<u32> {
 #[test]
 fn approving_a_unit_cascades_to_a_merge_and_a_question() {
     let mut rt = seeded();
-    rt.settle(50);
+    rt.settle(20);
 
     let unit = "unit/atlas/status-writer";
     let wi1 = "unit/atlas/status-writer/wi-1";
@@ -63,8 +68,8 @@ fn approving_a_unit_cascades_to_a_merge_and_a_question() {
     let standing_before: Vec<(String, u32)> = rt.decisions().iter().filter(|d| d.object != unit).map(|d| (d.id.clone(), d.number.unwrap())).collect();
 
     rt.respond(number, "yes", "test");
-    let ticks = run_until_quiet(&mut rt, 200, 5);
-    assert!(ticks < 200);
+    let ticks = run_until_quiet(&mut rt, 60, 3);
+    assert!(ticks < 60);
 
     assert_eq!(state(&rt, unit).as_deref(), Some("in-flight"), "the unit waits on its second item");
     assert_eq!(state(&rt, wi1).as_deref(), Some("merged"));
@@ -112,7 +117,7 @@ fn dropping_a_unit_retires_its_items_and_ends_their_sessions() {
     let other_before = rt.store.world.sessions["elaboration/rail-derivation/prototype/standing/1"].pane;
 
     rt.dictate(unit, "drop", "test");
-    run_until_quiet(&mut rt, 100, 5);
+    run_until_quiet(&mut rt, 40, 3);
 
     assert_eq!(state(&rt, unit).as_deref(), Some("dropped"));
     for id in items {
@@ -142,7 +147,7 @@ fn dropping_a_unit_retires_its_items_and_ends_their_sessions() {
 fn services_start_stop_and_fail_by_dictation() {
     let mut rt = seeded();
     // The atlas repository declares two services; the open bolt's ready place declares them.
-    rt.settle(50);
+    rt.settle(20);
     let bolt = "bolt/atlas/plan-rows";
     let web = "service/atlas/plan-rows/web";
     let worker = "service/atlas/plan-rows/worker";
@@ -156,7 +161,7 @@ fn services_start_stop_and_fail_by_dictation() {
 
     // start: present after the effect, serving one tick later, endpoint recorded, no decision
     rt.dictate(web, "start", "test");
-    run_until_quiet(&mut rt, 20, 3);
+    run_until_quiet(&mut rt, 20, 2);
     assert_eq!(state(&rt, web).as_deref(), Some("running"));
     assert_eq!(rt.store.objects[web].record.get("endpoint").and_then(|v| v.as_str()), Some("http://atlas.plan-rows.localhost:41231"));
     assert_eq!(rt.store.objects[web].record.get("moved_by").and_then(|v| v.as_str()), Some(rt.store.responses[0].id.as_str()), "the dictation that started it is recorded");
@@ -165,7 +170,7 @@ fn services_start_stop_and_fail_by_dictation() {
 
     // stop: back to stopped, the endpoint gone with the process
     rt.dictate(web, "stop", "test");
-    run_until_quiet(&mut rt, 20, 3);
+    run_until_quiet(&mut rt, 20, 2);
     assert_eq!(state(&rt, web).as_deref(), Some("stopped"));
     assert!(rt.store.objects[web].record.get("endpoint").is_none());
     assert_eq!(rt.store.world.services[web].process, "absent");
@@ -173,7 +178,7 @@ fn services_start_stop_and_fail_by_dictation() {
     // a scripted failure: the worker's declaration says it exits instead of serving
     rt.store.world.declarations.get_mut("atlas").unwrap().iter_mut().find(|d| d.name == "worker").unwrap().fails = true;
     rt.dictate(worker, "start", "test");
-    run_until_quiet(&mut rt, 20, 3);
+    run_until_quiet(&mut rt, 20, 2);
     assert_eq!(state(&rt, worker).as_deref(), Some("failed"));
     let failed: Vec<_> = rt.decisions().into_iter().filter(|d| d.object == worker).collect();
     assert_eq!(failed.len(), 1, "one standing decision on the failed service");
@@ -183,7 +188,7 @@ fn services_start_stop_and_fail_by_dictation() {
 
     // stop clears the failure; the decision goes with the state
     rt.dictate(worker, "stop", "test");
-    run_until_quiet(&mut rt, 20, 3);
+    run_until_quiet(&mut rt, 20, 2);
     assert_eq!(state(&rt, worker).as_deref(), Some("stopped"));
     assert!(rt.decisions().iter().all(|d| d.object != worker));
 }
@@ -191,12 +196,12 @@ fn services_start_stop_and_fail_by_dictation() {
 #[test]
 fn the_capture_box_makes_captures_and_marks_intents_with_a_control() {
     let mut rt = seeded();
-    rt.settle(50);
+    rt.settle(20);
     let before = rt.decisions().len();
 
     // typed text: a capture read into one signal of kind ask, no session, no decision
     let r = rt.capture("retries hammer the provider on 429", false, "test");
-    run_until_quiet(&mut rt, 20, 3);
+    run_until_quiet(&mut rt, 20, 2);
     let cap = r["id"].as_str().unwrap().to_string();
     assert_eq!(r["kind"], "capture");
     assert_eq!(state(&rt, &cap).as_deref(), Some("read"));
@@ -210,7 +215,7 @@ fn the_capture_box_makes_captures_and_marks_intents_with_a_control() {
 
     // the control marks a capture as an intent: still a capture with one ask signal, flagged for curation
     let r = rt.capture("host liveness on the mac mini", true, "test");
-    run_until_quiet(&mut rt, 20, 3);
+    run_until_quiet(&mut rt, 20, 2);
     let marked = r["id"].as_str().unwrap().to_string();
     assert_eq!(r["kind"], "capture · intent");
     let o = &rt.store.objects[&marked];
@@ -223,7 +228,7 @@ fn the_capture_box_makes_captures_and_marks_intents_with_a_control() {
     let before_objects = rt.store.objects.len();
     for text in ["intent: host liveness on the mac mini", "chore atlas: stale AGENTS.md", "bolt plan-rows: tail grouping by day"] {
         let r = rt.capture(text, false, "test");
-        run_until_quiet(&mut rt, 20, 3);
+        run_until_quiet(&mut rt, 20, 2);
         let id = r["id"].as_str().unwrap().to_string();
         assert_eq!((rt.store.objects[&id].machine.as_str(), rt.store.objects[&id].record["raw"].as_str()), ("capture", Some(text)));
     }
@@ -240,11 +245,11 @@ fn the_capture_box_makes_captures_and_marks_intents_with_a_control() {
 #[test]
 fn a_bolt_close_yes_lands_the_bolt() {
     let mut rt = seeded();
-    rt.settle(50);
+    rt.settle(20);
     let d = rt.decisions().into_iter().find(|d| d.kind == "bolt-close" && d.object == "bolt/switchboard/plan-rows").expect("close offered");
     rt.respond(d.number.unwrap(), "yes", "test");
     let mut quiet = 0;
-    for _ in 0..200 { if rt.tick() == 0 { quiet += 1; if quiet >= 5 { break; } } else { quiet = 0; } }
+    for _ in 0..60 { if rt.tick() == 0 { quiet += 1; if quiet >= 3 { break; } } else { quiet = 0; } }
     let bolt = &rt.store.objects["bolt/switchboard/plan-rows"];
     assert_eq!(bolt.top_state(), Some("landed"), "config: {:?}", bolt.config);
     assert!(rt.store.tail.iter().any(|t| t.object == "bolt/switchboard/plan-rows" && t.kind == "landed"));

@@ -42,8 +42,10 @@ pub const SWEEP: i64 = 60;
 pub const POLL: i64 = 30;
 
 /// How many passes one sweep settles over before it gives up and leaves the
-/// rest to the next one. A pass that moved nothing ends it long before this.
-pub const PASSES: usize = 50;
+/// rest to the next one. A pass that moved nothing ends it long before this,
+/// and a chain that has not settled in this many has more to read than one
+/// sweep decides: the next sweep carries it (D7, model.md the tick).
+pub const PASSES: usize = 6;
 
 /// The three bindings a host loads by name, and the one implementation this
 /// release carries of each (D8, 139).

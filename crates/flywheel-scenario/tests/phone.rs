@@ -21,6 +21,19 @@ fn a_standing_decision() -> (flywheel_scenario::Runtime, u32) {
     let suite = Suite::for_scenario(&path).expect("the suite opens");
     let defs = flywheel_engine::load::load_dir(&root().join("definitions")).expect("the machines load");
     let mut runtime = drive::seed(defs, &scenario, &suite).expect("S01 seeds");
+    // The described state goes into a state repository of its own, which is the
+    // store this release binds (92, 160).
+    let base = std::env::temp_dir().join(format!(
+        "flywheel-phone-{}-{:?}",
+        std::process::id(),
+        std::thread::current().id()
+    ));
+    let _ = std::fs::remove_dir_all(&base);
+    let host = runtime.store.me();
+    runtime
+        .store
+        .bind_state_repository(&base, &[host])
+        .expect("the state repository opens");
     // One tick derives the elaboration's decision and the register numbers it;
     // the scenario's own response step is not played, so it still stands.
     runtime.tick();
@@ -36,6 +49,7 @@ fn a_standing_decision() -> (flywheel_scenario::Runtime, u32) {
 /// where a finger can reach it, the tap goes through the tool catalogue, and the
 /// decision it answered is gone from the page that follows (311, 193, 314).
 #[test]
+#[ignore = "group gate: cargo test --workspace -- --include-ignored"]
 fn driver_taps_at_390px() {
     if !driver::available() {
         eprintln!(
@@ -192,10 +206,15 @@ fn pass(path: &std::path::Path, viewport: (u32, u32)) -> Result<(), String> {
     let suite = Suite::for_scenario(path).map_err(|e| format!("the suite: {e:#}"))?;
     let options = flywheel_scenario::conformance::RunOptions {
         definitions: Some(root().join("definitions")),
+        // The answer is given through the page after the steps are played, so
+        // the state repository the run bound has to still be there (314).
+        keep_places: true,
         ..Default::default()
     };
     let mut run = drive::play(&scenario, path, &suite, &options)
         .map_err(|e| format!("playing the steps before the response: {e:#}"))?;
+    let places = run.places.clone();
+    let _remove = Remove(places);
 
     // The decision the step names, found by the number the register gave it
     // (15). A scenario answering by number alone names it directly.
@@ -284,6 +303,15 @@ fn pass(path: &std::path::Path, viewport: (u32, u32)) -> Result<(), String> {
 /// escaped for HTML and the parser gives it back whole, so what a selector
 /// matches is the answer itself; only the quote that ends the selector's own
 /// string needs escaping.
+/// The run's own directories, removed when the pass is over however it ends.
+struct Remove(std::path::PathBuf);
+
+impl Drop for Remove {
+    fn drop(&mut self) {
+        let _ = std::fs::remove_dir_all(&self.0);
+    }
+}
+
 fn escape(text: &str) -> String {
     text.replace('\\', "\\\\").replace('"', "\\\"")
 }

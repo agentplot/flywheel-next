@@ -131,6 +131,7 @@ pub fn play(
         engine_ticks: 0,
         read_at: Default::default(),
         offline: Default::default(),
+        places: places.clone(),
     };
     // The script is the scenario's, and entries play at the step they name.
     let script = scenario.given.script.clone();
@@ -236,7 +237,9 @@ pub fn play(
         run.observations
             .insert("status_written".into(), json!(body));
     }
-    let _ = std::fs::remove_dir_all(&places);
+    if !options.keep_places {
+        let _ = std::fs::remove_dir_all(&places);
+    }
     Ok(run)
 }
 
@@ -264,6 +267,11 @@ fn bind_git_only(rt: &mut Runtime, scenario: &Scenario, base: &Path) -> Result<(
     hosts.dedup();
     rt.store.bind_state_repository(base, &hosts)?;
     rt.decisions();
+    // The described state includes its projection: what a reader with no host
+    // running finds is written here, so the first tick has nothing to rewrite
+    // and a tick that moves nothing writes nothing (77, 78, 131, 145, D12).
+    let defs = rt.defs.clone();
+    rt.store.write_status(&defs);
     Ok(())
 }
 
@@ -935,6 +943,9 @@ fn read_what_the_hosts_did(run: &mut Run) -> Result<()> {
         transitions: vec![],
         effects: vec![],
         decisions: vec![],
+        // Under `--hosts real` the cost is the child host's, and what it spent
+        // is in its own run record rather than in this process (D15, 169).
+        cost: Default::default(),
     };
     for entry in &fresh {
         match entry.kind.as_str() {
@@ -1034,6 +1045,7 @@ fn read_all_the_hosts_did(run: &mut Run) -> Result<()> {
                     transitions: vec![],
                     effects: vec![],
                     decisions: vec![],
+                    cost: Default::default(),
                 });
                 ticks.last_mut().expect("the tick just pushed")
             }
@@ -1167,6 +1179,11 @@ fn play_step(
             let store = run.runtime.store.clone();
             let defs = run.runtime.defs.clone();
             let mut fresh = Store::default();
+            // The state repository is not a thing the host held in memory: it
+            // is the record a restart re-derives from, so the binding crosses
+            // the restart and only what the process remembered is dropped
+            // (75, 92, I14).
+            fresh.durable = store.durable;
             fresh.objects = store.objects;
             fresh.responses = store.responses;
             fresh.register = store.register;
@@ -1532,9 +1549,7 @@ fn play_host(run: &mut Run, host: &HostStep) -> Result<()> {
             run.runtime
                 .store
                 .set_given(&format!("host/{}", host.name), "host.alive", json!(false));
-            if let Some(o) = run.runtime.store.objects.get_mut(&format!("host/{}", host.name)) {
-                o.record.insert("alive".into(), json!(false));
-            }
+            alive(run, &host.name, false)?;
         }
         Some(HostTransition::Disconnect) => {
             if !run.runtime.store.disconnected.contains(&host.name) {
@@ -1543,14 +1558,29 @@ fn play_host(run: &mut Run, host: &HostStep) -> Result<()> {
         }
         Some(HostTransition::Return) => {
             run.runtime.store.disconnected.retain(|h| h != &host.name);
-            if let Some(o) = run.runtime.store.objects.get_mut(&format!("host/{}", host.name)) {
-                o.record.insert("alive".into(), json!(true));
-            }
+            alive(run, &host.name, true)?;
             run.runtime
                 .store
                 .set_given(&format!("host/{}", host.name), "host.alive", json!(true));
         }
     }
+    Ok(())
+}
+
+/// Say whether a host is alive, through the store.
+///
+/// Through `put` and never into the map alone: the store is the state
+/// repository, and what only this process held would be gone at the next read,
+/// so a host lost without warning would be alive again on the next pass
+/// (92, 125, 147).
+fn alive(run: &mut Run, host: &str, alive: bool) -> Result<()> {
+    let id = format!("host/{host}");
+    let Some(mut held) = Records::get(&run.runtime.store, &id)? else {
+        return Ok(());
+    };
+    let seq = held.seq;
+    held.record.insert("alive".into(), json!(alive));
+    Records::put(&mut run.runtime.store, &id, &held, seq)?;
     Ok(())
 }
 

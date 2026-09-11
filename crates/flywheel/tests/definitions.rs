@@ -1,4 +1,8 @@
 //! The set the binary carries, and who may override it (223, 224, D2).
+//!
+//! Every one of these shells out to the `flywheel` binary, so they belong to
+//! the group gate rather than to the run a person makes every few minutes
+//! (AGENTS.md — Gates).
 
 use std::path::PathBuf;
 use std::process::Command;
@@ -21,6 +25,7 @@ fn run(args: &[&str]) -> (bool, String) {
 /// A host runs the definitions in the binary, so the set it ran is provable
 /// from the bytes. The directory load is the scenario runner's alone.
 #[test]
+#[ignore = "group gate: cargo test --workspace -- --include-ignored"]
 fn host_refuses_definitions_override() {
     for args in [
         ["host", "doctor", "--definitions", "definitions"],
@@ -40,6 +45,7 @@ fn host_refuses_definitions_override() {
 /// The scenario runner takes the override: it is what the parity test and a
 /// scenario naming its own machines are for (D2, D15).
 #[test]
+#[ignore = "group gate: cargo test --workspace -- --include-ignored"]
 fn the_scenario_runner_takes_the_override() {
     let (ok, text) = run(&[
         "scenario",
@@ -54,6 +60,7 @@ fn the_scenario_runner_takes_the_override() {
 /// `version --definitions` prints the set version and every core machine's
 /// version (224).
 #[test]
+#[ignore = "group gate: cargo test --workspace -- --include-ignored"]
 fn version_prints_the_set_and_every_core_machine() {
     let (ok, text) = run(&["version", "--definitions"]);
     assert!(ok, "{text}");
@@ -67,6 +74,7 @@ fn version_prints_the_set_and_every_core_machine() {
 /// that would override a core machine is reported rather than swallowed (57,
 /// 85, 223).
 #[test]
+#[ignore = "group gate: cargo test --workspace -- --include-ignored"]
 fn the_host_reports_what_the_blueprints_offered_and_what_it_refused() {
     let (ok, text) = run(&[
         "host",

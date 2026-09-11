@@ -3,9 +3,15 @@
 use flywheel::init::{self, Init};
 use std::path::PathBuf;
 
+/// The operator's key, as this sandbox hands it over. Nothing is written into
+/// the process's own environment: the manifest names where the operator put it
+/// and the machinery only asks whether it is there, so a test says so directly
+/// (207, 207a). The environment is one table for the whole process, and two
+/// threads writing and reading it at once is a race whatever the names are.
 struct Sandbox {
     dir: PathBuf,
     key_from: String,
+    placed: Option<String>,
 }
 
 impl Sandbox {
@@ -21,6 +27,7 @@ impl Sandbox {
         Sandbox {
             dir,
             key_from: format!("FLYWHEEL_TEST_KEY_{}", name.to_uppercase()),
+            placed: None,
         }
     }
 
@@ -32,19 +39,19 @@ impl Sandbox {
             git_host: self.dir.join("git-host"),
             app: "12345".into(),
             app_key_from: self.key_from.clone(),
+            app_key: self.placed.clone(),
             address: "http://laptop.example".into(),
             manifest: self.dir.join("flywheel.yaml"),
         }
     }
 
-    fn place_the_key(&self) {
-        std::env::set_var(&self.key_from, "the operator placed this");
+    fn place_the_key(&mut self) {
+        self.placed = Some("the operator placed this".into());
     }
 }
 
 impl Drop for Sandbox {
     fn drop(&mut self) {
-        std::env::remove_var(&self.key_from);
         let _ = std::fs::remove_dir_all(&self.dir);
     }
 }
@@ -82,7 +89,7 @@ fn init_awaits_app_install() {
 /// (204).
 #[test]
 fn init_twice_writes_nothing() {
-    let sandbox = Sandbox::new("twice");
+    let mut sandbox = Sandbox::new("twice");
     sandbox.place_the_key();
     let first = init::run(sandbox.ask()).expect("init runs");
     assert_eq!(first.state, "hosted", "{first:?}");
@@ -105,7 +112,7 @@ fn init_twice_writes_nothing() {
 /// world, not a flag the machinery set (204).
 #[test]
 fn init_resumes_half_finished() {
-    let sandbox = Sandbox::new("resume");
+    let mut sandbox = Sandbox::new("resume");
 
     // Stopped where 207 stops it: the key is not placed yet.
     let stopped = init::run(sandbox.ask()).expect("init runs");
@@ -160,8 +167,8 @@ fn prefix_write_refused() {
 /// (96, D14).
 #[test]
 fn coexistence_scope_is_disjoint() {
-    let first = Sandbox::new("coexist-a");
-    let second = Sandbox::new("coexist-b");
+    let mut first = Sandbox::new("coexist-a");
+    let mut second = Sandbox::new("coexist-b");
     first.place_the_key();
     second.place_the_key();
 
@@ -195,7 +202,7 @@ fn coexistence_scope_is_disjoint() {
 /// is ever reused (221, 15, 4).
 #[test]
 fn remove_instance_keeps_counter() {
-    let sandbox = Sandbox::new("remove");
+    let mut sandbox = Sandbox::new("remove");
     sandbox.place_the_key();
     let ask = sandbox.ask();
     init::run(sandbox.ask()).expect("init");
@@ -251,7 +258,7 @@ fn walk(dir: &std::path::Path) -> Vec<PathBuf> {
 /// to say (199).
 #[test]
 fn repository_record_has_git_details_only() {
-    let sandbox = Sandbox::new("records");
+    let mut sandbox = Sandbox::new("records");
     sandbox.place_the_key();
     init::run(sandbox.ask()).expect("init");
 
@@ -274,7 +281,7 @@ fn repository_record_has_git_details_only() {
 /// a newer set upgrades nothing on its own (208).
 #[test]
 fn set_version_stamped() {
-    let sandbox = Sandbox::new("stamped");
+    let mut sandbox = Sandbox::new("stamped");
     sandbox.place_the_key();
     let report = init::run(sandbox.ask()).expect("init");
     assert!(report.lines.iter().any(|l| l.contains("set ")), "{report:?}");

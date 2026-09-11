@@ -28,8 +28,14 @@ impl Sandbox {
     fn bootstrap(&self) -> Bootstrap {
         Bootstrap::new(self.git_host(), self.dir.join("scratch"))
     }
-    /// An initialized instance with one host, ready to join.
+    /// An initialized instance with one host, at the address the operator gave
+    /// for it: a host has one address and it is never a localhost port
+    /// (205a, D10a).
     fn initialized(&self, host: &str) -> Manifest {
+        self.initialized_at(host, "http://mac-mini.tailnet")
+    }
+
+    fn initialized_at(&self, host: &str, address: &str) -> Manifest {
         let root = self.dir.join(host);
         bootstrap::init(
             &self.bootstrap(),
@@ -38,7 +44,7 @@ impl Sandbox {
             &root,
             "12345",
             "FLYWHEEL_TEST_APP_KEY",
-            "http://mac-mini.example",
+            address,
             None,
         )
         .expect("init")
@@ -90,7 +96,7 @@ fn a_repository_a_manifest_and_a_route() {
 #[test]
 fn a_localhost_address_is_refused() {
     let sandbox = Sandbox::new("localhost");
-    let manifest = sandbox.initialized("mac-mini");
+    let manifest = sandbox.initialized_at("mac-mini", "http://localhost");
     let world = HostWorld::open(manifest, "mac-mini").unwrap();
     let refused = world.route("rail").expect_err("localhost is no host address");
     assert!(format!("{refused}").contains("205a"));

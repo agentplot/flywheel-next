@@ -216,11 +216,19 @@ impl Store {
     /// evidence and the rail are read from. A restart drops this and reads it
     /// again: nothing the engine decides on is held anywhere else (75, 131).
     pub fn refresh(&mut self) {
+        self.reread(true)
+    }
+
+    /// The same without bringing the shared line up to date: what a pass does,
+    /// because the tick fetched once before it decided anything (165, 169).
+    pub fn reread(&mut self, fetch: bool) {
         let Some(durable) = self.durable() else { return };
         let now = self.now;
         let Ok(mut git) = durable.lock() else { return };
         git.now = now;
-        let _ = git.fetch();
+        if fetch {
+            let _ = git.fetch();
+        }
         let Ok(objects) = Records::list_records(&*git, &Scope::All) else { return };
         // The leases and the heartbeats are branches, not files on the shared
         // line (D5), so they are read back beside the objects: a reader that
@@ -389,6 +397,30 @@ impl Records for Store {
 }
 
 impl StateStore for Store {
+    /// A tick's cost is the state repository's; the runner's own reading of it
+    /// spends nothing (169, `git-only.yaml` cost).
+    fn begin_tick(&mut self) {
+        if let Some(durable) = self.durable() {
+            if let Ok(mut git) = durable.lock() {
+                git.begin_tick();
+            }
+        }
+    }
+
+    fn cost(&self) -> flywheel_atoms::Cost {
+        self.durable()
+            .and_then(|durable| durable.lock().ok().map(|git| git.cost()))
+            .unwrap_or_default()
+    }
+
+    fn end_tick(&mut self) -> Result<()> {
+        let durable = self.state_repository()?;
+        let mut git = durable
+            .lock()
+            .map_err(|_| anyhow!("the state repository is poisoned"))?;
+        git.end_tick()
+    }
+
     fn read(&self, id: &str) -> Result<EvidenceRead> {
         self.deciding.served("read");
         let region = self.top_region(id);

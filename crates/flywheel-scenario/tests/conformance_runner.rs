@@ -44,24 +44,15 @@ fn the_runner_plays_s01_against_the_real_engine() {
         ..Default::default()
     };
     let outcome = conformance::run_one(&conformance_dir().join("scenarios/S01.yaml"), &options);
-    // Every clause of S01 holds but one, and that one is the tick the model's
-    // rule adds: every guard in one tick of an object reads the state taken
-    // before the region loop, so a region's move is its siblings' to read on
-    // the next tick (model.md, the tick). S01's chain therefore needs one more
-    // tick than its `when` list has: `place.place.life` reaches ready on its
-    // sixth tick step, `life` leaves placing on the seventh, and
-    // `session.life` has none left to reach alive in. One `tick: {}` appended
-    // to S01's `when` satisfies it and leaves every `after_step` index alone;
-    // until the model adds it, this is what the scenario does.
-    let expected = "elaboration/atlas-provider-limits/research-1 session.life = alive";
-    let only_the_one = !outcome.failures.is_empty()
-        && outcome
-            .failures
-            .iter()
-            .all(|f| f.contains("session.life") && f.contains(expected));
-    assert!(
-        outcome.status == Status::Passed || only_the_one,
-        "S01 failed other than on the tick the rule adds:\n{}",
+    // Every clause of S01 holds: the approval, the place prepared and proven
+    // current, the session started, and the register's numbers across the
+    // restart in its own steps. The chain settles inside the ticks the `when`
+    // list has, because a region's move is its siblings' to read on the next
+    // tick and the scenario's steps are counted that way (model.md, the tick).
+    assert_eq!(
+        outcome.status,
+        Status::Passed,
+        "S01 failed:\n{}",
         outcome.failures.join("\n")
     );
 }
@@ -489,19 +480,39 @@ fn requires_is_read_from_the_data() {
     );
     assert_eq!(scenario.unmet(&[Requirement::RealWorkspace]), None);
 
-    // Every scenario the suite skips is skipped for a stated requirement.
-    let report = conformance::run(&[conformance_dir()], &options).unwrap();
-    assert!(!report.skipped().is_empty());
-    for skipped in report.skipped() {
-        assert!(
-            skipped.reason.as_ref().is_some_and(|r| r.contains("(93a)") || r.contains("(93)")),
-            "{} was skipped without a stated requirement",
-            skipped.scenario
-        );
+    // Every scenario the suite skips is skipped for a stated requirement, read
+    // out of the scenario file itself. Nothing is played to find that out: the
+    // skip is decided before a scenario runs, which is the whole claim.
+    let mut skipped: Vec<(String, Requirement)> = Vec::new();
+    for file in conformance::scenario_files(&conformance_dir()).expect("the suite is readable") {
+        let (scenario, _) = flywheel_atoms::conformance::load(&file).expect("a scenario loads");
+        if let Some(unmet) = scenario.unmet(&options.provides()) {
+            assert!(
+                unmet.reason().contains("(93a)") || unmet.reason().contains("(93)"),
+                "{} would be skipped without a stated requirement",
+                scenario.scenario
+            );
+            skipped.push((scenario.scenario.clone(), unmet));
+        }
     }
+    assert!(!skipped.is_empty(), "the suite states requirements this phase does not provide");
 
     // A scenario the acceptance table lists that every configuration skips is a
     // failure, never a silent pass.
+    let report = conformance::RunReport {
+        outcomes: skipped
+            .iter()
+            .map(|(name, unmet)| conformance::Outcome {
+                scenario: name.clone(),
+                path: PathBuf::new(),
+                status: Status::Skipped,
+                failures: vec![],
+                reason: Some(unmet.reason().to_string()),
+                trace: None,
+            })
+            .collect(),
+        ..Default::default()
+    };
     let missing = conformance::every_listed_scenario_ran(&["S14".into()], &report);
     assert_eq!(missing, vec!["S14".to_string()]);
 }
@@ -615,7 +626,7 @@ fn the_host_loops_acceptance_scenarios_pass() {
     }
 }
 
-/// The thirteen contract files, against a local bare state repository. This is
+/// The fourteen contract files, against a local bare state repository. This is
 /// the step that admits a profile: one scenario per
 /// operation of B.1, per guarantee of B.2, and one for the binding itself,
 /// over a toy machine that shares no atom with the flywheel (168, task 3.15).
@@ -633,7 +644,7 @@ fn the_contract_set_admits_the_profile() {
         out.sort();
         out
     };
-    assert_eq!(files.len(), 13, "the contract set is thirteen files: {files:?}");
+    assert_eq!(files.len(), 14, "the contract set is fourteen files: {files:?}");
     for profile in [conformance::Profile::GitOnly] {
         for path in &files {
             let options = RunOptions {

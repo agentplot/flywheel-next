@@ -57,7 +57,8 @@ fn host(name: &str, repositories: &[&str]) -> Host {
 }
 
 /// Put a described object in the store: what a scenario's `given` does, and
-/// what the world outside these tests would have written.
+/// what the world outside these tests would have written. One commit for the
+/// whole of it, because a described state is one write (94, D15).
 fn seed(host: &mut Host, id: &str, machine: &str, states: &[(&str, &str)], record: &[(&str, serde_json::Value)]) {
     let mut object = Object {
         id: id.to_string(),
@@ -83,7 +84,7 @@ fn seed(host: &mut Host, id: &str, machine: &str, states: &[(&str, &str)], recor
     if object.config.is_empty() {
         flywheel_engine::initialise(&host.defs, &mut object, host.now());
     }
-    host.store.git.seed_object(&object).unwrap();
+    host.store.git.seed_objects(std::slice::from_ref(&object)).unwrap();
 }
 
 // ---------------------------------------------------------------- 6.1 the tick

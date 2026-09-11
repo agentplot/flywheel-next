@@ -25,6 +25,10 @@ pub struct Init {
     pub git_host: PathBuf,
     pub app: String,
     pub app_key_from: String,
+    /// The key itself, where the caller has already read it from wherever the
+    /// operator put it. With none it is read from the environment the manifest
+    /// names, which is what the command line does (207, 207a).
+    pub app_key: Option<String>,
     /// This host's one address: its name on the operator's private network,
     /// never a localhost port, because every link a delivery carries is
     /// written at it (191, 205a, D10a).
@@ -133,7 +137,7 @@ pub fn run(ask: Init) -> Result<Report> {
     // Tick until the machine stops moving. Each pass reads the world again, so
     // an effect that already holds fires nothing.
     for _ in 0..12 {
-        for (name, value) in effects::evidence(&manifest) {
+        for (name, value) in effects::evidence(&manifest, ask.app_key.as_deref()) {
             runtime.store.set_given(&id, &name, value);
         }
         let before = runtime
