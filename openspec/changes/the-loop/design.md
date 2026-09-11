@@ -597,33 +597,55 @@ processes and the 390px pass on every scenario carrying a response; and the run
 record's definitions hash is compared with `definitions/`, which is itself
 byte-identical to the model (83, D2).
 
-### D17. Three tiers of test, and the everyday one touches no repository
+### D17. Three tiers of test, where each lives, and what an agent runs
 
 There are two unit tests in the workspace and thirty-eight integration test
-files, every one of them driving a real state repository, so the run a person
-makes on every change is the slow kind and the fast kind was never written.
-That is the cause of the everyday cost; the poll and the browser are only the
-gate's.
+files, every one driving a real state repository, so the run a person makes on
+every change is the slow kind and the fast kind was never written. That is the
+cause of the everyday cost; the poll and the browser are only the gate's.
 
-| tier | what it may touch | what runs it | the bar |
-|---|---|---|---|
-| unit | pure functions and a store the test holds in memory; no repository, no process, no clock | `cargo test --lib`, on every save | the whole tier under 10 s |
-| integration | a real repository in a temp directory, in process, bounded scenarios | `cargo test --workspace`, before a commit | no single test over 5 s |
-| system | the real binary, real hosts, a browser | `cargo test --workspace -- --include-ignored`, once, at merge | it may cost what it costs |
+A test's tier is decided by **what it touches**, never by what it proves, and a
+test in the wrong tier is a defect like any other.
 
-The tier a test belongs to is decided by what it touches, not by what it
-proves, and a test written in the wrong tier is a defect like any other. What
-makes the first tier possible is that the effect bodies and the derived proofs
-now sit in `flywheel-domain` over the `StateStore` trait rather than over a git
-directory (16.1, 16.3): they can be exercised against a store the test holds
-and no repository at all. A double used that way is not a second profile and
-never appears in the acceptance set, which is what 92 retired; it claims
-nothing and conforms to nothing.
+| tier | touches | lives in | run by | the bar |
+|---|---|---|---|---|
+| unit | one crate's own code, and for the store crates a temp repository that is the subject rather than a dependency | `src/**` in `#[cfg(test)] mod tests`, beside the code | `cargo test --lib` | the whole tier under 10 s; high coverage, and a new public function arrives with its tests |
+| integration | several crates together over a real repository, in process | `crates/<crate>/tests/*.rs` | `cargo test --workspace` | happy paths only, as few as cover the seams; no single test over 5 s |
+| system | the real binary, real hosts, a browser | `crates/<crate>/tests/system/main.rs`, one target per crate | `cargo test --workspace --features system-tests` | it costs what it costs, and it runs at merge |
 
-The third tier runs at merge through worktrunk's `pre-merge` hook, which the
-repository configures, so a branch cannot land without it and nobody waits on
-it while working. Worktrunk is already the model's binding for places
-(`host.yaml` Tools); this is the same tool doing the same job one level up.
+**The fake store.** `flywheel-domain` and the projections take the `StateStore`
+trait, so a fake that holds objects in a map is all the first tier needs, and a
+fake is preferred to a mock: it behaves, it is not told what to expect. It
+lives in `flywheel-atoms::testing` behind a `testing` feature, is a
+dev-dependency of the crates that use it, and is never named by `--profile`,
+never bound in a `profiles/` file and never present in the acceptance set. That
+is what keeps it clear of 92: what 92 retired was a second store *profile*
+claiming conformance, and this claims nothing.
+
+**The git store's own tests are unit tests.** A temp bare repository and a
+checkout are the store's subject, not a dependency of something else, and a
+tick against them now spends at most one process, so they belong in tier one
+and hold to its bar.
+
+**Tier three is a feature, not an `#[ignore]`.** `[[test]] required-features =
+["system-tests"]` keeps those targets out of the default build entirely, so the
+everyday run saves their compile time as well as their wall time. Nothing is
+marked `#[ignore]` to hide cost.
+
+**Worktrunk runs the tiers at the right moment.** The repository configures
+`wt hook pre-commit` to run the integration tier and `wt hook pre-merge` to run
+the system tier, so a branch cannot land without the slow tests and nobody
+waits on them while working. Worktrunk is already the model's binding for
+places (`host.yaml` Tools); this is the same tool one level up.
+
+**What an agent runs, and where it puts a new test.** While building, the one
+crate it touched: `cargo test --lib -p <crate>` continuously and
+`cargo test -p <crate>` before calling a task done. Before reporting a group,
+`cargo test --workspace` once. The system tier is not an agent's to run except
+at 12.4 or when the brief says so. A new behaviour arrives with unit tests for
+the logic; an integration test is added only where the seam between crates is
+itself the thing under test, and then only on the happy path, because every one
+of them is paid for on every commit.
 
 ### D16. The page is built from the ratified mockup, and the chat has a wire
 
