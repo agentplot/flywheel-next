@@ -34,12 +34,27 @@ use serde_json::{json, Value};
 use std::cell::RefCell;
 use std::path::Path;
 
-/// How often the sweep runs, whatever else happens (D7, 130).
-pub const SWEEP: i64 = 60;
+/// How often the sweep runs, whatever else happens (D7, 130). The default the
+/// model states; `flywheel.yaml`'s `intervals.sweep` is what a host actually
+/// runs at, and a test's is milliseconds.
+pub const SWEEP: f64 = 60.0;
 
 /// How often a laptop asks the git host whether anything moved: one round trip,
-/// no history read (D6).
-pub const POLL: i64 = 30;
+/// no history read (D6). The default the model states; `intervals.poll` is the
+/// setting behind it.
+pub const POLL: f64 = 30.0;
+
+/// How many passes one local cause may cascade over before the loop looks
+/// outward again. A cascade inside one host — an effect that moves another
+/// object — is a local cause and is ticked at once rather than waited out
+/// (model.md 2.1 causes, 130, D6); the bound is here so a machine that never
+/// settles cannot hold the loop, and a pass that fires nothing ends the burst
+/// long before it.
+pub const BURST: usize = 64;
+
+/// How long the loop stands aside between the links of a cascade, so a page
+/// request waiting on the same host is answered while the chain runs (D11).
+pub const BETWEEN: std::time::Duration = std::time::Duration::from_millis(1);
 
 /// How many passes one sweep settles over before it gives up and leaves the
 /// rest to the next one. A pass that moved nothing ends it long before this,
@@ -399,6 +414,18 @@ pub struct Host {
     /// Whether the last pass moved anything that was not a re-entry. A sweep
     /// settles while it did (model.md the tick).
     pub moved: bool,
+    /// Whether the last pass of `once` moved anything that was not a re-entry.
+    progressed: bool,
+    /// What the manifest says curation is charged on, where this host read one
+    /// (110, 118). Written onto the curation record as the host declares.
+    pub curation: Option<flywheel_world_host::manifest::Curation>,
+    /// How often this host looks, in seconds: the poll it falls back on when
+    /// nothing told it anything, and the sweep that fires an `older:` guard
+    /// whatever the poll says (D6, D7, 130, 231). The model's own intervals
+    /// unless `flywheel.yaml` says otherwise, so a test's backstop can be
+    /// milliseconds and a host's stays sixty seconds.
+    pub poll: f64,
+    pub sweep_every: f64,
 }
 
 /// The manifest as this host reads it, with the root the command line names in
@@ -460,6 +487,10 @@ impl Host {
         // once, and whether it is a laptop (31, 150a, 183).
         host.bound = entry.bound;
         host.intermittent = entry.intermittent;
+        // How often this host looks, as the manifest says (D6, D7, 130, 231).
+        host.poll = read.intervals.poll;
+        host.sweep_every = read.intervals.sweep;
+        host.curation = Some(read.curation.clone());
         // The host's one address, from the router the manifest names: every
         // link a delivery carries is written at it (191, 205a, D10a).
         host.sinks.address = world.address_of(name)?;
@@ -497,6 +528,10 @@ impl Host {
             },
             away_since: None,
             moved: false,
+            progressed: false,
+            curation: None,
+            poll: POLL,
+            sweep_every: SWEEP,
             // The host's own name on the operator's private network, with the
             // instance in the path; `open` replaces it with what the manifest's
             // router gives (205a, D10a).
@@ -556,6 +591,39 @@ impl Host {
             flywheel_engine::initialise(&self.defs, &mut object, now);
         }
         self.store.put(&id, &object, seq)?;
+        self.settle_settings()?;
+        Ok(())
+    }
+
+    /// What `flywheel.yaml` says an object of this instance is charged on,
+    /// written onto that object's record where the evidence reads it.
+    ///
+    /// `curation.threshold` and `curation.cadence` are the operator's
+    /// settings; the evidence reads them off `curation/<instance>` (110, 118,
+    /// `blueprints.yaml` evidence.curation.threshold). Writing them here rather
+    /// than at `init` alone is what makes changing the manifest take effect: a
+    /// setting nothing reads after the first run is not a setting. A record
+    /// that already says this is not written again (78, 127).
+    fn settle_settings(&mut self) -> Result<()> {
+        let Some(settings) = self.curation.clone() else {
+            return Ok(());
+        };
+        let id = format!("curation/{}", self.instance);
+        let Some(mut held) = self.store.get(&id)? else {
+            return Ok(());
+        };
+        let wanted = [
+            ("threshold".to_string(), json!(settings.threshold)),
+            ("cadence".to_string(), json!(settings.cadence)),
+        ];
+        if wanted.iter().all(|(name, value)| held.record.get(name) == Some(value)) {
+            return Ok(());
+        }
+        for (name, value) in wanted {
+            held.record.insert(name, value);
+        }
+        let seq = held.seq;
+        self.store.put(&id, &held, seq)?;
         Ok(())
     }
 
@@ -699,8 +767,13 @@ impl Host {
     /// and write the run record (D7, 79).
     pub fn tick(&mut self, scope: &Scope) -> Result<usize> {
         // Fetch first, always: no host decides on a read older than the bound
-        // and no person runs the sync by hand (165).
+        // and no person runs the sync by hand (165). What this tick writes is
+        // one push at the end of it, carrying every commit the tick made: one
+        // write to the central service per tick is what the profile's mechanism
+        // spends, and it is what the cost contract asserts
+        // (167, 169, `git-only.yaml` cost, audit 8).
         self.store.trace.borrow_mut().clear();
+        flywheel_atoms::StateStore::begin_tick(&mut self.store.git);
         self.store.git.fetch()?;
         self.store.saw("fetch");
         // The fetch's own point is where the next notice is measured from.
@@ -816,6 +889,10 @@ impl Host {
             },
         )?;
         self.moved = moved.get();
+        // A pass of `once` has progressed if any tick under it moved something
+        // that was not a re-entry; a sweep settles and leaves `moved` false, so
+        // the record is kept here where every tick passes (78).
+        self.progressed |= self.moved;
         self.run.extend(run.into_inner());
         // What an effect moved out of band, said in the same record and after
         // the write that caused it (79, 167).
@@ -834,6 +911,8 @@ impl Host {
         self.rewrite_status()?;
         let entries = std::mem::take(&mut self.run);
         self.store.git.append_run(&entries)?;
+        // The tick is over: its commits go at the shared line, once (167, 169).
+        flywheel_atoms::StateStore::end_tick(&mut self.store.git)?;
         Ok(ticked.transitions)
     }
 
@@ -902,6 +981,12 @@ impl Host {
     /// and the sweep when it is due.
     pub fn once(&mut self) -> Result<usize> {
         let mut fired = 0;
+        // Whether this pass moved anything that was not a re-entry: what tells
+        // a cascade still running from a machine re-entering the state it is
+        // already in. A caller that takes its next pass on progress reads this
+        // and never the count, because a self-transition is not progress
+        // (model.md the tick, 78).
+        self.progressed = false;
         for object in self.notified()? {
             for scope in self.chain(&object)? {
                 fired += self.tick(&scope)?;
@@ -909,12 +994,27 @@ impl Host {
         }
         let due = self
             .last_sweep
-            .map(|last| self.now() - last >= Duration::seconds(SWEEP))
+            .map(|last| self.now() - last >= self.sweep_interval())
             .unwrap_or(true);
         if due {
             fired += self.sweep()?;
         }
         Ok(fired)
+    }
+
+    /// Whether the last pass moved anything that was not a re-entry (78).
+    pub fn progressed(&self) -> bool {
+        self.progressed
+    }
+
+    /// The sweep's interval as a duration, from this host's setting (D7, 231).
+    pub fn sweep_interval(&self) -> Duration {
+        Duration::milliseconds((self.sweep_every * 1000.0) as i64)
+    }
+
+    /// The poll's interval as a duration, from this host's setting (D6, 130).
+    pub fn poll_interval(&self) -> std::time::Duration {
+        std::time::Duration::from_secs_f64(self.poll.max(0.0))
     }
 
     /// An object and its parent chain: what a notify ticks (D7, model.md §2.1).

@@ -1,20 +1,5 @@
 //! A `StateStore` that behaves, for the tests that need a store and not a
 //! repository (D17).
-//!
-//! This is a **fake**, not a mock: it holds objects, threads, responses and
-//! leases in maps and answers the six record operations and the eight store
-//! operations the way any store must — a `put` against a stale sequence is
-//! rejected, an effect written twice is written once, a lease another host
-//! holds is refused, a read names the point it is as of. Nothing here is told
-//! what to expect and nothing records calls.
-//!
-//! It is not a profile. It is never named by `--profile`, never bound in a
-//! `profiles/` file and never present in the acceptance set: what 92 retired
-//! was a second store *profile* claiming conformance, and this claims nothing.
-//! It exists so `flywheel-domain` and the projections — which take the trait,
-//! not the repository — can be tested in the first tier, in milliseconds.
-//!
-//! Behind the `testing` feature, and a dev-dependency of the crates that use it.
 
 use crate::traits::{
     Cost, EffectWrite, EvidenceRead, HostRecord, LeaseOp, LeaseOutcome, LeaseRecord, Listing,

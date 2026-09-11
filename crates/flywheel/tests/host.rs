@@ -936,7 +936,7 @@ fn local_causes_tick_at_once() {
         // due (130, D6, D7).
         assert_eq!(host.now(), swept, "{cause}: the clock moved");
         assert!(
-            host.now() - swept < Duration::seconds(flywheel::host::SWEEP),
+            host.now() - swept < host.sweep_interval(),
             "{cause}: the sweep was due, so this proves nothing"
         );
         let notice = host.notified().unwrap();

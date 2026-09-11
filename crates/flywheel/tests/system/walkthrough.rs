@@ -94,6 +94,12 @@ fn play(command: &str, home: &PathBuf, session_state: &str) -> std::process::Out
 /// The walkthrough, run as written: the instance and its host come into being,
 /// the layout is what the manifest says, the page answers at the operator's own
 /// port, and a capture typed into the box is a record the status view shows.
+/// How many captures this run types into the box. The manifest's
+/// `curation.threshold` is set to the same number, so the section's point —
+/// that crossing the threshold charges curation — is made with the captures the
+/// walkthrough means to make and not with a dozen (110, 118).
+const CAPTURES: u64 = 3;
+
 #[test]
 fn readme_walkthrough_runs() {
     let home = std::env::temp_dir().join(format!(
@@ -122,6 +128,24 @@ fn readme_walkthrough_runs() {
         }
         // The host with `--serve` never returns: it is the loop. It is started
         // here and stopped at the end, and the page is asked for meanwhile.
+        //
+        // Before it starts, the intervals are set to a test's: the poll and the
+        // sweep are the backstop for what nothing notified, and this test is
+        // the thing doing the notifying. A cascade runs at once either way; the
+        // backstop is what a test would otherwise wait out (D6, D7, 130, 231).
+        if command.contains("--serve") {
+            let path = home.join("flywheel.yaml");
+            let mut manifest =
+                flywheel_world_host::Manifest::read(&path).expect("the manifest the walkthrough wrote");
+            manifest.intervals.poll = 0.05;
+            manifest.intervals.sweep = 0.2;
+            // And the count that charges curation is the one this run means to
+            // make. The shipped default is a dozen; what the section is about
+            // is the threshold being crossed, not how many captures cross it
+            // (110, 118, `curation.yaml` threshold).
+            manifest.curation.threshold = CAPTURES;
+            manifest.write(&path).expect("the intervals are set");
+        }
         if command.contains("--serve") {
             let text = command
                 .replace("cargo run -q --", &binary().display().to_string())
@@ -150,23 +174,21 @@ fn readme_walkthrough_runs() {
             String::from_utf8_lossy(&out.stderr)
         );
     }
-
     let mut host = served.expect("the walkthrough serves the page");
     let page = wait_for_the_page();
     assert!(
         page.contains("id=\"capture-box\""),
         "the page the walkthrough opens carries the capture box: {page}"
     );
-    // The captures, typed into the box as the section says. A dozen, which is
-    // the shipped threshold curation is charged at (110).
-    for n in 1..=12 {
+    // The captures, typed into the box as the section says: enough to cross
+    // the threshold the manifest sets for this run (110).
+    for n in 1..=CAPTURES {
         let answered = post(
             "/api/tools/capture",
             &format!("text=the rows lose their numbers on page {n}&source=page"),
         );
         assert!(answered.contains("\"recorded\":true"), "{answered}");
     }
-
     // The curator's surface, once the tick has charged curation (110, 93b).
     let page = wait_for("id=\"curate-box\"");
     let signals = signals_on(&page);
@@ -242,14 +264,14 @@ fn number_of(page: &str, object: &str) -> Option<u32> {
 /// The page, once it says what the walkthrough's next step needs it to. A tick
 /// is what moves the state, so the page is asked again until it has.
 fn wait_for(shown: &str) -> String {
-    for _ in 0..120 {
+    for _ in 0..600 {
         if let Ok(text) = speak("GET / HTTP/1.1\r\nHost: localhost:4242\r\nConnection: close\r\n\r\n")
         {
             if text.contains(shown) {
                 return text;
             }
         }
-        std::thread::sleep(std::time::Duration::from_millis(500));
+        std::thread::sleep(std::time::Duration::from_millis(50));
     }
     panic!("the page never showed `{shown}`");
 }
@@ -257,13 +279,13 @@ fn wait_for(shown: &str) -> String {
 /// The page, once the host is serving it. A host makes its repositories and its
 /// first tick before it listens, so the first request may be early.
 fn wait_for_the_page() -> String {
-    for _ in 0..120 {
+    for _ in 0..600 {
         if let Ok(text) = speak("GET / HTTP/1.1\r\nHost: localhost:4242\r\nConnection: close\r\n\r\n") {
             if text.contains("<!doctype html>") {
                 return text;
             }
         }
-        std::thread::sleep(std::time::Duration::from_millis(500));
+        std::thread::sleep(std::time::Duration::from_millis(50));
     }
     panic!("the page never answered at the operator's own port");
 }

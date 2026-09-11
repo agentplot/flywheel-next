@@ -161,6 +161,10 @@ impl RealHosts {
             },
             repositories: tracked,
             hosts: Default::default(),
+            curation: Default::default(),
+            // A run's hosts are driven: the runner says when to sweep and what
+            // time it is, so neither interval is ever waited out (D7, D15).
+            intervals: Default::default(),
             template_version: None,
         };
         for (index, host) in hosts.iter().enumerate() {

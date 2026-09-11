@@ -323,6 +323,9 @@ async fn main() -> Result<()> {
                 app_key: None,
                 address: address.clone(),
                 manifest: manifest.clone(),
+                // What curation is charged on is the manifest's; a first run
+                // takes the shipped default (110, 118).
+                curation: None,
             })?;
             for line in &report.lines {
                 println!("{line}");
@@ -464,14 +467,27 @@ async fn main() -> Result<()> {
                         }
                     }
                     // One long-lived process: the notify poll, and the sweep
-                    // every 60 seconds whatever the poll says (D6, D7, 231).
+                    // every sixty seconds whatever the poll says (D6, D7, 231).
                     let mut pass = 0usize;
+                    // How many passes this cascade has already run without
+                    // looking outward. A pass that fires nothing ends it.
+                    let mut burst = 0usize;
                     loop {
+                        let mut cascading = false;
+                        let poll_for;
                         {
                             let mut held = host.lock().expect("the running host is poisoned");
                             held.set_now(chrono::Utc::now());
+                            poll_for = held.poll_interval();
                             match held.once() {
                                 Ok(fired) => {
+                                    // Progress, not the count: a machine
+                                    // re-entering the state it is already in
+                                    // fires a transition and moves nothing, and
+                                    // a loop that took that for a cascade would
+                                    // never look outward again (78, model.md
+                                    // the tick).
+                                    cascading = held.progressed();
                                     if fired > 0 {
                                         println!("{fired} transitions");
                                     }
@@ -489,11 +505,32 @@ async fn main() -> Result<()> {
                         if passes > 0 && pass >= passes {
                             break;
                         }
+                        // A cascade inside this host is a local cause: an
+                        // effect that moved another object notified it, and
+                        // what it notified is this host's to tick now rather
+                        // than to wait out the poll for (model.md 2.1 causes,
+                        // 130, D6). So a pass that fired takes the next at
+                        // once, up to a bound, and yields first so the page is
+                        // answered between the links of the chain.
+                        burst = match cascading {
+                            true => burst + 1,
+                            false => 0,
+                        };
+                        if burst > 0 && burst < flywheel::host::BURST {
+                            // The host is held under a lock the page's handlers
+                            // take too, so the loop steps aside for a moment
+                            // between the links of a chain: a cascade that ran
+                            // straight through would answer no request until it
+                            // settled, and the operator is watching it happen
+                            // (D11, 132).
+                            tokio::time::sleep(flywheel::host::BETWEEN).await;
+                            continue;
+                        }
+                        burst = 0;
                         // The poll is the floor for another host's writes; a
                         // page response, a chat message or a session's report
                         // reaching this process does not wait for it (130, D6).
-                        let poll =
-                            tokio::time::sleep(std::time::Duration::from_secs(flywheel::host::POLL as u64));
+                        let poll = tokio::time::sleep(poll_for);
                         match &woken {
                             Some(woken) => tokio::select! {
                                 _ = poll => {}

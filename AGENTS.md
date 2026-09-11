@@ -107,13 +107,45 @@ Every test that touches a store runs over a real state repository: a bare
 repository on this computer and a checkout of it, which is the only store this
 release binds (92). A tick spends at most one `git push` and nothing else: the
 fetch, the reads and the writing of blobs, trees, commits and refs all happen in
-process through `gix`, so a test is not paying for a process per read and not
-even for the fetch (`git-only.yaml` Tools, 169).
+process through `gix`, and a tick's commits go at the shared line in that one
+push, so a test is not paying for a process per write, per read, or even for the
+fetch (`git-only.yaml` Tools, 167, 169).
 `conformance/contract/cost.yaml` is what holds that: it asserts the counts the
 store keeps of itself — `subprocesses_per_tick: [0, 1, 0]`.
 
 A test never sleeps: the clock is virtual and moves for a `clock` step and a
-tick interval alone (D15).
+tick interval alone (D15). Where a test must drive the running loop it sets
+`flywheel.yaml`'s `intervals.poll` and `intervals.sweep` to milliseconds: those
+are the backstop for what nothing notified, and a test is the thing doing the
+notifying (D6, D7, 130, 231).
+
+Where the time goes, so a change that costs something is noticed:
+
+| tier | tests | test time |
+|---|---|---|
+| `cargo test --workspace --lib` | 133 | 13 s |
+| `cargo test --workspace` | 208 | 127 s |
+| `cargo test --workspace --features system-tests` | 224 | 322 s |
+
+| binary | tests | time |
+|---|---|---|
+| `flywheel-scenario/tests/cascade.rs` | 5 | 42 s |
+| `flywheel-scenario/tests/conformance_runner.rs` | 13 | 22 s |
+| `flywheel/tests/host.rs` | 18 | 13 s |
+| `flywheel/tests/effects.rs` | 5 | 11 s |
+| `flywheel-store-git`'s unit tests | 20 | 10 s |
+| `flywheel/tests/curate.rs` | 1 | 9 s |
+| `flywheel/tests/init.rs` | 9 | 9 s |
+| everything else | | under 5 s each |
+
+Almost all of it is `git push`: the push is the compare-and-swap the whole
+profile rests on (134, 162), it costs about 50 ms to a bare repository on this
+computer, and a test that proves a race pays for one. `flywheel-store-git`'s own
+tests are the clearest case — twenty of them, a hundred and fifty pushes.
+
+`cargo nextest` was measured and is not adopted: it runs every test in a process
+of its own, and with a bare repository and a checkout made per test that is four
+times slower here — 528 s against cargo's 127 s.
 
 ## Vocabulary
 

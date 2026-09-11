@@ -806,7 +806,21 @@ impl StateStore for GitStore {
     /// The tick's writes go at the shared line here, in one push (167, 169).
     fn end_tick(&mut self) -> Result<()> {
         self.in_tick = false;
-        self.flush()?;
+        match self.flush()? {
+            // The tick's one push landed, so everything it committed is on the
+            // shared line — the run record among it (167, 169).
+            Landed::Written { .. } | Landed::Pending { .. } => self.owed_run.clear(),
+            // Three rejections, or a race lost: the push did not land, so the
+            // tick wrote nothing. Its commits are discarded rather than left
+            // to be carried by a later push, and what this host said it did
+            // stays owed until an append says it once
+            // (127, 134, 162, `git-only.yaml records.put`).
+            Landed::Lost | Landed::Refused => {
+                if !self.fetched.is_empty() && self.fetched != git::ZERO {
+                    self.hard_reset(&self.fetched.clone())?;
+                }
+            }
+        }
         Ok(())
     }
 
@@ -1229,6 +1243,13 @@ impl GitStore {
             },
             self.host
         ))?;
+        // Inside a tick the commit is made here and the push is the tick's, so
+        // the entries are owed until that push lands; `end_tick` is where they
+        // are cleared or kept (167, 169).
+        if self.in_tick {
+            self.owed_run = owed;
+            return Ok(());
+        }
         match landed {
             // A commit made while the route was down is an intention that
             // pushes when the route comes back, and its entries are in it

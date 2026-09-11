@@ -13,3 +13,6 @@ serde_yaml.workspace = true
 anyhow.workspace = true
 chrono.workspace = true
 include_dir.workspace = true
+
+[dev-dependencies]
+flywheel-atoms = { path = "../flywheel-atoms", features = ["testing"] }

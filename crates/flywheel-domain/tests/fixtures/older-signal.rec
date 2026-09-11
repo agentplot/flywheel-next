@@ -1,0 +1,13 @@
+# A signal record as an earlier version of the format wrote it: no `format`
+# field, no `position`, no `argues_with`, and a `subject` field the format no
+# longer has. Captures made before the flywheel existed read without conversion
+# (114).
+%rec: signal
+
+id: signal/inbox-2024-11-03-1
+capture: capture/inbox-2024-11-03
+kind: constraint
+asserted_by: dana
+subject: the provider client
+assertion: only one host may write to a provider at a time
+excerpt: both wrote to the same provider inside a minute

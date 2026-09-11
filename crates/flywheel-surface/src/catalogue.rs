@@ -260,6 +260,7 @@ pub fn call<S: StateStore, W: World + ?Sized>(
     defs: &Definitions,
     call: &Call,
 ) -> Result<Outcome> {
+
     let Some(tool) = tool(&call.tool) else {
         // No such operation exists. Record it and let the response machine say
         // so (4, 6).

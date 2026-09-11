@@ -114,6 +114,51 @@ impl Default for Router {
     }
 }
 
+/// What curation is charged on: the count of unmoved signals that charges it
+/// and the cadence that charges it anyway (110, 118, `curation.yaml`). The
+/// operator sets these in `flywheel.yaml`; `init` writes them onto the
+/// instance's curation record, where the evidence reads them.
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct Curation {
+    /// Unmoved signals that charge a curation. Twelve unless the operator says
+    /// otherwise (110, `blueprints.yaml` evidence.curation.threshold).
+    pub threshold: u64,
+    /// The cadence that charges one whatever the count (110, 231).
+    pub cadence: String,
+}
+
+impl Default for Curation {
+    fn default() -> Self {
+        Curation {
+            threshold: 12,
+            cadence: flywheel_domain::cadence::DEFAULT.to_string(),
+        }
+    }
+}
+
+/// How often the loop looks, in seconds. A tick is caused by a notify for one
+/// object and by a sweep over the host's scopes; the poll is what the notify
+/// falls back on when nothing told this host anything, and the sweep is what
+/// makes an `older:` guard fire and a never-notified host converge
+/// (model.md 2.1, 130, D6, D7). A host runs at the model's intervals and a
+/// test's backstop is milliseconds, so they are settings and not constants.
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct Intervals {
+    /// Seconds between one look at the shared line and the next (D6, 130).
+    pub poll: f64,
+    /// Seconds between sweeps, whatever the poll says (D7, 231).
+    pub sweep: f64,
+}
+
+impl Default for Intervals {
+    fn default() -> Self {
+        Intervals {
+            poll: 30.0,
+            sweep: 60.0,
+        }
+    }
+}
+
 #[derive(Debug, Clone, Default, Serialize, Deserialize)]
 pub struct Manifest {
     /// The operator's name for the instance; it need not be a git-host
@@ -130,6 +175,12 @@ pub struct Manifest {
     pub repositories: BTreeMap<String, Repository>,
     #[serde(default)]
     pub hosts: BTreeMap<String, Host>,
+    /// What curation is charged on (110, 118).
+    #[serde(default)]
+    pub curation: Curation,
+    /// How often the loop looks (D6, D7).
+    #[serde(default)]
+    pub intervals: Intervals,
     /// The set version initialization used (208).
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub template_version: Option<String>,

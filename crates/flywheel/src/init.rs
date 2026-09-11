@@ -34,6 +34,9 @@ pub struct Init {
     /// written at it (191, 205a, D10a).
     pub address: String,
     pub manifest: PathBuf,
+    /// What curation is charged on, where the caller says. The shipped
+    /// threshold and cadence otherwise (110, 118, `curation.yaml`).
+    pub curation: Option<flywheel_world_host::manifest::Curation>,
 }
 
 impl Init {
@@ -79,6 +82,12 @@ pub fn run(ask: Init) -> Result<Report> {
         }
     };
     manifest.instance = ask.instance.clone();
+    // What the caller says curation is charged on, where it says anything; what
+    // the manifest already carries, or the shipped default, otherwise
+    // (110, 118, `curation.yaml` threshold).
+    if let Some(curation) = &ask.curation {
+        manifest.curation = curation.clone();
+    }
 
     // The record goes in the state repository, which is the only store this
     // release binds (92, 125). The instance's own is what this run is creating,
@@ -130,7 +139,21 @@ pub fn run(ask: Init) -> Result<Report> {
         }
         let at = runtime.store.now;
         let defs = runtime.defs.clone();
-        console::put_new(&mut runtime.store, &defs, &id, &name, Some(&object_id(&ask.instance)), Default::default(), at)?;
+        // What the manifest says the object is charged on travels with it:
+        // `curation.threshold` and `curation.cadence` are the operator's
+        // settings and the evidence reads them off the record, so a manifest
+        // that says four does not wait for twelve
+        // (110, 118, `blueprints.yaml` evidence.curation.threshold).
+        let record = match name.as_str() {
+            "curation" => [
+                ("threshold".to_string(), serde_json::json!(manifest.curation.threshold)),
+                ("cadence".to_string(), serde_json::json!(manifest.curation.cadence)),
+            ]
+            .into_iter()
+            .collect(),
+            _ => Default::default(),
+        };
+        console::put_new(&mut runtime.store, &defs, &id, &name, Some(&object_id(&ask.instance)), record, at)?;
         report.lines.push(format!("{id}: made"));
     }
 

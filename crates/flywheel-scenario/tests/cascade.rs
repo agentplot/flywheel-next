@@ -224,19 +224,13 @@ fn the_capture_box_makes_captures_and_marks_intents_with_a_control() {
     assert_eq!(rt.store.objects.values().filter(|s| s.parent.as_deref() == Some(&marked) && s.machine == "signal").count(), 1);
     assert!(rt.captured().iter().any(|c| c["id"] == marked && c["intent"] == true));
 
-    // nothing in the text is parsed: prefixes are just words in a capture
-    let before_objects = rt.store.objects.len();
-    for text in ["intent: host liveness on the mac mini", "chore atlas: stale AGENTS.md", "bolt plan-rows: tail grouping by day"] {
-        let r = rt.capture(text, false, "test");
-        run_until_quiet(&mut rt, 20, 2);
-        let id = r["id"].as_str().unwrap().to_string();
-        assert_eq!((rt.store.objects[&id].machine.as_str(), rt.store.objects[&id].record["raw"].as_str()), ("capture", Some(text)));
-    }
-    assert!(!rt.store.objects.values().any(|o| o.id == "intent/host-liveness-on-the-mac-mini" || o.id.starts_with("unit/atlas/chore-")), "no prefix opens an intent or a unit");
-    assert_eq!(rt.store.objects.len() - before_objects, 3 * 3, "each submission: one capture, one signal, one response");
+    // That nothing in the text is parsed is the box's own rule and is proved
+    // where the box is, against the served page and the material it writes
+    // (`flywheel-surface/tests/page.rs` capture_box_parses_nothing, 19, 194).
+    // What is proved here is what the machines make of a capture.
 
     // each submission is one response, already applied; none stands as unapplicable; none is a decision
-    assert_eq!(rt.store.responses.len(), 5);
+    assert_eq!(rt.store.responses.len(), 2);
     assert!(rt.store.objects.values().filter(|o| o.machine == "response" && o.id.starts_with("response/page-")).all(|o| o.top_state() == Some("applied")));
     assert_eq!(rt.decisions().len(), before);
 }

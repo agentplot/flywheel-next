@@ -42,6 +42,7 @@ impl Sandbox {
             app_key: self.placed.clone(),
             address: "http://laptop.example".into(),
             manifest: self.dir.join("flywheel.yaml"),
+            curation: None,
         }
     }
 
@@ -298,4 +299,56 @@ fn set_version_stamped() {
     let again = flywheel_world_host::Manifest::read(&sandbox.dir.join("flywheel.yaml")).unwrap();
     assert_eq!(again.template_version, manifest.template_version);
     assert_eq!(again.blueprints.template_version, manifest.blueprints.template_version);
+}
+
+/// What `flywheel.yaml` says curation is charged on reaches the curation
+/// record, where the evidence reads it — at `init`, and again when a host
+/// declares, so changing the manifest takes effect rather than being read once
+/// and forgotten (110, 118, `blueprints.yaml` evidence.curation.threshold).
+#[test]
+fn the_manifests_curation_threshold_reaches_the_record() {
+    let mut sandbox = Sandbox::new("threshold");
+    sandbox.place_the_key();
+    // The manifest the operator writes says four, not the shipped dozen.
+    let mut ask = sandbox.ask();
+    ask.curation = Some(flywheel_world_host::manifest::Curation {
+        threshold: 4,
+        cadence: "weekly".into(),
+    });
+    let report = init::run(ask).expect("init runs");
+    assert_eq!(report.state, "hosted", "{report:?}");
+
+    let threshold_of = |sandbox: &Sandbox| -> (u64, String) {
+        let mut host = flywheel::host::Host::open(
+            &sandbox.dir.join("flywheel.yaml"),
+            "mac-mini",
+            None,
+            chrono::Utc::now(),
+        )
+        .expect("the host opens");
+        host.store.git.fetch().expect("the shared line");
+        let held = flywheel_atoms::Records::get(&host.store.git, "curation/willdan")
+            .expect("a read")
+            .expect("the instance's curation record");
+        (
+            held.record.get("threshold").and_then(|v| v.as_u64()).expect("a threshold"),
+            held.record
+                .get("cadence")
+                .and_then(|v| v.as_str())
+                .expect("a cadence")
+                .to_string(),
+        )
+    };
+    assert_eq!(threshold_of(&sandbox), (4, "weekly".to_string()));
+
+    // And the manifest edited afterwards is read: a setting nothing reads
+    // after the first run is not a setting.
+    let path = sandbox.dir.join("flywheel.yaml");
+    let mut manifest = flywheel_world_host::Manifest::read(&path).expect("the manifest");
+    manifest.curation.threshold = 9;
+    manifest.write(&path).expect("the manifest is written");
+    let mut host = flywheel::host::Host::open(&path, "mac-mini", None, chrono::Utc::now())
+        .expect("the host opens");
+    host.declare().expect("the host declares");
+    assert_eq!(threshold_of(&sandbox).0, 9, "the edited setting was not read");
 }
