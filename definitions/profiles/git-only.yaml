@@ -4,8 +4,9 @@
 # push. Inherits the host, sessions, blueprints, record-derived and surfaces
 # bindings.
 #
-# Tools: `gix` for reads and object writes, the `git` binary for push with
-# `--force-with-lease=<ref>:<expected>`; recutils files parsed by the binary;
+# Tools: `gix` for reads, for the fetch, and for object writes — all in the
+# host's own process; the `git` binary for one thing, push with
+# `--force-with-lease=<ref>:<expected>`, because gix has no push; recutils files parsed by the binary;
 # the chat, page, bell and review surfaces as surfaces.yaml binds them, run by
 # the host (or dispatcher) that presents each sink; the pages are also
 # committed as files.
@@ -58,8 +59,8 @@ guarantees:
 # they are the profile's promise, not a tuning, so a binding that reaches the
 # right outcomes by other means fails here.
 observations:
-  fetches_per_tick:        "the `git fetch` calls, counted: one before the tick, plus the fetch `records.put` takes to rebase a rejected push. Nothing else fetches — a push that lands reports the head it landed on, so no fetch follows it"
+  fetches_per_tick:        "the fetches, in process over `gix`, counted: one before the tick, plus the fetch `records.put` takes to rebase a rejected push. Nothing else fetches — a push that lands reports the head it landed on, so no fetch follows it"
   pushes_per_tick:         "the `git push` calls: one per effect commit on main (167), and one `--force-with-lease` on `lease/<id>/lease` per lease whose renewal is due (163)"
   lease_renewals_per_tick: "the renewal pushes among them. A lease branch is renewed once a minute while its holder works, never once per pass over the object it covers (128, 150)"
   read_processes_per_tick: "processes the read path spawns: zero. Reads are `gix` over the tree at the fetched `origin/main` in the host's own process, never `git show`, `git cat-file` or `git log` per object"
-  subprocesses_per_tick:   "every external process the store spawns in a tick: the fetch, plus one push per commit and per renewal due, and nothing else. Two on a tick that writes once; one on a tick that writes nothing"
+  subprocesses_per_tick:   "every external process the store spawns in a tick: one push per commit and per renewal due, and nothing else — the fetch is `gix`, in process. One on a tick that writes once; none on a tick that writes nothing"

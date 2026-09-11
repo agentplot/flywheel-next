@@ -38,4 +38,4 @@ then:
     pushes_per_tick: [0, 1, 0]
     lease_renewals_per_tick: 0
     read_processes_per_tick: 0
-    subprocesses_per_tick: 2
+    subprocesses_per_tick: [0, 1, 0]
