@@ -479,6 +479,11 @@ pub struct Host {
     pub intermittent: bool,
     /// The run record this tick is building (79-82).
     pub run: Vec<RunEntry>,
+    /// The status projection this host last wrote, without the point it is as
+    /// of. It is what tells the source moving on from the file being changed
+    /// under this host, which is the difference between an ordinary rewrite and
+    /// drift (77, 142).
+    projected: Option<String>,
     pub last_sweep: Option<DateTime<Utc>>,
     pub last_point: ReadPoint,
     /// An away host's leases stand and its clocks pause; it writes no heartbeat
@@ -600,6 +605,7 @@ impl Host {
             bound: 4,
             intermittent: true,
             run: vec![],
+            projected: None,
             last_sweep: None,
             last_point: ReadPoint {
                 mark: String::new(),
@@ -653,32 +659,54 @@ impl Host {
             self.last_heartbeat = Some(now);
         }
         let id = format!("host/{}", self.name);
-        let held = self.store.get(&id)?;
-        let seq = held.as_ref().map(|o| o.seq).unwrap_or(0);
-        let mut record = held.map(|o| o.record).unwrap_or_default();
-        record.insert("bound".into(), json!(self.bound));
-        record.insert("intermittent".into(), json!(self.intermittent));
-        record.insert("last_seen".into(), json!(now.to_rfc3339()));
-        record.insert(
-            "declares".into(),
-            json!({
-                "repositories": self.declaration.repositories,
-                "types": self.declaration.types,
-                "kinds": self.declaration.kinds,
-            }),
-        );
-        let mut object = Object {
+        // The host object as it stands. Its own machine's states and the
+        // moments they were entered are the machine's, not this writer's: a
+        // fresh object here erased them on every tick and `initialise` put them
+        // back stamped at that tick, so the host machine started from nothing
+        // every pass and every `older:` guard on it read zero
+        // (`host.yaml`, 147).
+        let mut object = self.store.get(&id)?.unwrap_or_else(|| Object {
             id: id.clone(),
             machine: "host".into(),
             parent: None,
             config: Default::default(),
             entered_at: Default::default(),
-            record,
+            record: Default::default(),
             counters: Default::default(),
             applied_responses: vec![],
-            seq,
+            seq: 0,
             created: 0,
-        };
+        });
+        let seq = object.seq;
+        let record = &mut object.record;
+        let declared = [
+            ("bound".to_string(), json!(self.bound)),
+            ("intermittent".to_string(), json!(self.intermittent)),
+            (
+                "declares".to_string(),
+                json!({
+                    "repositories": self.declaration.repositories,
+                    "types": self.declaration.types,
+                    "kinds": self.declaration.kinds,
+                }),
+            ),
+        ];
+        // The record says what this host declares; the heartbeat says it is
+        // alive. Stamping the hour onto the record on every tick made a commit
+        // on the shared line out of a host that had done nothing and said
+        // nothing new, which is the one thing 78 asks a tick not to do. So the
+        // hour rides along with a declaration that changed and is written on
+        // its own at the first declare of a run, where a reader with no
+        // heartbeat to read needs it (78, 147, 150a, `git-only.yaml`
+        // records.hosts).
+        let changed = declared.iter().any(|(name, value)| record.get(name) != Some(value))
+            || !record.contains_key("last_seen");
+        for (name, value) in declared {
+            record.insert(name, value);
+        }
+        if changed {
+            record.insert("last_seen".into(), json!(now.to_rfc3339()));
+        }
         if object.config.is_empty() {
             flywheel_engine::initialise(&self.defs, &mut object, now);
         }
@@ -1086,17 +1114,28 @@ impl Host {
         // and never the count, because a self-transition is not progress
         // (model.md the tick, 78).
         self.progressed = false;
-        for object in self.notified()? {
-            for scope in self.chain(&object)? {
-                fired += self.tick(&scope)?;
-            }
-        }
         let due = self
             .last_sweep
             .map(|last| self.now() - last >= self.sweep_interval())
             .unwrap_or(true);
-        if due {
-            fired += self.sweep()?;
+        // The notify-tick is what saves a host from reading everything when one
+        // object moved; when the sweep is due on the same pass it reads
+        // everything anyway, over every scope the notice names and more, so
+        // doing both is reading the same store twice (78, 130, D6, D7). It is
+        // the whole of a host's first pass, where nothing has been notified
+        // since a point this host never held: every object came back as news,
+        // each took a tick of its own, and the sweep then read them all again —
+        // which is the second or so each of those ticks costs, held against the
+        // page waiting on the same host (D11).
+        match due {
+            true => fired += self.sweep()?,
+            false => {
+                for object in self.notified()? {
+                    for scope in self.chain(&object)? {
+                        fired += self.tick(&scope)?;
+                    }
+                }
+            }
         }
         Ok(fired)
     }
@@ -1210,6 +1249,25 @@ impl Host {
     fn report_sessions(&mut self) -> Result<()> {
         let now = self.now();
         let me = self.name.clone();
+        // What this host has already said about a session, on the shared line
+        // and in the entries this tick still owes. A thread entry is said once:
+        // deduplicating against the tick's own pending entries alone made every
+        // later tick report the same exit again, so one session's delivery
+        // became a run-record entry and a commit on every pass for the rest of
+        // the day (78, 79, 127).
+        let said: std::collections::HashSet<(String, String)> = self
+            .store
+            .git
+            .run_record()
+            .unwrap_or_default()
+            .into_iter()
+            .filter_map(|r| {
+                r.fields
+                    .iter()
+                    .find(|(n, _)| n == "entry")
+                    .map(|(_, v)| (r.object.clone(), v.clone()))
+            })
+            .collect();
         let sessions: Vec<Object> = self
             .store
             .list_records(&Scope::All)?
@@ -1225,7 +1283,10 @@ impl Host {
                 .unwrap_or_default();
             for entry in self.store.thread(&session)? {
                 let reported = format!("{}/{}", entry.kind, entry.at.to_rfc3339());
-                if self.run.iter().any(|r| r.object == session && r.fields.iter().any(|(n, v)| n == "entry" && *v == reported)) {
+                if said.contains(&(session.clone(), reported.clone()))
+                    || self.run.iter().any(|r| r.object == session
+                        && r.fields.iter().any(|(n, v)| n == "entry" && *v == reported))
+                {
                     continue;
                 }
                 match entry.kind.as_str() {
@@ -1323,19 +1384,41 @@ impl Host {
             &flywheel_domain::signals::Blueprints(&*self.store.world),
         )?;
         let view = flywheel_domain::status::render(&status);
+        // Whether the projection was up to date with the state before this
+        // render: a projection that differs because the state moved under it is
+        // a projection doing its job, and the difference the report is for is
+        // the other one — a body that disagrees with its source when nothing
+        // moved, which is the projection having been written by hand or by a
+        // host reading something else (77, 142).
         let held = self.store.git.committed_status()?;
+        let stamped = flywheel_store_git::store::without_the_stamp(&view.body);
         if let Some(held) = &held {
-            if held != &view.body {
+            let held = flywheel_store_git::store::without_the_stamp(held);
+            // Drift is the projection saying something its source does not, and
+            // the difference the report is for is the one this host cannot
+            // account for. A body that is what this host last wrote and differs
+            // from the source is the source having moved on, which is the
+            // ordinary case and what the rewrite below is for; a body that is
+            // neither what this host wrote nor what the source says was written
+            // by a hand or by a host reading something else, and that is what
+            // 77 asks be reported with both values. Reading drift off the whole
+            // difference reported the ordinary case on every tick, which buried
+            // the one case the report is for (77, 78, 142).
+            let mine = self.projected.as_deref() == Some(held.as_str());
+            if !mine && held != stamped {
                 // Drift is rewritten from the source and reported with both
                 // values; nothing about the projection is ever the truth (77).
                 self.run.push(
                     RunEntry::new(now, &self.name, "drift", flywheel_domain::RAIL, "the status projection differed from its source and was rewritten")
-                        .with("was", &digest(held))
+                        .with("was", &digest(&held))
                         .with("now", &digest(&view.body)),
                 );
             }
         }
         self.store.git.commit_status(&view.body)?;
+        // What this host has now said the projection is, so the next tick can
+        // tell the source moving on from the file being changed under it.
+        self.projected = Some(stamped);
         Ok(())
     }
 

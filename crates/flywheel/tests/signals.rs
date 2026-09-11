@@ -54,6 +54,7 @@ impl Instance {
             address: "http://laptop.example".into(),
             manifest: dir.join("flywheel.yaml"),
             curation: None,
+            at: chrono::Utc::now(),
         };
         flywheel::init::run(ask).expect("the instance bootstraps");
         let instance = Instance { dir };

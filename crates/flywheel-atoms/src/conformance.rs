@@ -49,7 +49,7 @@ impl Requirement {
                 "the sessions are scripted, and this asserts a real agent session (93)"
             }
             Requirement::RealHosts => {
-                "the hosts are in process, and this asserts what only hosts that are processes of their own produce (D15)"
+                "the hosts are in process, and this asserts what only hosts that are processes of their own produce — lease contention, a second host reading the holder, a reconnect (93a)"
             }
         }
     }
@@ -135,6 +135,50 @@ impl Scenario {
             .enumerate()
             .map(|(n, raw)| Action::parse(raw).with_context(|| format!("action {}", n + 1)))
             .collect()
+    }
+
+    /// Every repository this scenario names: the ones its described objects
+    /// say they belong to, and the ones its actions deliver into.
+    ///
+    /// An instance a scenario is put into must track these, or the objects
+    /// stand in it uncovered by any host's declaration and the deliveries land
+    /// nowhere — which is a decision under attention rather than a seed that
+    /// worked (149, 205). The state and blueprints repositories every instance
+    /// has are not among them: they are the instance, not something it tracks.
+    pub fn repositories_named(&self) -> Vec<String> {
+        let mut out: Vec<String> = Vec::new();
+        let mut note = |name: &str| {
+            let name = name.trim();
+            if name.is_empty()
+                || name == "flywheel-state"
+                || name == "flywheel-blueprints"
+                || out.iter().any(|held| held == name)
+            {
+                return;
+            }
+            out.push(name.to_string());
+        };
+        for object in &self.given.objects {
+            if let Some(repository) = object.record.get("repository").and_then(|v| v.as_str()) {
+                note(repository);
+            }
+        }
+        // A delivery is written at `<repository>/<path>`, so the first segment
+        // is the repository the session would have written in.
+        for action in &self.actions {
+            let Some(session) = action.get("session").and_then(|v| v.as_object()) else {
+                continue;
+            };
+            let Some(deliver) = session.get("deliver").and_then(|v| v.as_object()) else {
+                continue;
+            };
+            for to in deliver.values().filter_map(|v| v.as_str()) {
+                if let Some((repository, _)) = to.split_once('/') {
+                    note(repository);
+                }
+            }
+        }
+        out
     }
 
     /// The copy the overlay shows for an action, counting from 1.

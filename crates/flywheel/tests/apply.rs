@@ -205,3 +205,116 @@ fn a_session_that_asks_reaches_the_rail() {
         "and it names the work it is about: {asked:?}"
     );
 }
+
+/// The instance a scenario is applied into covers what the scenario names, so
+/// nothing it seeds arrives uncovered (149, 205, 206).
+///
+/// An object whose record names a repository the instance does not track is one
+/// no host's declaration covers, and 149 makes that a decision under attention
+/// — rightly, because the machinery acts on none of it. But the operator can
+/// answer such a decision with nothing but "seen": the demo opened on a rail of
+/// them instead of the decisions it was written to show, and the seeded work
+/// stood still. So the instance is made to track what the scenario names before
+/// anything goes into it.
+#[test]
+fn an_applied_instance_covers_what_it_seeds() {
+    let under = Under::new("covering");
+    let applied = apply_through(
+        &PathBuf::from(concat!(env!("CARGO_MANIFEST_DIR"), "/../../scenarios/storefront")),
+        &under.0,
+        1,
+    );
+
+    // The repository the described state names is one the instance tracks and
+    // this host holds a checkout of.
+    let manifest = flywheel_world_host::Manifest::read(&applied.manifest).expect("the manifest");
+    assert!(
+        manifest.repositories.contains_key("storefront"),
+        "the instance tracks what the scenario named: {:?}",
+        manifest.repositories.keys().collect::<Vec<_>>()
+    );
+
+    // And no lease is uncovered, so every seeded object is one a host will act
+    // on.
+    let host = flywheel::host::Host::open(&applied.manifest, "local", None, applied.at)
+        .expect("the host opens over the instance the apply left");
+    let uncovered: Vec<String> = host
+        .store
+        .list_records(&Scope::All)
+        .expect("the state repository reads")
+        .into_iter()
+        .filter(|o| flywheel_domain::leases::leasable(o))
+        .filter(|o| {
+            host.store
+                .leases(&o.id)
+                .unwrap_or_default()
+                .is_some_and(|l| l.state == "uncovered")
+        })
+        .map(|o| o.id)
+        .collect();
+    assert!(
+        uncovered.is_empty(),
+        "the seed put objects in that no declaration covers: {uncovered:?}"
+    );
+}
+
+/// An apply ends at the present and never ahead of it, and its actions reach
+/// back as far as they happened (D15, 231).
+///
+/// The actions are things that happened, and the last of them happened now. A
+/// run that started at the present and advanced sixty seconds an action ended
+/// that far ahead of the clock, so every moment in the instance was in the
+/// future of the host that picked it up: its ages were negative, its history
+/// read backwards, and the run record — what a person reads to know what
+/// happened (79, 167) — could not be read as a sequence at all.
+#[test]
+fn an_apply_ends_at_the_present_and_ages_what_came_before() {
+    let under = Under::new("clock");
+    let scenario = PathBuf::from(concat!(
+        env!("CARGO_MANIFEST_DIR"),
+        "/../../scenarios/storefront"
+    ));
+    let per_action = Duration::seconds(60);
+    let now = at();
+    let through = 4;
+    let applied = apply::apply(&scenario, &under.0, Some(through), now, per_action)
+        .expect("the scenario applies");
+
+    assert_eq!(
+        applied.at, now,
+        "the last action happened now, so the instance stands at now"
+    );
+
+    // Nothing in it is stamped ahead of the moment it stands at, and the
+    // machinery's own reads are all `now` less a moment a state was entered.
+    let host = flywheel::host::Host::open(&applied.manifest, "local", None, applied.at)
+        .expect("the host opens");
+    let mut ahead: Vec<String> = Vec::new();
+    let mut oldest = applied.at;
+    for object in host
+        .store
+        .list_records(&Scope::All)
+        .expect("the state repository reads")
+    {
+        for (region, entered) in &object.entered_at {
+            if *entered > applied.at {
+                ahead.push(format!("{}/{region} at {}", object.id, entered.to_rfc3339()));
+            }
+            oldest = oldest.min(*entered);
+        }
+    }
+    assert!(
+        ahead.is_empty(),
+        "the apply stamped moments ahead of where the instance stands: {ahead:?}"
+    );
+
+    // And what happened first is as old as the actions say: a scenario played
+    // through four actions leaves its earliest moment four intervals back, so
+    // signals have aged and "seen at" means something without anyone waiting.
+    assert!(
+        applied.at - oldest >= per_action * (through as i32 - 1),
+        "the run did not reach back over its actions: oldest {} against {}",
+        oldest.to_rfc3339(),
+        applied.at.to_rfc3339()
+    );
+}

@@ -70,29 +70,35 @@ pub fn set_register(
     register: &Register,
     standing: &[String],
 ) -> Result<()> {
-    let mut record: BTreeMap<String, Value> = BTreeMap::new();
-    record.insert("next".into(), json!(register.next_number));
-    // The register as the rail machine's record names it: one entry per
-    // numbered decision, carrying its number, when it was raised, when it was
-    // retracted and the response that answered it (`engine/rail.yaml` record).
-    // `numbers` beside it is the same thing as id → number, which is what a
-    // reader that only wants the number reads.
-    record.insert("register".into(), json!(register.entries));
-    record.insert("numbers".into(), json!(register.numbers()));
-    record.insert("standing".into(), json!(standing));
-    let seq = store.get(RAIL)?.map(|o| o.seq).unwrap_or(0);
-    let rail = Object {
+    // The rail is an object like any other and the register is four fields of
+    // its record. What stands beside them — the states its own two regions are
+    // in, and when they were entered — is the machine's and not this writer's,
+    // so the held object is what is written back with those four fields
+    // changed. A fresh object here erased the rail's own state on every derive,
+    // which left its machine starting from nothing on every tick
+    // (`engine/rail.yaml`, 148).
+    let mut rail = store.get(RAIL)?.unwrap_or_else(|| Object {
         id: RAIL.into(),
         machine: "rail".into(),
         parent: None,
         config: Default::default(),
         entered_at: Default::default(),
-        record,
+        record: Default::default(),
         counters: Default::default(),
         applied_responses: vec![],
-        seq,
+        seq: 0,
         created: 0,
-    };
+    });
+    rail.record.insert("next".into(), json!(register.next_number));
+    // The register as the rail machine's record names it: one entry per
+    // numbered decision, carrying its number, when it was raised, when it was
+    // retracted and the response that answered it (`engine/rail.yaml` record).
+    // `numbers` beside it is the same thing as id → number, which is what a
+    // reader that only wants the number reads.
+    rail.record.insert("register".into(), json!(register.entries));
+    rail.record.insert("numbers".into(), json!(register.numbers()));
+    rail.record.insert("standing".into(), json!(standing));
+    let seq = rail.seq;
     store.put(RAIL, &rail, seq)?;
     Ok(())
 }

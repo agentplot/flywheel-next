@@ -43,6 +43,7 @@ impl Sandbox {
             address: "http://laptop.example".into(),
             manifest: self.dir.join("flywheel.yaml"),
             curation: None,
+            at: chrono::Utc::now(),
         }
     }
 
@@ -418,4 +419,51 @@ fn token_written_nowhere_else() {
     assert!(page.contains("mac-mini"), "the page is rendered from the host's state");
     assert!(!page.contains(key), "the page holds the key");
     assert!(!page.contains(&token), "the page holds the token");
+}
+
+/// A bootstrap stamps the instance at the moment it happens at, and not minutes
+/// past it (231, D15).
+///
+/// The instance machine is settled on the scenario runner's `Runtime`, whose
+/// tick advances a minute a pass — the virtual clock that keeps a test from
+/// sleeping. A real bootstrap ran on it and stamped the instance up to twelve
+/// minutes into the future, and every age a host then judges by — a lease's
+/// renewal, a stall window, a cadence's last run, "seen at" — is measured
+/// against a clock that has not got there yet.
+#[test]
+fn a_bootstrap_stamps_no_moment_ahead_of_its_own() {
+    let mut sandbox = Sandbox::new("clock");
+    sandbox.place_the_key();
+    let at = chrono::Utc::now();
+    let mut ask = sandbox.ask();
+    ask.at = at;
+    let manifest = ask.manifest.clone();
+    let root = ask.root.clone();
+    let report = flywheel::init::run(ask).expect("the instance bootstraps");
+    assert_eq!(report.state, "hosted", "{report:?}");
+
+    let host = flywheel::host::Host::open(&manifest, "mac-mini", Some(&root), at)
+        .expect("the host opens over what init made");
+    use flywheel_atoms::Records;
+    let mut ahead: Vec<String> = Vec::new();
+    for object in host
+        .store
+        .list_records(&flywheel_atoms::Scope::All)
+        .expect("the state repository reads")
+    {
+        for (region, entered) in &object.entered_at {
+            if *entered > at {
+                ahead.push(format!(
+                    "{}/{region} entered at {} — {}s ahead",
+                    object.id,
+                    entered.to_rfc3339(),
+                    (*entered - at).num_seconds()
+                ));
+            }
+        }
+    }
+    assert!(
+        ahead.is_empty(),
+        "the bootstrap stamped moments the clock has not reached: {ahead:?}"
+    );
 }

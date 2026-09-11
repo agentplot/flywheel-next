@@ -3,4 +3,4 @@
 
 #![allow(unused_imports)]
 
-pub use flywheel_scenario::conformance::phase::{accepted, ACCEPTED, DEFERRED, REAL_WORKSPACE};
+pub use flywheel_scenario::conformance::phase::{accepted, ACCEPTED, DEFERRED, REAL_HOSTS, REAL_WORKSPACE};

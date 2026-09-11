@@ -478,3 +478,95 @@ fn an_answer_that_names_only_its_number_reaches_the_object_the_register_gave_it(
     // decides anything.
     assert_eq!(a.responses(flywheel_domain::RAIL).unwrap().len(), 1);
 }
+
+#[test]
+fn a_put_of_what_is_already_there_is_not_a_write() {
+    // Reading the same stores twice with nothing changed produces the same
+    // conclusion and no writes (78). A put is how a caller says what an object
+    // now is, and a caller that has read an object, decided nothing moved and
+    // put it back has said nothing: the sequence is the token of a change and
+    // not of a pass, so it does not move and there is no commit on the shared
+    // line to say it did (127, 167).
+    let sandbox = Sandbox::new("put-unchanged");
+    let mut a = sandbox.host("a");
+    let commits = |store: &GitStore| -> usize {
+        store
+            .repo
+            .git(&["log", "--format=%H", "HEAD"])
+            .unwrap()
+            .lines()
+            .count()
+    };
+
+    let outcome = a.put("lamp/1", &a_lamp("lamp/1"), 0).unwrap();
+    assert_eq!(outcome, PutOutcome::Written { seq: 1 });
+    let after_the_write = commits(&a);
+
+    // The same object, read back and put again unchanged.
+    let held = a.get("lamp/1").unwrap().expect("the object is there");
+    let outcome = a.put("lamp/1", &held, held.seq).unwrap();
+    assert_eq!(
+        outcome,
+        PutOutcome::Written { seq: 1 },
+        "the sequence moved for a put that changed nothing"
+    );
+    assert_eq!(
+        commits(&a),
+        after_the_write,
+        "a put of what is already there made a commit (78, 167)"
+    );
+    assert_eq!(a.get("lamp/1").unwrap().unwrap().seq, 1);
+
+    // A put that does change something writes, and the sequence moves with it.
+    let mut moved = a.get("lamp/1").unwrap().unwrap();
+    moved.config.insert("state".into(), "lit".into());
+    let outcome = a.put("lamp/1", &moved, moved.seq).unwrap();
+    assert_eq!(outcome, PutOutcome::Written { seq: 2 });
+    assert_eq!(commits(&a), after_the_write + 1);
+}
+
+#[test]
+fn an_answer_is_a_notice_about_the_object_it_answers() {
+    // A notice names what moved since a point, so a host re-reads only that
+    // (130, D6). An answer moves no object file — a response is a record of its
+    // own, under `responses/` and not under `objects/` — so a notice taken from
+    // the changed object files alone named nothing at all when the operator
+    // answered: the loop woke on the answer, found nothing to tick, and the
+    // object waited out the sweep. Up to a minute in which the operator had
+    // clicked and the page showed them nothing, which is the moment 13 says
+    // they never have to nudge through.
+    let sandbox = Sandbox::new("answer-notice");
+    let mut a = sandbox.host("a");
+    a.put("lamp/1", &a_lamp("lamp/1"), 0).unwrap();
+
+    let mut register = flywheel_engine::runtime::Register::default();
+    let decision = "lamp/1/lamp-proposed/2026-01-01T00:00:00Z";
+    let number = register.number_for(decision, Some(at(0)));
+    flywheel_domain::commands::set_register(&mut a, &register, &[decision.to_string()]).unwrap();
+
+    // The point the host last read at, before the answer arrives.
+    let point = StateStore::read(&a, "lamp/1").unwrap().as_of;
+    assert!(
+        a.notify(&point).unwrap().objects.is_empty(),
+        "nothing has moved yet"
+    );
+
+    a.receive(&Response {
+        id: "page-1".into(),
+        kind: ResponseKind::Answer,
+        decision: Some(number),
+        object: None,
+        answer: "on".into(),
+        given_by: "chuck".into(),
+        given_at: at(1),
+        delivery: "page".into(),
+    })
+    .unwrap();
+
+    let notice = a.notify(&point).unwrap();
+    assert!(
+        notice.objects.iter().any(|o| o == "lamp/1"),
+        "the answer named no object to tick: {:?}",
+        notice.objects
+    );
+}

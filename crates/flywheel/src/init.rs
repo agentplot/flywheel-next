@@ -37,6 +37,10 @@ pub struct Init {
     /// What curation is charged on, where the caller says. The shipped
     /// threshold and cadence otherwise (110, 118, `curation.yaml`).
     pub curation: Option<flywheel_world_host::manifest::Curation>,
+    /// The moment this bootstrap happens at. The real clock for an operator
+    /// running `flywheel init`; a scenario's own start for an apply, so the
+    /// whole of it runs on one clock (D15, 231).
+    pub at: chrono::DateTime<chrono::Utc>,
 }
 
 impl Init {
@@ -97,7 +101,7 @@ pub fn run(ask: Init) -> Result<Report> {
     // step before that proves itself against the world and not against a
     // record (204).
     let mut store = Store::default();
-    store.now = chrono::Utc::now();
+    store.now = ask.at;
     store.acting_host = Some(ask.host.clone());
     let checkout = ask.checkout();
     let scratch = ask.root.join(".flywheel-scratch").join("bootstrap-state");
@@ -159,7 +163,18 @@ pub fn run(ask: Init) -> Result<Report> {
 
     // Tick until the machine stops moving. Each pass reads the world again, so
     // an effect that already holds fires nothing.
+    //
+    // The clock is held at the moment the bootstrap happens at, and does not
+    // advance with the passes. The runtime's tick is the scenario runner's, and
+    // its minute-a-tick clock is what keeps a test from sleeping (D15); running
+    // a real bootstrap on it stamped the instance up to twelve minutes into the
+    // future, and every age a host then judges by — a lease's renewal, a stall
+    // window, a cadence, "seen at" — is measured against a clock that has not
+    // got there yet. The instance machine reaches its states by reading the
+    // world and waits on no age, so there is nothing for the advance to buy
+    // (231, 78).
     for _ in 0..12 {
+        runtime.store.now = ask.at;
         for (name, value) in effects::evidence(&manifest, ask.app_key.as_deref()) {
             runtime.store.set_given(&id, &name, value);
         }
@@ -168,6 +183,11 @@ pub fn run(ask: Init) -> Result<Report> {
             .get(&id)?
             .and_then(|o| o.top_state().map(String::from));
         let record = runtime.tick_settled();
+        // The tick advanced it on its way out; the bootstrap's clock does not
+        // move, and what is written after this pass — the records moved into
+        // the instance's own repository below among them — is written at the
+        // moment the bootstrap happens at.
+        runtime.store.now = ask.at;
 
         let mut moved = false;
         for effect in record.effects.iter().filter(|e| e.object == id) {

@@ -16,6 +16,7 @@
 use anyhow::{Context, Result};
 use chrono::{DateTime, Duration, Utc};
 use flywheel_atoms::scenario::Scenario;
+use flywheel_domain::derived::Declaration;
 use flywheel_engine::Object;
 use flywheel_store_git::GitStore;
 use serde_json::Value;
@@ -38,10 +39,15 @@ pub struct Seeded {
 /// seeded at its own written date would read as a week stale and its `older:`
 /// guards would fire on ages nobody described. Shifting the whole description
 /// by one delta keeps every age exactly as written (D15).
-pub fn from_scenario(store: &mut GitStore, path: &std::path::Path, at: DateTime<Utc>) -> Result<Seeded> {
+pub fn from_scenario(
+    store: &mut GitStore,
+    path: &std::path::Path,
+    at: DateTime<Utc>,
+    declaration: &Declaration,
+) -> Result<Seeded> {
     let mut scenario = flywheel_atoms::scenario::load(path)
         .with_context(|| format!("reading the scenario at {}", path.display()))?;
-    into_store(store, &mut scenario, at)
+    into_store(store, &mut scenario, at, declaration)
 }
 
 /// Read a conformance scenario's `given:` into a state store.
@@ -59,6 +65,7 @@ pub fn from_conformance(
     store: &mut GitStore,
     scenario: &flywheel_atoms::conformance::Scenario,
     at: DateTime<Utc>,
+    declaration: &Declaration,
 ) -> Result<Seeded> {
     let defs = flywheel_domain::set::load()?;
     let suite = flywheel_scenario::conformance::Suite::open(std::path::Path::new("conformance"))
@@ -79,6 +86,7 @@ pub fn from_conformance(
             shift(value, delta);
         }
     }
+    covered(&objects, declaration)?;
     store
         .seed_objects(&objects)
         .context("putting the described objects on the shared line")?;
@@ -103,7 +111,12 @@ pub fn from_conformance(
 }
 
 /// The same over a scenario already read.
-pub fn into_store(store: &mut GitStore, scenario: &mut Scenario, at: DateTime<Utc>) -> Result<Seeded> {
+pub fn into_store(
+    store: &mut GitStore,
+    scenario: &mut Scenario,
+    at: DateTime<Utc>,
+    declaration: &Declaration,
+) -> Result<Seeded> {
     move_to(scenario, at);
     let defs = flywheel_domain::set::load()?;
     // The described state, built the one way it is built anywhere: the
@@ -111,6 +124,7 @@ pub fn into_store(store: &mut GitStore, scenario: &mut Scenario, at: DateTime<Ut
     let runtime = flywheel_scenario::scenario::seed(defs, scenario);
     let mut objects: Vec<Object> = runtime.store.objects.values().cloned().collect();
     objects.sort_by_key(|o| o.created);
+    covered(&objects, declaration)?;
     store
         .seed_objects(&objects)
         .context("putting the described objects on the shared line")?;
@@ -124,6 +138,44 @@ pub fn into_store(store: &mut GitStore, scenario: &mut Scenario, at: DateTime<Ut
         now: at,
         register_start: scenario.given.register_start,
     })
+}
+
+/// Refuse a seed no host's declaration covers, naming what is missing.
+///
+/// An object a declaration does not cover is one 149 makes a decision under
+/// attention rather than a silent wait — rightly, because no host will act on
+/// it. But when the seed put it there it is a decision about the seed and not
+/// about the work: the operator can answer it with nothing but "seen", and a
+/// described instance arrives with one such card per object instead of the
+/// decisions it was written to show. So a seed that would put an uncovered
+/// object in place says what would have to be declared first, and puts nothing
+/// in place until it is (149, 205, 206).
+pub fn covered(objects: &[Object], declaration: &Declaration) -> Result<()> {
+    let mut missing: Vec<String> = Vec::new();
+    for object in objects {
+        if flywheel_domain::leases::machinery(&object.machine) || declaration.covers(object) {
+            continue;
+        }
+        let named = object
+            .record
+            .get("repository")
+            .and_then(|v| v.as_str())
+            .map(|r| format!("`{r}` (named by {})", object.id))
+            .unwrap_or_else(|| object.id.clone());
+        if !missing.contains(&named) {
+            missing.push(named);
+        }
+    }
+    if missing.is_empty() {
+        return Ok(());
+    }
+    anyhow::bail!(
+        "this host's declaration covers none of {}. An object no host's declaration covers waits \
+         under attention and the machinery acts on none of it (149), so nothing is seeded until \
+         the instance tracks what the described state names and this host declares it \
+         (`flywheel.yaml` repositories and hosts.<host>.covers, 205, 206)",
+        missing.join(", ")
+    );
 }
 
 /// Move a description's own moment to `at`, carrying every absolute time in it

@@ -22,12 +22,13 @@ use std::collections::{BTreeMap, BTreeSet};
 /// failure; one that a binding has since answered is a failure too, so the
 /// list shrinks as the phases land.
 const DEFERRED: &[(&str, &str)] = &[
-    // Answered by the git store on the `scenarios` branch (7a97ee4); this entry
-    // leaves with that merge.
-    ("rail.status_current", "phase 1 — bound on branch `scenarios`, commit 7a97ee4"),
-    // 221's removal: `retire_instance` has no binding in this release, so the
-    // instance machine cannot reach `removed` on a real host.
-    ("instance.retired", "phase 1 — 221 removal; `retire_instance` unbound"),
+    // 221's removal. Two of its three conjuncts are readable now — no session
+    // record alive, no place under the instance root — but "its state
+    // archived" names a place on the shared line the git-only layout does not
+    // have, and `retire_instance`, whose proof this is, has no binding. Binding
+    // the read would mean inventing where the archive lives; the model names
+    // it first (AGENTS.md), and the effect and the read land together.
+    ("instance.retired", "phase 1 — 221 removal; the layout names no archive and `retire_instance` is unbound"),
     // Construction (A.5): lines, places, stages, work items, services,
     // planning and proposals.
     ("bolt.services_declared", "phase 2 — construction (47)"),
@@ -128,6 +129,7 @@ fn hosted(name: &str) -> Host {
         address: "http://laptop.example".into(),
         manifest: dir.join("flywheel.yaml"),
         curation: None,
+        at: chrono::Utc.with_ymd_and_hms(2026, 1, 1, 9, 0, 0).unwrap(),
     })
     .expect("init runs");
     assert_eq!(report.state, "hosted", "{report:?}");

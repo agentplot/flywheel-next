@@ -2,6 +2,7 @@ scenario: S17
 title: two hosts see the same approved unit at once and both try to take it; exactly one does; the other moves on
 profiles: [git-only]
 satisfies: [162, 163]
+requires: [real-hosts]
 invariants: [I15]
 given:
   objects:

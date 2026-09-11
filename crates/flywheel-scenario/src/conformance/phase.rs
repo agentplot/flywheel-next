@@ -19,6 +19,12 @@ pub const REAL_WORKSPACE: &[&str] = &[
     "S14", "S15", "S26", "S32", "S33", "S34", "X03", "X06", "X09",
 ];
 
+/// The three accepted rows that declare `requires: [real-hosts]`: lease
+/// contention between hosts, a second host reading the holder, a reconnect —
+/// what one in-process host cannot produce. The runner plays them under
+/// `--hosts real` rather than skipping them (D15, 93a).
+pub const REAL_HOSTS: &[&str] = &["S13", "S17", "S18"];
+
 /// The fifteen the phase defers for reasons of its own — a pane runner, the
 /// tracker, the ledger, the dispatcher, construction itself — rather than for
 /// anything a binding provides (proposal.md — Deferred, with the reason).

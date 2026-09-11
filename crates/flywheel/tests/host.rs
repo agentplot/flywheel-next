@@ -1083,10 +1083,15 @@ fn a_host_with_no_channel_delivers_nothing() {
 
 // ------------------------------------------- 19.6 a lease is not a decision
 
-/// A lease is the machinery's own bookkeeping: which host holds an object, and
-/// whether any host's declaration covers it. Neither is a decision the operator
-/// makes, so neither takes a number on the rail; both are read where 141
-/// already puts the holder, on the status view (79, 141, 310).
+/// A lease a host holds is the machinery's own bookkeeping: which host has the
+/// object, and nothing for the operator to answer. It takes no number, and is
+/// read where 141 already puts the holder, on the status view (79, 141, 310).
+///
+/// An object no host's declaration covers is the other thing. 149 makes it a
+/// decision under attention and never a silent wait, `engine/lease.yaml`
+/// declares that decision on the `uncovered` state, and it is answerable — with
+/// "seen", which is the operator saying they know the work is stopped. So it
+/// takes a number like any other decision.
 #[test]
 fn a_lease_is_not_a_decision() {
     let mut host = host("lease-not-a-decision", &["atlas"]);
@@ -1127,23 +1132,51 @@ fn a_lease_is_not_a_decision() {
 
     let defs = host.defs.clone();
     let rail = flywheel_domain::commands::rail(&mut host.store, &defs).unwrap();
-    // Five units are proposed, so five decisions stand and no more: not one of
-    // them is about a lease.
-    let about_a_lease: Vec<String> = rail
-        .iter()
-        .filter(|d| d.object.starts_with("lease/"))
-        .map(|d| format!("{} {} {:?}", d.kind, d.object, d.number))
-        .collect();
-    assert!(
-        about_a_lease.is_empty(),
-        "a lease took a number on the rail: {about_a_lease:?}"
-    );
+    // Five units are proposed, so five of the work's own decisions stand.
     assert_eq!(
         rail.iter().filter(|d| d.kind == "unit-proposed").count(),
         5,
         "the work's own decisions stand, and they are what the rail is for: {:?}",
         rail.iter().map(|d| (&d.kind, &d.object)).collect::<Vec<_>>()
     );
+    // The three this host holds raise nothing: a lease that is merely held is
+    // not a decision.
+    let held_on_the_rail: Vec<String> = rail
+        .iter()
+        .filter(|d| {
+            ["status-writer", "retry-jitter", "chores-1"]
+                .iter()
+                .any(|name| d.object == format!("lease/unit/atlas/{name}"))
+        })
+        .map(|d| format!("{} {} {:?}", d.kind, d.object, d.number))
+        .collect();
+    assert!(
+        held_on_the_rail.is_empty(),
+        "a lease this host holds took a number on the rail: {held_on_the_rail:?}"
+    );
+    // The two nothing covers each raise one, numbered and answerable (149,
+    // `engine/lease.yaml` uncovered).
+    let uncovered: Vec<&str> = rail
+        .iter()
+        .filter(|d| d.kind == "uncovered")
+        .map(|d| d.object.as_str())
+        .collect();
+    assert_eq!(
+        uncovered,
+        vec![
+            "lease/unit/new-repo/baseline-1",
+            "lease/unit/new-repo/spike-1"
+        ],
+        "an object no declaration covers is a decision under attention (149)"
+    );
+    for decision in rail.iter().filter(|d| d.kind == "uncovered") {
+        assert_eq!(decision.group, "attention");
+        assert!(
+            decision.number.is_some(),
+            "a decision under attention is numbered like any other (15)"
+        );
+        assert_eq!(decision.answers, vec!["ok".to_string()]);
+    }
 
     // What the lease is in is read on the status view's row for the object,
     // beside which host holds it.
@@ -1173,8 +1206,7 @@ fn a_lease_is_not_a_decision() {
         "and the view says it in words a person reads"
     );
 
-    // It is still under attention and never a silent wait (149) — it is simply
-    // not a number the operator answers.
+    // And it is under attention, which is where 149 puts it.
     let attention = host.attention().unwrap();
     assert!(
         attention.iter().any(|a| a == "uncovered: lease/unit/new-repo/baseline-1"),
@@ -1200,6 +1232,7 @@ fn hosted(name: &str) -> Host {
         address: "http://laptop.example".into(),
         manifest: dir.join("flywheel.yaml"),
         curation: None,
+        at: at(0),
     })
     .expect("init runs");
     assert_eq!(report.state, "hosted", "{report:?}");
@@ -1218,13 +1251,10 @@ fn hosted(name: &str) -> Host {
 /// moves, one transition, nothing moves — with the clock still, so no lease
 /// comes due.
 ///
-/// The contract's `pushes_per_tick: [0, 1, 0]` is the promise: a tick's
-/// commits go at the shared line in one push and a tick that moved nothing
-/// pushes nothing. The heartbeat is on the sweep's cadence and costs a quiet
-/// tick no push. What still pushes on a quiet tick on this branch is the rail
-/// re-entering `current` while `rail.status_current` is unbound, which
-/// `scenarios` fixes in 7a97ee4; the exact `[0, 1, 0]` is asserted the tick
-/// that lands here.
+/// The contract's `pushes_per_tick: [0, 1, 0]` is asserted as written: a
+/// tick that moved nothing pushes nothing, the tick that moved pushes once,
+/// with the heartbeat on the sweep's cadence and the rail's projection
+/// current (78, 167, 169; `cost.yaml`).
 #[test]
 fn a_real_tick_spends_what_the_profile_says() {
     let mut host = hosted("cost");
@@ -1268,16 +1298,11 @@ fn a_real_tick_spends_what_the_profile_says() {
         assert_eq!(cost.read_processes, 0, "tick {n} spawned a process to read: {costs:?}");
         // Every process a tick spawns is a push (169, `git-only.yaml` Tools).
         assert_eq!(cost.subprocesses, cost.pushes, "tick {n} spawned something that was not a push: {costs:?}");
-        // The tick's commits go at the shared line in one push, never a push
-        // per commit, and the heartbeat rides no quiet tick (167, 169).
-        assert!(
-            cost.pushes <= 1,
-            "tick {n} pushed {} times — a push per commit, not per tick: {costs:?}",
-            cost.pushes
-        );
     }
-    // The tick that moved something wrote it, in one push.
-    assert_eq!(costs[1].pushes, 1, "the transition's commit was not pushed once: {costs:?}");
+    // The contract's numbers, per tick in order: nothing moves, one write,
+    // nothing moves (`cost.yaml` pushes_per_tick, subprocesses_per_tick).
+    let pushes: Vec<u32> = costs.iter().map(|c| c.pushes).collect();
+    assert_eq!(pushes, vec![0, 1, 0], "a quiet tick pushed, or the write did not: {costs:?}");
     // Reading the blueprints through the bound world forked nothing (audit 9).
     assert_eq!(
         flywheel_world_host::git::spawned() - world_spawned_before,
@@ -1388,4 +1413,195 @@ fn a_quiet_tick_writes_no_heartbeat() {
     host.set_now(host.now() + host.sweep_interval());
     host.tick(&Scope::All).unwrap();
     assert!(seen(&host) > first, "the sweep's cadence did not write the heartbeat");
+}
+
+// -------------------------------------------------- a tick that moves nothing
+
+/// Reading the same stores twice with nothing changed produces the same
+/// conclusion and no writes (78). A host that has settled keeps ticking — the
+/// sweep is what makes `older:` guards fire and a never-notified host converge
+/// (D7, 130) — and every one of those ticks must leave the shared line where it
+/// found it.
+///
+/// It did not. The rail's record was rewritten on every derive, the host's own
+/// record on every declare, and each rewrite moved the shared line, which the
+/// next pass read as news and ticked again. A settled instance wrote a commit
+/// every couple of seconds with nothing happening in it, and the pass that made
+/// them is the pass a page request waits behind (167, D11).
+#[test]
+fn a_tick_that_moves_nothing_writes_nothing() {
+    let mut host = host("moves-nothing", &["atlas"]);
+    seed(
+        &mut host,
+        "unit/atlas/status-writer",
+        "unit",
+        &[("life", "proposed")],
+        &[("repository", json!("atlas")), ("type", json!("default"))],
+    );
+    let commits = |host: &Host| -> usize {
+        host.store
+            .git
+            .repo
+            .git(&["log", "--format=%H", "HEAD"])
+            .unwrap()
+            .lines()
+            .count()
+    };
+
+    // Settle: sweep until the machinery stops moving. What is left standing is
+    // a proposed unit, which is the operator's to answer and moves no further.
+    for minute in 1..6 {
+        host.set_now(at(minute));
+        host.sweep().unwrap();
+        if !host.moved {
+            break;
+        }
+    }
+    assert!(
+        !host.moved,
+        "the machinery had not settled, so there is nothing to prove about a tick that moves \
+         nothing"
+    );
+    let settled = commits(&host);
+    let seq = |host: &Host, id: &str| host.store.get(id).unwrap().map(|o| o.seq).unwrap_or(0);
+    let rail_at = seq(&host, flywheel_domain::RAIL);
+    let host_at = seq(&host, "host/mac-mini");
+
+    // Three more sweeps over a settled instance. The clock moves, because a
+    // host's does; nothing else does.
+    for minute in 6..9 {
+        host.set_now(at(minute));
+        host.sweep().unwrap();
+    }
+
+    assert_eq!(
+        commits(&host),
+        settled,
+        "a settled instance wrote {} commits over three sweeps in which nothing moved (78, 167)",
+        commits(&host) - settled
+    );
+    assert_eq!(seq(&host, flywheel_domain::RAIL), rail_at, "the rail's record was rewritten");
+    assert_eq!(seq(&host, "host/mac-mini"), host_at, "the host's own record was rewritten");
+}
+
+/// The status projection is rewritten whenever what it projects moved, and that
+/// rewrite is not drift. Drift is the projection saying something its source
+/// does not with nothing to account for it, which is the one case the report is
+/// for — a report on every ordinary rewrite buries it (77, 142).
+#[test]
+fn an_ordinary_rewrite_of_the_projection_is_not_drift() {
+    let mut host = host("not-drift", &["atlas"]);
+    host.sweep().unwrap();
+    seed(
+        &mut host,
+        "unit/atlas/status-writer",
+        "unit",
+        &[("life", "proposed")],
+        &[("repository", json!("atlas")), ("type", json!("default"))],
+    );
+    for minute in 1..6 {
+        host.set_now(at(minute));
+        host.sweep().unwrap();
+    }
+
+    let written = host.store.git.committed_status().unwrap().unwrap();
+    assert!(
+        written.contains("unit/atlas/status-writer"),
+        "the projection was rewritten from its source as the state moved"
+    );
+    let drift: Vec<String> = host
+        .store
+        .git
+        .run_record()
+        .unwrap()
+        .into_iter()
+        .filter(|e| e.kind == "drift")
+        .map(|e| e.reason)
+        .collect();
+    assert!(
+        drift.is_empty(),
+        "the projection following its source was reported as drift: {drift:?}"
+    );
+}
+
+/// One response is enough, and the machinery takes it up on the pass the
+/// response causes (13, 129, 130, D6).
+///
+/// An answer is a local cause: it reaches this process and does not wait for
+/// the poll. But it moves no object file, so the notice a host takes from the
+/// changed object files named nothing at all, the notify-tick had nothing to
+/// tick, and the answer sat until the sweep came round — up to a minute in
+/// which the operator had clicked and nothing had happened. An operator with no
+/// sign their answer was taken is an operator who nudges, which is the thing 13
+/// says they never do.
+#[test]
+fn an_answer_is_taken_up_on_the_pass_it_causes() {
+    let mut host = host("answered-at-once", &["atlas"]);
+    seed(
+        &mut host,
+        "unit/atlas/status-writer",
+        "unit",
+        &[("life", "proposed")],
+        &[("repository", json!("atlas")), ("type", json!("default"))],
+    );
+    // Settle, so the decision stands and is numbered.
+    for minute in 1..6 {
+        host.set_now(at(minute));
+        host.sweep().unwrap();
+        if !host.moved {
+            break;
+        }
+    }
+    let defs = host.defs.clone();
+    let number = flywheel_domain::commands::rail(&mut host.store, &defs)
+        .unwrap()
+        .iter()
+        .find(|d| d.object == "unit/atlas/status-writer")
+        .and_then(|d| d.number)
+        .expect("the proposed unit is a numbered decision");
+
+    // The operator answers on the page. The response is a record of its own and
+    // moves no object file.
+    host.set_now(at(6));
+    host.store
+        .receive(&flywheel_engine::runtime::Response {
+            id: "page-1".into(),
+            kind: flywheel_engine::runtime::ResponseKind::Answer,
+            decision: Some(number),
+            object: None,
+            answer: "yes".into(),
+            given_by: "chuck".into(),
+            given_at: at(6),
+            delivery: "page".into(),
+        })
+        .unwrap();
+
+    // What the host is told moved names the object the answer answers, so the
+    // notify-tick has something to tick without waiting for a sweep.
+    let notified = host.notified().unwrap();
+    assert!(
+        notified.iter().any(|o| o == "unit/atlas/status-writer"),
+        "the answer named no object to tick: {notified:?}"
+    );
+
+    // And the pass that notice drives applies it. The sweep is not what took
+    // it: this ticks the notified chain alone.
+    for scope in [
+        Scope::Under("unit/atlas/status-writer".to_string()),
+    ] {
+        host.tick(&scope).unwrap();
+    }
+    let after = host
+        .store
+        .get("unit/atlas/status-writer")
+        .unwrap()
+        .expect("the unit")
+        .config
+        .get("life")
+        .cloned()
+        .unwrap_or_default();
+    assert_ne!(
+        after, "proposed",
+        "the answer was not applied by the pass it caused"
+    );
 }
