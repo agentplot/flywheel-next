@@ -117,6 +117,27 @@ pub fn evidence<S: Records>(store: &S, session: &str, name: &str) -> Option<Valu
             .unwrap_or_else(|| json!([])),
         "session.expected" => field("deliverables").unwrap_or_else(|| json!([])),
         "session.offers_pending" => json!(!entries("offer").is_empty()),
+        // Every offer entry on the thread is cited by a unit, elaboration or
+        // signal record — which is what `record_offers` made, and what makes it
+        // not run again (`record-derived.yaml` session.offers_recorded, 58, 62).
+        "session.offers_recorded" => json!(flywheel_domain::offers::pending(store, session)
+            .unwrap_or_default()
+            .is_empty()),
+        // Every gathering the session delivered exists as one proposed
+        // elaboration covering the intents it names; a run that gathered
+        // nothing has nothing to find (188, `atoms.yaml` gather_elaborations).
+        "curation.gatherings_proposed" => {
+            let gatherings =
+                flywheel_domain::effects::gatherings_of(store, session).unwrap_or_default();
+            json!(gatherings.iter().all(|gathering| {
+                gathering.intents.first().is_some_and(|first| {
+                    flywheel_domain::effects::children(store, first, "elaboration")
+                        .unwrap_or_default()
+                        .iter()
+                        .any(|e| flywheel_domain::effects::covers(e) == gathering.intents)
+                })
+            }))
+        }
         "session.refusals_pending" => json!(!entries("refusal").is_empty()),
         "session.answer_delivered" => json!(entries("answer")
             .last()

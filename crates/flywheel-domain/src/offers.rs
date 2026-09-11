@@ -58,7 +58,7 @@ pub fn recorded<S: Records>(store: &S, offer: &Offer) -> Result<bool> {
 }
 
 /// The offers on this session's thread that no record points at yet.
-pub fn pending<S: StateStore>(store: &S, session: &str) -> Result<Vec<Offer>> {
+pub fn pending<S: Records>(store: &S, session: &str) -> Result<Vec<Offer>> {
     let mut out = Vec::new();
     for offer in on_thread(session, &store.thread(session)?) {
         if !recorded(store, &offer)? {

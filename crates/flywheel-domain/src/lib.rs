@@ -18,6 +18,7 @@ pub mod signals;
 pub mod sinks;
 pub mod status;
 pub mod derived;
+pub mod effects;
 pub mod leases;
 pub mod offers;
 pub mod rail;

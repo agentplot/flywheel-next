@@ -371,3 +371,63 @@ fn status_is_committed_on_the_shared_line() {
         Some("<html>as of commit x</html>")
     );
 }
+
+// ------------------------ 16.4 an effect repeated inside one tick writes once
+
+/// An effect written twice inside one tick writes one commit (127).
+///
+/// A tick's commits are local until it ends, so the point the tick fetched does
+/// not move while it runs; the repeat has to be found against what this host
+/// has written, not against what it last read.
+#[test]
+fn an_effect_repeated_in_one_tick_writes_once() {
+    let sandbox = Sandbox::new("one-tick");
+    let mut a = sandbox.host("a");
+    a.put("lamp/1", &a_lamp("lamp/1"), 0).unwrap();
+    let write = EffectWrite {
+        effect_id: "lamp/1/on/lamp.lit/one-tick".into(),
+        object: "lamp/1".into(),
+        effect: "light".into(),
+        reason: "the switch is up".into(),
+        evidence: [("lamp.switch".to_string(), json!("up"))].into_iter().collect(),
+    };
+
+    let before = a.repo.git(&["rev-list", "--count", "HEAD"]).unwrap();
+    let before: usize = before.trim().parse().unwrap();
+
+    // One tick, and the same effect written twice inside it.
+    a.begin_tick();
+    let first = a.write_effect(&write).unwrap();
+    let second = a.write_effect(&write).unwrap();
+    a.end_tick().unwrap();
+
+    assert!(
+        matches!(first, WriteOutcome::Written { .. } | WriteOutcome::Pending { .. }),
+        "the first write of an effect id did not write: {first:?}"
+    );
+    assert!(
+        matches!(second, WriteOutcome::AlreadyWritten { .. }),
+        "the same effect id written twice in one tick wrote twice (127): {second:?}"
+    );
+
+    // And the history carries it once.
+    let after: usize = a
+        .repo
+        .git(&["rev-list", "--count", "HEAD"])
+        .unwrap()
+        .trim()
+        .parse()
+        .unwrap();
+    assert_eq!(
+        after - before,
+        1,
+        "one effect, written twice in one tick, made {} commits (127)",
+        after - before
+    );
+    let log = a.repo.git(&["log", "--format=%B", "-n", "5", "HEAD"]).unwrap();
+    assert_eq!(
+        log.matches("lamp/1/on/lamp.lit/one-tick").count(),
+        1,
+        "the effect id is in the history twice: {log}"
+    );
+}

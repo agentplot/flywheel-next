@@ -859,15 +859,25 @@ impl StateStore for GitStore {
     }
 
     fn write_effect(&mut self, write: &EffectWrite) -> Result<WriteOutcome> {
-        // A repeat is found by `git log --grep=<effect id>` on the fetched main
-        // before committing, and changes nothing (127).
-        if !self.fetched.is_empty()
-            && self.fetched != git::ZERO
-            && objects::message_holds(&self.odb, &self.fetched, &write.effect_id)?
-        {
-            return Ok(WriteOutcome::AlreadyWritten {
-                effect_id: write.effect_id.clone(),
+        // A repeat is found by scanning the history for the effect id before
+        // committing, and changes nothing (127).
+        //
+        // From `HEAD`, not from the fetched point: a tick's commits are local
+        // until it ends, so `self.fetched` does not move inside one, and a
+        // second write of the same effect id in the same tick would find
+        // nothing and commit again. `HEAD` is what this host has written,
+        // landed or not.
+        let scanning = objects::rev(&self.odb, "HEAD")?
+            .filter(|head| !head.is_empty() && head != git::ZERO)
+            .or_else(|| {
+                Some(self.fetched.clone()).filter(|f| !f.is_empty() && f != git::ZERO)
             });
+        if let Some(from) = scanning {
+            if objects::message_holds(&self.odb, &from, &write.effect_id)? {
+                return Ok(WriteOutcome::AlreadyWritten {
+                    effect_id: write.effect_id.clone(),
+                });
+            }
         }
         if self.pending.contains(&write.effect_id) {
             return Ok(WriteOutcome::AlreadyWritten {
@@ -887,19 +897,22 @@ impl StateStore for GitStore {
             "{}\n\nreason: {}\nevidence: {}\nobject: {}\neffect: {}",
             write.effect_id, write.reason, evidence, write.object, write.effect
         );
-        match self.commit_and_push(&message)? {
+        let landed = self.commit_and_push(&message)?;
+        // Every id this host has written goes on the list, whatever the
+        // connectivity: a commit that has not been scanned for yet is still one
+        // this host made, and the effect is not written twice (127).
+        if !self.pending.contains(&write.effect_id) {
+            self.pending.push(write.effect_id.clone());
+        }
+        match landed {
             Landed::Written { .. } => Ok(WriteOutcome::Written {
                 effect_id: write.effect_id.clone(),
             }),
-            Landed::Pending { .. } => {
-                self.pending.push(write.effect_id.clone());
+            Landed::Pending { .. } | Landed::Lost | Landed::Refused => {
                 Ok(WriteOutcome::Pending {
                     effect_id: write.effect_id.clone(),
                 })
             }
-            Landed::Lost | Landed::Refused => Ok(WriteOutcome::Pending {
-                effect_id: write.effect_id.clone(),
-            }),
         }
     }
 

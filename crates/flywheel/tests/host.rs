@@ -275,13 +275,26 @@ fn away_with_work_waiting_raises_takeover() {
         &[("life", "open")],
         &[("repository", json!("atlas"))],
     );
-    // Work the operator approved, waiting on the host that holds it.
+    // Work the operator approved, waiting on the host that holds it: it
+    // depends on a unit of the same bolt that has not merged, which is what
+    // holds an approved unit in `waiting` (31, `unit.yaml` approved).
+    seed(
+        &mut host,
+        "unit/atlas/first",
+        "unit",
+        &[("life", "approved")],
+        &[("repository", json!("atlas")), ("type", json!("default"))],
+    );
     seed(
         &mut host,
         "unit/atlas/u",
         "unit",
         &[("life", "approved")],
-        &[("repository", json!("atlas")), ("type", json!("default"))],
+        &[
+            ("repository", json!("atlas")),
+            ("type", json!("default")),
+            ("depends_on", json!(["unit/atlas/first"])),
+        ],
     );
     host.intermittent = true;
     host.sweep().unwrap();

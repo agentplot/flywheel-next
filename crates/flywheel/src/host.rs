@@ -151,6 +151,47 @@ impl HostStore {
         out
     }
 
+    /// The sources this host declares enumerators for, from its own host
+    /// record (111, 215, 231, `host.yaml` host.adapters_run).
+    ///
+    /// The shipped adapters are the page's box, the chat forward and the
+    /// meeting transcript (D13); only the last is an enumerator a tick runs,
+    /// and it is named by the file it reads. A host that declares none runs
+    /// none, which is what a fresh instance is.
+    pub fn sources_declared(&self, host: &str) -> Vec<String> {
+        self.git
+            .get(&format!("host/{host}"))
+            .ok()
+            .flatten()
+            .and_then(|o| o.record.get("sources").cloned())
+            .and_then(|v| serde_json::from_value(v).ok())
+            .unwrap_or_default()
+    }
+
+    /// Carry every refusal the session wrote to the run record, where the
+    /// report effect beside it takes it to attention (43, 79,
+    /// `record-derived.yaml` record_refusals).
+    ///
+    /// The entries are the session's own, written by `flywheel refuse` or by
+    /// the tool server refusing a call; nothing here judges one.
+    pub fn refuse_from_session(&self, session: &str, host: &str, now: DateTime<Utc>) {
+        for entry in self.git.thread(session).unwrap_or_default() {
+            if entry.kind != "refusal" {
+                continue;
+            }
+            self.marked.borrow_mut().push((
+                session.to_string(),
+                format!("{host}/{}", now.to_rfc3339()),
+                entry
+                    .fields
+                    .get("reason")
+                    .and_then(|v| v.as_str())
+                    .unwrap_or("a session was refused")
+                    .to_string(),
+            ));
+        }
+    }
+
     /// The type an object's sessions are named for, where it has one
     /// (`session.yaml` id).
     fn kind_of(&self, object: &str) -> Option<String> {
@@ -709,13 +750,26 @@ impl Host {
                 let did = perform(&defs, store, sinks, &me, now, object, region, effect);
                 // What this host performed, with the effect's own identity: a
                 // reader of the record knows which act ran on which object and
-                // whether it was performed here (79, 127, 167).
-                run.borrow_mut().push(
-                    RunEntry::new(now, &me, "effect", object, &effect.name)
-                        .with("region", region)
-                        .with("performed", &did.to_string()),
-                );
-                did
+                // whether it was performed here (79, 127, 167). An effect no
+                // binding covers, and one whose binding failed, say so with
+                // their reason under attention and are never recorded as
+                // performed (81, tasks 16.1, 16.2).
+                let mut entry = RunEntry::new(now, &me, "effect", object, &effect.name)
+                    .with("region", region)
+                    .with("performed", &did.done().to_string());
+                if !did.done() && !did.why().is_empty() {
+                    entry = entry
+                        .with(
+                            match did {
+                                Performed::Failed(_) => "failed",
+                                _ => "refused",
+                            },
+                            did.why(),
+                        )
+                        .with("attention", "true");
+                }
+                run.borrow_mut().push(entry);
+                did.done()
             },
             |store, fired, tail| {
                 moved.set(moved.get() || fired.from != fired.to);
@@ -1154,9 +1208,89 @@ fn digest(body: &str) -> String {
     format!("{hash:016x}")
 }
 
-/// Perform one effect through the bindings this release carries. An effect no
-/// binding covers is recorded and counts as done: the machines tick over the
-/// facts either way, and nothing is silently skipped (D8).
+/// What the host does with an effect it is asked to perform.
+///
+/// A refusal is not a quiet skip: the act did not run, its proof stays absent,
+/// and the run record carries the reason under attention (81, 127). The tick
+/// carries on either way.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub enum Performed {
+    /// The act ran. Whether its proof now holds is the proof's question (73).
+    Done,
+    /// No binding in this release performs it, and here is why.
+    Refused(String),
+    /// The binding ran and failed. The act did not happen, so its proof stays
+    /// absent and the next tick owes it again; the reason is reported and the
+    /// tick carries on (81, 127, 148).
+    Failed(String),
+}
+
+impl Performed {
+    pub fn done(&self) -> bool {
+        matches!(self, Performed::Done)
+    }
+
+    pub fn why(&self) -> &str {
+        match self {
+            Performed::Done => "",
+            Performed::Refused(reason) | Performed::Failed(reason) => reason,
+        }
+    }
+}
+
+/// The effects this release does not perform, each with the reason it does not.
+///
+/// Every one of them has a proof `profiles/host.yaml` binds to a real place or
+/// a real line — a tethered process in a worktree, a declaration file at a
+/// place's head, a change directory on the intent's line. Phase 1 records the
+/// line-and-place effects rather than performing them (93a), so there is no
+/// head and no line for those proofs to read, and the scenarios that would
+/// assert them are the ones the proposal defers. Binding them to a fact nothing
+/// reads would be the silent done this list exists to prevent (81, 127).
+pub const DEFERRED: &[(&str, &str)] = &[
+    (
+        "declare_services",
+        "its proof reads the repository's service data at the bolt's place's head \
+         (`host.yaml` bolt.services_declared); phase 1 records places rather than making them \
+         (93a), and X09 is deferred with construction",
+    ),
+    (
+        "start_service",
+        "its proof is `wt tether status` in the bolt's place (`host.yaml` service.process); \
+         the multiplexer is phase 2 and X09 is deferred with it",
+    ),
+    (
+        "stop_service",
+        "its proof is `wt tether status` reporting no tether (`host.yaml` \
+         service.process_absent); the multiplexer is phase 2 and X09 is deferred with it",
+    ),
+    (
+        "open_intent",
+        "its proof is `openspec/changes/<intent-id>/` on the intent's line (`host.yaml` \
+         intent.change_open); phase 1 records lines rather than taking them (93a), and S34 \
+         and X03 are deferred with construction",
+    ),
+];
+
+/// One of an effect's arguments, as text.
+fn arg(effect: &PlannedEffect, name: &str) -> String {
+    effect
+        .args
+        .get(name)
+        .and_then(|v| match v {
+            Value::String(text) => Some(text.clone()),
+            other => Some(other.to_string()),
+        })
+        .unwrap_or_default()
+}
+
+/// Perform one effect through the bindings this release carries.
+///
+/// An effect no binding covers is refused with its reason, and one whose
+/// binding fails says so: either way the act did not happen, its proof stays
+/// absent, it is still owed on the next tick, and the run record carries the
+/// reason under attention (81, 127, tasks 16.1, 16.2).
+#[allow(clippy::too_many_arguments)]
 pub fn perform(
     defs: &Definitions,
     store: &mut HostStore,
@@ -1166,7 +1300,27 @@ pub fn perform(
     object: &str,
     region: &str,
     effect: &PlannedEffect,
-) -> bool {
+) -> Performed {
+    match performing(defs, store, sinks, host, now, object, region, effect) {
+        Ok(performed) => performed,
+        // A binding that failed is not a binding that succeeded: 81 asks the
+        // machinery to report a problem with itself, and 127 leaves the proof
+        // where it was, so the act is attempted again.
+        Err(why) => Performed::Failed(format!("{why:#}")),
+    }
+}
+
+#[allow(clippy::too_many_arguments)]
+fn performing(
+    defs: &Definitions,
+    store: &mut HostStore,
+    sinks: &mut Sinks,
+    host: &str,
+    now: DateTime<Utc>,
+    object: &str,
+    region: &str,
+    effect: &PlannedEffect,
+) -> Result<Performed> {
     let place = place_key(object, region);
     let kind = store
         .get(object)
@@ -1186,41 +1340,41 @@ pub fn perform(
                 .flatten()
                 .and_then(|o| o.parent)
                 .unwrap_or_default();
-            let _ = RecordedWorkspace::new(&mut store.git).create_line(object, &parent);
+            RecordedWorkspace::new(&mut store.git).create_line(object, &parent)?;
         }
         "take_parent" => {
-            let _ = RecordedWorkspace::new(&mut store.git).take_parent(object);
+            RecordedWorkspace::new(&mut store.git).take_parent(object)?;
         }
         "remove_line" => {
-            let _ = RecordedWorkspace::new(&mut store.git).remove_line(object);
+            RecordedWorkspace::new(&mut store.git).remove_line(object)?;
         }
         "land_line" => {
-            let _ = RecordedWorkspace::new(&mut store.git).land_line(object, LandingPolicy::Direct);
+            RecordedWorkspace::new(&mut store.git).land_line(object, LandingPolicy::Direct)?;
         }
         "write_acceptance" => {
-            let _ = RecordedWorkspace::new(&mut store.git).write_acceptance(object, "");
+            RecordedWorkspace::new(&mut store.git).write_acceptance(object, "")?;
         }
         "prepare_place" => {
             let order = work_order(defs, store, &session, &place, object);
-            let _ = RecordedWorkspace::new(&mut store.git).prepare_place(&place, object, &order.body);
+            RecordedWorkspace::new(&mut store.git).prepare_place(&place, object, &order.body)?;
         }
         "rebase_place" => {
-            let _ = RecordedWorkspace::new(&mut store.git).rebase_place(&place);
+            RecordedWorkspace::new(&mut store.git).rebase_place(&place)?;
         }
         "merge_place" => {
-            let _ = RecordedWorkspace::new(&mut store.git).merge_place(&place);
+            RecordedWorkspace::new(&mut store.git).merge_place(&place)?;
         }
         "remove_place" => {
-            let _ = RecordedWorkspace::new(&mut store.git).remove_place(&place);
+            RecordedWorkspace::new(&mut store.git).remove_place(&place)?;
         }
         // ---- the sessions, with the operator as the session (93b)
         "start_session" => {
             let fresh = flywheel_sessions_operator::next_attempt(&store.git, &stem);
             let order = work_order(defs, store, &fresh, &place, object);
-            let _ = flywheel_sessions_operator::start(&mut store.git, host, now, &order);
+            flywheel_sessions_operator::start(&mut store.git, host, now, &order)?;
         }
         "end_session" => {
-            let _ = flywheel_sessions_operator::end(&mut store.git, &session, now);
+            flywheel_sessions_operator::end(&mut store.git, &session, now)?;
         }
         "deliver_answer" => {
             let text = effect
@@ -1229,10 +1383,87 @@ pub fn perform(
                 .and_then(|v| v.as_str())
                 .unwrap_or("")
                 .to_string();
-            let _ = flywheel_sessions_operator::answer(&mut store.git, &session, host, now, &text);
+            flywheel_sessions_operator::answer(&mut store.git, &session, host, now, &text)?;
         }
         "tell_moved" => {
-            let _ = flywheel_sessions_operator::moved(&mut store.git, &session, host, now);
+            flywheel_sessions_operator::moved(&mut store.git, &session, host, now)?;
+        }
+        // One record per uncited offer on the session's thread, pointing at its
+        // document; the record never holds the text and the session is not
+        // interrupted (58, 62, `atoms.yaml` record_offers).
+        "record_offers" => {
+            flywheel_domain::offers::record(&mut store.git, defs, &session, object, now)?;
+        }
+        // Every refusal the session wrote is carried to the run record, where
+        // the report effect beside it takes it to attention (43,
+        // `record-derived.yaml` record_refusals).
+        "record_refusals" => {
+            store.refuse_from_session(&session, host, now);
+        }
+
+        // ---- the acts whose whole work is records (`flywheel-domain::effects`)
+        //
+        // Each is the same act in every profile, so it is written once over the
+        // state store and the host and the conformance runner perform one
+        // implementation (125, D3, task 16.1).
+        "create_items" => {
+            flywheel_domain::effects::create_items(&mut store.git, defs, object, now)?;
+        }
+        "create_bolt" => {
+            let name = arg(effect, "name");
+            let repository = arg(effect, "repository");
+            flywheel_domain::effects::create_bolt(
+                &mut store.git,
+                defs,
+                object,
+                &name,
+                &repository,
+                now,
+            )?;
+        }
+        "route_unit" => {
+            let bolt = arg(effect, "bolt");
+            flywheel_domain::effects::route_unit(&mut store.git, object, &bolt)?;
+        }
+        "rename_bolt" => {
+            let name = arg(effect, "name");
+            flywheel_domain::effects::rename_bolt(&mut store.git, object, &name)?;
+        }
+        "set_type" => {
+            let kind = arg(effect, "type");
+            flywheel_domain::effects::set_type(&mut store.git, object, &kind)?;
+        }
+        "propose_elaboration" => {
+            let kind = arg(effect, "type");
+            flywheel_domain::effects::propose_elaboration(
+                &mut store.git,
+                defs,
+                object,
+                &kind,
+                now,
+            )?;
+        }
+        "split_intent" => {
+            let partition = arg(effect, "partition");
+            let _ =
+                flywheel_domain::effects::split_intent(&mut store.git, defs, object, &partition, now);
+        }
+        "gather_elaborations" => {
+            let gatherings =
+                flywheel_domain::effects::gatherings_of(&store.git, &session).unwrap_or_default();
+            let _ =
+                flywheel_domain::effects::gather_elaborations(&mut store.git, defs, &gatherings, now);
+        }
+        // For each source this host declares whose cadence fired, run its
+        // enumerator: one keyed capture per source event, and the same key
+        // twice writes nothing (111, 215, 231). The manifest of this release
+        // declares none, so a host with no source runs none.
+        "run_adapters" => {
+            let sources = store.sources_declared(host);
+            let HostStore { git, world, .. } = store;
+            for source in &sources {
+                flywheel_domain::adapters::run(git, &mut **world, defs, source, host, now)?;
+            }
         }
         // The leases a gone host held are released, and the sessions it was
         // running are closed: the host that takes over starts a fresh attempt,
@@ -1248,14 +1479,14 @@ pub fn perform(
                     continue;
                 }
                 let was = lease.state.clone();
-                let _ = store.git.lease(&LeaseOp::Release {
+                store.git.lease(&LeaseOp::Release {
                     object: held.id.clone(),
                     holder: gone.clone(),
-                });
-                let _ = store.git.lease(&LeaseOp::Mark {
+                })?;
+                store.git.lease(&LeaseOp::Mark {
                     object: held.id.clone(),
                     state: "expired".into(),
-                });
+                })?;
                 // The lease reached `expired` because this effect put it
                 // there, which is the rule the machine names for work a session
                 // is behind (150, `lease.yaml` stale). A move nothing recorded
@@ -1267,7 +1498,7 @@ pub fn perform(
                 ));
             }
             for session in flywheel_sessions_operator::of_host(&store.git, &gone) {
-                let _ = flywheel_sessions_operator::take_over(&mut store.git, &session, host, now);
+                flywheel_sessions_operator::take_over(&mut store.git, &session, host, now)?;
             }
         }
         // A capture that is its own excerpt — the page's box, a forwarded
@@ -1280,14 +1511,14 @@ pub fn perform(
                 .flatten()
                 .and_then(|o| o.record.get("captured_by").and_then(|v| v.as_str()).map(String::from))
                 .unwrap_or_else(|| "operator".to_string());
-            let _ = flywheel_domain::signals::ensure_signal(
+            flywheel_domain::signals::ensure_signal(
                 &mut store.git,
                 &mut *store.world,
                 defs,
                 object,
                 &by,
                 now,
-            );
+            )?;
         }
         // Every judged signal gets its one standing move, and each join becomes
         // or grows a proposed intent (107, 109, 116, `curation.yaml` applying).
@@ -1302,8 +1533,7 @@ pub fn perform(
             let HostStore { git, world, .. } = store;
             let delivered =
                 flywheel_domain::signals::moves(&flywheel_domain::signals::Blueprints(&**world));
-            let _ =
-                flywheel_domain::signals::record_moves(git, &mut **world, &delivered, now);
+            flywheel_domain::signals::record_moves(git, &mut **world, &delivered, now)?;
         }
         // Curation never opens an intent: what its joins make stands as a
         // proposal on the rail and becomes work only on the operator's
@@ -1313,7 +1543,7 @@ pub fn perform(
             let delivered =
                 flywheel_domain::signals::moves(&flywheel_domain::signals::Blueprints(&**world));
             let proposals = flywheel_domain::signals::proposals_of(&delivered);
-            let _ = flywheel_domain::signals::propose_intents(git, defs, &proposals, now);
+            flywheel_domain::signals::propose_intents(git, defs, &proposals, now)?;
         }
         // Every signal a dropped intent cited keeps a move naming the drop, and
         // they are not clustered again unless new signals join them (117).
@@ -1325,14 +1555,14 @@ pub fn perform(
                 .unwrap_or("intent dropped")
                 .to_string();
             let HostStore { git, world, .. } = store;
-            let _ = flywheel_domain::signals::drop_signals(
+            flywheel_domain::signals::drop_signals(
                 git,
                 &mut **world,
                 defs,
                 object,
                 &reason,
                 now,
-            );
+            )?;
         }
         // The sink delivers: the numbered decisions routed here, the tail since
         // its mark and the notices, with the mark advancing in the same write
@@ -1343,13 +1573,32 @@ pub fn perform(
         // host loaded no channel for is one it does not present, and the
         // effect's proof stays absent so another host's tick performs it (127,
         // 148).
-        "deliver_rail" => return deliver(defs, store, sinks, host, object),
+        "deliver_rail" => {
+            return Ok(match deliver(defs, store, sinks, host, object) {
+                true => Performed::Done,
+                // A sink this host loaded no channel for is one it does not
+                // present: the proof stays absent so another host's tick
+                // performs it, and that is not a refusal (127, 148).
+                false => Performed::Refused(String::new()),
+            })
+        }
         // The status projection is the rail's own effect (D12); the tick writes
         // it after every pass, so nothing to do here.
         "render_status" => {}
-        _ => {}
+        // No binding covers it. It did not happen, whatever the machines
+        // expected of it (81, 127).
+        other => {
+            let reason = DEFERRED
+                .iter()
+                .find(|(name, _)| *name == other)
+                .map(|(_, why)| (*why).to_string())
+                .unwrap_or_else(|| {
+                    format!("no binding in this release performs `{other}`")
+                });
+            return Ok(Performed::Refused(reason));
+        }
     }
-    true
+    Ok(Performed::Done)
 }
 
 /// Deliver to one sink, through the channel this host loaded for it (D8, D9).

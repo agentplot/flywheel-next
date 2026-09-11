@@ -302,8 +302,185 @@ pub fn evidence<S: Records>(
             json!(crate::cadence::due(&cadence, since, reading.now))
         }
 
+        // ---- what a dependency is waiting for (31)
+        //
+        // "every id in get(id).depends_on has state merged" — for a unit, the
+        // units of its bolt it named; for an item, the items of its unit. One
+        // that names none waits for nothing (`record-derived.yaml`).
+        "unit.deps_merged" | "item.deps_merged" => {
+            let depends: Vec<String> = held
+                .as_ref()
+                .and_then(|o| o.record.get("depends_on").cloned())
+                .and_then(|v| serde_json::from_value(v).ok())
+                .unwrap_or_default();
+            json!(depends.iter().all(|id| {
+                store
+                    .get(id)
+                    .ok()
+                    .flatten()
+                    .and_then(|o| o.top_state().map(String::from))
+                    .is_some_and(|state| state == "merged" || state == "landed")
+            }))
+        }
+
+        // ---- the work item's slot (31, 32)
+        //
+        // "host.running < host.bound and no ready item of an earlier ordinal on
+        // this host is unplaced" (`record-derived.yaml` item.slot_free). Both
+        // conjuncts: the bound is what 31 asks and the ordinal is what 32 does,
+        // and an item that jumped its order would start work the operator put
+        // second.
+        "item.slot_free" => {
+            let running = evidence(store, reading, &format!("host/{}", reading.me), "host.running")
+                .and_then(|v| v.as_u64())
+                .unwrap_or(0);
+            let bound = evidence(store, reading, &format!("host/{}", reading.me), "host.bound")
+                .and_then(|v| v.as_u64())
+                .unwrap_or(u64::MAX);
+            if running >= bound {
+                return Some(json!(false));
+            }
+            let Some(item) = held.as_ref() else {
+                return Some(json!(true));
+            };
+            let mine = item.record.get("ordinal").and_then(|v| v.as_u64()).unwrap_or(0);
+            let Some(unit) = item.parent.clone() else {
+                return Some(json!(true));
+            };
+            // An earlier item of the same unit that is ready and not yet placed
+            // holds the slot: the order is the one the unit stated (31, 32).
+            let earlier_waiting = store
+                .list_records(&Scope::All)
+                .unwrap_or_default()
+                .into_iter()
+                .filter(|o| o.machine == "work-item" && o.parent.as_deref() == Some(unit.as_str()))
+                .filter(|o| o.id != item.id)
+                .filter(|o| o.record.get("ordinal").and_then(|v| v.as_u64()).unwrap_or(0) < mine)
+                .any(|o| o.top_state().is_some_and(|s| s == "ready"));
+            json!(!earlier_waiting)
+        }
+
         // ---- the run record (79)
         "report.recorded" => json!(true),
+
+        // ---- the proofs of the effects whose whole work is records
+        //
+        // `record-derived.yaml` states each of these once, so it reads the same
+        // in every profile; `crate::effects` is the act each one proves (D3,
+        // task 16.1). Without them the acts fire on every tick, because a proof
+        // nothing answers is a proof never found.
+        //
+        // "work-item records with parent = id exist, one per task of the
+        // document" — phase 1 has no unit proposal document (17), so what is
+        // read is that the items exist at all.
+        "unit.items_exist" => json!(!crate::effects::children(store, object, "work-item")
+            .unwrap_or_default()
+            .is_empty()),
+        // "a bolt record exists with id derived from (repository, new_name) or
+        // the unit's target.bolt names an existing bolt".
+        "unit.bolt_exists" => {
+            let Some(unit) = held.as_ref() else {
+                return Some(json!(true));
+            };
+            let target = unit.record.get("target").and_then(|v| v.as_object());
+            let named = target
+                .and_then(|t| t.get("bolt"))
+                .and_then(|v| v.as_str())
+                .filter(|b| !b.is_empty());
+            let new_name = target
+                .and_then(|t| t.get("new_name"))
+                .and_then(|v| v.as_str())
+                .filter(|n| !n.is_empty());
+            match (named, new_name) {
+                // It names a bolt: the bolt is there, or it is not.
+                (Some(bolt), _) => json!(store.get(bolt).ok().flatten().is_some()),
+                // It names a new bolt: the one derived from the repository and
+                // that name.
+                (None, Some(name)) => {
+                    let repository = unit
+                        .record
+                        .get("repository")
+                        .and_then(|v| v.as_str())
+                        .unwrap_or_default();
+                    json!(store
+                        .get(&format!("bolt/{repository}/{name}"))
+                        .ok()
+                        .flatten()
+                        .is_some())
+                }
+                // It names neither, so there is no bolt to make.
+                (None, None) => json!(true),
+            }
+        }
+        // "get(id).target.new_name is set and target.bolt is not".
+        "unit.target_is_new_bolt" => {
+            let target = held
+                .as_ref()
+                .and_then(|u| u.record.get("target"))
+                .and_then(|v| v.as_object());
+            let named = target
+                .and_then(|t| t.get("bolt"))
+                .and_then(|v| v.as_str())
+                .is_some_and(|b| !b.is_empty());
+            let new_name = target
+                .and_then(|t| t.get("new_name"))
+                .and_then(|v| v.as_str())
+                .is_some_and(|n| !n.is_empty());
+            json!(new_name && !named)
+        }
+        // "get(id).target.bolt equals the response's argument" — the argument
+        // is the name the response gave, which routing resolved to a bolt id or
+        // held as the new bolt's name.
+        "unit.routed" => {
+            let target = held
+                .as_ref()
+                .and_then(|u| u.record.get("target"))
+                .and_then(|v| v.as_object());
+            json!(target.is_some_and(|t| {
+                t.get("bolt").and_then(|v| v.as_str()).is_some_and(|b| !b.is_empty())
+                    || t.get("new_name").and_then(|v| v.as_str()).is_some_and(|n| !n.is_empty())
+            }))
+        }
+        // "get(bolt).name equals the response's argument".
+        "bolt.named" => json!(held
+            .as_ref()
+            .and_then(|o| o.record.get("name"))
+            .and_then(|v| v.as_str())
+            .is_some_and(|n| !n.is_empty())),
+        // "get(id).type equals the response's argument".
+        "elaboration.type_set" => json!(held
+            .as_ref()
+            .and_then(|o| o.record.get("type"))
+            .and_then(|v| v.as_str())
+            .is_some_and(|t| !t.is_empty())),
+        // "signals moved attach to the intent, or finding records on it, that
+        // no elaboration record in state proposed or later cites".
+        "intent.material_pending" => json!(!crate::effects::pending_material(store, object)
+            .unwrap_or_default()
+            .is_empty()),
+        // "the intent has exactly one elaboration in proposed and it cites all
+        // pending material".
+        "intent.material_held" => {
+            let proposed: Vec<_> = crate::effects::children(store, object, "elaboration")
+                .unwrap_or_default()
+                .into_iter()
+                .filter(|e| e.top_state().is_some_and(|s| s == "proposed"))
+                .collect();
+            let pending = crate::effects::pending_material(store, object).unwrap_or_default();
+            json!(proposed.len() == 1 && pending.is_empty())
+        }
+        // "two intent records name this one as split_from".
+        "intent.split_done" => json!(store
+            .list_records(&Scope::Machine("intent".into()))
+            .unwrap_or_default()
+            .iter()
+            .filter(|i| i.record.get("split_from").and_then(|v| v.as_str()) == Some(object))
+            .count()
+            >= 2),
+        // `session.offers_recorded` and `curation.gatherings_proposed` read
+        // what a session delivered, so they are the sessions binding's and are
+        // answered where the session id is known
+        // (`flywheel-sessions-operator::evidence`, 93b).
         _ => return None,
     })
 }

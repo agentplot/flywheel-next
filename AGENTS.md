@@ -65,8 +65,8 @@ Two runs, and the difference is what a test costs, never what it proves.
 
 | when | command | costs |
 |---|---|---|
-| while iterating | `cargo test -p <the crate you touched>`, or `cargo test --workspace` | 127 s of test time |
-| at a group's end, and at 12.4 | `cargo test --workspace -- --include-ignored` | 501 s |
+| while iterating | `cargo test -p <the crate you touched>`, or `cargo test --workspace` | 137 s of test time |
+| at a group's end, and at 12.4 | `cargo test --workspace -- --include-ignored` | 513 s |
 
 Every test runs over a real state repository: a bare repository on this
 computer and a checkout of it, which is the only store this release binds (92).
@@ -88,6 +88,7 @@ Where the time goes, so a change that costs something is noticed:
 |---|---|---|
 | `flywheel-scenario/tests/cascade.rs` | 37 s | 39 s |
 | `flywheel/tests/host.rs` | 23 s | 20 s |
+| `flywheel/tests/effects.rs` | 15 s | 15 s |
 | `flywheel/tests/curate.rs` | 12 s | 12 s |
 | `flywheel-scenario/tests/conformance_runner.rs` | 8 s | 23 s |
 | `flywheel/tests/init.rs` | 7 s | 7 s |
