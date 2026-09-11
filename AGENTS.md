@@ -61,14 +61,19 @@ this repository.
 
 ## Gates
 
-Three tiers, and a test's tier is decided by **what it touches**, never by what
-it proves. A test in the wrong tier is a defect like any other (D17).
+Three tiers, and a test's tier is decided by its **subject** — what the test is
+about. What it starts is a symptom and not the rule. A test in the wrong tier is
+a defect like any other (D17).
 
-| tier | touches | lives in | run by | the bar |
+| tier | subject | lives in | run by | the bar |
 |---|---|---|---|---|
-| unit | one crate's own code, and for the store crates a temp repository that is the subject rather than a dependency | `src/**` in `#[cfg(test)] mod tests`, beside the code | `cargo test --lib` | the whole tier under 10 s; high coverage, and a new public function arrives with its tests |
-| integration | several crates together over a real repository, in process | `crates/<crate>/tests/*.rs` | `cargo test --workspace` | happy paths only, as few as cover the seams; no single test over 5 s |
-| system | the real binary, real hosts, a browser | `crates/<crate>/tests/system/main.rs`, one target per crate | `cargo test --workspace --features system-tests` | it costs what it costs, and it runs at merge |
+| unit | one crate's own code; for the store crates a temp repository is part of that subject rather than a dependency of it | `src/**` in `#[cfg(test)] mod tests`, beside the code | `cargo test --lib` | the whole tier under 10 s; high coverage, and a new public function arrives with its tests |
+| integration | a seam between crates, over a real repository, in process | `crates/<crate>/tests/*.rs` | `cargo test --workspace` | happy paths only, as few as cover the seams; no single test over 5 s |
+| system | the product as a whole — against the model, or against a real host, a real binary, a browser | `crates/<crate>/tests/system/main.rs`, one target per crate | `cargo test --workspace --features system-tests` | it costs what it costs, and it runs at merge |
+
+The acceptance and contract sets start no process and run in this one, and they
+are still system tier: what they take as their subject is the whole binary
+against the model's conformance suite (168, D15).
 
 **The fake store.** `flywheel-domain` and the projections take the `StateStore`
 trait, so a fake that holds objects in a map is all the first tier needs, and a
@@ -123,25 +128,26 @@ Where the time goes, so a change that costs something is noticed:
 
 | tier | tests | test time |
 |---|---|---|
-| `cargo test --workspace --lib` | 133 | 13 s |
-| `cargo test --workspace` | 208 | 127 s |
-| `cargo test --workspace --features system-tests` | 224 | 322 s |
+| `cargo test --workspace --lib` | 133 | 4 s |
+| `cargo test --workspace` | 207 | 111 s |
+| `cargo test --workspace --features system-tests` | 225 | 324 s |
 
 | binary | tests | time |
 |---|---|---|
 | `flywheel-scenario/tests/cascade.rs` | 5 | 42 s |
-| `flywheel-scenario/tests/conformance_runner.rs` | 13 | 22 s |
-| `flywheel/tests/host.rs` | 18 | 13 s |
-| `flywheel/tests/effects.rs` | 5 | 11 s |
-| `flywheel-store-git`'s unit tests | 20 | 10 s |
+| `flywheel/tests/host.rs` | 18 | 12 s |
+| `flywheel/tests/effects.rs` | 5 | 12 s |
+| `flywheel-scenario/tests/conformance_runner.rs` | 11 | 11 s |
 | `flywheel/tests/curate.rs` | 1 | 9 s |
-| `flywheel/tests/init.rs` | 9 | 9 s |
+| `flywheel/tests/init.rs` | 9 | 8 s |
 | everything else | | under 5 s each |
 
 Almost all of it is `git push`: the push is the compare-and-swap the whole
 profile rests on (134, 162), it costs about 50 ms to a bare repository on this
-computer, and a test that proves a race pays for one. `flywheel-store-git`'s own
-tests are the clearest case — twenty of them, a hundred and fifty pushes.
+computer, and a test that proves a race pays for one. So a test pays for the
+pushes its proof needs and never for a repetition of them: proving a renewal
+touches no commit on `main` takes three renewals, not a hundred, because nothing
+in a renewal is quantity-dependent.
 
 `cargo nextest` was measured and is not adopted: it runs every test in a process
 of its own, and with a bare repository and a checkout made per test that is four

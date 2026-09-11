@@ -604,14 +604,22 @@ files, every one driving a real state repository, so the run a person makes on
 every change is the slow kind and the fast kind was never written. That is the
 cause of the everyday cost; the poll and the browser are only the gate's.
 
-A test's tier is decided by **what it touches**, never by what it proves, and a
-test in the wrong tier is a defect like any other.
+A test's tier is decided by its **subject** — what the test is about — and a
+test in the wrong tier is a defect like any other. What it starts is a symptom
+and not the rule: a test that takes the whole product against the model as its
+subject belongs in the third tier whether or not it spawns anything, and a test
+that spawns a process to examine one crate's own code belongs in the first.
 
-| tier | touches | lives in | run by | the bar |
+| tier | subject | lives in | run by | the bar |
 |---|---|---|---|---|
-| unit | one crate's own code, and for the store crates a temp repository that is the subject rather than a dependency | `src/**` in `#[cfg(test)] mod tests`, beside the code | `cargo test --lib` | the whole tier under 10 s; high coverage, and a new public function arrives with its tests |
-| integration | several crates together over a real repository, in process | `crates/<crate>/tests/*.rs` | `cargo test --workspace` | happy paths only, as few as cover the seams; no single test over 5 s |
-| system | the real binary, real hosts, a browser | `crates/<crate>/tests/system/main.rs`, one target per crate | `cargo test --workspace --features system-tests` | it costs what it costs, and it runs at merge |
+| unit | one crate's own code; for the store crates a temp repository is part of that subject rather than a dependency of it | `src/**` in `#[cfg(test)] mod tests`, beside the code | `cargo test --lib` | the whole tier under 10 s; high coverage, and a new public function arrives with its tests |
+| integration | a seam between crates, over a real repository, in process | `crates/<crate>/tests/*.rs` | `cargo test --workspace` | happy paths only, as few as cover the seams; no single test over 5 s |
+| system | the product as a whole — against the model, or against a real host, a real binary, a browser | `crates/<crate>/tests/system/main.rs`, one target per crate | `cargo test --workspace --features system-tests` | it costs what it costs, and it runs at merge |
+
+The acceptance and contract sets are the clearest case of the subject rule: they
+start no process and run in this one, and they are still system tier, because
+what they take as their subject is the whole binary measured against the model's
+conformance suite (168, D15).
 
 **The fake store.** `flywheel-domain` and the projections take the `StateStore`
 trait, so a fake that holds objects in a map is all the first tier needs, and a

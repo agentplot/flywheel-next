@@ -318,72 +318,7 @@ fn failure_line_names_clauses_and_trace() {
 
 // ---- 6.3, 6.6, 6.17, 6.18: the group's own acceptance, in the gate
 
-/// The scenarios group 6 admits, on the profile each names. `status.yaml` and
-/// S20 run on the git-only profile because what they assert is the committed
-/// file a reader with no host running finds (D12, 145, S20).
-#[test]
-fn the_host_loops_acceptance_scenarios_pass() {
-    for (path, profile) in [
-        ("scenarios/X05.yaml", conformance::Profile::GitOnly),
-        ("scenarios/S29.yaml", conformance::Profile::GitOnly),
-        ("contract/status.yaml", conformance::Profile::GitOnly),
-        ("scenarios/S20.yaml", conformance::Profile::GitOnly),
-    ] {
-        let options = RunOptions {
-            definitions: Some(root().join("definitions")),
-            profile,
-            ..Default::default()
-        };
-        let outcome = conformance::run_one(&conformance_dir().join(path), &options);
-        assert_eq!(
-            outcome.status,
-            Status::Passed,
-            "{path} failed ({:?}, {:?}):\n{}",
-            outcome.status,
-            outcome.reason,
-            outcome.failures.join("\n")
-        );
-    }
-}
 
-/// The fourteen contract files, against a local bare state repository. This is
-/// the step that admits a profile: one scenario per
-/// operation of B.1, per guarantee of B.2, and one for the binding itself,
-/// over a toy machine that shares no atom with the flywheel (168, task 3.15).
-#[test]
-fn the_contract_set_admits_the_profile() {
-    let contract = conformance_dir().join("contract");
-    let files: Vec<PathBuf> = {
-        let mut out: Vec<PathBuf> = std::fs::read_dir(&contract)
-            .expect("the contract directory is readable")
-            .flatten()
-            .map(|e| e.path())
-            .filter(|p| p.extension().is_some_and(|x| x == "yaml"))
-            .collect();
-        out.sort();
-        out
-    };
-    assert_eq!(files.len(), 14, "the contract set is fourteen files: {files:?}");
-    for profile in [conformance::Profile::GitOnly] {
-        for path in &files {
-            let options = RunOptions {
-                definitions: Some(root().join("definitions")),
-                profile,
-                ..Default::default()
-            };
-            let outcome = conformance::run_one(path, &options);
-            assert_eq!(
-                outcome.status,
-                Status::Passed,
-                "{} failed on {:?} ({:?}):\n{}",
-                path.display(),
-                profile,
-                outcome.reason,
-                outcome.failures.join("\n")
-            );
-        }
-    }
-}
 
 
 // ---- 11.5 the machine files' hash, in the record and against the directory

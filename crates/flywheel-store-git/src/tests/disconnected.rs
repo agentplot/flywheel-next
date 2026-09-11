@@ -58,9 +58,9 @@ fn a_lamp(id: &str) -> Object {
 
 #[test]
 fn renewals_add_no_commit_to_main() {
-    // A month of minute-by-minute renewals, and `main` is where it was: the
-    // history is state changes and nothing else, so it stays a readable audit
-    // record (163, 167, D5).
+    // Renewal after renewal, and `main` is where it was: the history is state
+    // changes and nothing else, so it stays a readable audit record
+    // (163, 167, D5).
     let sandbox = Sandbox::new("renewals");
     let mut a = sandbox.host("a");
     a.put("lamp/1", &a_lamp("lamp/1"), 0).unwrap();
@@ -76,9 +76,12 @@ fn renewals_add_no_commit_to_main() {
         holder: "a".into(),
     })
     .unwrap();
-    // A month at one renewal a minute is 43 200; a hundred proves the shape and
-    // keeps the test a second long.
-    for minute in 1..=100 {
+    // Nothing in a renewal is quantity-dependent: it replaces one commit on one
+    // branch and touches no other ref, and the hundredth takes the same path as
+    // the second. Three prove the shape — one to establish it, one to replace,
+    // one to show the replacement holds — and a hundred proved it a hundred
+    // times at a push apiece (D5, 128, 163).
+    for minute in 1..=3 {
         a.now = at(minute);
         assert!(matches!(
             a.lease(&LeaseOp::Renew {
@@ -106,7 +109,7 @@ fn renewals_add_no_commit_to_main() {
         .unwrap();
     assert_eq!(count.trim(), "1");
     let held = a.leases("lamp/1").unwrap().expect("the lease");
-    assert_eq!(held.renewed_at, at(100));
+    assert_eq!(held.renewed_at, at(3));
     assert_eq!(held.taken_at, at(0), "the take is when it was taken");
 }
 

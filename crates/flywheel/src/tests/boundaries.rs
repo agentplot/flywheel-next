@@ -1,13 +1,27 @@
 //! Where a dependency may live. The state store is the one door between the
 //! data plane and durable, shared storage (125), so only the crate that
-//! implements it may link a storage or git library; every other crate reaches
-//! durable state through the contract's operations.
+//! implements it may link a storage or git library to reach *state*; every
+//! other crate reaches durable state through the contract's operations.
+//!
+//! The world host is the one crate beside it that may link a git library, and
+//! it is not an exception to 125. 125 states the operation set the engine may
+//! ask of the state store; it says nothing about which crates link what. What
+//! the world host reads with `gix` is the blueprints, which are not state (67)
+//! -- and `host.yaml`'s Tools header requires exactly this: "the `gix` crate,
+//! a pure-Rust implementation, for every read -- in the host's own process,
+//! never a `git show`, `git cat-file` or `git ls-tree` per file". Reading them
+//! through the store would put the blueprints behind an operation set that has
+//! no operation for them.
 
 use std::collections::BTreeSet;
 use std::path::{Path, PathBuf};
 
 /// The crate that implements the state store. Phase 2 adds a second beside it.
 const STATE_STORE_CRATES: &[&str] = &["flywheel-store-git", "flywheel-store-tracker"];
+
+/// Crates that may link a git library for something that is not state: the
+/// world host reads the blueprints in process (67, `host.yaml` Tools).
+const BLUEPRINT_READERS: &[&str] = &["flywheel-world-host"];
 
 /// Libraries that reach durable storage or a git repository directly.
 const STORAGE_LIBRARIES: &[&str] = &[
@@ -82,7 +96,9 @@ fn storage_dependencies(names: &BTreeSet<String>) -> Vec<String> {
 fn storage_dependency_boundary() {
     let mut offences = Vec::new();
     for (name, manifest) in crate_manifests() {
-        if STATE_STORE_CRATES.contains(&name.as_str()) {
+        if STATE_STORE_CRATES.contains(&name.as_str())
+            || BLUEPRINT_READERS.contains(&name.as_str())
+        {
             continue;
         }
         for dep in storage_dependencies(&dependencies(&manifest)) {
@@ -91,7 +107,8 @@ fn storage_dependency_boundary() {
     }
     assert!(
         offences.is_empty(),
-        "only the state store crate may link a storage library (125):\n{}",
+        "only the state store crates, and the world host for the blueprints \
+         it reads in process (67), may link a storage library:\n{}",
         offences.join("\n")
     );
 }
