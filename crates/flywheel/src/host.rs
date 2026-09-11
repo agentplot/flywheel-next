@@ -484,6 +484,10 @@ pub struct Host {
     /// An away host's leases stand and its clocks pause; it writes no heartbeat
     /// while it is away (150a).
     pub away_since: Option<DateTime<Utc>>,
+    /// When this host last wrote its heartbeat. Liveness is recorded on the
+    /// sweep's cadence and not on every pass: a tick that moved nothing writes
+    /// nothing, and `cost.yaml`'s quiet tick costs no push (78, 147, 169).
+    pub last_heartbeat: Option<DateTime<Utc>>,
     /// The sinks this host presents (148, D9).
     pub sinks: Sinks,
     /// Whether the last pass moved anything that was not a re-entry. A sweep
@@ -603,6 +607,7 @@ impl Host {
                 at: now,
             },
             away_since: None,
+            last_heartbeat: None,
             moved: false,
             progressed: false,
             curation: None,
@@ -634,8 +639,19 @@ impl Host {
         if self.away_since.is_some() {
             return Ok(());
         }
-        self.store.git.heartbeat(self.bound, self.intermittent)?;
         let now = self.now();
+        // The heartbeat is a push on the host's own ref, so it is written on
+        // the sweep's cadence: at the first declare of a run and then once per
+        // sweep interval, which keeps `last_seen` inside the five-minute
+        // window a stale host is read by. Every pass in between writes nothing
+        // (78, 130, 147, 150; `cost.yaml` pushes_per_tick).
+        let due = self
+            .last_heartbeat
+            .is_none_or(|last| now - last >= self.sweep_interval());
+        if due {
+            self.store.git.heartbeat(self.bound, self.intermittent)?;
+            self.last_heartbeat = Some(now);
+        }
         let id = format!("host/{}", self.name);
         let held = self.store.get(&id)?;
         let seq = held.as_ref().map(|o| o.seq).unwrap_or(0);

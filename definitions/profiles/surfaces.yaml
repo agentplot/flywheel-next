@@ -100,10 +100,16 @@ host_agent:
     that asks for several things yields several proposed calls, one card
     each, each confirmed and recorded on its own. A name that resolves to
     nothing, or to more than one object, is asked about, never guessed. The
-    agent is a session of A.7 charged per message, with no context carried
-    from one message to the next (217a, 217b), run inproc (217c).
+    agent is a session of A.7 charged per message, run inproc (217c). It
+    holds nothing between messages and remembers by reading: its closed
+    input carries a bounded window of the sink's own thread — the messages
+    since the operator's last answered decision, or a stated count,
+    whichever is smaller — so a follow-up is understood, two hosts answer
+    alike, and a restart loses nothing (217a, 217b, 217n). A name the
+    window does not resolve is asked about, never guessed (194).
+  capabilities: "a sink declares what its platform can do — buttons, menus, threads, reactions, edits, notifications — and the rendering is written against the declaration, never against a platform's name (155a); what is not declared is not used and the numbered grammar carries the rest. Where threads are declared an object is a thread: the decision is its first message with its controls, discussion about that object goes in the thread and needs no number, and a reply there is free text like any other — answered from the thread, and written only as a proposed call the operator confirms (155b, 144, 194)"
   chat: "the instance's dispatch agent (tracker.yaml, 216): it reads the message, answers a question from the query tools in a reply, proposes each write as a card with a confirm control, and calls the tool on the operator's confirmation; a bare number reply (`yes 412`) needs no interpreter and is the answer tool at once"
-  page: "a model running in the page's browser (216a; the page ships it as a script under the same private network; no text leaves the operator's network): it answers from the query tools the page calls and proposes each write as a card; a control on the page is a tool call with no interpreter at all, and the palette sends plain text to the capture tool unparsed (19, 193a)"
+  page: "none. No model runs in the page (216a): a control and a command are tool calls with no interpreter at all, plain text is a capture sent verbatim, and the page answers no question — a question is asked on a surface that holds a conversation, which renders the same views (194a, 293a). Formerly a model in the browser; retired 2026-09-10. A control on the page is a tool call with no interpreter at all, and the palette sends plain text to the capture tool unparsed (19, 193a)"
   none: "a control — a button, a board move, a checklist tick, a plannotator annotation — is already one tool call; nothing is interpreted"
 palette:
   doc: |
@@ -112,7 +118,7 @@ palette:
     render as a list (193a, 293): one field, one grammar, and no command
     the catalogue lacks. It is the grammar the chat carries and not a
     second one, and no other field on the page parses a word (19, 194).
-  grammar: "plain text is a capture sent unparsed, with an intent toggle beside the field making the same submission also call `mark-intent` (19, 12); where the flywheel has a model key, plain text may instead be read by the model running in the page's browser, which proposes one call per thing asked, each confirmed on its own (216a, 194, host_agent.page); a leading `/` names a command of the catalogue and resolves to that one tool call with its arguments named by object id (193); a bare number is the reply grammar, `412`, `412 yes`, `412: <text>`, which is the answer tool and needs no interpreter (194)"
+  grammar: "plain text is a capture sent unparsed, with an intent toggle beside the field making the same submission also call `mark-intent` (19, 12), and never read by a model (216a); a leading `/` names a command of the catalogue and resolves to that one tool call with its arguments named by object id (193); a bare number is the reply grammar, `412`, `412 yes`, `412: <text>`, which is the answer tool and needs no interpreter (194)"
   opened_by: "⌘K, Ctrl+K or `/` from anywhere on the page, and a capture control on both tabs of the phone raising it as a bottom sheet with the platform's own keyboard (112, 311, S30, S38); Esc closes it ahead of everything else"
   at_rest: "the field with its preview line saying what will be sent, and under it the last things sent, read from the sent log the header carries and never from client state (310)"
   commands: "the catalogue filtered by the caller's permissions, fuzzy-matched, each row naming the command, what it does in the operator's words and the object it will act on; a tool the caller may not invoke is not offered and a feature a plan hides takes its command with it, named by the plan's own name and never by a rung (293, 249, 250, 280)"
@@ -161,6 +167,19 @@ phone:
   touch: "every answer is one tap or one short reply; nothing is reachable only by hover or by a keyboard, and anything a hover reveals on the desktop is reachable by tap (311, S61); a long-form answer, a proposal edit for one unit among several, is given on the phone with the platform's own keyboard"
   console: "the management console renders on a phone with its tables as cards, and the managed add-host journeys complete there, the cloud agent with its presets among them (312, 283, 295, hosts_surface.add_offers), which is what Hobby promises an operator with no computer of their own to run (281); a journey that needs a computer of the operator's says so on its card rather than failing part way through"
   clients: "the tool server's clients include the Claude mobile app and voice through it, under the same membership and permission checks as every other client (313, 248, 249, 293, tools.identity)"
+member_client:
+  doc: |
+    A member works the flywheel from the client they already talk to: any
+    client of the model context protocol added at a host's address with the
+    instance in the path, holding the whole catalogue that caller may invoke
+    (A.40, 319, 193, 205a, 293). The flywheel ships no client and no
+    conversation of its own (194a).
+  added_by: "one address and one sign-in, and no secret of the flywheel's: the host states the address and the authority to sign in against — its own address under the device flow on a self-managed host, its served name under the account's token on a hosted tier (320, 243, 244, 247, 253); no credential of a member's client is written to the state store, the manifest, a record or the page (204, 207)"
+  calls: "a response like any other: admitted by membership, authorized by the permission the tool declares, recorded once with who gave it and when, and a refusal written to the run record with the identity, the tool and the object (321, 79, 137, 153, 248, 249)"
+  views: "the page's own — the rail, the board, the status view, one object's detail — each a user-interface resource of the tool server carrying the same bundle the host serves, versioned with the binary; a client that renders none of them still holds every tool and every decision stays answerable as a call (322, 326, 293a, 307, 311)"
+  taps: "what the operator taps inside a rendered view is a tool call through their own client, checked by the same rules and taking effect once however often it is delivered (323, 137)"
+  conversation: "the client's own: the flywheel keeps no transcript of it and derives no state from it, and only the calls it is asked to make are its own (324, 136, 194a); which model provider the client uses is the member's arrangement (261)"
+  not_a_host: "it presents no sink, takes no lease, runs no tick and carries no work; it is a caller, and losing it loses nothing (325, 148, 149, 231, 217f)"
   conformance: "every scenario of the requirements' section 11 that carries an operator's response runs at a 390px viewport as well as at the desktop's, and the mockups render at 390px (314)"
 account:
   doc: |

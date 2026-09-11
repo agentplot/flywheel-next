@@ -12,9 +12,9 @@
     "profiles": {"type": "array", "items": {"enum": ["all", "git-only", "tracker"]}, "description": "the state store bindings this scenario runs on, and nothing else; the recorded-versus-real axis is `requires`"},
     "requires": {
       "type": "array",
-      "items": {"enum": ["real-workspace", "real-sessions"]},
+      "items": {"enum": ["real-workspace", "real-sessions", "real-hosts"]},
       "uniqueItems": true,
-      "description": "what the run must provide beyond the store binding (93a). `real-workspace`: the scenario asserts a real take, merge, rebase, conflict or landing, so the recorded workspace stand-in cannot serve it. `real-sessions`: it asserts a real agent session rather than a scripted one. A run whose bound implementations do not provide a requirement skips the scenario, prints it as skipped with the reason, and names it in the run record; a scenario the phase's acceptance table lists but every configuration skips is a failure, never a silent pass."
+      "description": "what the run must provide beyond the store binding (93a). `real-workspace`: the scenario asserts a real take, merge, rebase, conflict or landing, so the recorded workspace stand-in cannot serve it. `real-sessions`: it asserts a real agent session rather than a scripted one. `real-hosts`: it asserts something only two hosts can produce — a lease going stale and taken over, a second host reading the holder, commits present after a reconnect — which one in-process binding cannot stage at all (150, 151). A run whose bound implementations do not provide a requirement skips the scenario, prints it as skipped with the reason, and names it in the run record; a scenario the phase's acceptance table lists but every configuration skips is a failure, never a silent pass."
     },
     "hooks": {
       "type": "array",

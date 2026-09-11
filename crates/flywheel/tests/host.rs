@@ -1218,14 +1218,13 @@ fn hosted(name: &str) -> Host {
 /// moves, one transition, nothing moves — with the clock still, so no lease
 /// comes due.
 ///
-/// What is not asserted here is the contract's `pushes_per_tick: [0, 1, 0]`
-/// itself, because the real host spends one push more per tick than the
-/// contract counts and on a ref of its own: `heartbeat` pushes `hosts/<name>`
-/// on every tick through `put_orphan`, where the runner's hosts heartbeat in
-/// memory and `cost.yaml`'s numbers were written for that path. Whether the
-/// heartbeat rides the tick's one push, is pushed only when due, or is counted
-/// beside the contract's numbers is a ruling, and until it is made the strict
-/// numbers are a false test.
+/// The contract's `pushes_per_tick: [0, 1, 0]` is the promise: a tick's
+/// commits go at the shared line in one push and a tick that moved nothing
+/// pushes nothing. The heartbeat is on the sweep's cadence and costs a quiet
+/// tick no push. What still pushes on a quiet tick on this branch is the rail
+/// re-entering `current` while `rail.status_current` is unbound, which
+/// `scenarios` fixes in 7a97ee4; the exact `[0, 1, 0]` is asserted the tick
+/// that lands here.
 #[test]
 fn a_real_tick_spends_what_the_profile_says() {
     let mut host = hosted("cost");
@@ -1269,17 +1268,16 @@ fn a_real_tick_spends_what_the_profile_says() {
         assert_eq!(cost.read_processes, 0, "tick {n} spawned a process to read: {costs:?}");
         // Every process a tick spawns is a push (169, `git-only.yaml` Tools).
         assert_eq!(cost.subprocesses, cost.pushes, "tick {n} spawned something that was not a push: {costs:?}");
-        // The tick's commits go at the shared line in one push, beside the
-        // heartbeat's own; never a push per commit (167, 169).
+        // The tick's commits go at the shared line in one push, never a push
+        // per commit, and the heartbeat rides no quiet tick (167, 169).
         assert!(
-            (1..=2).contains(&cost.pushes),
+            cost.pushes <= 1,
             "tick {n} pushed {} times — a push per commit, not per tick: {costs:?}",
             cost.pushes
         );
     }
-    // The tick that moved something wrote it: the second tick's pushes are
-    // the heartbeat's and the shared line's.
-    assert_eq!(costs[1].pushes, 2, "the transition's commit was not pushed: {costs:?}");
+    // The tick that moved something wrote it, in one push.
+    assert_eq!(costs[1].pushes, 1, "the transition's commit was not pushed once: {costs:?}");
     // Reading the blueprints through the bound world forked nothing (audit 9).
     assert_eq!(
         flywheel_world_host::git::spawned() - world_spawned_before,
@@ -1357,4 +1355,37 @@ fn a_session_is_refused_a_line_operation() {
     host.store
         .with_world(|store, world| flywheel_surface::catalogue::call(&mut store.git, world, &defs, &call))
         .expect("the operator orders a take (50)");
+}
+
+/// Liveness is recorded on the sweep's cadence, never on every pass: a tick
+/// that moved nothing writes no heartbeat, so `cost.yaml`'s quiet tick costs
+/// no push on the host's own ref, and a host is still read alive inside the
+/// five-minute window because the sweep is a minute (78, 130, 147, 169).
+#[test]
+fn a_quiet_tick_writes_no_heartbeat() {
+    let mut host = hosted("heartbeat");
+    host.sweep().unwrap();
+    let seen = |host: &Host| {
+        host.store
+            .git
+            .hosts()
+            .unwrap()
+            .into_iter()
+            .find(|h| h.host == "mac-mini")
+            .map(|h| h.last_seen)
+            .expect("the host has a heartbeat")
+    };
+    let first = seen(&host);
+
+    // Two passes inside the interval, the clock moving less than a sweep.
+    host.set_now(host.now() + Duration::seconds(10));
+    host.tick(&Scope::All).unwrap();
+    host.set_now(host.now() + Duration::seconds(10));
+    host.tick(&Scope::All).unwrap();
+    assert_eq!(seen(&host), first, "a pass inside the interval re-stamped the heartbeat");
+
+    // The interval passes: the next tick records liveness again.
+    host.set_now(host.now() + host.sweep_interval());
+    host.tick(&Scope::All).unwrap();
+    assert!(seen(&host) > first, "the sweep's cadence did not write the heartbeat");
 }

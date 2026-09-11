@@ -915,7 +915,13 @@ pub fn proposals_of(moves: &[Move]) -> Vec<Proposal> {
                 out[at].challenges.push(claim.to_string());
             }
         }
-        // The claims the join itself says its cluster argues with (116, S08).
+        // The claims the join itself says its cluster argues with. A signal
+        // has exactly one standing move (107), which is precisely why a
+        // cluster arguing with a claim cannot say so through a `challenge`
+        // move of its own — the signal's one move is the join — and why the
+        // join has to carry the claim: without it the proposed intent never
+        // learns what it challenges, and 116's staling of the claim's
+        // verdicts can never fire (116, S08).
         for claim in moved.challenges() {
             if !out[at].challenges.contains(&claim) {
                 out[at].challenges.push(claim);

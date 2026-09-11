@@ -1,8 +1,9 @@
 # One source event as recorded (111). Captured by an adapter unattended — one
 # kind of adapter, an enumerator run by the tick of the host that declares the
 # source (215, 231, host.yaml run_adapters) — and read into signals by a
-# session's judgment (115), except a forwarded single message, which is its
-# own excerpt and needs no judgment (S21). The reader is charged by the tick
+# session's judgment (115), except a capture that is already its own excerpt
+# and needs no judgment: a forwarded single message (S21), and text typed on
+# the page, which is one capture with one signal of kind ask (19). The reader is charged by the tick
 # of the host that declares the capture's source (217e); the capture endpoint
 # for callers that cannot reach any host's binary is dispatch's (216).
 # On the hosted tiers the endpoint is a managed queue per instance behind
@@ -44,9 +45,9 @@ regions:
         transitions:
           - when: {ev: capture.signals_present, is: true}
             to: read
-          - when: {ev: capture.source, is: forwarded-message}
+          - when: {ev: capture.source, in: [forwarded-message, page]}
             to: captured
-            effects: [{do: ensure_signal, note: "one message, one signal, the kind the operator's response gave or ask"}]
+            effects: [{do: ensure_signal, note: "a capture that is already its own excerpt needs no reader: a forwarded single message (S21), and text typed on the page, which is one capture with one signal of kind ask (19, 217e). One capture, one signal"}]
           - when: {always: true}
             to: reading
       reading:
