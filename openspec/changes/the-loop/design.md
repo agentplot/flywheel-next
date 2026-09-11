@@ -597,6 +597,34 @@ processes and the 390px pass on every scenario carrying a response; and the run
 record's definitions hash is compared with `definitions/`, which is itself
 byte-identical to the model (83, D2).
 
+### D17. Three tiers of test, and the everyday one touches no repository
+
+There are two unit tests in the workspace and thirty-eight integration test
+files, every one of them driving a real state repository, so the run a person
+makes on every change is the slow kind and the fast kind was never written.
+That is the cause of the everyday cost; the poll and the browser are only the
+gate's.
+
+| tier | what it may touch | what runs it | the bar |
+|---|---|---|---|
+| unit | pure functions and a store the test holds in memory; no repository, no process, no clock | `cargo test --lib`, on every save | the whole tier under 10 s |
+| integration | a real repository in a temp directory, in process, bounded scenarios | `cargo test --workspace`, before a commit | no single test over 5 s |
+| system | the real binary, real hosts, a browser | `cargo test --workspace -- --include-ignored`, once, at merge | it may cost what it costs |
+
+The tier a test belongs to is decided by what it touches, not by what it
+proves, and a test written in the wrong tier is a defect like any other. What
+makes the first tier possible is that the effect bodies and the derived proofs
+now sit in `flywheel-domain` over the `StateStore` trait rather than over a git
+directory (16.1, 16.3): they can be exercised against a store the test holds
+and no repository at all. A double used that way is not a second profile and
+never appears in the acceptance set, which is what 92 retired; it claims
+nothing and conforms to nothing.
+
+The third tier runs at merge through worktrunk's `pre-merge` hook, which the
+repository configures, so a branch cannot land without it and nobody waits on
+it while working. Worktrunk is already the model's binding for places
+(`host.yaml` Tools); this is the same tool doing the same job one level up.
+
 ### D16. The page is built from the ratified mockup, and the chat has a wire
 
 The page's design is not restated here. It is the blueprints' ratified mockup,
