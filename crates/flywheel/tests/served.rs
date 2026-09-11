@@ -474,6 +474,15 @@ fn a_tap_on_the_seeded_rail_answers_and_the_next_render_shows_it() {
         now,
     )
     .expect("the scenario's given state goes into the state store");
+    // The rail is numbered by the tick, never by a request: a read that
+    // renumbered would be a commit on the shared line made on the request path
+    // by a host that may not hold the rail's lease (15, D12). `flywheel host
+    // seed` derives it once for the same reason, so the page the operator opens
+    // carries the numbers rather than waiting on a loop nobody started.
+    {
+        let defs = host.defs.clone();
+        flywheel_domain::commands::rail(&mut host.store, &defs).expect("the rail is numbered");
+    }
 
     let host = Arc::new(Mutex::new(host));
     let runtime = tokio::runtime::Builder::new_multi_thread().enable_all().build().unwrap();
@@ -585,5 +594,285 @@ fn a_tap_on_the_seeded_rail_answers_and_the_next_render_shows_it() {
     let json: serde_json::Value =
         serde_json::from_str(&json).unwrap_or_else(|e| panic!("the body {json:?}: {e}"));
     assert_eq!(json["recorded"], serde_json::json!(true), "{json}");
+    let _ = std::fs::remove_dir_all(&dir);
+}
+
+/// An answer given on the page is applied on the pass that answer caused, and
+/// it puts nothing back on the rail (13, 130, 137, 153).
+///
+/// Two things had to be true for this and neither was. The store delivered a
+/// response to the object it named and never to the object its *number* named,
+/// and an answer names a number and nothing else — so the guard on the intent
+/// never saw the yes and the decision stood. And the response machine read
+/// `response.decision_present` against a standing set nobody filled, so every
+/// answer the operator gave came back as its own attention line. Four answers
+/// made six cards; 13 says one response is enough and the operator never
+/// nudges.
+#[test]
+fn an_answer_applies_on_the_pass_it_caused_and_puts_nothing_back_on_the_rail() {
+    let dir = base("applies");
+    let now = at(0);
+    let git = sandbox(&dir, "laptop", now).unwrap();
+    let mut host = Host::over(
+        "laptop",
+        "willdan",
+        flywheel_domain::set::load().unwrap(),
+        git,
+        Bindings { world: "host".into(), workspace: "recorded".into(), sessions: "operator".into() },
+        // One laptop, the instance's only host: it takes everything (149).
+        Declaration { repositories: vec!["all".into()], types: vec![], kinds: vec!["all".into()] },
+        now,
+    );
+    host.sinks.address = "http://laptop.example/willdan".into();
+    flywheel::seed::from_scenario(
+        &mut host.store.git,
+        &workspace().join("scenarios/rail-mockup.yaml"),
+        now,
+    )
+    .expect("the scenario's given state goes into the state store");
+
+    // Settle it, so what follows is the answer's doing and not the first
+    // sweep's.
+    {
+        host.set_now(at(1));
+        host.sweep().unwrap();
+    }
+    let intent = "intent/atlas-provider-limits";
+    let number = {
+        let defs = host.defs.clone();
+        flywheel_domain::commands::rail(&mut host.store, &defs)
+            .unwrap()
+            .into_iter()
+            .find(|d| d.object == intent)
+            .and_then(|d| d.number)
+            .expect("the intent's proposal stands, numbered")
+    };
+
+    let host = Arc::new(Mutex::new(host));
+    let runtime = tokio::runtime::Builder::new_multi_thread().enable_all().build().unwrap();
+    let served = flywheel::serve::page_of(&host, 4242, &["chuck".to_string()]);
+    let address = runtime.block_on(async {
+        let listener = tokio::net::TcpListener::bind("127.0.0.1:0").await.unwrap();
+        let address = listener.local_addr().unwrap();
+        let served = served.clone();
+        tokio::spawn(async move {
+            let _ = flywheel_surface::http::serve_on(served, listener).await;
+        });
+        address
+    });
+
+    // The tap.
+    let page = speak(
+        address,
+        "GET / HTTP/1.1\r\nHost: laptop.example\r\nConnection: close\r\n\r\n",
+    );
+    let (action, body) = form_on(&page, number, "yes");
+    post_form(address, &action, &body, "/");
+
+    // One pass, a second after the sweep that settled it, so the sweep is not
+    // due: what moves the intent is the notify the answer itself caused (130,
+    // D6, D7).
+    {
+        let mut held = host.lock().unwrap();
+        held.set_now(at(1) + Duration::seconds(1));
+        assert!(
+            held.notified().unwrap().iter().any(|id| id == intent),
+            "the answer did not notify the object it answers, so the rail waits out the sweep"
+        );
+        held.once().unwrap();
+    }
+
+    // The intent opened, and it carries the response that opened it (137).
+    {
+        let held = host.lock().unwrap();
+        let opened = Records::get(&held.store, intent).unwrap().expect("the intent");
+        assert_eq!(
+            opened.config.get("life").map(String::as_str),
+            Some("open"),
+            "the answer was recorded and never applied: {:?}",
+            opened.config
+        );
+        assert_eq!(
+            opened.applied_responses.len(),
+            1,
+            "the response it applied is not listed on it"
+        );
+    }
+
+    // And nothing came back: the decision is gone and no attention line stands
+    // in its place (13, 6).
+    {
+        let mut held = host.lock().unwrap();
+        let defs = held.defs.clone();
+        let rail = flywheel_domain::commands::rail(&mut held.store, &defs).unwrap();
+        assert!(
+            !rail.iter().any(|d| d.number == Some(number)),
+            "the decision the operator answered is still standing"
+        );
+        let raised: Vec<&str> = rail
+            .iter()
+            .filter(|d| d.kind == "response-unapplicable")
+            .map(|d| d.object.as_str())
+            .filter(|object| *object != "response/lost-1")
+            .collect();
+        assert!(
+            raised.is_empty(),
+            "answering put {raised:?} back on the rail as attention; one response is enough (13)"
+        );
+    }
+    let _ = std::fs::remove_dir_all(&dir);
+}
+
+/// "yes all" sends one `answer` per approve decision, in number order, each
+/// recorded on its own, and it answers the numbers the control named and no
+/// others (11, S2, S7, 17.5).
+///
+/// The page is rendered in one request and the control is used in the next. A
+/// sweep over a fresh read would answer a decision that arrived between the
+/// two — one the operator never saw — so the numbers travel with the tap.
+#[test]
+fn yes_all_answers_the_numbers_it_named_and_never_a_batch() {
+    let dir = base("yes-all");
+    let now = at(0);
+    let git = sandbox(&dir, "laptop", now).unwrap();
+    let mut host = Host::over(
+        "laptop",
+        "willdan",
+        flywheel_domain::set::load().unwrap(),
+        git,
+        Bindings { world: "host".into(), workspace: "recorded".into(), sessions: "operator".into() },
+        Declaration { repositories: vec!["all".into()], types: vec![], kinds: vec!["all".into()] },
+        now,
+    );
+    host.sinks.address = "http://laptop.example/willdan".into();
+    flywheel::seed::from_scenario(
+        &mut host.store.git,
+        &workspace().join("scenarios/rail-mockup.yaml"),
+        now,
+    )
+    .expect("the scenario's given state");
+    {
+        let defs = host.defs.clone();
+        flywheel_domain::commands::rail(&mut host.store, &defs).expect("the rail is numbered");
+    }
+
+    let host = Arc::new(Mutex::new(host));
+    let runtime = tokio::runtime::Builder::new_multi_thread().enable_all().build().unwrap();
+    let served = flywheel::serve::page_of(&host, 4242, &["chuck".to_string()]);
+    let address = runtime.block_on(async {
+        let listener = tokio::net::TcpListener::bind("127.0.0.1:0").await.unwrap();
+        let address = listener.local_addr().unwrap();
+        let served = served.clone();
+        tokio::spawn(async move {
+            let _ = flywheel_surface::http::serve_on(served, listener).await;
+        });
+        address
+    });
+
+    // The control as it rendered, with the numbers it says it will answer.
+    let page = speak(
+        address,
+        "GET / HTTP/1.1\r\nHost: laptop.example\r\nConnection: close\r\n\r\n",
+    );
+    let control = page
+        .split("<form ")
+        .find(|block| block.contains("id=\"yesall\""))
+        .expect("the header carries no `yes all` control (S2)");
+    let named: Vec<u32> = control
+        .split_once("name=\"numbers\" value=\"")
+        .and_then(|(_, rest)| rest.split_once('"'))
+        .map(|(said, _)| said.split_whitespace().filter_map(|n| n.parse().ok()).collect())
+        .expect("the control carries the numbers it will answer");
+    assert!(named.len() > 2, "the mockup's rail has an approve group to sweep: {named:?}");
+    assert!(named.windows(2).all(|pair| pair[0] < pair[1]), "in number order: {named:?}");
+
+    // A decision of another kind stands and is not among them (S7).
+    let standing: BTreeMap<u32, String> = {
+        let mut held = host.lock().unwrap();
+        let defs = held.defs.clone();
+        flywheel_domain::commands::rail(&mut held.store, &defs)
+            .unwrap()
+            .into_iter()
+            .filter_map(|d| d.number.map(|n| (n, d.group)))
+            .collect()
+    };
+    for (number, group) in &standing {
+        assert_eq!(
+            named.contains(number),
+            group == "approve",
+            "decision {number} of the {group} group"
+        );
+    }
+
+    // The tap, with the numbers it named.
+    let body = format!(
+        "numbers={}",
+        named.iter().map(u32::to_string).collect::<Vec<_>>().join("+")
+    );
+    let answered = post_form(address, "/api/answer-all", &body, "/");
+    assert!(
+        answered.lines().next().unwrap_or_default().contains("303"),
+        "a control on the page lands the operator back on a page (310, 311): {answered}"
+    );
+
+    // One response per decision, each on its own, none of them a batch (S7).
+    {
+        let held = host.lock().unwrap();
+        let given: Vec<flywheel_engine::Object> = held
+            .store
+            .list_records(&Scope::Machine("response".into()))
+            .unwrap();
+        let answered: BTreeMap<u32, String> = given
+            .iter()
+            .filter_map(|o| {
+                let number = o.record.get("decision")?.as_u64()? as u32;
+                Some((number, o.record.get("answer")?.as_str()?.to_string()))
+            })
+            .collect();
+        for number in &named {
+            assert_eq!(
+                answered.get(number).map(String::as_str),
+                Some("yes"),
+                "decision {number} was named and has no response of its own"
+            );
+        }
+        for (number, _) in standing.iter().filter(|(_, group)| *group != "approve") {
+            assert!(
+                !answered.contains_key(number),
+                "decision {number} was swept in and it is not an approve (S7)"
+            );
+        }
+        // One response per decision the control named, and no more. The
+        // scenario seeds a response of its own, so what is counted is the
+        // sweep's own.
+        assert_eq!(
+            answered.keys().filter(|number| named.contains(number)).count(),
+            named.len(),
+            "one response per decision the control named, and no more"
+        );
+    }
+
+    // And a number the control never named is not answered by it, however the
+    // rail has moved since: what the operator saw is what they said yes to.
+    let unseen = standing
+        .keys()
+        .find(|number| !named.contains(number))
+        .copied()
+        .expect("a decision of another kind stands");
+    let body = format!("numbers={unseen}");
+    post_form(address, "/api/answer-all", &body, "/");
+    {
+        let held = host.lock().unwrap();
+        let answered = held
+            .store
+            .list_records(&Scope::Machine("response".into()))
+            .unwrap()
+            .into_iter()
+            .any(|o| o.record.get("decision").and_then(|v| v.as_u64()) == Some(unseen as u64));
+        assert!(
+            !answered,
+            "`yes all` answered {unseen}, which is not in the approve group (S7)"
+        );
+    }
     let _ = std::fs::remove_dir_all(&dir);
 }

@@ -45,8 +45,12 @@ fn speak(address: std::net::SocketAddr, request: &str) -> String {
         .unwrap_or(text)
 }
 
-fn post(address: std::net::SocketAddr, path: &str, body: &str) -> serde_json::Value {
-    let answered = speak(
+/// One of the page's own controls, used. A control is a plain form with no
+/// script behind it, so what comes back is a See Other to the page the operator
+/// was on and never a body they are stranded on (310, 311). What the control
+/// did is read from the store, which is where it wrote.
+fn control(address: std::net::SocketAddr, path: &str, body: &str) -> String {
+    let answered = whole(
         address,
         &format!(
             "POST {path} HTTP/1.1\r\nHost: mac-mini.example\r\n\
@@ -55,7 +59,26 @@ fn post(address: std::net::SocketAddr, path: &str, body: &str) -> serde_json::Va
             body.len()
         ),
     );
-    serde_json::from_str(&answered).unwrap_or_else(|e| panic!("the body {answered:?}: {e}"))
+    let first = answered.lines().next().unwrap_or_default().to_string();
+    assert!(
+        first.contains("303"),
+        "the control did not send the operator back to the page: {answered}"
+    );
+    answered
+        .lines()
+        .find_map(|line| line.strip_prefix("location: ").or_else(|| line.strip_prefix("Location: ")))
+        .unwrap_or_default()
+        .trim()
+        .to_string()
+}
+
+/// The whole reply, status line and headers included.
+fn whole(address: std::net::SocketAddr, request: &str) -> String {
+    let mut socket = std::net::TcpStream::connect(address).expect("the page answers");
+    socket.write_all(request.as_bytes()).expect("the request is sent");
+    let mut text = String::new();
+    socket.read_to_string(&mut text).expect("the page replies");
+    text
 }
 
 fn get(address: std::net::SocketAddr) -> String {
@@ -146,12 +169,15 @@ fn curated_from_the_page_raises_a_decision() {
         "the rows lose their numbers on the second page",
         "the second page drops the row numbers again",
     ] {
-        let answered = post(
+        let back = control(
             address,
             "/api/tools/capture",
             &format!("text={}&source=page", encode(text)),
         );
-        assert_eq!(answered["recorded"], json!(true), "{answered}");
+        assert!(
+            !back.contains("refused="),
+            "the capture box refused what was typed in it: {back}"
+        );
     }
 
     // The tick charges curation: the count crossed the threshold, and the
@@ -213,14 +239,14 @@ fn curated_from_the_page_raises_a_decision() {
         })
         .collect::<Vec<_>>()
         .join("&");
-    let curated = post(address, "/api/curate", &body);
-    assert_eq!(curated["recorded"], json!(true), "{curated}");
-    assert_eq!(curated["moves"], json!(2), "{curated}");
-    let session = curated["session"].as_str().expect("the session it reported on");
-    assert_eq!(
-        session, "curation/willdan/main/1",
-        "the session id the README's walkthrough names (regions::session_stem, session.yaml id)"
+    let back = control(address, "/api/curate", &body);
+    assert!(
+        !back.contains("refused="),
+        "the curator's submit was refused: {back}"
     );
+    // The session the moves were delivered under: the one the README's
+    // walkthrough names (regions::session_stem, session.yaml id).
+    let session = "curation/willdan/main/1";
 
     // The exit is a thread entry on the session, naming what it delivered (67,
     // 80).
@@ -280,13 +306,24 @@ fn curated_from_the_page_raises_a_decision() {
     // The answer given on the page, through the one tool the reply grammar
     // calls, is a commit a second reader of the state repository finds with no
     // host running (193, 153, 132, 160).
-    let answered = post(
+    let back = control(
         address,
         "/api/tools/answer",
         &format!("decision={number}&answer=yes"),
     );
-    assert_eq!(answered["recorded"], json!(true), "{answered}");
-    let id = answered["id"].as_str().expect("the response has an id").to_string();
+    assert!(!back.contains("refused="), "the answer was refused: {back}");
+    // What the control wrote, read where it wrote it: the response naming the
+    // number the operator answered (153, 193).
+    let id = {
+        let held = host.lock().unwrap();
+        held.store
+            .list_records(&flywheel_atoms::Scope::Machine("response".into()))
+            .unwrap()
+            .into_iter()
+            .find(|o| o.record.get("decision").and_then(|v| v.as_u64()) == Some(number as u64))
+            .map(|o| o.id.trim_start_matches("response/").to_string())
+            .expect("the answer was recorded as a response")
+    };
 
     let reader = sandbox(&dir, "reader", now).unwrap();
     let held = reader

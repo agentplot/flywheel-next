@@ -306,7 +306,10 @@ pub fn render(
 ) -> Result<Post> {
     check_address(address)?;
     let mut lines = Vec::new();
-    for decision in decisions {
+    // The same list the page draws, in the same order: the groups the model
+    // names, each sorted by number (18, S3). A number means the same thing on
+    // both surfaces, and so does the place it sits in.
+    for decision in flywheel_engine::rail::in_reading_order(decisions) {
         // Routing by kind is the operator's, per sink (82); a sink routing
         // `all` carries every kind, which is what one sink alone carries.
         if !sink.routes_kind(&decision.kind) {

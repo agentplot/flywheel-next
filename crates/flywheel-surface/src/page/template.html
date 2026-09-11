@@ -54,6 +54,14 @@ kbd{font:11px var(--mono);border:1px solid var(--line);border-bottom-width:2px;b
 .top .meta{color:var(--ink3);font-size:12px}
 .top .count{margin-left:auto;display:flex;align-items:baseline;gap:8px;font-size:12.5px;color:var(--ink2)}
 .top .count b{font:700 20px var(--mono);color:var(--ink)}
+/* A control in the header is a form, because the page runs no script; a form's
+   own margin would push it out of the row (310, 311). */
+.top form{margin:0;display:inline-flex}
+/* Who the operator is: the operators list's single entry, which is what every
+   response records as given by (153, 236a, 253a). The account button and its
+   menu are phase 4's; the wrapper that holds the name is not. */
+.acct-wrap{position:relative;display:inline-flex}
+.acct-wrap .given-by{font-size:12.5px;color:var(--ink2)}
 .btn{display:inline-flex;align-items:center;gap:6px;border:1px solid var(--line);border-radius:6px;padding:5px 10px;background:var(--surface);font-weight:600;font-size:12.5px;line-height:1.2;white-space:nowrap}
 .btn.pri{background:var(--accent);border-color:var(--accent);color:var(--accent-ink)}
 .btn.yes{color:var(--accent);border-color:var(--accent)}
@@ -151,6 +159,12 @@ kbd{font:11px var(--mono);border:1px solid var(--line);border-bottom-width:2px;b
 .board-h input[type=checkbox]{margin:0;accent-color:var(--accent)}
 .lanes{flex:1;min-height:0;display:grid;grid-template-columns:minmax(225px,.95fr) minmax(185px,.6fr) minmax(330px,1.45fr) minmax(215px,.9fr)}
 .map{flex:1;min-height:0;display:grid;grid-template-columns:minmax(0,1fr) 300px}
+/* A lane scrolls on its own and is divided from the next, and Bolt plan is
+   drawn as the narrow hatched gate it is — the transition, one proposal per
+   repository in steady state (S12). */
+.lane{overflow:auto;padding:10px 10px 60px;border-right:1px solid var(--line2)}
+.lane:last-child{border-right:0}
+.lane.plan{background:repeating-linear-gradient(-45deg,transparent 0 8px,var(--accent-hatch) 8px 9px),var(--bg);border-left:1px dashed var(--line);border-right:1px dashed var(--line)}
 
 .lane-h{display:flex;align-items:baseline;gap:8px;margin:2px 2px 10px;flex-wrap:wrap}
 .lane-h h2{font-size:14px;font-weight:800;letter-spacing:-.01em}
@@ -533,9 +547,15 @@ ul.sigs li{margin:0}
 .tabs{display:none}
 .back { display: none; }
 .scrim{display:none}
-.dock:not(:has(.surface:target)){display:none}
+.dock:not(:has(.surface:target)):not(:has(.surface[data-opened="true"])){display:none}
 .dock .surface{display:none}
 .dock .surface:target{display:block}
+/* A link the machinery wrote names its object in the path and carries no
+   fragment (205a, 308), so what opens the dock is the surface this request
+   marked opened, not a target. A link inside the page still opens by :target,
+   and a target wins over the one the request opened. */
+.dock .surface[data-opened="true"]{display:block}
+body:has(.dock .surface:target) .dock .surface[data-opened="true"]:not(:target){display:none}
 .pal-scrim{display:none}
 .pal-scrim:target{display:flex}
 .log{display:none}
@@ -546,6 +566,29 @@ ul.sigs li{margin:0}
    cannot answer (311, 306). */
 .card .answers{display:flex;flex-wrap:wrap;gap:5px;margin-top:8px;align-items:center}
 .card .answers form{margin:0}
+/* The foot of a dock surface: the object's answers where a decision stands on
+   it, so a link the machinery wrote lands with its controls in reach (308,
+   S27). The same controls the card carries, in the same forms. */
+.dk-answers{border-top:1px solid var(--line2);margin-top:12px;padding-top:10px}
+.dk-answers .answers{display:flex;flex-wrap:wrap;gap:5px;align-items:center;margin-bottom:6px}
+.dk-answers .answers form{margin:0}
+.dk-answers .answers button{min-height:44px;min-width:44px;padding:5px 12px;border:1px solid var(--accent);border-radius:6px;background:var(--surface);color:var(--accent);font-weight:600}
+.dk-answers .answers form.takes-text{display:inline-flex;align-items:stretch;gap:0}
+.dk-answers .answers form.takes-text input[type=text]{min-height:44px;width:11ch;border-right:0;border-radius:6px 0 0 6px;font-size:12.5px;padding:5px 8px}
+.dk-answers .answers form.takes-text button{border-radius:0 6px 6px 0}
+.dk-answers .answers .number{font:700 13px var(--mono);color:var(--ink);margin-right:4px}
+.dk-answers.none{font-size:12px;color:var(--ink3);display:flex;gap:8px;flex-wrap:wrap}
+.dk-answers.none .fl{font-size:11px;letter-spacing:.08em;text-transform:uppercase;font-weight:700}
+.dk-answers .answered{font:11.5px var(--mono);color:var(--ink2)}
+/* An answer that takes an argument takes it here, beside the control: the
+   operator types the notes, the bolt or the type with the platform's own
+   keyboard and the two are posted together (S6, 311). */
+.card .answers form.takes-text{display:inline-flex;align-items:stretch;gap:0}
+.card .answers form.takes-text input[type=text]{min-height:44px;width:11ch;border-right:0;border-radius:6px 0 0 6px;font-size:12.5px;padding:5px 8px}
+.card .answers form.takes-text button{border-radius:0 6px 6px 0}
+/* A label a screen reader reads and the layout does not carry. `vh` is the
+   mockup's verdict holder and is a different thing. */
+.sr-only{position:absolute;width:1px;height:1px;overflow:hidden;clip:rect(0 0 0 0);white-space:nowrap}
 .answers button{min-height:44px;min-width:44px;padding:5px 12px;border:1px solid var(--accent);border-radius:6px;background:var(--surface);color:var(--accent);font-weight:600}
 .card .number{font:700 13px var(--mono);color:var(--ink)}
 .card .answered{font:11.5px var(--mono);color:var(--ink2);margin-top:6px}
@@ -560,8 +603,14 @@ ul.sigs li{margin:0}
   /* The header must not set the width of the document: at 390px its own
      content is wider than the screen, and a grid column of `1fr` then resolves
      against that width, which puts a card's answer controls off the right edge
-     where no tap reaches them (306, 307, 311). */
-  .top{gap:10px;padding:0 10px;overflow:hidden}
+     where no tap reaches them (306, 307, 311).
+     It wraps rather than clipping, and grows to the rows it needs: what a
+     phone clipped off the right edge was the `yes all` control and the numbers
+     on it, and a control only the desktop can reach is what 306 forbids. */
+  .top{gap:8px 10px;padding:6px 10px;overflow:hidden;flex-wrap:wrap;height:auto;min-height:var(--top);align-content:center}
+  .top .count{margin-left:0}
+  .top .yesall-form{margin-left:auto}
+  .top #yesall{max-width:100%;flex-wrap:wrap}
   /* The title is the one thing on the header a person on a phone already
      knows — they opened it — and the room it takes is the room the instance
      and the operator's own name need to survive (17.0, 153, 219). */
@@ -586,7 +635,13 @@ ul.sigs li{margin:0}
   .tabs .tab .bd{font:600 10px var(--mono);color:var(--ink3)}
   .back { display: block; }
   .dock { position: fixed; inset: 0; background: var(--surface); overflow: auto; z-index: 25; border-left: 0; width: 100%; }
-  .dock:not(:has(.surface:target)) { display: none; }
+  .dock:not(:has(.surface:target)):not(:has(.surface[data-opened="true"])) { display: none; }
+  /* The dock lives under the board panel, and under 760px a panel that is not
+     shown is not displayed at all — so a link opened at an object has to show
+     that panel, or the link opens nothing on the surface 306 cares most about
+     (307, 308). */
+  body:has(.dock .surface[data-opened="true"]) #board{display:block}
+  body:has(.dock .surface[data-opened="true"]) #decisions{display:none}
 }
 @media (prefers-reduced-motion:reduce){ *{animation:none!important;transition:none!important} }
 
@@ -617,6 +672,7 @@ ul.sigs li{margin:0}
   <span class="acct-wrap" id="acct-wrap"><span class="given-by">{{OPERATOR}}</span></span>
   <span class="btn quiet theme" id="theme" title="the page follows the system's theme; it holds no client state a reload loses (310)">system</span>
   <a class="btn" id="logbtn" href="#log"><b id="sent">{{SENT}}</b> sent</a>
+  {{YESALL}}
 </header>
 <!-- Where a host that has gone or stalled is raised into the operator's way,
      and empty while nothing is wrong. Every host is reported under the status
@@ -644,7 +700,7 @@ ul.sigs li{margin:0}
           <span class="nav"><a class="back" id="dock-back" href="#board">Back</a><a class="x" id="dk-x" href="#board" aria-label="close">×</a></span></div>
       </div>
       <div class="dk-b" id="dk-b">{{DOCK}}</div>
-      <div class="dk-f" id="dk-f"><div class="fl">answers<span class="r">a decision is answered on the rail, where its number is (15, 311)</span></div></div>
+      <div class="dk-f" id="dk-f"><div class="fl">the same number, the same answer<span class="r">a decision carries one number wherever it is shown, and answering it here is answering it on the rail (15, 311)</span></div></div>
     </aside>
   </section>
 </main>
@@ -660,7 +716,7 @@ ul.sigs li{margin:0}
     <form class="capture" id="capture-box" method="post" action="/api/tools/capture">
       <input type="hidden" name="source" value="page">
       <div class="pal-f">
-        <label class="vh" for="pal-q">Capture</label>
+        <label class="sr-only" for="pal-q">Capture</label>
         <input type="text" id="pal-q" name="text" autocomplete="off" placeholder="what happened, in your own words">
         <label id="pal-intent"><input type="checkbox" id="mark-intent" name="intent" value="yes"> mark as intent</label>
         <a class="x" id="pal-close" href="#decisions" aria-label="close">×</a>

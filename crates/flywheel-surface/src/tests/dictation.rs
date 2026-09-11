@@ -203,3 +203,88 @@ fn service_start_and_stop_are_dictations() {
         );
     }
 }
+
+/// The head and the operator's text are composed into the one answer the
+/// machine's pattern matches (S6, 193, 194).
+///
+/// A control on the page is a form and a form posts its fields, so an answer
+/// that takes an argument arrives as two: the pattern's head and the text. What
+/// is recorded has to be what `match_answer` matches, or the response is
+/// recorded and applies to nothing.
+#[test]
+fn a_head_and_its_text_are_recorded_as_one_answer() {
+    let mut store = flywheel_atoms::testing::FakeStore::default();
+    let mut world = world::Files::new();
+    let defs = flywheel_domain::set::load().expect("the embedded definitions");
+    let at = flywheel_domain::commands::now(&store).expect("a point");
+    flywheel_domain::commands::put_new(
+        &mut store,
+        &defs,
+        "unit/atlas/status-writer",
+        "unit",
+        None,
+        [
+            ("repository".to_string(), serde_json::json!("atlas")),
+            ("type".to_string(), serde_json::json!("default")),
+        ]
+        .into_iter()
+        .collect(),
+        at,
+    )
+    .expect("the unit");
+    flywheel_domain::commands::rail(&mut store, &defs).expect("the rail derives");
+    let number = flywheel_domain::commands::rail(&mut store, &defs)
+        .expect("the rail")
+        .into_iter()
+        .find(|d| d.object == "unit/atlas/status-writer")
+        .and_then(|d| d.number)
+        .expect("the unit's proposal stands, numbered");
+
+    let mut call = crate::catalogue::Call::new(crate::catalogue::ANSWER, "chuck", "page");
+    call.args.insert("decision".into(), serde_json::json!(number));
+    call.args
+        .insert("answer".into(), serde_json::json!("redo: <notes>"));
+    call.args
+        .insert("text".into(), serde_json::json!("the rows lose their numbers"));
+    let called = crate::catalogue::call(&mut store, &mut world, &defs, &call).expect("the answer");
+
+    let recorded = flywheel_atoms::Records::get(&store, &format!("response/{}", called.id))
+        .expect("a read")
+        .expect("the response");
+    assert_eq!(
+        recorded.record.get("answer").and_then(|v| v.as_str()),
+        Some("redo: the rows lose their numbers"),
+        "the head and the text were not composed into the answer the pattern matches"
+    );
+    // And it is the string the machine matches, with the argument bound.
+    assert_eq!(
+        flywheel_engine::eval::match_answer("redo: <notes>", "redo: the rows lose their numbers"),
+        Some("the rows lose their numbers".to_string())
+    );
+}
+
+/// An answer whose argument leads its pattern is answerable too (S5).
+///
+/// A gathered elaboration names which covered intent to drop, and the machine
+/// writes that as `<intent>: drop`. The matcher read only a trailing
+/// placeholder, so no answer of that shape could ever match: the card offered
+/// a control for a decision that could not be answered.
+#[test]
+fn an_argument_that_leads_its_pattern_is_answerable() {
+    assert_eq!(
+        crate::catalogue::filled_for_tests("<intent>: drop", "atlas-provider-limits"),
+        "atlas-provider-limits: drop"
+    );
+    assert_eq!(
+        flywheel_engine::eval::match_answer("<intent>: drop", "atlas-provider-limits: drop"),
+        Some("atlas-provider-limits".to_string()),
+        "the machine's own pattern does not match the answer the page records"
+    );
+    // And an empty argument matches nothing, rather than matching everything.
+    assert_eq!(flywheel_engine::eval::match_answer("<intent>: drop", ": drop"), None);
+    // A trailing placeholder is unchanged.
+    assert_eq!(
+        flywheel_engine::eval::match_answer("bolt <name>", "bolt atlas/plan-rows"),
+        Some("atlas/plan-rows".to_string())
+    );
+}

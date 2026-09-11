@@ -158,7 +158,7 @@ pub fn read<S: StateStore, W: World + ?Sized>(
     address: &str,
     operator: &str,
 ) -> anyhow::Result<Read> {
-    let decisions = commands::rail(store, defs)?;
+    let decisions = commands::rail_read(store, defs)?;
     let at = commands::now(store)?;
     let as_of = store.read(flywheel_domain::RAIL)?.as_of;
     let files = signals::Blueprints(world);
@@ -367,7 +367,14 @@ const LANE_HEADS: [(&str, &str); 4] = [
 /// Render the whole page. One document, one request, nothing stored.
 pub fn render(read: &Read) -> String {
     let instance = read.address.rsplit('/').next().unwrap_or_default();
-    let standing = read.decisions.len();
+    // Attention stands outside the count: it is what the machinery could not do,
+    // reported and never dropped, and not a choice the operator is being asked
+    // to make (S3, S8, 6).
+    let standing = read
+        .decisions
+        .iter()
+        .filter(|d| flywheel_engine::rail::counted(&d.group))
+        .count();
     let sent: usize = read.answered.values().map(Vec::len).sum();
     let mut out = TEMPLATE
         .replace("{{VERSION}}", VERSION)
@@ -375,6 +382,7 @@ pub fn render(read: &Read) -> String {
         .replace("{{OPERATOR}}", &escape(&read.operator))
         .replace("{{CLOCK}}", &escape(&short(&read.status.at.to_rfc3339())))
         .replace("{{COUNT}}", &standing.to_string())
+        .replace("{{YESALL}}", &yes_all(read))
         .replace("{{SENT}}", &sent.to_string())
         .replace("{{OBJECTS}}", &read.status.rows.len().to_string())
         .replace("{{HOSTS}}", &hosts(read))
@@ -387,6 +395,85 @@ pub fn render(read: &Read) -> String {
         out = out.replace(slot, &lane(read, title, sub, machines));
     }
     out
+}
+
+/// The group whose decisions "yes all" answers (11, S3, S7).
+pub const APPROVE: &str = "approve";
+
+/// The decisions "yes all" would answer, in number order.
+///
+/// 11 asks that the decisions be grouped so "yes to all" is a meaningful answer
+/// for a simple rail, and that any single decision can still be answered on its
+/// own. What makes it meaningful rather than reckless is the grouping: it is the
+/// approve group, and within it only the decisions that actually offer `yes`.
+/// A decide, an attention or an answer is not something a sweep of the hand
+/// settles.
+pub fn yes_all_answers(decisions: &[DecisionInstance]) -> Vec<(u32, String)> {
+    let mut out: Vec<(u32, String)> = decisions
+        .iter()
+        .filter(|d| d.group == APPROVE)
+        .filter(|d| d.answers.iter().any(|a| a == "yes"))
+        .filter_map(|d| d.number.map(|n| (n, d.object.clone())))
+        .collect();
+    out.sort_by_key(|(number, _)| *number);
+    out
+}
+
+/// The control itself: one tap, and the response it makes is one per decision
+/// and never a batch (11, S2, S7).
+///
+/// The numbers it will answer are **on the control**, not strung across the
+/// header beside it. A strip of every waiting number names no action; these
+/// numbers name this control's, which is what S2 asks for — the "yes all"
+/// control with the numbers it will answer — and it is what lets the operator
+/// read what one tap is about to do before they make it.
+fn yes_all(read: &Read) -> String {
+    let numbers: Vec<u32> = yes_all_answers(&read.decisions)
+        .into_iter()
+        .map(|(number, _)| number)
+        .collect();
+    // With nothing to say yes to the control stays, and says so: an absent
+    // control leaves the operator looking for one (S2).
+    if numbers.is_empty() {
+        return String::from(
+            "<form method=\"post\" action=\"/api/answer-all\" class=\"yesall-form\">\
+             <button class=\"btn pri\" id=\"yesall\" type=\"submit\" data-answers=\"\" disabled>\
+             yes all<span class=\"k\">nothing waiting</span></button></form>",
+        );
+    }
+    // The numbers travel with the tap, and the tap answers those and no
+    // others. The page is rendered in one request and the control is used in
+    // the next, so a control that answered a fresh read would answer a decision
+    // that arrived in between — one the operator never saw. What they saw is
+    // what they said yes to (S2, S7, 15).
+    let ids = numbers.iter().map(u32::to_string).collect::<Vec<_>>().join(" ");
+    format!(
+        "<form method=\"post\" action=\"/api/answer-all\" class=\"yesall-form\">\
+         <input type=\"hidden\" name=\"numbers\" value=\"{ids}\">\
+         <button class=\"btn pri\" id=\"yesall\" type=\"submit\" data-answers=\"{ids}\">\
+         yes all<span class=\"k\">{said}</span></button></form>",
+        said = escape(&runs(&numbers)),
+    )
+}
+
+/// Consecutive numbers said as a range, which is how the operator reads a rail
+/// that came in together: `412–417, 422, 424`.
+fn runs(numbers: &[u32]) -> String {
+    let mut said: Vec<String> = Vec::new();
+    let mut at = 0;
+    while at < numbers.len() {
+        let mut end = at;
+        while end + 1 < numbers.len() && numbers[end + 1] == numbers[end] + 1 {
+            end += 1;
+        }
+        said.push(match end - at {
+            0 => numbers[at].to_string(),
+            1 => format!("{}, {}", numbers[at], numbers[end]),
+            _ => format!("{}–{}", numbers[at], numbers[end]),
+        });
+        at = end + 1;
+    }
+    said.join(", ")
 }
 
 /// What is wrong with a host, and nothing when nothing is (141, 143, 146, 79).
@@ -458,10 +545,17 @@ fn rail(read: &Read) -> String {
              next decision is yours.</div>\n",
         );
     }
+    // The groups in the model's order, each sorted by number: approve, decide,
+    // answer, then attention outside the count (S3, 11). `derive` hands them
+    // back in number order, because the number is what a response names; the
+    // grouping is the reader's, and without it the rail walks approve, decide,
+    // approve, decide and the heading repeats down the page.
     let mut group = String::new();
-    for decision in &read.decisions {
-        if decision.group != group {
+    let mut first = true;
+    for decision in flywheel_engine::rail::in_reading_order(&read.decisions) {
+        if decision.group != group || first {
             group = decision.group.clone();
+            first = false;
             let _ = write!(
                 out,
                 "<div class=\"grp {0}\"><span class=\"g\">{0}</span></div>\n",
@@ -529,18 +623,7 @@ fn card(read: &Read, decision: &DecisionInstance) -> String {
     }
     out.push_str("<div class=\"answers\">\n");
     for answer in &decision.answers {
-        // One tap each, and nothing behind a hover or a keyboard (311). The
-        // control posts to the one tool the chat's numbered reply grammar
-        // calls, so the two surfaces share a write path (193, 194).
-        let _ = write!(
-            out,
-            "<form method=\"post\" action=\"/api/tools/{tool}\" class=\"answer\">\n\
-             <input type=\"hidden\" name=\"decision\" value=\"{number}\">\n\
-             <input type=\"hidden\" name=\"answer\" value=\"{0}\">\n\
-             <button type=\"submit\" class=\"btn sm\" data-answer=\"{0}\">{0}</button>\n</form>\n",
-            escape(answer),
-            tool = crate::catalogue::ANSWER
-        );
+        out.push_str(&control(&number, answer));
     }
     out.push_str("</div>\n");
     // What has already been answered, with who gave it and when: the response
@@ -549,6 +632,75 @@ fn card(read: &Read, decision: &DecisionInstance) -> String {
     out.push_str(&answered(read, decision.number));
     out.push_str("</article>\n");
     out
+}
+
+/// One answer, as a control the operator uses (311, 193, S6).
+///
+/// A bare answer is one tap. An answer whose pattern takes an argument —
+/// `redo: <notes>`, `bolt <name>`, `<intent>: drop` — takes the argument here,
+/// in a field beside the control, and the pattern and the text are posted
+/// together for the catalogue to fill in. Rendering the pattern as the value of
+/// a button posted `redo: <notes>` literally: the operator could not say what
+/// to redo, what bolt to route to or what type to set, which is six of the nine
+/// controls on a unit's card and every way of sending work back. A long-form
+/// answer is given with the platform's own keyboard, which is what the field is
+/// (311).
+fn control(number: &str, answer: &str) -> String {
+    let tool = crate::catalogue::ANSWER;
+    let Some(argument) = takes_an_argument(answer) else {
+        // One tap, and nothing behind a hover or a keyboard (311). The control
+        // posts to the one tool the chat's numbered reply grammar calls, so the
+        // two surfaces share a write path (193, 194).
+        return format!(
+            "<form method=\"post\" action=\"/api/tools/{tool}\" class=\"answer\">\n\
+             <input type=\"hidden\" name=\"decision\" value=\"{number}\">\n\
+             <input type=\"hidden\" name=\"answer\" value=\"{0}\">\n\
+             <button type=\"submit\" class=\"btn sm\" data-answer=\"{0}\">{0}</button>\n</form>\n",
+            escape(answer),
+        );
+    };
+    // `required` is what keeps an empty field from being sent as an answer the
+    // machine matches nothing against: the browser's own refusal, with no
+    // script behind it (310, 311).
+    let field = format!("a{number}-{}", argument.replace([' ', ':'], "-"));
+    format!(
+        "<form method=\"post\" action=\"/api/tools/{tool}\" class=\"answer takes-text\">\n\
+         <input type=\"hidden\" name=\"decision\" value=\"{number}\">\n\
+         <input type=\"hidden\" name=\"answer\" value=\"{whole}\">\n\
+         <label class=\"sr-only\" for=\"{field}\">{argument} for decision {number}</label>\n\
+         <input type=\"text\" id=\"{field}\" name=\"text\" placeholder=\"{argument}\" \
+         autocomplete=\"off\" required>\n\
+         <button type=\"submit\" class=\"btn sm\" data-answer=\"{whole}\">{said}</button>\n\
+         </form>\n",
+        argument = escape(&argument),
+        whole = escape(answer),
+        said = escape(&said(answer)),
+    )
+}
+
+/// What an answer's argument is called, where it takes one: `redo: <notes>` is
+/// `notes`, `bolt <name>` is `name` and `<intent>: drop` is `intent`. `None`
+/// for an answer that is one word and one tap.
+fn takes_an_argument(answer: &str) -> Option<String> {
+    let (_, rest) = answer.split_once('<')?;
+    let (argument, _) = rest.split_once('>')?;
+    match argument.is_empty() {
+        true => None,
+        false => Some(argument.to_string()),
+    }
+}
+
+/// What the control says on it: the answer's own words, without the argument
+/// the field beside it takes. `redo: <notes>` reads `redo` and `<intent>: drop`
+/// reads `drop`.
+fn said(answer: &str) -> String {
+    let (before, rest) = answer.split_once('<').unwrap_or((answer, ""));
+    let after = rest.split_once('>').map(|(_, after)| after).unwrap_or("");
+    format!("{before}{after}")
+        .replace(':', " ")
+        .split_whitespace()
+        .collect::<Vec<_>>()
+        .join(" ")
 }
 
 /// What was answered on one decision, with who gave it and when (153, 154).
@@ -893,8 +1045,48 @@ fn dock(read: &Read) -> String {
             }
             out.push_str("</ol>\n");
         }
+        out.push_str(&dock_answers(read, &object.id));
         out.push_str("</article>\n");
     }
+    out
+}
+
+/// The foot of one dock surface: the object's answers where a decision stands
+/// on it, and what there is to answer and why not where none does (S27, 308).
+///
+/// Every link the machinery writes opens the object in the dock "with its
+/// answer controls in reach" (308), and on a phone the dock is the whole
+/// screen — so a footer that only said answering happens on the rail sent the
+/// operator back to hunt for the card the link had just brought them to.
+fn dock_answers(read: &Read, object: &str) -> String {
+    let standing: Vec<&DecisionInstance> = read
+        .decisions
+        .iter()
+        .filter(|d| d.object == object)
+        .collect();
+    if standing.is_empty() {
+        return String::from(
+            "<div class=\"dk-answers none\" data-answerable=\"false\">\
+             <span class=\"fl\">answers</span>\
+             <span class=\"r\">nothing stands on this object; the machinery takes it from \
+             here and raises the next decision that is yours (13)</span></div>\n",
+        );
+    }
+    let mut out = String::from("<div class=\"dk-answers\" data-answerable=\"true\">\n");
+    for decision in standing {
+        let number = decision.number.map(|n| n.to_string()).unwrap_or_default();
+        let _ = write!(
+            out,
+            "<div class=\"answers\" data-number=\"{number}\">\
+             <span class=\"n number\">{number}</span>\n"
+        );
+        for answer in &decision.answers {
+            out.push_str(&control(&number, answer));
+        }
+        out.push_str("</div>\n");
+        out.push_str(&answered(read, decision.number));
+    }
+    out.push_str("</div>\n");
     out
 }
 

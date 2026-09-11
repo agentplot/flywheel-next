@@ -319,10 +319,20 @@ fn answer<S: StateStore>(store: &mut S, defs: &Definitions, call: &Call) -> Resu
     let Some(number) = call.number("decision") else {
         bail!("`answer` takes the decision's number, and the call names none");
     };
-    let answer = call
-        .text("answer")
-        .or_else(|| call.text("text"))
-        .unwrap_or_default();
+    // An answer whose pattern takes an argument arrives as two fields, because
+    // a control on the page is a plain form and a form posts its fields: the
+    // pattern's head, and the text the operator typed (S6, 311). What is
+    // recorded is the one string the machine's pattern matches — `redo: the
+    // rows lose their numbers`, `bolt atlas/plan-rows` — so the chat's reply
+    // grammar and the page's control still write the same answer (193, 194).
+    let answer = match (call.text("answer"), call.text("text")) {
+        (Some(pattern), Some(text)) if pattern.contains('<') && !text.trim().is_empty() => {
+            filled(&pattern, text.trim())
+        }
+        (Some(said), _) => said,
+        (None, Some(text)) => text,
+        (None, None) => String::new(),
+    };
     let mut record = commands::record_call(
         store,
         defs,
@@ -342,6 +352,29 @@ fn answer<S: StateStore>(store: &mut S, defs: &Definitions, call: &Call) -> Resu
         .journal
         .push(noted("response", &record.id, format!("{number} → {answer}")));
     Ok(record)
+}
+
+/// One answer's pattern with the operator's text in place of its placeholder.
+///
+/// `redo: <notes>` and "the rows lose their numbers" make
+/// `redo: the rows lose their numbers`; `bolt <name>` and "atlas/plan-rows"
+/// make `bolt atlas/plan-rows`; `<intent>: drop` and "atlas-provider-limits"
+/// make `atlas-provider-limits: drop`. Each is the one string the machine's own
+/// pattern matches, so the page's control and the chat's reply grammar record
+/// the same answer (193, 194, `eval::match_answer`).
+fn filled(pattern: &str, text: &str) -> String {
+    match (pattern.find('<'), pattern.find('>')) {
+        (Some(open), Some(close)) if close > open => {
+            format!("{}{text}{}", &pattern[..open], &pattern[close + 1..])
+        }
+        _ => format!("{pattern} {text}"),
+    }
+}
+
+/// `filled`, for the tier that holds it.
+#[cfg(test)]
+pub fn filled_for_tests(pattern: &str, text: &str) -> String {
+    filled(pattern, text)
 }
 
 /// Defer the proposal a decision stands on, a week (172). The argument is the

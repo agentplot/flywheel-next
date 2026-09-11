@@ -315,6 +315,88 @@ async fn invoke<S: StateStore + Send + 'static>(
     }
 }
 
+/// `POST /api/answer-all`: the header's "yes all" control (11, S2, S7).
+///
+/// It sends one `answer` per approve decision, in number order, each recorded on
+/// its own, and never a batch: "yes to all" has to mean something for a simple
+/// rail, and any one of the decisions it answers had to be answerable alone
+/// (11). It is the same tool the single control and the chat's `yes all` call,
+/// so this adds no operation to the catalogue (193, D9).
+async fn answer_all<S: StateStore + Send + 'static>(
+    State(served): State<Served<S>>,
+    headers: axum::http::HeaderMap,
+    body: axum::body::Bytes,
+) -> Response {
+    let back = came_from(&headers);
+    if let Err(refused) = served.admits(host_of(&headers)) {
+        return (
+            StatusCode::FORBIDDEN,
+            Html(format!("<p class=\"refused\">{refused}</p>")),
+        )
+            .into_response();
+    }
+    // The numbers the control named when it was rendered, which travelled with
+    // the tap. The page is rendered in one request and the control used in the
+    // next: a sweep over a fresh read would answer a decision that arrived
+    // between the two, and the operator never saw it (S2, S7, 15).
+    let named: Vec<u32> = form_fields(&String::from_utf8_lossy(&body))
+        .get("numbers")
+        .and_then(|v| v.as_str().map(String::from))
+        .unwrap_or_default()
+        .split_whitespace()
+        .filter_map(|n| n.parse::<u32>().ok())
+        .collect();
+    if named.is_empty() {
+        return back_with(&back, "the control named no decision to answer");
+    }
+    let mut store = served.store.lock().await;
+    let mut world = served.world.lock().await;
+    // The rail as it stands, read and not renumbered: a request is not a tick
+    // (15, D12).
+    let decisions = match flywheel_domain::commands::rail_read(&*store, &served.defs) {
+        Ok(decisions) => decisions,
+        Err(e) => return back_with(&back, &e.to_string()),
+    };
+    // Of the numbers named, the ones that still stand and still take a yes. One
+    // answered or retracted since the page was drawn is passed over, not
+    // refused: approval given once is never re-asked and a yes is never applied
+    // twice (6, 137).
+    let answering: Vec<(u32, String)> = page::yes_all_answers(&decisions)
+        .into_iter()
+        .filter(|(number, _)| named.contains(number))
+        .collect();
+    if answering.is_empty() {
+        return back_with(
+            &back,
+            "every decision the control named has been answered or retracted since the page \
+             was drawn; nothing was answered twice (6)",
+        );
+    }
+    let mut given = 0usize;
+    for (number, _) in &answering {
+        let mut call = Call::new(catalogue::ANSWER, served.operator(), "page");
+        call.args.insert("decision".into(), json!(number));
+        call.args.insert("answer".into(), Value::from("yes"));
+        match catalogue::call(&mut *store, &mut **world, &served.defs, &call) {
+            Ok(_) => given += 1,
+            // One that cannot be recorded does not stop the rest: each of these
+            // is its own response and the operator is told which did not go
+            // (11, 81).
+            Err(refused) => {
+                return back_with(
+                    &back,
+                    &format!(
+                        "{given} of {} answered; decision {number} was refused: {refused}",
+                        answering.len()
+                    ),
+                )
+            }
+        }
+    }
+    served.woken.notify_one();
+    to_the_page(&back)
+}
+
 /// `POST /api/curate`: the curator's surface submitting its moves.
 ///
 /// This is not a tool and is not the catalogue's (193). It is the operator
@@ -573,6 +655,7 @@ pub fn router<S: StateStore + Send + 'static>(served: Served<S>) -> Router {
         .route("/", get(page::<S>))
         .route("/api/tools", get(tools::<S>))
         .route("/api/tools/:name", post(invoke::<S>))
+        .route("/api/answer-all", post(answer_all::<S>))
         .route("/api/curate", post(curate::<S>))
         // The address every link the machinery writes is built on has the
         // instance in its path, so the link it wrote is a path this router

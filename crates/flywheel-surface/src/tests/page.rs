@@ -70,7 +70,7 @@ fn ids_within(html: &str, opening: &str, closing: &str) -> Vec<String> {
 ///
 /// This is the list the requirements justify, not the list the mockup draws.
 /// What the mockup draws and this does not is named below, with the reason.
-const HEADER: [(&str, &str); 8] = [
+const HEADER: [(&str, &str); 9] = [
     (
         "orgname",
         "where the operator is: the instance this host serves, which is in the path of \
@@ -107,6 +107,13 @@ const HEADER: [(&str, &str); 8] = [
          switch would be client state a reload loses, and saying so answers the question \
          instead of leaving the operator to hunt for one (310)",
     ),
+    (
+        "yesall",
+        "the one thing that makes a ten-decision rail workable: yes to the approve group, \
+         one response per decision and never a batch, with the numbers it will answer on \
+         the control itself so the operator reads what the tap does before making it \
+         (11, S2, S7)",
+    ),
 ];
 
 /// What the mockup puts in the header and the page does not, with what each one
@@ -115,7 +122,8 @@ const NO_ACTION: [(&str, &str); 1] = [(
     "yesallhint",
     "a bare strip of every waiting decision number across the top names no action. It is \
      a mis-rendering of S2, which asks for the `yes all` control with the numbers it will \
-     answer: the numbers belong on the control that answers them (S2, 17.5)",
+     answer: the numbers belong on the control that answers them, and that is where \
+     `yesall` carries them (S2, 17.5)",
 )];
 
 /// Every element in the header names an action, and the two that name none are
@@ -387,4 +395,338 @@ fn a_rail_card_carries_its_kind_controls() {
         why.iter().any(|said| said.contains("signals")),
         "the intent cites signals and its card does not say how many: {why:?}"
     );
+}
+
+/// A response whose decision was gone before it arrived: one attention line,
+/// reported and never dropped (6, 129, `engine/response.yaml`).
+fn an_attention_line(store: &mut FakeStore, defs: &Definitions) {
+    let at = commands::now(store).expect("a point");
+    commands::put_new(
+        store,
+        defs,
+        "response/lost-1",
+        "response",
+        None,
+        [("answer".to_string(), json!("yes"))].into_iter().collect(),
+        at,
+    )
+    .expect("the response object");
+    let mut held = Records::get(store, "response/lost-1").expect("a read").expect("it");
+    held.config.insert("life".into(), "unapplicable".into());
+    let base = held.seq;
+    Records::put(store, "response/lost-1", &held, base).expect("the response, unapplicable");
+    commands::rail(store, defs).expect("the rail derives");
+}
+
+/// The rail walks the groups in the model's order, each sorted by number, and
+/// names each group once (11, S3).
+///
+/// `derive` hands the decisions back in number order, because the number is
+/// what a response names; the grouping is the reader's. A reader that walked
+/// the flat list and printed a heading whenever the group changed gave the
+/// operator `approve, decide, approve, decide, attention` with the headings
+/// repeating down the page — and then "yes to all" has no group to mean,
+/// against 11.
+#[test]
+fn the_rail_is_grouped_and_each_group_is_named_once() {
+    let (mut store, world, defs) = a_page();
+    rail_mockup(&mut store, &defs);
+    an_attention_line(&mut store, &defs);
+    let html = rendered(&mut store, &world, &defs);
+    let rail = {
+        let start = html.find("id=\"rail\"").expect("the rail");
+        let rest = &html[start..];
+        rest[..rest.find("</aside>").expect("the rail closes")].to_string()
+    };
+
+    // The headings, in the order they appear, and the numbers under each.
+    let mut headings: Vec<String> = Vec::new();
+    let mut under: Vec<(String, u32)> = Vec::new();
+    for piece in rail.split("<div class=\"grp ").skip(1) {
+        let group = piece.split('"').next().unwrap_or_default().to_string();
+        for card in piece.split("data-number=\"").skip(1) {
+            if let Ok(number) = card.split('"').next().unwrap_or_default().parse::<u32>() {
+                under.push((group.clone(), number));
+            }
+        }
+        headings.push(group);
+    }
+    assert!(headings.len() >= 3, "the mockup's rail has several groups: {headings:?}");
+
+    // Each group named once.
+    let mut seen: Vec<&String> = Vec::new();
+    for group in &headings {
+        assert!(
+            !seen.contains(&group),
+            "`{group}` heads the rail more than once, so the rail is not grouped: {headings:?}"
+        );
+        seen.push(group);
+    }
+    // In the model's order, with attention last.
+    let order: Vec<usize> = headings
+        .iter()
+        .map(|group| {
+            flywheel_engine::rail::GROUPS
+                .iter()
+                .position(|named| named == group)
+                .unwrap_or_else(|| panic!("`{group}` is no group the model names"))
+        })
+        .collect();
+    assert!(
+        order.windows(2).all(|pair| pair[0] < pair[1]),
+        "the groups are out of the model's order {:?}: {headings:?}",
+        flywheel_engine::rail::GROUPS
+    );
+    // And each group sorted by number.
+    for group in &headings {
+        let numbers: Vec<u32> = under
+            .iter()
+            .filter(|(held, _)| held == group)
+            .map(|(_, number)| *number)
+            .collect();
+        assert!(
+            numbers.windows(2).all(|pair| pair[0] < pair[1]),
+            "`{group}` is not in number order: {numbers:?}"
+        );
+    }
+
+    // Attention stands outside the count: it is what the machinery could not
+    // do, reported and never dropped, not a choice being put to the operator
+    // (S3, S8, 6).
+    let read = crate::page::read(&mut store, &world, &defs, ADDRESS, "chuck").expect("a read");
+    let attention = read.decisions.iter().filter(|d| d.group == "attention").count();
+    assert!(attention > 0, "the mockup's rail carries an attention line");
+    let counted = html
+        .split("id=\"count\">")
+        .nth(1)
+        .and_then(|rest| rest.split('<').next())
+        .and_then(|n| n.parse::<usize>().ok())
+        .expect("the header says how many stand");
+    assert_eq!(
+        counted,
+        read.decisions.len() - attention,
+        "the header counts the attention lines among the decisions standing (S3)"
+    );
+}
+
+/// The "yes all" control carries the numbers it will answer, and they are the
+/// approve group's and nothing else (11, S2, S7).
+#[test]
+fn yes_all_names_the_approve_group_and_nothing_else() {
+    let (mut store, world, defs) = a_page();
+    rail_mockup(&mut store, &defs);
+    let read = crate::page::read(&mut store, &world, &defs, ADDRESS, "chuck").expect("a read");
+    let html = crate::page::render(&read);
+
+    let answering = crate::page::yes_all_answers(&read.decisions);
+    assert!(answering.len() > 1, "the mockup's rail has an approve group to sweep");
+    // Only decisions that actually offer `yes`, and only from approve: a
+    // decide, an answer or an attention line is not something a sweep of the
+    // hand settles (11).
+    for (number, object) in &answering {
+        let decision = read
+            .decisions
+            .iter()
+            .find(|d| d.number == Some(*number))
+            .expect("the decision it names");
+        assert_eq!(decision.group, "approve", "{object} is not in the approve group");
+        assert!(decision.answers.iter().any(|a| a == "yes"), "{object} takes no yes");
+    }
+    for decision in read.decisions.iter().filter(|d| d.group != "approve") {
+        assert!(
+            !answering.iter().any(|(number, _)| Some(*number) == decision.number),
+            "`yes all` would answer {} of the {} group",
+            decision.number.unwrap_or_default(),
+            decision.group
+        );
+    }
+
+    // The control, with the numbers on it: S2 asks for the control with the
+    // numbers it will answer, and a strip of them loose in the header instead
+    // names no action.
+    let control = html
+        .split("<button")
+        .find(|block| block.contains("id=\"yesall\""))
+        .expect("the header carries no `yes all` control (S2)");
+    let control = &control[..control.find("</button>").expect("it closes")];
+    assert!(
+        control.contains("type=\"submit\""),
+        "`yes all` is not a control that posts: {control}"
+    );
+    for (number, _) in &answering {
+        assert!(
+            control.contains(&number.to_string()),
+            "`yes all` does not say it will answer {number}: {control}"
+        );
+    }
+    // And the form posts to the one place that expands it into one `answer`
+    // per decision (S7, 193).
+    assert!(
+        html.contains("action=\"/api/answer-all\""),
+        "the control posts nowhere"
+    );
+}
+
+/// A link the machinery wrote opens that object in the dock, at every viewport
+/// (308, 307, 205a).
+///
+/// The link names its object in the path and carries no fragment, so nothing
+/// is targeted when it is fetched. The page marked the surface opened and the
+/// stylesheet keyed on nothing but `:target`, so the link landed the operator
+/// on the rail with the dock shut — and on a phone the dock sits under the
+/// board panel, which a page with no fragment does not even show.
+#[test]
+fn a_link_opens_its_object_in_the_dock_with_no_fragment() {
+    let (mut store, world, defs) = a_page();
+    rail_mockup(&mut store, &defs);
+    let mut read = crate::page::read(&mut store, &world, &defs, ADDRESS, "chuck").expect("a read");
+    let object = "intent/atlas-provider-limits".to_string();
+    assert!(read.objects.iter().any(|o| o.id == object), "the object is in the read");
+    read.opened = Some(object.clone());
+    let html = crate::page::render(&read);
+
+    let surface = html
+        .split("<article ")
+        .find(|block| block.contains(&format!("id=\"dock-{object}\"")))
+        .expect("the dock carries no surface for the object the link named");
+    assert!(
+        surface.contains("data-opened=\"true\""),
+        "the surface the link named is not marked opened: {surface}"
+    );
+    // And exactly one: a link opens the object it names and nothing else. The
+    // stylesheet names the attribute too, so the count is of the document.
+    let body = html.split("</style>").nth(1).expect("the document after its stylesheet");
+    assert_eq!(
+        body.matches("data-opened=\"true\"").count(),
+        1,
+        "more than one surface is opened"
+    );
+
+    // The stylesheet has to act on it. The page runs no script, so what opens
+    // the dock is a rule; a document that marks the surface and no rule that
+    // shows it is the link opening nothing (310, 311).
+    let style = html
+        .split("<style>")
+        .nth(1)
+        .and_then(|rest| rest.split("</style>").next())
+        .expect("the page carries its own stylesheet");
+    assert!(
+        style.contains(".dock .surface[data-opened=\"true\"]"),
+        "nothing in the stylesheet shows the surface the request opened"
+    );
+    assert!(
+        style.contains("#board") && style.contains("data-opened=\"true\"") ,
+        "nothing shows the board panel the dock lives under, so the link opens nothing \
+         under 760px (307, 308)"
+    );
+
+    // And it opens with its answer controls in reach (308). On a phone the dock
+    // is the whole screen, so a footer that only said answering happens on the
+    // rail sent the operator back to hunt for the card the link had just
+    // brought them to.
+    let decision = read
+        .decisions
+        .iter()
+        .find(|d| d.object == object)
+        .expect("a decision stands on the object the link named");
+    let number = decision.number.expect("it is numbered");
+    let foot = surface
+        .split("<div class=\"dk-answers\"")
+        .nth(1)
+        .expect("the surface carries no answers for the decision standing on it (S27, 308)");
+    let foot = &foot[..foot.find("</article>").unwrap_or(foot.len())];
+    assert!(
+        foot.contains(&format!("data-number=\"{number}\"")),
+        "the dock does not say which decision it is answering: {foot}"
+    );
+    for answer in &decision.answers {
+        assert!(
+            foot.contains(&format!("data-answer=\"{}\"", crate::page::escape(answer))),
+            "the dock carries no `{answer}` control: {foot}"
+        );
+    }
+
+    // An object with nothing standing on it says so, and why (S27).
+    let settled = read
+        .objects
+        .iter()
+        .find(|o| !read.decisions.iter().any(|d| d.object == o.id))
+        .expect("something on this instance has nothing standing on it");
+    let quiet = html
+        .split("<article ")
+        .find(|block| block.contains(&format!("id=\"dock-{}\"", settled.id)))
+        .expect("it has a surface");
+    let quiet = &quiet[..quiet.find("</article>").unwrap_or(quiet.len())];
+    assert!(
+        quiet.contains("dk-answers none"),
+        "`{}` has nothing to answer and does not say so: {quiet}",
+        settled.id
+    );
+}
+
+/// An answer that takes an argument takes it on the card, and what is recorded
+/// is the string the machine's pattern matches (S6, 311, 193).
+///
+/// The card rendered the pattern as the button's value, so tapping `redo:
+/// <notes>` posted `redo: <notes>` literally — the operator could not say what
+/// to redo, what bolt to route to or what type to set. On a unit's card that is
+/// six of nine controls and every way of sending work back.
+#[test]
+fn an_answer_that_takes_an_argument_takes_it_on_the_card() {
+    let (mut store, world, defs) = a_page();
+    rail_mockup(&mut store, &defs);
+    let read = crate::page::read(&mut store, &world, &defs, ADDRESS, "chuck").expect("a read");
+    let html = crate::page::render(&read);
+
+    let unit = read
+        .decisions
+        .iter()
+        .find(|d| d.kind == "unit-proposed")
+        .expect("the mockup proposes a unit");
+    let number = unit.number.expect("it is numbered");
+    let card = html
+        .split("<article ")
+        .find(|block| block.contains(&format!("data-number=\"{number}\"")))
+        .expect("its card");
+    let card = &card[..card.find("</article>").expect("the card closes")];
+
+    let taking: Vec<&String> = unit.answers.iter().filter(|a| a.contains('<')).collect();
+    assert!(
+        taking.len() >= 3,
+        "a unit takes several answers with an argument: {:?}",
+        unit.answers
+    );
+    for answer in &taking {
+        let form = card
+            .split("<form ")
+            .find(|block| block.contains(&format!("data-answer=\"{}\"", crate::page::escape(answer))))
+            .unwrap_or_else(|| panic!("no control for `{answer}` on the card"));
+        let form = &form[..form.find("</form>").expect("the control closes")];
+        assert!(
+            form.contains("name=\"text\"") && form.contains("type=\"text\""),
+            "`{answer}` is a control with nowhere to type its argument: {form}"
+        );
+        assert!(
+            form.contains("required"),
+            "`{answer}` would send an empty argument as an answer: {form}"
+        );
+        // The control says what it does without the placeholder in its words:
+        // a button reading `redo: <notes>` tells the operator nothing.
+        let label = form
+            .rsplit_once('>')
+            .and_then(|(head, _)| head.rsplit_once('>'))
+            .map(|(_, said)| said.to_string())
+            .unwrap_or_default();
+        assert!(
+            !label.contains("&lt;"),
+            "`{answer}` wears its own placeholder as its label: {label}"
+        );
+    }
+    // And a bare answer stays one tap, with nothing to fill in (311).
+    let bare = card
+        .split("<form ")
+        .find(|block| block.contains("data-answer=\"yes\""))
+        .expect("the card takes a yes");
+    let bare = &bare[..bare.find("</form>").expect("it closes")];
+    assert!(!bare.contains("type=\"text\""), "a yes asks for something to type: {bare}");
 }

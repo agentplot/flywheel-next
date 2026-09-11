@@ -164,10 +164,17 @@ fn layout_switches_at_760px() {
     );
     // Full screen when an object is open, and not before: a dock covering the
     // rail would put every decision behind it, which is the one thing the phone
-    // must not do (307, 311).
+    // must not do (307, 311). Open is either of the two ways a surface opens —
+    // a link inside the page targets it, and a link the machinery wrote names
+    // its object in the path and carries no fragment, so the request marks it
+    // (308, 205a).
+    let hidden = phone
+        .lines()
+        .find(|line| line.trim_start().starts_with(".dock:not(") && line.contains("display: none"))
+        .expect("the dock covers the rail only once an object is opened");
     assert!(
-        phone.contains(".dock:not(:has(.surface:target)) { display: none; }"),
-        "the dock covers the rail only once an object is opened"
+        hidden.contains(":has(.surface:target)") && hidden.contains("data-opened=\"true\""),
+        "the dock is shut for one of the two ways a surface opens: {hidden}"
     );
     assert!(
         desktop.contains(".back { display: none; }"),
@@ -548,13 +555,15 @@ const NOT_THIS_PHASE: [(&str, &str); 20] = [
     ("signedout", "no sign-in in phase 1 (D10, 253a)"),
 ];
 
-/// `yes all` is the chat's numbered reply grammar, which expands into one
-/// response per decision before any tool is called (8.3, 11, 194). The page's
-/// one write path is the catalogue, whose `answer` takes one decision per call
-/// (193), so the mockup's two yes-all controls and their hint have no call to
-/// make here and are not drawn. Answering each decision on its own is what the
-/// rail offers, and that is what 11 asks any one answer to do.
-const YES_ALL: [&str; 2] = ["yesall", "yesall2"];
+/// The mockup draws the control twice — once in the header and once per approve
+/// group — and the page draws it once, in the header where S2 puts it.
+///
+/// That `answer` takes one decision per call is what "yes all" *is*: S7 says it
+/// sends one `answer` per approve decision, in number order, each recorded on
+/// its own, and never a batch. So one control, fanned out server-side, with the
+/// numbers it will answer on it (S2, S7, 11, 17.5). A second copy of it lower
+/// down names no further action.
+const YES_ALL: [&str; 1] = ["yesall2"];
 
 /// What the mockup draws and the page does not, because it survives no action.
 /// The mockup is the record of what we were picturing, not an authority to copy
