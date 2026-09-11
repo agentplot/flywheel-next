@@ -590,6 +590,38 @@ processes and the 390px pass on every scenario carrying a response; and the run
 record's definitions hash is compared with `definitions/`, which is itself
 byte-identical to the model (83, D2).
 
+### D16. The page is built from the ratified mockup, and the chat has a wire
+
+The page's design is not restated here. It is the blueprints' ratified mockup,
+`design/flywheel-next/mockups/rail-and-board.html`, and the served page is
+built from that file's markup and styles for the regions phase 1 has — the
+rail, the capture box, the board, the status view and the dock — under D11's
+constraints (one bundle, rendered from state per request, no client state, no
+external fetch, one-tap answers). A test reads the mockup from its path and
+asserts the served page carries its regions and controls, so the page cannot
+drift from the design the way a paraphrase can. Every later change to the
+page's design is a change to the mockup first.
+
+A fresh instance has to be able to raise a decision with nothing written by
+hand. Curation is charged by the tick (110) and in this phase the operator is
+its session (93b), so the page is where the operator curates: each unmoved
+signal with its standing moves as controls (101, 116), submitted through the
+same `flywheel exit` command a session reports by, so `record_moves` runs
+unchanged and a joined signal becomes a proposed intent with a numbered
+decision on the rail. Controls, not parsed text (194).
+
+The chat sink's behaviour is proven against the recorded channel (D9); phase 1
+also ships the wire, a Discord `Channel` beside it, so the same decision
+reaches the operator's phone by notification with a link back to the page
+(155, 309). Its token is placed by the operator in an environment variable the
+manifest names and travels nowhere else (204, 207); a sink with no token is
+reported under attention and the host runs on (217f).
+
+*Alternative considered:* leaving the page as the minimal rendering that passes
+the scenarios and taking the mockup up in phase 3 with the book. Rejected: the
+phase gate is a week of real use (roadmap), and a page the operator cannot
+curate or answer on gives the week nothing to measure.
+
 ## Risks / Trade-offs
 
 - **git as the database: latency and history growth.** → `main` grows by one
