@@ -65,16 +65,17 @@ Two runs, and the difference is what a test costs, never what it proves.
 
 | when | command | costs |
 |---|---|---|
-| while iterating | `cargo test -p <the crate you touched>`, or `cargo test --workspace` | 126 s of test time |
-| at a group's end, and at 12.4 | `cargo test --workspace -- --include-ignored` | 335 s |
+| while iterating | `cargo test -p <the crate you touched>`, or `cargo test --workspace` | 127 s of test time |
+| at a group's end, and at 12.4 | `cargo test --workspace -- --include-ignored` | 501 s |
 
 Every test runs over a real state repository: a bare repository on this
 computer and a checkout of it, which is the only store this release binds (92).
-A tick spends one `git fetch` and at most one `git push`; everything else —
-reading the checkout, writing blobs, trees, commits and refs — happens in
-process through `gix`, so a test is not paying for a process per read
-(`git-only.yaml` cost, 169). `conformance/contract/cost.yaml` is what holds
-that: it asserts the counts the store keeps of itself.
+A tick spends at most one `git push` and nothing else: the fetch, the reads and
+the writing of blobs, trees, commits and refs all happen in process through
+`gix`, so a test is not paying for a process per read and not even for the fetch
+(`git-only.yaml` Tools, 169). `conformance/contract/cost.yaml` is what holds
+that: it asserts the counts the store keeps of itself —
+`subprocesses_per_tick: [0, 1, 0]`.
 
 Marked `#[ignore = "group gate: …"]` and left out of the default run are only
 the tests that **start a process of their own**: a host under `--hosts real`, a
@@ -85,16 +86,25 @@ Where the time goes, so a change that costs something is noticed:
 
 | binary | default | with the ignored |
 |---|---|---|
-| `flywheel-scenario/tests/cascade.rs` | 41 s | 41 s |
-| `flywheel/tests/host.rs` | 25 s | 23 s |
-| `flywheel-scenario/tests/conformance_runner.rs` | 9 s | 28 s |
-| `flywheel/tests/init.rs` | 9 s | 9 s |
-| `flywheel-store-git/tests/disconnected.rs` | 8 s | 8 s |
+| `flywheel-scenario/tests/cascade.rs` | 37 s | 39 s |
+| `flywheel/tests/host.rs` | 23 s | 20 s |
+| `flywheel/tests/curate.rs` | 12 s | 12 s |
+| `flywheel-scenario/tests/conformance_runner.rs` | 8 s | 23 s |
+| `flywheel/tests/init.rs` | 7 s | 7 s |
+| `flywheel-store-git/tests/disconnected.rs` | 7 s | 7 s |
 | `flywheel-surface/tests/dictation.rs` | 7 s | 7 s |
-| `flywheel/tests/signals.rs` | 7 s | 7 s |
-| `flywheel-scenario/tests/phone.rs` | — | 133 s |
+| `flywheel/tests/signals.rs` | 6 s | 6 s |
+| `flywheel/tests/walkthrough.rs` | — | 165 s |
+| `flywheel-scenario/tests/phone.rs` | — | 143 s |
 | `flywheel-scenario/tests/real_hosts.rs` | — | 48 s |
 | everything else | under 4 s each | |
+
+`walkthrough.rs` is the largest of the ignored: it starts a real host with
+`--serve` and plays README.md's whole turn of the loop against it, and the
+machinery's own cascade advances about one transition per pass while the loop's
+quiet interval is the 30-second poll (`host::POLL`, D6, D7). A local cause — a
+page response, a session's report — wakes that loop at once; nothing yet
+shortens the passes the cascade itself needs.
 
 A test that reaches a real process is marked when it is written, so the default
 run stays the one a person runs every few minutes. A test never sleeps: the

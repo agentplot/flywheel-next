@@ -158,22 +158,101 @@ fn readme_walkthrough_runs() {
         page.contains("id=\"capture-box\""),
         "the page the walkthrough opens carries the capture box: {page}"
     );
-    // A capture typed into the box, as the section says, and the record it made.
-    let answered = post(
-        "/api/tools/capture",
-        "text=the rows lose their numbers on the second page&source=page",
+    // The captures, typed into the box as the section says. A dozen, which is
+    // the shipped threshold curation is charged at (110).
+    for n in 1..=12 {
+        let answered = post(
+            "/api/tools/capture",
+            &format!("text=the rows lose their numbers on page {n}&source=page"),
+        );
+        assert!(answered.contains("\"recorded\":true"), "{answered}");
+    }
+
+    // The curator's surface, once the tick has charged curation (110, 93b).
+    let page = wait_for("id=\"curate-box\"");
+    let signals = signals_on(&page);
+    assert!(
+        signals.len() >= 2,
+        "the curator's surface shows the unmoved signals: {page}"
     );
+    for word in ["attach", "join", "route", "challenge", "drop"] {
+        assert!(
+            page.contains(&format!("<option value=\"{word}\">{word}</option>")),
+            "the surface offers no `{word}` (107, 116)"
+        );
+    }
+
+    // Two of them joined into one intent, submitted: the session's delivery and
+    // its exit in one submit (67, 93b, 110).
+    let intent = "intent/rows-lose-numbers";
+    let body = signals[..2]
+        .iter()
+        .map(|s| format!("move.{s}=join&target.{s}={intent}"))
+        .collect::<Vec<_>>()
+        .join("&");
+    let curated = post("/api/curate", &body);
+    assert!(curated.contains("\"recorded\":true"), "{curated}");
+
+    // The decision the joins raise, on the served rail with its number (15,
+    // 109, 110).
+    let page = wait_for(&format!("data-object=\"{intent}\""));
+    let number = number_of(&page, intent)
+        .unwrap_or_else(|| panic!("the proposed intent carries no number: {page}"));
+
+    // And the answer, through the same tool a numbered chat reply calls (193).
+    let answered = post("/api/tools/answer", &format!("decision={number}&answer=yes"));
     assert!(answered.contains("\"recorded\":true"), "{answered}");
     let _ = host.kill();
     let _ = host.wait();
 
-    // And it is a record on the shared line, readable with nothing running: the
-    // capture object's own file in the state repository (132, 160).
-    let captures = std::fs::read_dir(PathBuf::from(&state).join("objects/capture"))
-        .expect("the capture is a directory of records on the shared line")
-        .count();
-    assert!(captures >= 1, "the capture the box made is not on the shared line");
+    // Each of them is a record on the shared line, readable with nothing
+    // running, and none of them was written by hand (132, 160, 167).
+    for under in ["capture", "signal", "intent", "response"] {
+        let held = std::fs::read_dir(PathBuf::from(&state).join("objects").join(under))
+            .unwrap_or_else(|e| panic!("`objects/{under}` on the shared line: {e}"))
+            .count();
+        assert!(held >= 1, "nothing under `objects/{under}` on the shared line");
+    }
     let _ = std::fs::remove_dir_all(&home);
+}
+
+/// The signal ids the curator's surface offers a move on.
+fn signals_on(page: &str) -> Vec<String> {
+    let mut out: Vec<String> = Vec::new();
+    for at in page.match_indices("data-signal=\"") {
+        let rest = &page[at.0 + 13..];
+        let Some(end) = rest.find('"') else { continue };
+        let id = rest[..end].to_string();
+        if !out.contains(&id) {
+            out.push(id);
+        }
+    }
+    out
+}
+
+/// The number the register gave the decision standing on one object (15).
+fn number_of(page: &str, object: &str) -> Option<u32> {
+    let card = page
+        .split("<article class=\"card decision")
+        .find(|card| card.contains(&format!("data-object=\"{object}\"")))?;
+    let at = card.find("data-number=\"")? + 13;
+    let rest = &card[at..];
+    rest[..rest.find('"')?].parse().ok()
+}
+
+/// The page, once it says what the walkthrough's next step needs it to. A tick
+/// is what moves the state, so the page is asked again until it has.
+fn wait_for(shown: &str) -> String {
+    for _ in 0..120 {
+        if let Ok(text) = speak("GET / HTTP/1.1\r\nHost: localhost:4242\r\nConnection: close\r\n\r\n")
+        {
+            if text.contains(shown) {
+                return text;
+            }
+        }
+        std::thread::sleep(std::time::Duration::from_millis(500));
+    }
+    panic!("the page never showed `{shown}`");
 }
 
 /// The page, once the host is serving it. A host makes its repositories and its

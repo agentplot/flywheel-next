@@ -828,6 +828,49 @@ pub fn record_moves<S: StateStore, W: World + ?Sized>(
     Ok(stored)
 }
 
+/// The proposed intents a set of moves produces: one per intent the joins name,
+/// citing the signals that joined it and the claims they challenge (110, 109,
+/// 116).
+///
+/// The moves are the delivery and this reads them; it decides nothing. A
+/// curation session names the intent each join goes to, whether that session is
+/// an agent or the operator working on the page (20, 93b, D16).
+pub fn proposals_of(moves: &[Move]) -> Vec<Proposal> {
+    let mut out: Vec<Proposal> = Vec::new();
+    // The claims the signals argue with, so a proposal carries the challenges
+    // its own signals made (116).
+    let challenged: BTreeMap<&str, &str> = moves
+        .iter()
+        .filter(|m| m.word() == "challenge" && !m.names().is_empty())
+        .map(|m| (m.signal.as_str(), m.names()))
+        .collect();
+    for moved in moves.iter().filter(|m| m.word() == "join") {
+        let into = moved.names();
+        if into.is_empty() {
+            continue;
+        }
+        let at = match out.iter().position(|p| p.id == into) {
+            Some(at) => at,
+            None => {
+                out.push(Proposal {
+                    id: into.to_string(),
+                    ..Default::default()
+                });
+                out.len() - 1
+            }
+        };
+        if !out[at].signals.iter().any(|s| s == &moved.signal) {
+            out[at].signals.push(moved.signal.clone());
+        }
+        if let Some(claim) = challenged.get(moved.signal.as_str()) {
+            if !out[at].challenges.iter().any(|c| c == claim) {
+                out[at].challenges.push(claim.to_string());
+            }
+        }
+    }
+    out
+}
+
 /// `propose_intents`: each join becomes or grows a proposed intent (110, 109).
 ///
 /// Curation never opens an intent: what it makes stands as a proposal on the

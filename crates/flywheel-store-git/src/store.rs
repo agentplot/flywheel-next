@@ -85,9 +85,15 @@ pub struct GitStore {
     /// without the shared line moving, so this is discarded on every fetch and
     /// on every write of a heartbeat or a lease (D5).
     heartbeats: RefCell<Option<Vec<HostRecord>>>,
-    /// The repository itself, held open: refs, trees, blobs and the commits
-    /// this host writes, all in process (`git-only.yaml`, model.md §13).
+    /// The repository itself, held open: refs, trees, blobs, the fetch and the
+    /// commits this host writes, all in process (`git-only.yaml`, model.md §13).
     odb: gix::Repository,
+    /// Where the shared line is fetched from: the remote the manifest names, as
+    /// this checkout's `origin` holds it (133, 161).
+    remote: String,
+    /// That remote, opened at the first fetch and held: a tick's fetch is the
+    /// objects that moved and not a repository opened again (169).
+    origin: Option<objects::Origin>,
 }
 
 impl GitStore {
@@ -99,6 +105,12 @@ impl GitStore {
             git::clone(remote, root)?
         };
         let repo_dir = repo.dir.clone();
+        let odb = objects::open(&repo_dir)?;
+        // A checkout names its own remote, which is what a host opened at a
+        // directory it already has must fetch from; the argument is the remote
+        // for the clone that has yet to happen.
+        let remote = objects::origin_url(&odb)
+            .unwrap_or_else(|| remote.to_string_lossy().to_string());
         let mut store = GitStore {
             repo,
             host: host.to_string(),
@@ -122,7 +134,9 @@ impl GitStore {
             pending: vec![],
             read_at: RefCell::new((String::new(), BTreeMap::new(), BTreeMap::new())),
             heartbeats: RefCell::new(None),
-            odb: objects::open(&repo_dir)?,
+            odb,
+            remote,
+            origin: None,
         };
         store.fetch()?;
         Ok(store)
@@ -133,19 +147,20 @@ impl GitStore {
     pub fn fetch(&mut self) -> Result<String> {
         if !self.disconnected {
             // A fetch that cannot reach the git host is not an error: the host
-            // keeps working what it already holds (151). One process, at the
-            // start of a tick (165, 169).
+            // keeps working what it already holds (151). No process at all: the
+            // fetch is `gix`'s, in this host's own process, and the `git` binary
+            // is spawned for the guarded push alone (169, `git-only.yaml`
+            // Tools, model.md §12.8).
             self.fetches += 1;
             // The refspec is stated rather than left to the clone's own
             // configuration: the remote-tracking refs are what every read's
             // point and every write's expected-old are taken from (165, 134).
-            let _ = self.repo.run(&[
-                "fetch",
-                "--quiet",
-                "--prune",
-                "origin",
-                "+refs/heads/*:refs/remotes/origin/*",
-            ]);
+            if self.origin.is_none() {
+                self.origin = objects::origin(&self.remote).ok();
+            }
+            if let Some(origin) = &self.origin {
+                let _ = objects::fetch(&self.odb, origin, true);
+            }
         }
         // A host with no route reads its own line: its local commits are
         // intentions, not facts (161), but they are the state it is working
@@ -775,14 +790,15 @@ impl StateStore for GitStore {
 
     /// What this tick has cost. The read path spawns nothing: a read is the
     /// checkout as of the point the tick fetched, never a call per object
-    /// (126, 165, 169).
+    /// (126, 165, 169). Nor does the fetch, which is `gix` in this process, so
+    /// every process a tick spawns is a push (`git-only.yaml` Tools, §12.8).
     fn cost(&self) -> flywheel_atoms::Cost {
         let spawned = self.repo.spawned().saturating_sub(self.spawned_at_tick);
         flywheel_atoms::Cost {
             fetches: self.fetches,
             pushes: self.pushes,
             lease_renewals: self.lease_renewals,
-            read_processes: spawned.saturating_sub(self.fetches + self.pushes),
+            read_processes: spawned.saturating_sub(self.pushes),
             subprocesses: spawned,
         }
     }

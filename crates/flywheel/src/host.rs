@@ -1289,10 +1289,34 @@ pub fn perform(
                 now,
             );
         }
-        // Every judged signal gets its one standing move, each join becomes or
-        // grows a proposed intent, and a dropped intent's signals keep a move
-        // naming the drop (107, 109, 116, 117). What the session delivered is
-        // curation's: the flywheel accepts its output whoever produced it (20).
+        // Every judged signal gets its one standing move, and each join becomes
+        // or grows a proposed intent (107, 109, 116, `curation.yaml` applying).
+        //
+        // The moves are what the curation session delivered, and in this phase
+        // that session is the operator working on the page (93b, D16): the
+        // curator's surface writes one move record per signal it judged and
+        // reports the exit, and this reads those records back. Applying a move
+        // already applied writes the same bytes and cites the same signal, so a
+        // second pass changes nothing (127, 137).
+        "record_moves" => {
+            let HostStore { git, world, .. } = store;
+            let delivered =
+                flywheel_domain::signals::moves(&flywheel_domain::signals::Blueprints(&**world));
+            let _ =
+                flywheel_domain::signals::record_moves(git, &mut **world, &delivered, now);
+        }
+        // Curation never opens an intent: what its joins make stands as a
+        // proposal on the rail and becomes work only on the operator's
+        // response (20, 110, 5).
+        "propose_intents" => {
+            let HostStore { git, world, .. } = store;
+            let delivered =
+                flywheel_domain::signals::moves(&flywheel_domain::signals::Blueprints(&**world));
+            let proposals = flywheel_domain::signals::proposals_of(&delivered);
+            let _ = flywheel_domain::signals::propose_intents(git, defs, &proposals, now);
+        }
+        // Every signal a dropped intent cited keeps a move naming the drop, and
+        // they are not clustered again unless new signals join them (117).
         "drop_signals" => {
             let reason = effect
                 .args

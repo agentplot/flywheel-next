@@ -43,6 +43,12 @@ pub struct Served<S: StateStore + Send + 'static> {
     /// The port the operator at the machine uses, which 245 permits beside the
     /// private-network address (46, 155).
     pub localhost_port: u16,
+    /// What a local cause wakes. A page response, a chat message and a
+    /// session's report notify in process at once and do not wait for the poll
+    /// (130, D6, task 8.10): a write through this transport signals here, and
+    /// the loop serving beside it takes its next pass without sleeping out the
+    /// 30 seconds. A caller with no loop beside it simply never listens.
+    pub woken: Arc<tokio::sync::Notify>,
 }
 
 impl<S: StateStore + Send + 'static> Clone for Served<S> {
@@ -54,6 +60,7 @@ impl<S: StateStore + Send + 'static> Clone for Served<S> {
             operators: self.operators.clone(),
             address: self.address.clone(),
             localhost_port: self.localhost_port,
+            woken: self.woken.clone(),
         }
     }
 }
@@ -74,6 +81,7 @@ impl<S: StateStore + Send + 'static> Served<S> {
             operators: operators.to_vec(),
             address: address.to_string(),
             localhost_port: 4242,
+            woken: Arc::new(tokio::sync::Notify::new()),
         }
     }
 
@@ -200,10 +208,121 @@ async fn invoke<S: StateStore + Send + 'static>(
     let mut store = served.store.lock().await;
     let mut world = served.world.lock().await;
     match catalogue::call(&mut *store, &mut **world, &served.defs, &call) {
-        Ok(outcome) => (
-            StatusCode::OK,
-            Json(json!({"id": outcome.id, "recorded": catalogue::recorded(&outcome)})),
+        Ok(outcome) => {
+            // A page response is one of the three local causes, and it does not
+            // wait for the poll (130, D6).
+            served.woken.notify_one();
+            (
+                StatusCode::OK,
+                Json(json!({"id": outcome.id, "recorded": catalogue::recorded(&outcome)})),
+            )
+        }
+        Err(refused) => (
+            StatusCode::BAD_REQUEST,
+            Json(json!({"refused": refused.to_string()})),
         ),
+    }
+}
+
+/// `POST /api/curate`: the curator's surface submitting its moves.
+///
+/// This is not a tool and is not the catalogue's (193). It is the operator
+/// running the curation session (93b): the submission writes the `move`
+/// deliverable the session's exit names, and reports that exit through the same
+/// `write_report` that `flywheel exit` calls, so what a person submits here and
+/// what a session's command writes are one record (67, D8, D16). `record_moves`
+/// on the next tick is what applies them, unchanged (110, `curation.yaml`).
+async fn curate<S: StateStore + Send + 'static>(
+    State(served): State<Served<S>>,
+    headers: axum::http::HeaderMap,
+    body: axum::body::Bytes,
+) -> impl IntoResponse {
+    if let Err(refused) = served.admits(host_of(&headers)) {
+        return (StatusCode::FORBIDDEN, Json(json!({"refused": refused})));
+    }
+    let fields = form_fields(&String::from_utf8_lossy(&body));
+    let mut store = served.store.lock().await;
+    let mut world = served.world.lock().await;
+    let at = match flywheel_domain::commands::now(&mut *store) {
+        Ok(at) => at,
+        Err(e) => return (StatusCode::INTERNAL_SERVER_ERROR, Json(json!({"refused": e.to_string()}))),
+    };
+    // The session the moves are delivered under. The page names it, and it is
+    // checked against the store: a move is a session's delivery and never a
+    // write of its own (110, 93b).
+    let objects = match store.list_records(&flywheel_atoms::Scope::All) {
+        Ok(objects) => objects,
+        Err(e) => return (StatusCode::INTERNAL_SERVER_ERROR, Json(json!({"refused": e.to_string()}))),
+    };
+    let Some(session) = page::curating(&objects) else {
+        return (
+            StatusCode::BAD_REQUEST,
+            Json(json!({"refused": "no curation session is charged; the tick charges one when \
+                        the unmoved signals cross the threshold or the cadence says so (110)"})),
+        );
+    };
+    let mut moves: Vec<flywheel_domain::signals::Move> = Vec::new();
+    for (name, value) in &fields {
+        let Some(signal) = name.strip_prefix("move.") else {
+            continue;
+        };
+        let word = value.as_str().unwrap_or_default().trim();
+        // A signal the operator left alone stays unmoved, and the next run sees
+        // it again: nothing is judged by omission (107, 118).
+        if word.is_empty() {
+            continue;
+        }
+        let names = fields
+            .get(&format!("target.{signal}"))
+            .and_then(|v| v.as_str())
+            .unwrap_or_default()
+            .trim()
+            .to_string();
+        moves.push(flywheel_domain::signals::Move {
+            signal: signal.to_string(),
+            target: match names.is_empty() {
+                true => word.to_string(),
+                false => format!("{word} {names}"),
+            },
+            reason: "the operator curated it on the page".into(),
+            at: at.to_rfc3339(),
+        });
+    }
+    let mut written = 0usize;
+    for moved in &moves {
+        match flywheel_domain::signals::write_move(&mut **world, moved) {
+            Ok(_) => written += 1,
+            Err(refused) => {
+                return (
+                    StatusCode::BAD_REQUEST,
+                    Json(json!({"refused": refused.to_string()})),
+                )
+            }
+        }
+    }
+    // The exit the session reports, with `move` as what it delivered: the same
+    // entry `flywheel exit done --deliverable move` writes (67, 80).
+    let reported = flywheel_domain::report::write_report(
+        &mut *store,
+        &session,
+        served.operator(),
+        at,
+        &flywheel_domain::report::Report::Exit {
+            kind: "done".into(),
+            deliverables: vec!["move".into()],
+            question: None,
+            text: None,
+        },
+    );
+    match reported {
+        Ok(_) => {
+            // A session's report is a local cause too (130, D6).
+            served.woken.notify_one();
+            (
+                StatusCode::OK,
+                Json(json!({"recorded": true, "session": session, "moves": written})),
+            )
+        }
         Err(refused) => (
             StatusCode::BAD_REQUEST,
             Json(json!({"refused": refused.to_string()})),
@@ -285,6 +404,7 @@ pub fn router<S: StateStore + Send + 'static>(served: Served<S>) -> Router {
         .route("/", get(page::<S>))
         .route("/api/tools", get(tools::<S>))
         .route("/api/tools/:name", post(invoke::<S>))
+        .route("/api/curate", post(curate::<S>))
         .with_state(served)
 }
 

@@ -1,13 +1,14 @@
 //! Running git. The one place in the workspace that reaches a repository, and
 //! the reason the storage-dependency boundary holds (125, task 1.7).
 //!
-//! The profile names `gix` for reads and the `git` binary for pushes with
-//! `--force-with-lease`. Phase 1 uses the binary for both: it binds every name
-//! the profile binds, correctness comes before speed (design — Non-Goals), and
-//! it keeps the workspace free of a large dependency. Swapping the reads to a
-//! library later changes nothing above this file.
+//! The profile names the `git` binary for one thing — the push with
+//! `--force-with-lease`, because `gix` has no push — and `gix` for everything
+//! else: the reads, the object writes and the fetch, all in the host's own
+//! process (`git-only.yaml` Tools, model.md §12.8, §13). What is left here is
+//! that push, the ref delete under it, and making or cloning a repository,
+//! which happens once at `flywheel init` or `host join` and never in a tick.
 
-use anyhow::{anyhow, bail, Context, Result};
+use anyhow::{anyhow, Context, Result};
 use std::path::{Path, PathBuf};
 use std::process::Command;
 
@@ -142,60 +143,6 @@ pub fn rev(repo: &Repo, reference: &str) -> Result<Option<String>> {
 /// The zero object id: the expected-old of a ref that does not exist yet.
 pub const ZERO: &str = "0000000000000000000000000000000000000000";
 
-/// A file's content at a commit, or none when the commit does not hold it.
-pub fn show(repo: &Repo, commit: &str, path: &str) -> Result<Option<String>> {
-    let spec = format!("{commit}:{path}");
-    let out = repo.run(&["show", &spec])?;
-    Ok(out.ok.then_some(out.stdout))
-}
-
-/// Every path under a prefix at a commit.
-pub fn ls_tree(repo: &Repo, commit: &str, prefix: &str) -> Result<Vec<String>> {
-    let out = repo.run(&["ls-tree", "-r", "--name-only", commit, prefix])?;
-    if !out.ok {
-        // An empty tree, or a prefix nothing is under yet.
-        return Ok(vec![]);
-    }
-    Ok(out
-        .stdout
-        .lines()
-        .map(str::to_string)
-        .filter(|l| !l.is_empty())
-        .collect())
-}
-
-/// The paths that moved between two commits — what a fetch tells a host to
-/// re-read, rather than everything (130, 166).
-pub fn diff_names(repo: &Repo, from: &str, to: &str) -> Result<Vec<String>> {
-    if from == to {
-        return Ok(vec![]);
-    }
-    let range = format!("{from}..{to}");
-    let out = repo.run(&["diff", "--name-only", &range])?;
-    if !out.ok {
-        return Ok(vec![]);
-    }
-    Ok(out
-        .stdout
-        .lines()
-        .map(str::to_string)
-        .filter(|l| !l.is_empty())
-        .collect())
-}
-
-/// Whether the history reachable from a commit carries a message holding this
-/// text. This is how a repeat of an already-written effect finds itself (127).
-pub fn log_grep(repo: &Repo, commit: &str, needle: &str) -> Result<bool> {
-    let out = repo.run(&[
-        "log",
-        "--fixed-strings",
-        &format!("--grep={needle}"),
-        "--format=%H",
-        commit,
-    ])?;
-    Ok(out.ok && !out.stdout.trim().is_empty())
-}
-
 /// Push a ref with expected-old: the compare-and-swap the whole profile rests
 /// on (128, 134, 162, I15).
 pub fn push_expecting(
@@ -232,24 +179,3 @@ pub fn stage(repo: &Repo, path: &str, content: &str) -> Result<()> {
     Ok(())
 }
 
-/// Commit what is staged, with a message. An empty commit is allowed, because
-/// an effect's write may change no file and still be a fact with an identity
-/// (127, 167).
-pub fn commit(repo: &Repo, message: &str, at: chrono::DateTime<chrono::Utc>) -> Result<String> {
-    let when = at.to_rfc3339();
-    let out = repo.run(&[
-        "-c",
-        &format!("user.name=flywheel"),
-        "commit",
-        "--quiet",
-        "--allow-empty",
-        "--date",
-        &when,
-        "-m",
-        message,
-    ])?;
-    if !out.ok {
-        bail!("committing: {}", out.stderr.trim());
-    }
-    rev(repo, "HEAD")?.ok_or_else(|| anyhow!("no HEAD after committing"))
-}

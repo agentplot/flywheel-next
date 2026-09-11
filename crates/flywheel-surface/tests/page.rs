@@ -496,3 +496,185 @@ fn proposed_intent_shows_weight() {
         );
     }
 }
+
+// ---- 14.1 the page is the mockup
+
+/// The ratified design of the page, in the blueprints, read from the path this
+/// test names (D16, AGENTS.md — Where the design lives).
+fn mockup() -> String {
+    let path = std::path::Path::new(env!("CARGO_MANIFEST_DIR"))
+        .join("../../../../blueprints/main/design/flywheel-next/mockups/rail-and-board.html");
+    std::fs::read_to_string(&path).unwrap_or_else(|e| {
+        panic!(
+            "the page's ratified design is `design/flywheel-next/mockups/rail-and-board.html` in \
+             the blueprints, and the served page is built from it (D16). It is not at {}: {e}",
+            path.display()
+        )
+    })
+}
+
+/// The parts phase 1 does not have, and why each one is not on the page. Every
+/// other id the mockup gives is asserted below, so a region added to the design
+/// fails here until the page carries it.
+const NOT_THIS_PHASE: [(&str, &str); 20] = [
+    // The system context map (198, accepted; not yet in requirements.md) and
+    // its scope, review and add-repository flows.
+    ("map", "the map view is not phase 1's"),
+    ("map-wrap", "the map view"),
+    ("map-stage", "the map view"),
+    ("map-panel", "the map view"),
+    ("arrow", "the map's edge marker"),
+    ("scope-send", "the map's scope gesture"),
+    ("scope-clear", "the map's scope gesture"),
+    ("review-toggle", "since-last-review, on the map"),
+    ("review-mark", "since-last-review, on the map"),
+    ("addrepo-open", "the map's add-repository flow"),
+    ("ar-name", "the map's add-repository flow"),
+    ("ar-add", "the map's add-repository flow"),
+    ("ar-cancel", "the map's add-repository flow"),
+    // The flywheel instrument and its panel (214).
+    ("load", "the flywheel instrument is not phase 1's"),
+    ("load-open", "the flywheel instrument"),
+    ("load-close", "the flywheel instrument"),
+    // The account item and its sign-in: phase 1 has one operator, named by the
+    // manifest, and no sign-in at all (D10, 236a, 253a; 233 closes it).
+    // The account item's slot in the header stays, because the one operator's
+    // name has to be on the page: it is what every response records as
+    // `given_by` (153, 236a, 253a). What is not here is the menu behind it and
+    // the sign-in, which phase 1 does not have (D10; 233 closes it).
+    ("acct", "no sign-in in phase 1 (D10, 253a)"),
+    ("acct-menu", "no sign-in in phase 1 (D10, 253a)"),
+    ("signin", "no sign-in in phase 1 (D10, 253a)"),
+    ("signedout", "no sign-in in phase 1 (D10, 253a)"),
+];
+
+/// `yes all` is the chat's numbered reply grammar, which expands into one
+/// response per decision before any tool is called (8.3, 11, 194). The page's
+/// one write path is the catalogue, whose `answer` takes one decision per call
+/// (193), so the mockup's two yes-all controls and their hint have no call to
+/// make here and are not drawn. Answering each decision on its own is what the
+/// rail offers, and that is what 11 asks any one answer to do.
+const YES_ALL: [&str; 2] = ["yesall", "yesall2"];
+
+/// Every id the mockup gives, in the order it gives them.
+fn ids_of(html: &str) -> Vec<String> {
+    let mut out: Vec<String> = Vec::new();
+    for at in html.match_indices("id=\"") {
+        let rest = &html[at.0 + 4..];
+        let Some(end) = rest.find('"') else { continue };
+        let id = &rest[..end];
+        // A template's own interpolation is not an id the design gives.
+        if id.contains("${") || id.is_empty() {
+            continue;
+        }
+        if !out.iter().any(|held| held == id) {
+            out.push(id.to_string());
+        }
+    }
+    out
+}
+
+/// The page is rendered from the mockup's markup and styles for the parts phase
+/// 1 has — the rail, the capture box, the board, the status view and the dock —
+/// and every element the mockup gives an id in those regions is present under
+/// that id (D16, 14.1).
+#[test]
+fn page_carries_the_mockups_regions() {
+    let (_sandbox, page) = a_page("the-mockups-regions");
+    // A decision stands, so the rail's own answerable form is on the page.
+    page.with_store(|store| {
+        let defs = flywheel_domain::set::load().expect("the embedded definitions");
+        let mut bolt = Records::get(store, "bolt/atlas/plan-rows")
+            .expect("a read")
+            .expect("the bolt");
+        bolt.config.insert("life".into(), "open".into());
+        bolt.config
+            .insert("life.open.close".into(), "offered".into());
+        let base = bolt.seq;
+        store.put("bolt/atlas/plan-rows", &bolt, base).expect("open");
+        commands::rail(store, &defs).expect("the rail derives");
+    });
+    let html = page.html("/");
+    let design = mockup();
+
+    let mut missing: Vec<String> = Vec::new();
+    for id in ids_of(&design) {
+        if let Some((_, why)) = NOT_THIS_PHASE.iter().find(|(name, _)| *name == id) {
+            assert!(
+                !html.contains(&format!("id=\"{id}\"")),
+                "`{id}` is on the page, and it is named as a part phase 1 does not have: {why}"
+            );
+            continue;
+        }
+        if YES_ALL.contains(&id.as_str()) {
+            continue;
+        }
+        if !html.contains(&format!("id=\"{id}\"")) {
+            missing.push(id);
+        }
+    }
+    assert!(
+        missing.is_empty(),
+        "the mockup gives these ids and the served page carries none of them (D16): {}",
+        missing.join(", ")
+    );
+
+    // The regions themselves, in the mockup's own silhouettes: the rail's
+    // cards, the board's lanes, the dock's surfaces and the palette (D16).
+    for present in [
+        "class=\"rail\"",
+        "class=\"card decision",
+        "class=\"lanes\"",
+        "class=\"lane inception\"",
+        "class=\"pal\"",
+        "class=\"dk-b\"",
+    ] {
+        assert!(html.contains(present), "the mockup's `{present}` is not on the page");
+    }
+
+    // The answer controls the mockup draws on a card, as controls: one tap
+    // each, posting to the one tool the reply grammar calls (311, 193, 194).
+    let numbered = page.with_store(|store| commands::register(store).expect("the register"));
+    let number = numbered
+        .entries
+        .iter()
+        .find(|(id, _)| id.starts_with("bolt/atlas/plan-rows"))
+        .expect("the register numbered it")
+        .1
+        .number;
+    let card = html
+        .split("<article class=\"card decision")
+        .nth(1)
+        .expect("a decision card is on the rail");
+    let card = card.split("</article>").next().unwrap_or_default();
+    assert!(
+        card.contains(&format!("<span class=\"n number\">{number}</span>")),
+        "the card carries the number the register gave, in the mockup's own place for it: {card}"
+    );
+    assert!(
+        card.contains(&format!("action=\"/api/tools/{}\"", flywheel_surface::catalogue::ANSWER)),
+        "the card's answers post to the catalogue: {card}"
+    );
+    assert!(card.contains("data-answer=\""), "the answers are controls: {card}");
+
+    // The mockup's own stylesheet, carried rather than paraphrased: its tokens
+    // and its card, lane, dock and palette rules are the page's (D16).
+    for rule in [
+        "--accent:#0B6E79;",
+        ".card{position:relative;border:1px solid var(--line);border-left-width:3px",
+        ".lanes{flex:1;min-height:0;display:grid;",
+        ".dk-b{flex:1;overflow:auto;",
+        ".pal{width:min(680px,100%);",
+    ] {
+        assert!(
+            design.contains(rule),
+            "the mockup no longer carries `{rule}`; the page's stylesheet is copied from it (D16)"
+        );
+        assert!(html.contains(rule), "the page does not carry the mockup's `{rule}`");
+    }
+
+    // And still one bundle with no script and nothing fetched from anywhere
+    // else: the design is carried, its JavaScript is not (310).
+    assert_eq!(html.matches("<style>").count(), 1);
+    assert!(!html.contains("<script"));
+}

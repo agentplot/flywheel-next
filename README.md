@@ -79,30 +79,52 @@ it straight away:
 unmoved signals   12 from page, oldest 0d
 ```
 
-Curation reads the signals with no move, and it is charged when the cadence says
-so or when twelve are waiting (110). When it is, the status view shows what it
-raised under **run by the operator** — the operator is the session in this phase
-(93b) — with the command to report by:
+**Curate, on the page.** Curation reads the signals with no move, and the tick
+charges it when the cadence says so or when twelve are waiting (110). The
+shipped threshold is twelve, so capture a dozen things — or wait for the
+cadence, which is weekday mornings. When curation is charged, the status view
+shows what it raised under **run by the operator** — the operator is the session
+in this phase (93b):
 
 ```
 curation/willdan   run: running   held by laptop (alive)   run by the operator
 ```
 
-The work order names the session and this host's checkout of the state
-repository, and a report is one command from the place it runs in (67, 89):
+and the board's Inception lane gains the curator's surface: every unmoved
+signal, quoted, with the standing moves beside it as controls — attach, join,
+route, challenge, drop — and a field for what each one names (107, 116, 194).
+Nothing there reads a word of the signal for meaning; the move is a control and
+the target is picked.
+
+Give two of them `join` and name the same intent — `intent/rows-lose-numbers`,
+say; it need not exist yet — and submit. That one submit is the curation
+session's whole delivery and its exit: it writes one move record per signal and
+reports `done` with `move` as what it delivered, which is the record
+`flywheel exit done --deliverable move` writes from a place (67, 93b). The same
+report from a terminal is:
 
 ```sh
 FLYWHEEL_SESSION=curation/willdan/main/1 \
 FLYWHEEL_STATE=~/flywheel/hosts/laptop/willdan/flywheel-state \
-  cargo run -q -- exit done --deliverable "twelve signals judged" --host laptop
+  cargo run -q -- exit done --deliverable move --host laptop
 ```
 
-What curation delivers is one move per signal and the proposed intents the joins
-produce; each proposed intent is one decision on the rail, answerable on the
-page or from the phone, and the answer is the same tool a numbered chat reply
-calls (107, 109, 15, 193). In this release those move records are yours to
-write — a person writing them by hand is curation too, and the machine then
-finds nothing left to do (`curation.yaml`).
+**The decision, and the answer.** On the next tick the machinery applies what
+the session delivered: each judged signal gets its one standing move, and the
+joins become a proposed intent citing them, which is its weight (107, 109, 110,
+116). A proposed intent is one decision on the rail, with a number the register
+gave it:
+
+```
+approve
+  3   intent/rows-lose-numbers        2 signals from page
+      [ yes ]  [ no ]  [ later ]
+```
+
+Tap `yes` — on the laptop or on the phone, the same control either way. It posts
+to the same tool a numbered chat reply calls, the answer is recorded at once with
+who gave it and when, and a reload shows it there before the next tick applies
+it (15, 153, 154, 193, 311).
 
 **Read it all back.** Every write is a commit, and the record is readable with
 nothing running (160, 167):
@@ -112,9 +134,10 @@ git -C ~/flywheel/git-host/willdan-state.git log --oneline
 git -C ~/flywheel/git-host/willdan-state.git show --stat HEAD
 ```
 
-The captures, the signals, the responses you gave on the page and the status
-projection are each a commit, with the reason and the evidence the guard read in
-the message (79, 127).
+The captures, the signals, the moves you made on the page, the proposed intent
+they produced, the answer you gave it and the status projection are each a
+commit, with the reason and the evidence the guard read in the message (79,
+127). Nothing in that record was written by hand.
 
 ## The conformance suite
 

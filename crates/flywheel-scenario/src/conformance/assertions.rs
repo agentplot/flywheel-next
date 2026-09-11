@@ -843,9 +843,9 @@ pub fn observe(run: &Run, scenario: &Scenario, key: &str) -> Option<Value> {
         "pushes_per_tick" => per_tick(|c| c.pushes),
         "lease_renewals_per_tick" => per_tick(|c| c.lease_renewals),
         "read_processes_per_tick" => per_tick(|c| c.read_processes),
-        // The most any one tick spawned, which is the bound the profile's
-        // mechanism sets (169).
-        "subprocesses_per_tick" => json!(costs.iter().map(|c| c.subprocesses).max().unwrap_or(0)),
+        // What each tick spawned: one — the push — on a tick that writes once,
+        // and none on a tick that writes nothing (169, model.md §12.8).
+        "subprocesses_per_tick" => per_tick(|c| c.subprocesses),
         // Every act carries the identity of the effect it performs; a repeat
         // carries the same one and is not a second write (127, 167).
         "writes_with_effect_id" => json!(effects.len()),

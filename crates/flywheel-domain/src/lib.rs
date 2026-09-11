@@ -8,6 +8,7 @@ pub mod cadence;
 pub mod commands;
 pub mod context;
 pub mod deliverables;
+pub mod report;
 pub mod envelope;
 pub mod instructions;
 pub mod order;

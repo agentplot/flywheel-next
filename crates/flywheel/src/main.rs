@@ -445,8 +445,12 @@ async fn main() -> Result<()> {
                     // page shows what the last tick wrote, and an answer given
                     // on it is a commit the next tick reads (D11, 132, 153).
                     let host = std::sync::Arc::new(std::sync::Mutex::new(host));
+                    // What a local cause wakes, so the loop takes its next pass
+                    // at once rather than sleeping out the poll (130, D6).
+                    let mut woken: Option<std::sync::Arc<tokio::sync::Notify>> = None;
                     if let Some(port) = serve {
                         let served = flywheel::serve::page_of(&host, *port, operators);
+                        woken = Some(served.woken.clone());
                         for listener in flywheel::serve::listeners(&served, *port).await? {
                             println!("page at http://{}/", listener.local_addr()?);
                             let served = served.clone();
@@ -485,10 +489,18 @@ async fn main() -> Result<()> {
                         if passes > 0 && pass >= passes {
                             break;
                         }
-                        tokio::time::sleep(std::time::Duration::from_secs(
-                            flywheel::host::POLL as u64,
-                        ))
-                        .await;
+                        // The poll is the floor for another host's writes; a
+                        // page response, a chat message or a session's report
+                        // reaching this process does not wait for it (130, D6).
+                        let poll =
+                            tokio::time::sleep(std::time::Duration::from_secs(flywheel::host::POLL as u64));
+                        match &woken {
+                            Some(woken) => tokio::select! {
+                                _ = poll => {}
+                                _ = woken.notified() => {}
+                            },
+                            None => poll.await,
+                        }
                     }
                 }
             }

@@ -1,12 +1,14 @@
 //! The repository's objects and refs, in process.
 //!
-//! `gix` for reads and for writing blobs, trees, commits and refs, as
-//! `profiles/git-only.yaml` and model.md §13 name it. Nothing here spawns a
-//! process: a tick's read path is the checkout and the object database, and the
-//! only two processes a tick makes are the fetch from the remote and the push
-//! with the expected-old guard (169, `git-only.yaml` cost).
+//! `gix` for reads, for the fetch, and for writing blobs, trees, commits and
+//! refs, as `profiles/git-only.yaml` Tools and model.md §13 name it. Nothing
+//! here spawns a process: a tick's read path is the checkout and the object
+//! database, its fetch is this process's, and the one process a tick makes is
+//! the push with the expected-old guard, because `gix` has no push (169,
+//! `git-only.yaml` cost, model.md §12.8).
 
 use anyhow::{anyhow, Context, Result};
+use std::collections::BTreeSet;
 use std::path::Path;
 
 /// The repository at a checkout.
@@ -33,6 +35,163 @@ pub fn rev(repo: &gix::Repository, reference: &str) -> Result<Option<String>> {
         Err(gix::reference::find::existing::Error::NotFound { .. }) => Ok(None),
         Err(e) => Err(e.into()),
     }
+}
+
+/// Where this repository's `origin` points, as the clone left it.
+pub fn origin_url(repo: &gix::Repository) -> Option<String> {
+    let remote = repo.find_remote("origin").ok()?;
+    let url = remote.url(gix::remote::Direction::Fetch)?;
+    Some(url.to_bstring().to_string())
+}
+
+/// What a fetch brings: every head of the remote, under this repository's
+/// remote-tracking names, which is what every read's point and every write's
+/// expected-old are taken from (165, 134).
+pub const REFSPEC: &str = "+refs/heads/*:refs/remotes/origin/*";
+
+/// Where the shared line is fetched from, opened once.
+///
+/// The profile's cost promises no process on the read path or the fetch, and
+/// one — the push — on a tick that writes (169, `git-only.yaml` observations,
+/// model.md §12.8). So the fetch is `gix`'s, never a `git` child, and the two
+/// transports the profile names are the two shapes here.
+#[derive(Debug)]
+pub enum Origin {
+    /// A repository on this computer, which is what the conformance suite and
+    /// a laptop's `--git-host` directory are (92, §12.8). Held open: a fetch
+    /// reads its refs and its objects, and re-reading its configuration every
+    /// tick would be a cost the profile does not promise.
+    OnThisComputer(gix::Repository),
+    /// Anywhere else — ssh — fetched with `gix`'s own client, which speaks the
+    /// wire in this process.
+    OverTheWire(String),
+}
+
+/// Open a remote by the url the checkout's `origin` holds. A remote that is not
+/// a directory on this computer is taken as one to be reached over the wire.
+pub fn origin(url: &str) -> Result<Origin> {
+    let path = url.strip_prefix("file://").unwrap_or(url);
+    Ok(match Path::new(path).is_dir() {
+        true => Origin::OnThisComputer(open(Path::new(path))?),
+        false => Origin::OverTheWire(url.to_string()),
+    })
+}
+
+/// Bring `refs/remotes/origin/*` up to date from the remote, in this process.
+pub fn fetch(repo: &gix::Repository, from: &Origin, prune: bool) -> Result<()> {
+    match from {
+        Origin::OnThisComputer(remote) => fetch_locally(repo, remote, prune),
+        Origin::OverTheWire(url) => fetch_over_the_wire(repo, url),
+    }
+}
+
+/// The remote's heads, and the objects they reach, copied into this
+/// repository's database and named under `refs/remotes/origin/`. Nothing is
+/// spawned, not even the `git upload-pack` a file transport would ask for.
+fn fetch_locally(repo: &gix::Repository, remote: &gix::Repository, prune: bool) -> Result<()> {
+    let mut brought: BTreeSet<String> = BTreeSet::new();
+    for (name, id) in refs_under(remote, "refs/heads/")? {
+        let Some(short) = name.strip_prefix("refs/heads/") else {
+            continue;
+        };
+        let tracking = format!("refs/remotes/origin/{short}");
+        copy_history(remote, repo, &id)?;
+        set_ref(repo, &tracking, &id, None)?;
+        brought.insert(tracking);
+    }
+    if prune {
+        for (name, _) in refs_under(repo, "refs/remotes/origin/")? {
+            // `origin/HEAD` names no head of the remote; it is the clone's own
+            // note of which one it started at.
+            if !brought.contains(&name) && !name.ends_with("/HEAD") {
+                delete_ref(repo, &name)?;
+            }
+        }
+    }
+    Ok(())
+}
+
+/// The same over the wire, `gix` speaking the protocol in this process.
+fn fetch_over_the_wire(repo: &gix::Repository, remote: &str) -> Result<()> {
+    use gix::remote::{ref_map, Direction};
+    let named = repo
+        .remote_at(remote)?
+        .with_refspecs([REFSPEC], Direction::Fetch)?;
+    named
+        .connect(Direction::Fetch)?
+        .prepare_fetch(gix::progress::Discard, ref_map::Options::default())?
+        .receive(gix::progress::Discard, &Default::default())?;
+    Ok(())
+}
+
+/// A commit and everything it reaches, copied where this repository lacks it.
+///
+/// A commit already here brought its history with it, so the walk stops at one:
+/// a fetch reads the objects that moved and no more (130, 166).
+fn copy_history(from: &gix::Repository, to: &gix::Repository, tip: &str) -> Result<()> {
+    enum Step {
+        Walk(gix::ObjectId),
+        Copy(gix::ObjectId),
+    }
+    let tip = gix::ObjectId::from_hex(tip.as_bytes()).map_err(|e| anyhow!("{tip}: {e}"))?;
+    let mut stack = vec![Step::Walk(tip)];
+    let mut walked: BTreeSet<gix::ObjectId> = BTreeSet::new();
+    while let Some(step) = stack.pop() {
+        match step {
+            Step::Walk(id) => {
+                if to.has_object(id) || !walked.insert(id) {
+                    continue;
+                }
+                // The copy goes under the parents, so a commit is written only
+                // once everything it names is here: a commit in this database
+                // is never one whose history is missing.
+                stack.push(Step::Copy(id));
+                for parent in from.find_object(id)?.into_commit().parent_ids() {
+                    stack.push(Step::Walk(parent.detach()));
+                }
+            }
+            Step::Copy(id) => {
+                let object = from.find_object(id)?;
+                let bytes = object.data.clone();
+                copy_tree(from, to, object.into_commit().tree_id()?.detach())?;
+                copy_bytes(to, gix::object::Kind::Commit, &bytes)?;
+            }
+        }
+    }
+    Ok(())
+}
+
+/// A tree and the blobs and trees under it, copied the same way.
+fn copy_tree(from: &gix::Repository, to: &gix::Repository, id: gix::ObjectId) -> Result<()> {
+    if to.has_object(id) {
+        return Ok(());
+    }
+    let object = from.find_object(id)?;
+    let bytes = object.data.clone();
+    for entry in object.into_tree().iter() {
+        let entry = entry?;
+        let oid = entry.oid().to_owned();
+        if entry.mode().is_tree() {
+            copy_tree(from, to, oid)?;
+        } else if entry.mode().is_blob_or_symlink() && !to.has_object(oid) {
+            let blob = from.find_object(oid)?;
+            let kind = blob.kind;
+            let body = blob.data.clone();
+            copy_bytes(to, kind, &body)?;
+        }
+    }
+    copy_bytes(to, gix::object::Kind::Tree, &bytes)?;
+    Ok(())
+}
+
+/// One object's bytes into this repository's database. The bytes are the
+/// object, so what is written keeps the id it had on the remote.
+fn copy_bytes(to: &gix::Repository, kind: gix::object::Kind, bytes: &[u8]) -> Result<()> {
+    use gix::objs::Write as _;
+    to.objects
+        .write_buf(kind, bytes)
+        .map_err(|e| anyhow!("writing a {kind}: {e}"))?;
+    Ok(())
 }
 
 /// Every ref under a prefix, with the commit each points at.
