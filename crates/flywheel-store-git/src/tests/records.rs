@@ -524,3 +524,49 @@ fn a_put_of_what_is_already_there_is_not_a_write() {
     assert_eq!(outcome, PutOutcome::Written { seq: 2 });
     assert_eq!(commits(&a), after_the_write + 1);
 }
+
+#[test]
+fn an_answer_is_a_notice_about_the_object_it_answers() {
+    // A notice names what moved since a point, so a host re-reads only that
+    // (130, D6). An answer moves no object file — a response is a record of its
+    // own, under `responses/` and not under `objects/` — so a notice taken from
+    // the changed object files alone named nothing at all when the operator
+    // answered: the loop woke on the answer, found nothing to tick, and the
+    // object waited out the sweep. Up to a minute in which the operator had
+    // clicked and the page showed them nothing, which is the moment 13 says
+    // they never have to nudge through.
+    let sandbox = Sandbox::new("answer-notice");
+    let mut a = sandbox.host("a");
+    a.put("lamp/1", &a_lamp("lamp/1"), 0).unwrap();
+
+    let mut register = flywheel_engine::runtime::Register::default();
+    let decision = "lamp/1/lamp-proposed/2026-01-01T00:00:00Z";
+    let number = register.number_for(decision, Some(at(0)));
+    flywheel_domain::commands::set_register(&mut a, &register, &[decision.to_string()]).unwrap();
+
+    // The point the host last read at, before the answer arrives.
+    let point = StateStore::read(&a, "lamp/1").unwrap().as_of;
+    assert!(
+        a.notify(&point).unwrap().objects.is_empty(),
+        "nothing has moved yet"
+    );
+
+    a.receive(&Response {
+        id: "page-1".into(),
+        kind: ResponseKind::Answer,
+        decision: Some(number),
+        object: None,
+        answer: "on".into(),
+        given_by: "chuck".into(),
+        given_at: at(1),
+        delivery: "page".into(),
+    })
+    .unwrap();
+
+    let notice = a.notify(&point).unwrap();
+    assert!(
+        notice.objects.iter().any(|o| o == "lamp/1"),
+        "the answer named no object to tick: {:?}",
+        notice.objects
+    );
+}

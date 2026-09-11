@@ -257,3 +257,64 @@ fn an_applied_instance_covers_what_it_seeds() {
         "the seed put objects in that no declaration covers: {uncovered:?}"
     );
 }
+
+/// An apply ends at the present and never ahead of it, and its actions reach
+/// back as far as they happened (D15, 231).
+///
+/// The actions are things that happened, and the last of them happened now. A
+/// run that started at the present and advanced sixty seconds an action ended
+/// that far ahead of the clock, so every moment in the instance was in the
+/// future of the host that picked it up: its ages were negative, its history
+/// read backwards, and the run record — what a person reads to know what
+/// happened (79, 167) — could not be read as a sequence at all.
+#[test]
+fn an_apply_ends_at_the_present_and_ages_what_came_before() {
+    let under = Under::new("clock");
+    let scenario = PathBuf::from(concat!(
+        env!("CARGO_MANIFEST_DIR"),
+        "/../../scenarios/storefront"
+    ));
+    let per_action = Duration::seconds(60);
+    let now = at();
+    let through = 4;
+    let applied = apply::apply(&scenario, &under.0, Some(through), now, per_action)
+        .expect("the scenario applies");
+
+    assert_eq!(
+        applied.at, now,
+        "the last action happened now, so the instance stands at now"
+    );
+
+    // Nothing in it is stamped ahead of the moment it stands at, and the
+    // machinery's own reads are all `now` less a moment a state was entered.
+    let host = flywheel::host::Host::open(&applied.manifest, "local", None, applied.at)
+        .expect("the host opens");
+    let mut ahead: Vec<String> = Vec::new();
+    let mut oldest = applied.at;
+    for object in host
+        .store
+        .list_records(&Scope::All)
+        .expect("the state repository reads")
+    {
+        for (region, entered) in &object.entered_at {
+            if *entered > applied.at {
+                ahead.push(format!("{}/{region} at {}", object.id, entered.to_rfc3339()));
+            }
+            oldest = oldest.min(*entered);
+        }
+    }
+    assert!(
+        ahead.is_empty(),
+        "the apply stamped moments ahead of where the instance stands: {ahead:?}"
+    );
+
+    // And what happened first is as old as the actions say: a scenario played
+    // through four actions leaves its earliest moment four intervals back, so
+    // signals have aged and "seen at" means something without anyone waiting.
+    assert!(
+        applied.at - oldest >= per_action * (through as i32 - 1),
+        "the run did not reach back over its actions: oldest {} against {}",
+        oldest.to_rfc3339(),
+        applied.at.to_rfc3339()
+    );
+}

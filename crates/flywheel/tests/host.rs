@@ -1322,3 +1322,85 @@ fn an_ordinary_rewrite_of_the_projection_is_not_drift() {
         "the projection following its source was reported as drift: {drift:?}"
     );
 }
+
+/// One response is enough, and the machinery takes it up on the pass the
+/// response causes (13, 129, 130, D6).
+///
+/// An answer is a local cause: it reaches this process and does not wait for
+/// the poll. But it moves no object file, so the notice a host takes from the
+/// changed object files named nothing at all, the notify-tick had nothing to
+/// tick, and the answer sat until the sweep came round — up to a minute in
+/// which the operator had clicked and nothing had happened. An operator with no
+/// sign their answer was taken is an operator who nudges, which is the thing 13
+/// says they never do.
+#[test]
+fn an_answer_is_taken_up_on_the_pass_it_causes() {
+    let mut host = host("answered-at-once", &["atlas"]);
+    seed(
+        &mut host,
+        "unit/atlas/status-writer",
+        "unit",
+        &[("life", "proposed")],
+        &[("repository", json!("atlas")), ("type", json!("default"))],
+    );
+    // Settle, so the decision stands and is numbered.
+    for minute in 1..6 {
+        host.set_now(at(minute));
+        host.sweep().unwrap();
+        if !host.moved {
+            break;
+        }
+    }
+    let defs = host.defs.clone();
+    let number = flywheel_domain::commands::rail(&mut host.store, &defs)
+        .unwrap()
+        .iter()
+        .find(|d| d.object == "unit/atlas/status-writer")
+        .and_then(|d| d.number)
+        .expect("the proposed unit is a numbered decision");
+
+    // The operator answers on the page. The response is a record of its own and
+    // moves no object file.
+    host.set_now(at(6));
+    host.store
+        .receive(&flywheel_engine::runtime::Response {
+            id: "page-1".into(),
+            kind: flywheel_engine::runtime::ResponseKind::Answer,
+            decision: Some(number),
+            object: None,
+            answer: "yes".into(),
+            given_by: "chuck".into(),
+            given_at: at(6),
+            delivery: "page".into(),
+        })
+        .unwrap();
+
+    // What the host is told moved names the object the answer answers, so the
+    // notify-tick has something to tick without waiting for a sweep.
+    let notified = host.notified().unwrap();
+    assert!(
+        notified.iter().any(|o| o == "unit/atlas/status-writer"),
+        "the answer named no object to tick: {notified:?}"
+    );
+
+    // And the pass that notice drives applies it. The sweep is not what took
+    // it: this ticks the notified chain alone.
+    for scope in [
+        Scope::Under("unit/atlas/status-writer".to_string()),
+    ] {
+        host.tick(&scope).unwrap();
+    }
+    let after = host
+        .store
+        .get("unit/atlas/status-writer")
+        .unwrap()
+        .expect("the unit")
+        .config
+        .get("life")
+        .cloned()
+        .unwrap_or_default();
+    assert_ne!(
+        after, "proposed",
+        "the answer was not applied by the pass it caused"
+    );
+}

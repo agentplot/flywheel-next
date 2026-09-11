@@ -341,6 +341,7 @@ async fn main() -> Result<()> {
             manifest,
         } => {
             let report = init::run(init::Init {
+                at: chrono::Utc::now(),
                 instance: instance.clone(),
                 host: host.clone(),
                 root: root.clone(),

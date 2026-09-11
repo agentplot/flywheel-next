@@ -820,6 +820,39 @@ impl GitStore {
     /// that is what lets a late answer resolve to the object it was for and be
     /// reported rather than silently lost (`record-derived.yaml` responses, 6,
     /// 15).
+    /// The objects the responses in one response file answer: the one each
+    /// names, and the one the register says its number belongs to (15, 137).
+    ///
+    /// A register entry is keyed `<object>/<kind>/<entered_at>`, and neither the
+    /// kind nor the moment carries a `/`, so the object is what is left when
+    /// the last two are taken off.
+    fn answers_for(&self, path: &str) -> Result<Vec<String>> {
+        let Some(text) = self.read_file(path)? else {
+            return Ok(vec![]);
+        };
+        let register = flywheel_domain::commands::register(self)?;
+        let mut out = Vec::new();
+        for record in rec::parse(&text) {
+            let Ok(response) = records::response_from_record(&record) else {
+                continue;
+            };
+            if let Some(object) = &response.object {
+                out.push(object.clone());
+            }
+            let Some(number) = response.decision else {
+                continue;
+            };
+            for (decision, _) in register.entries.iter().filter(|(_, e)| e.number == number) {
+                let mut parts = decision.rsplitn(3, '/');
+                let (_moment, _kind, object) = (parts.next(), parts.next(), parts.next());
+                if let Some(object) = object {
+                    out.push(object.to_string());
+                }
+            }
+        }
+        Ok(out)
+    }
+
     fn numbers_of(&self, id: &str) -> Result<Vec<u32>> {
         if id == flywheel_domain::RAIL {
             return Ok(vec![]);
@@ -1155,10 +1188,22 @@ impl StateStore for GitStore {
     fn notify(&self, since: &ReadPoint) -> Result<Notice> {
         // After a fetch, `git diff --name-only <old>..<new>` names the object
         // files that moved, so a host re-reads only those (130, 166).
-        let mut objects: Vec<String> = objects::changed_paths(&self.odb, &since.mark, self.at())?
+        let changed = objects::changed_paths(&self.odb, &since.mark, self.at())?;
+        let mut objects: Vec<String> = changed
             .iter()
             .filter_map(|p| layout::touched(p).map(str::to_string))
             .collect();
+        // An answer moves no object file — a response is a record of its own,
+        // under `responses/` and not under `objects/` — so a notice taken from
+        // the changed object files alone named nothing at all when the operator
+        // answered. The loop woke, found nothing to tick, and the answer waited
+        // out the sweep: up to a minute in which the operator had clicked and
+        // the page showed them nothing, which is the moment 13 says they never
+        // have to nudge through. What a response is a notice about is the
+        // object it answers (13, 129, 130, D6).
+        for path in changed.iter().filter(|p| p.starts_with(layout::RESPONSES)) {
+            objects.extend(self.answers_for(path)?);
+        }
         objects.sort();
         objects.dedup();
         Ok(Notice {
