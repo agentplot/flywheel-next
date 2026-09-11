@@ -79,6 +79,17 @@ pub struct Scenario {
     pub when: Vec<BTreeMap<String, Value>>,
     #[serde(default)]
     pub then: Then,
+    /// What happens after the moment `given:` describes, in order: one thing a
+    /// real actor does per entry. A scenario that asserts only a moment has
+    /// none, and is the test it always was.
+    #[serde(default)]
+    pub actions: Vec<BTreeMap<String, Value>>,
+    /// A line of copy per action, for the overlay. Empty, or exactly as long as
+    /// `actions:` — a tour that has drifted from the actions is a tour telling
+    /// the viewer about the wrong moment, so the lengths are checked rather
+    /// than zipped short.
+    #[serde(default)]
+    pub tour: Vec<String>,
 }
 
 impl Scenario {
@@ -99,6 +110,27 @@ impl Scenario {
     /// is read off the scenarios and no list of it is kept by hand (314, D15).
     pub fn carries_response(&self) -> bool {
         self.when.iter().any(|step| step.contains_key("response"))
+    }
+
+    /// The actions, parsed. An unknown key is an error, never a silent skip.
+    pub fn actions(&self) -> Result<Vec<Action>> {
+        if !self.tour.is_empty() && self.tour.len() != self.actions.len() {
+            bail!(
+                "the tour has {} lines for {} actions; a tour is a line per action, or none                  at all",
+                self.tour.len(),
+                self.actions.len()
+            );
+        }
+        self.actions
+            .iter()
+            .enumerate()
+            .map(|(n, raw)| Action::parse(raw).with_context(|| format!("action {}", n + 1)))
+            .collect()
+    }
+
+    /// The copy the overlay shows for an action, counting from 1.
+    pub fn tour_line(&self, action: usize) -> Option<&str> {
+        self.tour.get(action.checked_sub(1)?).map(String::as_str)
     }
 
     /// The steps, parsed. An unknown key is an error, never a silent skip.
@@ -466,6 +498,7 @@ pub struct DecisionExpectation {
 /// Read a scenario file. The bytes are also returned, because the schema is
 /// checked against the document and not against these types.
 pub fn load(path: &std::path::Path) -> Result<(Scenario, Value)> {
+    let path = &scenario_file(path);
     let text =
         std::fs::read_to_string(path).with_context(|| format!("reading {}", path.display()))?;
     let document: Value = serde_yaml::from_str(&text)
@@ -473,4 +506,185 @@ pub fn load(path: &std::path::Path) -> Result<(Scenario, Value)> {
     let scenario: Scenario = serde_json::from_value(document.clone())
         .with_context(|| format!("reading {} as a scenario", path.display()))?;
     Ok((scenario, document))
+}
+
+// --------------------------------------------------------------- the actions
+
+/// One thing a real actor does next (`design/flywheel-next/scenarios/
+/// storefront.md`).
+///
+/// A scenario's `given:` is a moment; its `actions:` are what happens after it,
+/// in order. There are exactly three, because there are exactly three actors
+/// outside the machinery: something arrives as a capture, the operator answers
+/// a decision, and a session delivers and exits. Everything else a scenario
+/// could say — evidence set by hand, a file written into place, a clock moved,
+/// a host started — is the machinery's own to do, and an action that named one
+/// would be the scenario standing in for machinery that does not work.
+///
+/// So the vocabulary is closed and deliberately narrower than `when:`'s. A
+/// demo that cannot be written in it has found a hole in the machinery, which
+/// is the finding; it is never accommodated by widening this (125, 193).
+#[derive(Debug, Clone)]
+pub enum Action {
+    /// A capture arrived: an adapter enumerated one, or a person typed or
+    /// forwarded one (111, 115, 215, D13).
+    Capture(CaptureAction),
+    /// The operator answered a numbered decision (15, 153).
+    Response(ResponseStep),
+    /// A session delivered what it had and reported its exit (67, 93).
+    Session(SessionAction),
+}
+
+/// A capture arriving. Exactly one of `adapter:` and `text:`: an enumerator run
+/// over material that stays where it is, or a capture that is its own excerpt.
+#[derive(Debug, Clone, Deserialize, Default)]
+#[serde(deny_unknown_fields)]
+pub struct CaptureAction {
+    /// The adapter's own command, run from anywhere (217g):
+    /// `flywheel capture meeting 2026-09-02-storefront-weekly.vtt`.
+    #[serde(default)]
+    pub adapter: Option<String>,
+    /// The one sentence a person typed in the page's box, or the message they
+    /// forwarded from chat: its own excerpt, so the capture machine's
+    /// `ensure_signal` makes the signal and no judgment is involved (19, 112).
+    #[serde(default)]
+    pub text: Option<String>,
+    /// Where a capture that is its own excerpt came from: the page's box, a
+    /// message forwarded from chat, or a running service saying something with
+    /// no human involved. `page` by default.
+    #[serde(default)]
+    pub source: Option<String>,
+    /// The key the capture is filed under, where the source does not give one.
+    #[serde(default)]
+    pub key: Option<String>,
+    #[serde(default)]
+    pub by: Option<String>,
+}
+
+impl CaptureAction {
+    /// One of the two ways a capture arrives, never both and never neither.
+    pub fn check(&self) -> Result<()> {
+        match (&self.adapter, &self.text) {
+            (Some(_), None) | (None, Some(_)) => Ok(()),
+            _ => bail!(
+                "a capture action names one of `adapter:` — an enumerator's own command — \
+                 or `text:` — what a person typed or forwarded (111, 112, 215)"
+            ),
+        }
+    }
+}
+
+/// A session delivering and exiting.
+///
+/// There is nothing to run the session, so the object stalls where a real one
+/// would be working; this is the moment it comes back. What it delivered is
+/// copied out of the scenario's `bundle/` into the path the real session would
+/// have written, and the exit is reported by running the command a real session
+/// reports through (67, 93). Nothing is set: the machinery reads the file and
+/// the thread entry as it finds them.
+#[derive(Debug, Clone, Deserialize, Default)]
+#[serde(deny_unknown_fields)]
+pub struct SessionAction {
+    /// The object whose session this is.
+    pub object: String,
+    /// One of the five exits: `done`, `blocked`, `stalled`, `invalid`, or
+    /// `refused` (65, 66, 67).
+    pub exit: String,
+    /// What it delivered: a path under `bundle/` against the path in the
+    /// repository the real session would have written it at.
+    #[serde(default)]
+    pub deliver: BTreeMap<String, String>,
+    /// What `blocked` is blocked on, which reaches the rail as a numbered
+    /// decision (24, 15).
+    #[serde(default)]
+    pub question: Option<String>,
+    /// The session's verdict, where its type reports one.
+    #[serde(default)]
+    pub verdict: Option<String>,
+    /// Findings and chores it offered, each pointing at a document (58, 59, 62).
+    #[serde(default)]
+    pub offers: Vec<crate::scenario::Offer>,
+}
+
+/// The `when:` keys an action may not be. Each is the machinery's own to do, or
+/// the run's; a scenario that reaches for one is describing state it could not
+/// arrive at, and saying so by name is more use than "unknown action".
+const NOT_ACTIONS: &[(&str, &str)] = &[
+    ("evidence", "evidence is what the machinery reads, never what a scenario sets (125)"),
+    ("files", "a file arrives because a session delivered it; name it in `deliver:` (193)"),
+    ("direct", "an action is one actor's doing; a capture is `capture:` and an answer is `response:`"),
+    ("script", "a session's delivery is `session:`, which runs the reporting command (67, 93)"),
+    ("tick", "the machinery runs between actions; a scenario never ticks it by hand"),
+    ("clock", "the clock advances with the actions; a scenario never moves it by hand (D15)"),
+    ("host", "a host starting, losing or returning is the run's, not an action's"),
+    ("restart", "a restart is the run's, not an action's"),
+    ("notify", "what moved is the store's to say (130, 166)"),
+    ("disconnect", "a route being cut is the run's, not an action's"),
+    ("reconnect", "a route coming back is the run's, not an action's"),
+];
+
+impl Action {
+    /// Parse one action's single key. The set is closed at three.
+    pub fn parse(raw: &BTreeMap<String, Value>) -> Result<Action> {
+        if raw.len() != 1 {
+            bail!(
+                "an action carries exactly one key; this one carries {:?}",
+                raw.keys().collect::<Vec<_>>()
+            );
+        }
+        let (key, value) = raw.iter().next().expect("one key");
+        Ok(match key.as_str() {
+            "capture" => {
+                let capture: CaptureAction =
+                    serde_json::from_value(value.clone()).context("capture")?;
+                capture.check()?;
+                Action::Capture(capture)
+            }
+            "response" => {
+                Action::Response(serde_json::from_value(value.clone()).context("response")?)
+            }
+            "session" => {
+                Action::Session(serde_json::from_value(value.clone()).context("session")?)
+            }
+            other => {
+                let why = NOT_ACTIONS
+                    .iter()
+                    .find(|(name, _)| *name == other)
+                    .map(|(_, why)| format!(": {why}"))
+                    .unwrap_or_default();
+                return Err(anyhow!(
+                    "`{other}` is not an action{why}. An action is exactly one thing a real \
+                     actor does: `capture` — something arrived, `response` — the operator \
+                     answered, `session` — a session delivered and exited (125, 193)"
+                ));
+            }
+        })
+    }
+}
+
+/// Where a scenario's file is, given what a person named.
+///
+/// A scenario is a directory — `scenarios/<name>/scenario.yaml` with `bundle/`
+/// beside it — and a single file is the same thing with nothing beside it, so
+/// both are named the same way and the existing files keep working.
+pub fn scenario_file(path: &std::path::Path) -> std::path::PathBuf {
+    match path.is_dir() {
+        true => path.join(SCENARIO_FILE),
+        false => path.to_path_buf(),
+    }
+}
+
+/// The file a scenario directory holds.
+pub const SCENARIO_FILE: &str = "scenario.yaml";
+/// The artifacts beside it.
+pub const BUNDLE_DIR: &str = "bundle";
+
+/// The bundle beside a scenario, where it has one.
+pub fn bundle_of(path: &std::path::Path) -> Option<std::path::PathBuf> {
+    let dir = match path.is_dir() {
+        true => path.to_path_buf(),
+        false => path.parent()?.to_path_buf(),
+    };
+    let bundle = dir.join(BUNDLE_DIR);
+    bundle.is_dir().then_some(bundle)
 }

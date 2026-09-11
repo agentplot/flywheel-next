@@ -44,6 +44,64 @@ pub fn from_scenario(store: &mut GitStore, path: &std::path::Path, at: DateTime<
     into_store(store, &mut scenario, at)
 }
 
+/// Read a conformance scenario's `given:` into a state store.
+///
+/// The acceptance set's YAML and a demo's are one format, so a demo's moment is
+/// put in place by the same seeding every conformance run stands on: the
+/// runner's own `seed` builds the described objects, and they go into the state
+/// repository through `put` exactly as the runner's git binding puts them
+/// (94, 125, 193, D15).
+///
+/// The description is moved to `at` for the reason `from_scenario` moves one:
+/// every age in it is relative to the moment it was written at, and a host's
+/// clock is the real one.
+pub fn from_conformance(
+    store: &mut GitStore,
+    scenario: &flywheel_atoms::conformance::Scenario,
+    at: DateTime<Utc>,
+) -> Result<Seeded> {
+    let defs = flywheel_domain::set::load()?;
+    let suite = flywheel_scenario::conformance::Suite::open(std::path::Path::new("conformance"))
+        .or_else(|_| {
+            flywheel_scenario::conformance::Suite::open(std::path::Path::new(concat!(
+                env!("CARGO_MANIFEST_DIR"),
+                "/../../conformance"
+            )))
+        })
+        .context("the suite the described state is closed by")?;
+    let runtime = flywheel_scenario::conformance::drive::seed(defs, scenario, &suite)?;
+    let delta = at - flywheel_scenario::conformance::drive::start_of_time();
+    let mut objects: Vec<Object> = runtime.store.objects.values().cloned().collect();
+    objects.sort_by_key(|o| o.created);
+    for object in &mut objects {
+        object.entered_at.values_mut().for_each(|t| *t += delta);
+        for value in object.record.values_mut() {
+            shift(value, delta);
+        }
+    }
+    store
+        .seed_objects(&objects)
+        .context("putting the described objects on the shared line")?;
+    // The register the scenario described, so a decision that already had a
+    // number keeps it and the next one carries on from there (15).
+    let next = scenario
+        .given
+        .register
+        .get("next")
+        .and_then(|v| v.as_u64())
+        .map(|n| n as u32);
+    if let Some(next) = next {
+        let mut register = flywheel_domain::commands::register(store)?;
+        register.next_number = next;
+        flywheel_domain::commands::set_register(store, &register, &[])?;
+    }
+    Ok(Seeded {
+        objects: objects.len(),
+        now: at,
+        register_start: next,
+    })
+}
+
 /// The same over a scenario already read.
 pub fn into_store(store: &mut GitStore, scenario: &mut Scenario, at: DateTime<Utc>) -> Result<Seeded> {
     move_to(scenario, at);

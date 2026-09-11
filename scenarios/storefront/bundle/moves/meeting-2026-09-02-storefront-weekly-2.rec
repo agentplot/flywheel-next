@@ -1,0 +1,7 @@
+%rec: move
+
+format: flywheel-move/1
+signal: signal/meeting-2026-09-02-storefront-weekly-2
+target: join intent/storefront-declines
+reason: the same subject, narrowed to amex
+at: 2026-09-04T09:40:00Z

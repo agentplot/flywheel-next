@@ -1,0 +1,12 @@
+%rec: signal
+
+format: flywheel-signal/1
+id: signal/meeting-2026-09-02-storefront-weekly-6
+capture: capture/meeting-2026-09-02-storefront-weekly
+kind: constraint
+asserted_by: chuck
+subject_tags: payments retry policy
+assertion: the retry policy is written down nowhere and is whatever the payments service happens to do
+excerpt: We never wrote the retry policy down anywhere. It is whatever the payments service does, and what it does is whatever someone typed in eighteen months ago.
+position: cue 6
+argues_with:

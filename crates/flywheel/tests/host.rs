@@ -1080,3 +1080,104 @@ fn a_host_with_no_channel_delivers_nothing() {
     );
     assert_eq!(after.delivery, None);
 }
+
+// ------------------------------------------- 19.6 a lease is not a decision
+
+/// A lease is the machinery's own bookkeeping: which host holds an object, and
+/// whether any host's declaration covers it. Neither is a decision the operator
+/// makes, so neither takes a number on the rail; both are read where 141
+/// already puts the holder, on the status view (79, 141, 310).
+#[test]
+fn a_lease_is_not_a_decision() {
+    let mut host = host("lease-not-a-decision", &["atlas"]);
+    // Three the host covers and takes, and two it does not: enough of each that
+    // one card per lease would be obvious.
+    for name in ["status-writer", "retry-jitter", "chores-1"] {
+        seed(
+            &mut host,
+            &format!("unit/atlas/{name}"),
+            "unit",
+            &[("life", "proposed")],
+            &[("repository", json!("atlas"))],
+        );
+    }
+    for name in ["baseline-1", "spike-1"] {
+        seed(
+            &mut host,
+            &format!("unit/new-repo/{name}"),
+            "unit",
+            &[("life", "proposed")],
+            &[("repository", json!("new-repo"))],
+        );
+    }
+    host.sweep().unwrap();
+    host.sweep().unwrap();
+
+    // The host really took the three it covers and none of the two it does not.
+    let held: Vec<&str> = ["unit/atlas/status-writer", "unit/atlas/retry-jitter", "unit/atlas/chores-1"]
+        .into_iter()
+        .filter(|id| {
+            host.store
+                .leases(id)
+                .unwrap()
+                .is_some_and(|l| l.holder == "mac-mini")
+        })
+        .collect();
+    assert_eq!(held.len(), 3, "the host took the three it covers: {held:?}");
+
+    let defs = host.defs.clone();
+    let rail = flywheel_domain::commands::rail(&mut host.store, &defs).unwrap();
+    // Five units are proposed, so five decisions stand and no more: not one of
+    // them is about a lease.
+    let about_a_lease: Vec<String> = rail
+        .iter()
+        .filter(|d| d.object.starts_with("lease/"))
+        .map(|d| format!("{} {} {:?}", d.kind, d.object, d.number))
+        .collect();
+    assert!(
+        about_a_lease.is_empty(),
+        "a lease took a number on the rail: {about_a_lease:?}"
+    );
+    assert_eq!(
+        rail.iter().filter(|d| d.kind == "unit-proposed").count(),
+        5,
+        "the work's own decisions stand, and they are what the rail is for: {:?}",
+        rail.iter().map(|d| (&d.kind, &d.object)).collect::<Vec<_>>()
+    );
+
+    // What the lease is in is read on the status view's row for the object,
+    // beside which host holds it.
+    let status = host.status().unwrap();
+    let row = |id: &str| {
+        status
+            .rows
+            .iter()
+            .find(|r| r.object == id)
+            .unwrap_or_else(|| panic!("{id} has a row on the status view"))
+    };
+    assert_eq!(row("unit/atlas/status-writer").holder.as_deref(), Some("mac-mini"));
+    assert_eq!(row("unit/atlas/status-writer").lease.as_deref(), Some("held"));
+    assert_eq!(
+        row("unit/new-repo/baseline-1").holder.as_deref().unwrap_or(""),
+        "",
+        "nothing holds it"
+    );
+    assert_eq!(
+        row("unit/new-repo/baseline-1").lease.as_deref(),
+        Some("uncovered"),
+        "an object no declaration covers says so where its holder would be (149)"
+    );
+    let rendered = flywheel_domain::status::render(&status).body;
+    assert!(
+        rendered.contains("no host's declaration covers this"),
+        "and the view says it in words a person reads"
+    );
+
+    // It is still under attention and never a silent wait (149) — it is simply
+    // not a number the operator answers.
+    let attention = host.attention().unwrap();
+    assert!(
+        attention.iter().any(|a| a == "uncovered: lease/unit/new-repo/baseline-1"),
+        "the uncovered object is under attention: {attention:?}"
+    );
+}

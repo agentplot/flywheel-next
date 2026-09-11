@@ -1,0 +1,12 @@
+%rec: signal
+
+format: flywheel-signal/1
+id: signal/meeting-2026-09-02-storefront-weekly
+capture: capture/meeting-2026-09-02-storefront-weekly
+kind: constraint
+asserted_by: dana
+subject_tags: checkout declines
+assertion: declines at checkout have risen since Monday and started on their own
+excerpt: Declines at checkout are up since Monday. It is not a handful, it is most of a percent of every attempt, and it started on its own.
+position: cue 1
+argues_with:

@@ -1,0 +1,12 @@
+%rec: signal
+
+format: flywheel-signal/1
+id: signal/meeting-2026-09-02-storefront-weekly-3
+capture: capture/meeting-2026-09-02-storefront-weekly
+kind: constraint
+asserted_by: chuck
+subject_tags: checkout retry
+assertion: the retry attempts once immediately and gives up, which is not a retry
+excerpt: What does the retry do? Because I think it tries once, gets the same answer back inside a second, and gives up. That is not a retry, that is a second attempt at the same moment.
+position: cue 3
+argues_with:

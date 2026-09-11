@@ -1,0 +1,7 @@
+%rec: move
+
+format: flywheel-move/1
+signal: signal/payments-2026-09-04-declines
+target: join intent/storefront-declines
+reason: the running service is saying the same thing the room said
+at: 2026-09-04T09:40:00Z

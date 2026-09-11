@@ -1,0 +1,10 @@
+format: flywheel-signal/1
+kind: signal
+id: signal/meeting-2026-09-02-storefront-weekly
+capture: meeting/2026-09-02/storefront-weekly
+signal_kind: problem
+asserted_by: dana
+subject: checkout
+assertion: cards are declining at checkout more than they used to
+excerpt: "We are seeing a lot more declines on checkout this week."
+at: 2026-09-02T09:12:00Z

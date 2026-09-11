@@ -1,0 +1,7 @@
+%rec: move
+
+format: flywheel-move/1
+signal: signal/meeting-2026-09-02-storefront-weekly-9
+target: drop
+reason: the same assertion as the first signal, said again later in the meeting
+at: 2026-09-04T09:40:00Z

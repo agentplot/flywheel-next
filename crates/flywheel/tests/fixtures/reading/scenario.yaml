@@ -1,0 +1,21 @@
+scenario: T-reading
+title: a transcript is captured, a reader session stalls, and what it delivers is a file in the repository
+profiles: [all]
+satisfies: [94, 111, 115]
+given: {}
+when: [{tick: {}}]
+then:
+  transitions:
+    - {object: capture/meeting-2026-09-02-storefront-weekly, from: captured, to: reading}
+    - {object: capture/meeting-2026-09-02-storefront-weekly, from: reading, to: read}
+  states: {capture/meeting-2026-09-02-storefront-weekly: {reading: read}}
+actions:
+  - capture: {adapter: "flywheel capture meeting 2026-09-02-storefront-weekly.vtt", by: dana}
+  - session:
+      object: capture/meeting-2026-09-02-storefront-weekly
+      exit: done
+      deliver:
+        signals/1.rec: flywheel-blueprints/flywheel/signals/meeting/2026-09-02/storefront-weekly/1.rec
+tour:
+  - A transcript lands from the meeting the team already had.
+  - The reader comes back with what it found.

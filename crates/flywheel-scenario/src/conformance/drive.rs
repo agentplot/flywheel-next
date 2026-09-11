@@ -12,7 +12,8 @@ use crate::store::Store;
 use crate::{world, Runtime};
 use anyhow::{anyhow, bail, Context, Result};
 use flywheel_atoms::conformance::{
-    Direct, HostStep, HostTransition, Requirement, ResponseStep, Scenario, Step,
+    Action, CaptureAction, Direct, HostStep, HostTransition, Requirement, ResponseStep, Scenario,
+    SessionAction, Step,
 };
 use flywheel_atoms::{Records, StateStore};
 use chrono::{DateTime, Duration, Utc};
@@ -179,6 +180,74 @@ pub fn play(
                 .collect(),
         );
     }
+    // What happens after the moment: one thing a real actor does per action,
+    // with the machinery running between them. A scenario that asserts only a
+    // moment has none, so this loop is empty for every scenario of the
+    // acceptance set as it stands (D15).
+    //
+    // The actions are the same list a demo plays into a real instance; what
+    // differs is the binding underneath, the way `--hosts real` differs from
+    // this one. There is one action vocabulary and one runner.
+    let bundle = flywheel_atoms::conformance::bundle_of(path);
+    for (index, action) in scenario.actions()?.iter().enumerate() {
+        let number = index + 1;
+        play_action(&mut run, action, suite, &sessions, bundle.as_deref())
+            .with_context(|| format!("action {number}"))?;
+        // The machinery runs between the actions, until it stops moving: an
+        // action is what an actor did, and what follows from it is the
+        // machinery's, however many ticks that takes.
+        //
+        // The clock advances with the actions and never with wall time — one
+        // action, one tick interval — so leases come due and ages mean
+        // something without anything sleeping. The ticks that settle what the
+        // action started are the same tick's cascade continuing and move it no
+        // further (D15, D7, 78).
+        let interval = run.runtime.store.tick_seconds;
+        for settling in 0..SETTLING {
+            run.engine_ticks += 1;
+            run.runtime.store.tick_seconds = match settling {
+                0 => interval,
+                _ => 0,
+            };
+            let record = run.runtime.tick_settled();
+            let moved = record.transitions.iter().any(|t| t.from != t.to);
+            run.ticks.push(record);
+            if !moved {
+                break;
+            }
+            if settling + 1 == SETTLING {
+                run.runtime.store.tick_seconds = interval;
+                bail!(
+                    "action {number} left the machinery still moving after {SETTLING} ticks; a \
+                     cascade that does not settle is a defect, not a moment to stand at (78)"
+                );
+            }
+        }
+        run.runtime.store.tick_seconds = interval;
+        take_reading(&mut run);
+        let tail = flywheel_engine::rail::tail(
+            &run.runtime.defs,
+            &run.runtime.store.objects,
+            DateTime::<Utc>::from_timestamp_nanos(0),
+        );
+        run.tail_after.push(tail);
+        let reading = status_reading(&run);
+        run.status_after.push(reading);
+        run.decisions_after.push(
+            run.runtime
+                .decisions()
+                .iter()
+                .map(|d| crate::runner::DecisionRecord {
+                    id: d.id.clone(),
+                    object: d.object.clone(),
+                    kind: d.kind.clone(),
+                    group: d.group.clone(),
+                    number: d.number,
+                })
+                .collect(),
+        );
+    }
+
     // Every host is told to stop before the run is read: a process still
     // writing is not a state to assert against.
     if let Some(hosts) = &mut real {
@@ -1984,4 +2053,210 @@ fn written_under(store: &crate::store::Store, under: &str) -> usize {
         .keys()
         .filter(|path| path.starts_with(under))
         .count()
+}
+
+// ----------------------------------------------------------------- the actions
+
+/// How many ticks an action's own cascade may take before it is a defect
+/// rather than a moment.
+const SETTLING: usize = 16;
+
+/// Play one action in process.
+///
+/// An action is one thing a real actor does, and each of the three runs the
+/// machinery's own path for it: a capture through the adapter or the capture
+/// tool, an answer through the response record, a session's delivery through
+/// the files it wrote and the command it reports with (67, 93, 111, 125, 193).
+/// Nothing here sets state.
+fn play_action(
+    run: &mut Run,
+    action: &Action,
+    suite: &Suite,
+    sessions: &ScriptedSessions,
+    bundle: Option<&Path>,
+) -> Result<()> {
+    match action {
+        Action::Capture(capture) => action_capture(run, capture, suite, bundle),
+        Action::Response(response) => play_response(run, response),
+        Action::Session(session) => action_session(run, session, sessions, bundle),
+    }
+}
+
+/// Something arrived: an adapter enumerated it, or a person typed or forwarded
+/// it (111, 112, 115, 215, D13).
+fn action_capture(
+    run: &mut Run,
+    capture: &CaptureAction,
+    suite: &Suite,
+    bundle: Option<&Path>,
+) -> Result<()> {
+    if let Some(command) = &capture.adapter {
+        // The material stays where it is and the capture cites it (111), so
+        // what is put in place is the pointer's content: the scenario's own
+        // bundle for a demo's transcript, the suite's fixtures for the model's.
+        let argument = command.split_whitespace().last().unwrap_or_default();
+        let raw = raw_material(argument, suite, bundle)?;
+        run.runtime
+            .store
+            .world
+            .raw
+            .insert(argument.to_string(), raw);
+        let by = capture.by.clone().unwrap_or_else(|| "operator".into());
+        let defs = run.runtime.defs.clone();
+        let at = run.runtime.store.now;
+        crate::bindings::with_files(&mut run.runtime.store, |store, world| {
+            flywheel_domain::adapters::run(store, world, &defs, command, &by, at)
+        })
+        .with_context(|| format!("the adapter `{command}`"))?;
+        run.runtime.store.log("adapter", argument, command.clone());
+        return Ok(());
+    }
+    let text = capture
+        .text
+        .clone()
+        .ok_or_else(|| anyhow!("a capture names an adapter or its text"))?;
+    let by = capture.by.clone().unwrap_or_else(|| "operator".into());
+    let source = capture.source.clone().unwrap_or_else(|| "page".into());
+    let call = flywheel_surface::catalogue::Call {
+        tool: "capture".into(),
+        args: [
+            ("text".to_string(), json!(text)),
+            ("source".to_string(), json!(source)),
+        ]
+        .into_iter()
+        .collect(),
+        by: by.clone(),
+        delivery: source.clone(),
+        delivery_id: None,
+        event_key: capture.key.clone(),
+        proposed_by: None,
+    };
+    let defs = run.runtime.defs.clone();
+    crate::bindings::with_files(&mut run.runtime.store, |store, world| {
+        flywheel_surface::catalogue::call(store, world, &defs, &call)
+    })?;
+    run.runtime.store.log("capture", &source, text);
+    Ok(())
+}
+
+/// What the pointer a capture cites points at: the scenario's own bundle, or
+/// the suite's fixtures. A pointer naming neither is a scenario citing material
+/// that does not exist, which fails rather than being captured as a name.
+fn raw_material(path: &str, suite: &Suite, bundle: Option<&Path>) -> Result<String> {
+    if let Some(bundle) = bundle {
+        for under in ["", "meeting/"] {
+            let file = bundle.join(format!("{under}{}", path.trim_start_matches('/')));
+            if file.is_file() {
+                return std::fs::read_to_string(&file)
+                    .with_context(|| format!("reading {}", file.display()));
+            }
+        }
+    }
+    let bytes = suite.resolve_fixture(path, "")?;
+    Ok(String::from_utf8_lossy(&bytes).to_string())
+}
+
+/// A session delivered and exited.
+///
+/// The bundle's artifact goes into the world at the path the real session would
+/// have written it, and the exit goes through the command a real session
+/// reports through — which is what the scripted binding already does, so this
+/// builds the entry and hands it over rather than writing a second path (67,
+/// 93).
+fn action_session(
+    run: &mut Run,
+    session: &SessionAction,
+    sessions: &ScriptedSessions,
+    bundle: Option<&Path>,
+) -> Result<()> {
+    let id = action_session_of(&run.runtime.store, &session.object)?;
+    let mut delivered = Vec::new();
+    for (from, to) in &session.deliver {
+        let bundle = bundle.ok_or_else(|| {
+            anyhow!(
+                "the session delivers `{from}`, and there is no `bundle/` beside the scenario \
+                 to deliver it from"
+            )
+        })?;
+        let source = bundle.join(from);
+        let body = std::fs::read_to_string(&source).with_context(|| {
+            format!(
+                "the bundle holds no `{from}`: a session delivers what the scenario's bundle \
+                 carries, and nothing is invented for it"
+            )
+        })?;
+        // The path is `<repository>/<path in it>`; this world holds one set of
+        // files and the machinery reads them by path, so the repository is
+        // carried for the binding that has repositories on disk.
+        let under = to.split_once('/').map(|(_, path)| path).unwrap_or(to);
+        run.runtime
+            .store
+            .world
+            .files
+            .insert(under.to_string(), body);
+        delivered.push(to.clone());
+    }
+    // The session was there: the machinery started it and it stalled where a
+    // real one would be working, so the multiplexer reports its pane before it
+    // reports its exit. What the session says goes through the command (67, 93).
+    let entry = flywheel_atoms::scenario::ScriptEntry {
+        after: None,
+        pane: Some("present".into()),
+        activity: Some("working".into()),
+        keystroke: false,
+        exit: match session.exit.as_str() {
+            "refused" => None,
+            kind => Some(kind.to_string()),
+        },
+        deliverables: delivered,
+        question: session.question.clone(),
+        verdict: session.verdict.clone(),
+        offers: session.offers.clone(),
+        refusal: match session.exit.as_str() {
+            "refused" => Some(
+                session
+                    .question
+                    .clone()
+                    .unwrap_or_else(|| "the session refused the work".into()),
+            ),
+            _ => None,
+        },
+        service: None,
+        commits: vec![],
+    };
+    // Two halves of one report, as the scripted binding already has them: what
+    // the *session* says goes through the command, and what the *multiplexer*
+    // reports — the pane, the exit it saw — is a world fact (67, 93).
+    sessions.play_entry(&mut run.runtime.store, &id, &entry)?;
+    let now = run.runtime.store.now;
+    if let Some(fact) = run.runtime.store.world.sessions.get_mut(&id) {
+        crate::store::apply_entry_pub(fact, &entry, now);
+    }
+    Ok(())
+}
+
+/// The session standing on an object, as the store holds it.
+fn action_session_of(store: &Store, object: &str) -> Result<String> {
+    let under = format!("{object}/");
+    let standing: Vec<String> = store
+        .world
+        .sessions
+        .keys()
+        .filter(|id| id.starts_with(&under))
+        .filter(|id| store.world.sessions.get(*id).is_some_and(|s| s.exit.is_none()))
+        .cloned()
+        .collect();
+    match standing.as_slice() {
+        [one] => Ok(one.clone()),
+        [] => bail!(
+            "no session stands on `{object}`: a session delivers where the machinery started \
+             one, and the machinery started none here. That is a hole in the machinery and not \
+             something the scenario may set (125, 193)"
+        ),
+        many => bail!(
+            "{} sessions stand on `{object}` — {}; the scenario says which delivers",
+            many.len(),
+            many.join(", ")
+        ),
+    }
 }

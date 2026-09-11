@@ -1,0 +1,12 @@
+%rec: signal
+
+format: flywheel-signal/1
+id: signal/meeting-2026-09-02-storefront-weekly-5
+capture: capture/meeting-2026-09-02-storefront-weekly
+kind: reaction
+asserted_by: sam
+subject_tags: cart abandonment
+assertion: cart abandonment is up twelve per cent week on week and started the same day
+excerpt: Cart abandonment is up twelve per cent week on week. I do not know that it is the same thing but the shape is the same and it started the same day.
+position: cue 5
+argues_with:

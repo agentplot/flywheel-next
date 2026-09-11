@@ -1,0 +1,12 @@
+%rec: signal
+
+format: flywheel-signal/1
+id: signal/meeting-2026-09-02-storefront-weekly-2
+capture: capture/meeting-2026-09-02-storefront-weekly
+kind: constraint
+asserted_by: priya
+subject_tags: checkout declines amex
+assertion: the declined attempts are disproportionately amex
+excerpt: It is amex, mostly. I pulled a day of attempts and the amex share of the declines is four times what it is of the traffic.
+position: cue 2
+argues_with:

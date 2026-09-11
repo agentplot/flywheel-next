@@ -431,3 +431,50 @@ fn an_effect_repeated_in_one_tick_writes_once() {
         "the effect id is in the history twice: {log}"
     );
 }
+
+#[test]
+fn an_answer_that_names_only_its_number_reaches_the_object_the_register_gave_it() {
+    // What a response carries is the decision's number (15): the page's control
+    // and the chat's reply grammar both write that and nothing else, and it is
+    // the register that says which object the number belongs to. A store that
+    // matched on the response's `object` field alone would hand the object no
+    // answer at all, its guard would never fire, and the response would come
+    // back as an unapplicable decision of its own
+    // (`record-derived.yaml` responses, 13).
+    let sandbox = Sandbox::new("answer-by-number");
+    let mut a = sandbox.host("a");
+    a.put("lamp/1", &a_lamp("lamp/1"), 0).unwrap();
+
+    let mut register = flywheel_engine::runtime::Register::default();
+    let number = register.number_for("lamp/1/lamp-proposed/2026-01-01T00:00:00Z", Some(at(0)));
+    flywheel_domain::commands::set_register(
+        &mut a,
+        &register,
+        &["lamp/1/lamp-proposed/2026-01-01T00:00:00Z".to_string()],
+    )
+    .unwrap();
+
+    a.receive(&Response {
+        id: "page-1".into(),
+        kind: ResponseKind::Answer,
+        decision: Some(number),
+        object: None,
+        answer: "on".into(),
+        given_by: "chuck".into(),
+        given_at: at(1),
+        delivery: "page".into(),
+    })
+    .unwrap();
+
+    let found = a.responses("lamp/1").unwrap();
+    assert_eq!(found.len(), 1, "the answer reaches the object its number names");
+    assert_eq!(found[0].answer, "on");
+
+    // And it reaches no other object, so an answer is applied to one thing.
+    a.put("lamp/2", &a_lamp("lamp/2"), 0).unwrap();
+    assert!(a.responses("lamp/2").unwrap().is_empty());
+
+    // The rail holds every response, which is what a tick reads before it
+    // decides anything.
+    assert_eq!(a.responses(flywheel_domain::RAIL).unwrap().len(), 1);
+}

@@ -126,13 +126,15 @@ fn served_host_answers_from_its_state_repository() {
         "the decision the host raised is not on the served rail: {page}"
     );
 
-    // The answer, through the same tool the reply grammar calls (193).
-    let body = format!("decision={number}&answer=yes");
+    // The answer, through the same tool the reply grammar calls (193). A client
+    // sends it as JSON and reads the record it made; the page's own control is
+    // a form, and gets somewhere to go instead (310, 311).
+    let body = json!({"args": {"decision": number.to_string(), "answer": "yes"}}).to_string();
     let answered = speak(
         address,
         &format!(
             "POST /api/tools/answer HTTP/1.1\r\nHost: mac-mini.example\r\n\
-             Content-Type: application/x-www-form-urlencoded\r\nContent-Length: {}\r\n\
+             Content-Type: application/json\r\nContent-Length: {}\r\n\
              Connection: close\r\n\r\n{body}",
             body.len()
         ),
@@ -389,5 +391,199 @@ fn a_seeded_host_serves_the_scenarios_rail() {
             "decision {number}'s object {object} is not on the served page"
         );
     }
+    let _ = std::fs::remove_dir_all(&dir);
+}
+
+/// One whole response with its headers, so a test can follow where a control
+/// sent the operator.
+fn post_form(address: std::net::SocketAddr, path: &str, body: &str, referrer: &str) -> String {
+    let mut socket = std::net::TcpStream::connect(address).expect("the page answers");
+    socket
+        .set_read_timeout(Some(std::time::Duration::from_secs(10)))
+        .expect("a bounded wait: a page that does not answer is a failure, not a hang");
+    let request = format!(
+        "POST {path} HTTP/1.1\r\nHost: laptop.example\r\nConnection: close\r\n\
+         Referer: http://laptop.example{referrer}\r\n\
+         Content-Type: application/x-www-form-urlencoded\r\nContent-Length: {}\r\n\r\n{body}",
+        body.len()
+    );
+    socket.write_all(request.as_bytes()).expect("the request is sent");
+    let mut text = String::new();
+    socket.read_to_string(&mut text).expect("the page replies");
+    text
+}
+
+/// The form the page rendered for one answer on one decision: its action and
+/// the fields it carries, read out of the document rather than spelled by the
+/// test, so what is posted is what a browser would post.
+fn form_on(page: &str, number: u32, answer: &str) -> (String, String) {
+    let card = page
+        .split("<article ")
+        .find(|block| block.contains(&format!("data-number=\"{number}\"")))
+        .unwrap_or_else(|| panic!("decision {number} is not on the rail"));
+    let form = card
+        .split("<form ")
+        .find(|block| block.contains(&format!("value=\"{answer}\"")))
+        .unwrap_or_else(|| panic!("decision {number} carries no `{answer}` control"));
+    let action = form
+        .split_once("action=\"")
+        .and_then(|(_, rest)| rest.split_once('"'))
+        .map(|(action, _)| action.to_string())
+        .expect("the control posts somewhere");
+    let mut fields: Vec<String> = Vec::new();
+    for input in form.split("<input ").skip(1) {
+        let value_of = |name: &str| -> Option<String> {
+            input
+                .split_once(&format!("{name}=\""))
+                .and_then(|(_, rest)| rest.split_once('"'))
+                .map(|(value, _)| value.to_string())
+        };
+        if let (Some(name), Some(value)) = (value_of("name"), value_of("value")) {
+            fields.push(format!("{name}={value}"));
+        }
+    }
+    (action, fields.join("&"))
+}
+
+/// A control on the rail answers, and the page the operator lands on shows it
+/// (137, 153, 154, 310, 311).
+///
+/// The page runs no script, so a control is a plain form; a form answered with
+/// a body strands the operator on it. What a browser gets is 303 See Other back
+/// to the page it was on, and the page that comes back carries the answer, as
+/// does a reload of it afterwards. A caller that is not a browser still reads
+/// the record it made.
+#[test]
+fn a_tap_on_the_seeded_rail_answers_and_the_next_render_shows_it() {
+    let dir = base("tap");
+    let now = at(0);
+    let git = sandbox(&dir, "laptop", now).unwrap();
+    let mut host = Host::over(
+        "laptop",
+        "willdan",
+        flywheel_domain::set::load().unwrap(),
+        git,
+        Bindings { world: "host".into(), workspace: "recorded".into(), sessions: "operator".into() },
+        Declaration { repositories: vec![], types: vec![], kinds: vec!["all".into()] },
+        now,
+    );
+    host.sinks.address = "http://laptop.example/willdan".into();
+    flywheel::seed::from_scenario(
+        &mut host.store.git,
+        &workspace().join("scenarios/rail-mockup.yaml"),
+        now,
+    )
+    .expect("the scenario's given state goes into the state store");
+
+    let host = Arc::new(Mutex::new(host));
+    let runtime = tokio::runtime::Builder::new_multi_thread().enable_all().build().unwrap();
+    let served = flywheel::serve::page_of(&host, 4242, &["chuck".to_string()]);
+    let address = runtime.block_on(async {
+        let listener = tokio::net::TcpListener::bind("127.0.0.1:0").await.unwrap();
+        let address = listener.local_addr().unwrap();
+        let served = served.clone();
+        tokio::spawn(async move {
+            let _ = flywheel_surface::http::serve_on(served, listener).await;
+        });
+        address
+    });
+
+    // The page as the operator has it, and the control as it rendered.
+    let page = speak(
+        address,
+        "GET / HTTP/1.1\r\nHost: laptop.example\r\nConnection: close\r\n\r\n",
+    );
+    let (action, body) = form_on(&page, 412, "yes");
+    assert_eq!(action, "/api/tools/answer");
+    assert!(body.contains("decision=412") && body.contains("answer=yes"), "{body}");
+    assert!(
+        !page.contains("data-answer=\"yes\" data-given-by=\"chuck\""),
+        "nothing is answered yet"
+    );
+
+    // The tap. What comes back is somewhere to go, not something to read.
+    let answered = post_form(address, &action, &body, "/");
+    let status = answered.lines().next().unwrap_or_default().to_string();
+    assert!(
+        status.starts_with("HTTP/1.1 303"),
+        "a control on the page answered `{status}`; a form post lands the operator back on a \
+         page and never on a body (310, 311)"
+    );
+    let location = answered
+        .lines()
+        .find_map(|line| line.strip_prefix("location: ").or_else(|| line.strip_prefix("Location: ")))
+        .map(str::trim)
+        .expect("it says where the operator goes");
+    assert_eq!(location, "/", "back to the page the control was on");
+
+    // The page the operator lands on shows the answer they gave (153, 154).
+    let landed = speak(
+        address,
+        &format!("GET {location} HTTP/1.1\r\nHost: laptop.example\r\nConnection: close\r\n\r\n"),
+    );
+    assert!(
+        landed.contains("data-answer=\"yes\" data-given-by=\"chuck\""),
+        "the page the operator landed on does not show the answer they gave"
+    );
+    // And a reload shows it still: the answer is recorded, not remembered (310).
+    let again = speak(
+        address,
+        "GET / HTTP/1.1\r\nHost: laptop.example\r\nConnection: close\r\n\r\n",
+    );
+    assert!(
+        again.contains("data-answer=\"yes\" data-given-by=\"chuck\""),
+        "a reload lost the answer"
+    );
+
+    // The object's own path serves it too, now that a link the machinery wrote
+    // is a path this router answers (205a, 308).
+    let on_the_object = post_form(
+        address,
+        &form_on(&page, 419, "yes").0,
+        &form_on(&page, 419, "yes").1,
+        "/willdan/unit/atlas/chores-1",
+    );
+    assert!(on_the_object.lines().next().unwrap_or_default().starts_with("HTTP/1.1 303"));
+    assert!(
+        on_the_object.contains("/willdan/unit/atlas/chores-1"),
+        "the operator goes back to the object's page they answered from: {on_the_object}"
+    );
+
+    // A refusal is not a dead end: the operator lands on the page with the
+    // reason on it, rather than on a body (81, 310). An answer to a number the
+    // register never gave is not one — it is recorded and shown under
+    // attention (6), and so is a call to a tool the catalogue does not name
+    // (4) — so what is refused here is a call the catalogue does name and
+    // cannot read: `drop` with no object on it (193).
+    let refused = post_form(address, "/api/tools/drop", "answer=yes", "/");
+    let to = refused
+        .lines()
+        .find_map(|line| line.strip_prefix("location: ").or_else(|| line.strip_prefix("Location: ")))
+        .map(str::trim)
+        .expect("a refusal says where the operator goes too");
+    assert!(to.starts_with("/?refused="), "{to}");
+    let with_reason = speak(
+        address,
+        &format!("GET {to} HTTP/1.1\r\nHost: laptop.example\r\nConnection: close\r\n\r\n"),
+    );
+    assert!(
+        with_reason.contains("data-refused=\"true\""),
+        "the reason is not on the page the operator was sent back to"
+    );
+
+    // A caller that is not a browser is unchanged: it reads the record it made.
+    let body = serde_json::json!({"args": {"decision": "418", "answer": "yes"}}).to_string();
+    let json = speak(
+        address,
+        &format!(
+            "POST /api/tools/answer HTTP/1.1\r\nHost: laptop.example\r\n\
+             Content-Type: application/json\r\nContent-Length: {}\r\n\
+             Connection: close\r\n\r\n{body}",
+            body.len()
+        ),
+    );
+    let json: serde_json::Value =
+        serde_json::from_str(&json).unwrap_or_else(|e| panic!("the body {json:?}: {e}"));
+    assert_eq!(json["recorded"], serde_json::json!(true), "{json}");
     let _ = std::fs::remove_dir_all(&dir);
 }

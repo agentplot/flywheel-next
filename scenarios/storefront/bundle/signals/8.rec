@@ -1,0 +1,12 @@
+%rec: signal
+
+format: flywheel-signal/1
+id: signal/meeting-2026-09-02-storefront-weekly-8
+capture: capture/meeting-2026-09-02-storefront-weekly
+kind: ask
+asserted_by: priya
+subject_tags: payments staging
+assertion: a staging card processor is needed so this can be reproduced without real cards
+excerpt: Can we get a staging card processor? I cannot reproduce any of this without putting real cards through production.
+position: cue 8
+argues_with:

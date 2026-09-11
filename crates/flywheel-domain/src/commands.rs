@@ -47,6 +47,23 @@ pub fn register(store: &impl Records) -> Result<Register> {
     })
 }
 
+/// The decisions standing after the last derive, as the rail record holds them
+/// (`profiles/record-derived.yaml`, `engine/rail.yaml` record).
+///
+/// This is what `response.decision_present` is read against: a response answers
+/// a number, and whether that number's decision still stands is the difference
+/// between an answer the machinery will apply and one that arrived too late
+/// (6, 129). A reader that took this for empty would call every answer the
+/// operator ever gave unapplicable and put each one back on the rail, which is
+/// exactly what 13 says never happens.
+pub fn standing(store: &impl Records) -> Result<Vec<String>> {
+    Ok(store
+        .get(RAIL)?
+        .and_then(|o| o.record.get("standing").cloned())
+        .and_then(|v| serde_json::from_value(v).ok())
+        .unwrap_or_default())
+}
+
 /// Write the register and the standing set back into the rail record.
 pub fn set_register(
     store: &mut impl Records,

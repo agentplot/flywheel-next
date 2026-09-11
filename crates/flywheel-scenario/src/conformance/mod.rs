@@ -260,6 +260,13 @@ pub fn scenario_files(path: &Path) -> Result<Vec<PathBuf>> {
     if path.is_file() {
         return Ok(vec![path.to_path_buf()]);
     }
+    // A scenario is a directory — `<name>/scenario.yaml` with `bundle/` beside
+    // it — and a single file is the same thing with nothing beside it, so a
+    // directory named directly is one scenario and not a set of them.
+    let own = flywheel_atoms::conformance::scenario_file(path);
+    if own.is_file() {
+        return Ok(vec![own]);
+    }
     let mut contract = Vec::new();
     let mut scenarios = Vec::new();
     collect(path, &mut contract, &mut scenarios)?;
@@ -277,8 +284,17 @@ fn collect(dir: &Path, contract: &mut Vec<PathBuf>, scenarios: &mut Vec<PathBuf>
         let p = entry.path();
         if p.is_dir() {
             // `lamp` holds the toy machine, not scenarios; `fixtures` holds the
-            // world's inputs.
-            if p.file_name().is_some_and(|f| f == "lamp" || f == "fixtures") {
+            // world's inputs; `bundle` holds one scenario's artifacts.
+            if p.file_name().is_some_and(|f| {
+                f == "lamp" || f == "fixtures" || f == flywheel_atoms::conformance::BUNDLE_DIR
+            }) {
+                continue;
+            }
+            // A directory holding `scenario.yaml` is one scenario, whatever
+            // else is beside it.
+            let own = flywheel_atoms::conformance::scenario_file(&p);
+            if own.is_file() {
+                scenarios.push(own);
                 continue;
             }
             collect(&p, contract, scenarios)?;
@@ -351,7 +367,13 @@ pub fn run(paths: &[PathBuf], options: &RunOptions) -> Result<RunReport> {
 /// Run one scenario. Every way it can fail is an outcome, never a panic: the
 /// run prints one line per scenario whatever happened.
 pub fn run_one(path: &Path, options: &RunOptions) -> Outcome {
-    let name = path
+    // A scenario kept as a directory is named for the directory: `scenario` is
+    // the file's name in every one of them and names nothing.
+    let named = match path.file_name().is_some_and(|f| f == flywheel_atoms::conformance::SCENARIO_FILE) {
+        true => path.parent().unwrap_or(path),
+        false => path,
+    };
+    let name = named
         .file_stem()
         .map(|s| s.to_string_lossy().to_string())
         .unwrap_or_default();

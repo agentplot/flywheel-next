@@ -1,0 +1,81 @@
+scenario: storefront
+title: a team building a shop; noise arrives from four places, curation makes one subject of it, and the first numbered decision stands
+profiles: [all]
+satisfies: [19, 20, 107, 109, 110, 111, 112, 113, 115, 116, 118, 215]
+given:
+  # The instance is a week old: one intent is already open about the catalogue
+  # on mobile, which is what gives curation somewhere to route a signal that
+  # belongs to work already under way (107).
+  objects:
+    - id: intent/storefront-mobile-speed
+      machine: intent
+      state: {life: open, line: current, open.material: settled, open.close: not-offered}
+      record: {title: the catalogue is slow on mobile, repository: storefront}
+    - id: curation/storefront
+      machine: curation
+      state: {run: idle}
+      record: {threshold: 12, cadence: "0 6 * * 1-5"}
+when:
+  - tick: {}
+actions:
+  # ---- 1. something arrives, from four places
+  - capture: {adapter: "flywheel capture meeting 2026-09-02-storefront-weekly.vtt", by: dana}
+  - session:
+      object: capture/meeting-2026-09-02-storefront-weekly
+      exit: done
+      deliver:
+        signals/1.rec: flywheel-blueprints/flywheel/signals/meeting/2026-09-02/storefront-weekly/1.rec
+        signals/2.rec: flywheel-blueprints/flywheel/signals/meeting/2026-09-02/storefront-weekly/2.rec
+        signals/3.rec: flywheel-blueprints/flywheel/signals/meeting/2026-09-02/storefront-weekly/3.rec
+        signals/4.rec: flywheel-blueprints/flywheel/signals/meeting/2026-09-02/storefront-weekly/4.rec
+        signals/5.rec: flywheel-blueprints/flywheel/signals/meeting/2026-09-02/storefront-weekly/5.rec
+        signals/6.rec: flywheel-blueprints/flywheel/signals/meeting/2026-09-02/storefront-weekly/6.rec
+        signals/7.rec: flywheel-blueprints/flywheel/signals/meeting/2026-09-02/storefront-weekly/7.rec
+        signals/8.rec: flywheel-blueprints/flywheel/signals/meeting/2026-09-02/storefront-weekly/8.rec
+        signals/9.rec: flywheel-blueprints/flywheel/signals/meeting/2026-09-02/storefront-weekly/9.rec
+  - capture:
+      text: "checkout retries the card once and then gives up"
+      source: page
+      key: page/2026-09-03/retry-once
+      by: chuck
+  - capture:
+      text: "customer says their amex worked on Friday and not today"
+      source: forwarded-message
+      key: chat/2026-09-03/1421
+      by: dana
+  - capture:
+      text: "declined-payment rate crossed 4 per cent on payments"
+      source: service
+      key: payments/2026-09-04/declines
+      by: payments
+  # ---- 2. the noise becomes a subject
+  - session:
+      object: curation/storefront
+      exit: done
+      deliver:
+        moves/meeting-2026-09-02-storefront-weekly.rec: flywheel-blueprints/flywheel/signals/moves/meeting-2026-09-02-storefront-weekly.rec
+        moves/meeting-2026-09-02-storefront-weekly-2.rec: flywheel-blueprints/flywheel/signals/moves/meeting-2026-09-02-storefront-weekly-2.rec
+        moves/meeting-2026-09-02-storefront-weekly-3.rec: flywheel-blueprints/flywheel/signals/moves/meeting-2026-09-02-storefront-weekly-3.rec
+        moves/meeting-2026-09-02-storefront-weekly-6.rec: flywheel-blueprints/flywheel/signals/moves/meeting-2026-09-02-storefront-weekly-6.rec
+        moves/meeting-2026-09-02-storefront-weekly-7.rec: flywheel-blueprints/flywheel/signals/moves/meeting-2026-09-02-storefront-weekly-7.rec
+        moves/meeting-2026-09-02-storefront-weekly-9.rec: flywheel-blueprints/flywheel/signals/moves/meeting-2026-09-02-storefront-weekly-9.rec
+        moves/page-2026-09-03-retry-once.rec: flywheel-blueprints/flywheel/signals/moves/page-2026-09-03-retry-once.rec
+        moves/payments-2026-09-04-declines.rec: flywheel-blueprints/flywheel/signals/moves/payments-2026-09-04-declines.rec
+tour:
+  - "A transcript of yesterday's weekly lands. Nobody wrote a ticket; the meeting already happened."
+  - "A reader goes through it and comes back with nine signals — several of them about the same thing."
+  - "Someone types one sentence into the box on the page. No ceremony, no form."
+  - "A message from a customer is forwarded out of chat. It is already its own excerpt, so it is already a signal."
+  - "The payments service says the declined-payment rate crossed four per cent. No human was involved."
+  - "Twelve unmoved signals charges a curation. It joins the decline signals and the service's into one subject, routes the mobile one to the intent already open, drops the two duplicates, and leaves the rest alone. The first numbered decision is standing."
+then:
+  transitions:
+    - {object: capture/meeting-2026-09-02-storefront-weekly, from: captured, to: reading}
+    - {object: capture/meeting-2026-09-02-storefront-weekly, from: reading, to: read}
+    - {object: curation/storefront, from: idle, to: running}
+    - {object: curation/storefront, from: running, to: applying}
+  states:
+    capture/meeting-2026-09-02-storefront-weekly: {reading: read}
+    intent/storefront-declines: {life: proposed}
+  decisions:
+    - {present: [intent-proposed]}

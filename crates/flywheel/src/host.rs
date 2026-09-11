@@ -802,6 +802,13 @@ impl Host {
         }
         self.renew_and_take(&objects)?;
         self.store.reading.register = console::register(&self.store)?;
+        // The decisions standing after the last derive, beside the register
+        // that numbered them. `response.decision_present` is read against this
+        // pair, and a host that left it empty would read every answer the
+        // operator gave as one whose decision was already gone — reporting each
+        // under attention and putting it back on the rail, against 13
+        // (`record-derived.yaml`, `engine/response.yaml`).
+        self.store.reading.standing = console::standing(&self.store)?;
 
         let defs = self.defs.clone();
         // Two closures write here, so the entries are held where both reach
@@ -1263,6 +1270,26 @@ impl Host {
             .filter(|d| d.group == "attention")
             .map(|d| format!("{}: {}", d.kind, d.object))
             .collect();
+        // An object no host's declaration covers is under attention and never a
+        // silent wait (149) — but it is not a decision the operator answers, so
+        // it is read from the lease records and the status view rather than
+        // taking a number on the rail: one card per lease buries the work the
+        // rail is for (79, 141, 310).
+        for object in self.store.list_records(&Scope::All)? {
+            if !flywheel_domain::leases::leasable(&object) {
+                continue;
+            }
+            if self
+                .store
+                .leases(&object.id)?
+                .is_some_and(|l| l.state == "uncovered")
+            {
+                out.push(format!(
+                    "uncovered: {}",
+                    flywheel_domain::leases::id_for(&object.id)
+                ));
+            }
+        }
         for entry in self.store.git.run_record()? {
             if entry.kind == "refusal" {
                 out.push(format!("refusal: {}", entry.object));

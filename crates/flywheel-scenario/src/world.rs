@@ -258,7 +258,19 @@ pub fn perform(defs: &Definitions, store: &mut Store, object: &str, region: &str
                 .and_then(|o| o.record.get("event_key").and_then(|v| v.as_str()))
                 .map(String::from)
                 .unwrap_or_else(|| "curation".to_string());
-            let delivered = crate::delivery::curation(&commits, &key, &at.to_rfc3339());
+            // What a real curation session delivers is move records in the
+            // blueprints, and a host reads them there (110, 116, 20). A scenario
+            // whose session delivered them — an action's `deliver:`, or a
+            // `files` step — is read the same way; the script's one-line stand-in
+            // is what fills in for a scenario that named none (93).
+            let written = flywheel_domain::signals::moves(&store.world.files);
+            let delivered = match written.is_empty() {
+                false => flywheel_domain::signals::Delivered {
+                    proposals: flywheel_domain::signals::proposals_of(&written),
+                    moves: written,
+                },
+                true => crate::delivery::curation(&commits, &key, &at.to_rfc3339()),
+            };
             match e.name.as_str() {
                 "record_moves" => {
                     let _ = crate::bindings::with_files(store, |store, world| {

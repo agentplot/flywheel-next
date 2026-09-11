@@ -1,0 +1,12 @@
+%rec: signal
+
+format: flywheel-signal/1
+id: signal/meeting-2026-09-02-storefront-weekly-4
+capture: capture/meeting-2026-09-02-storefront-weekly
+kind: question
+asserted_by: priya
+subject_tags: payments logging
+assertion: the processor's decline code is not logged, so nobody can tell which declines a retry would fix
+excerpt: We do not log the processor's decline code. We log that it declined.
+position: cue 4
+argues_with:

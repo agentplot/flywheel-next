@@ -277,6 +277,27 @@ enum ScenarioCmd {
         #[arg(long, num_args = 0..=1, default_missing_value = "")]
         trace: Option<String>,
     },
+    /// Play a scenario's actions into a real instance and stop, so the instance
+    /// stands at that moment and a host can be served over it.
+    ///
+    /// There is no stepping backwards: to see an earlier moment, apply to an
+    /// earlier action number into a fresh instance.
+    Apply {
+        /// The scenario: a directory holding `scenario.yaml` with `bundle/`
+        /// beside it, or a single file.
+        scenario: PathBuf,
+        /// Where the instance is made. It must be empty or an instance an
+        /// earlier apply made.
+        #[arg(long)]
+        into: PathBuf,
+        /// How many actions to play; every one the scenario holds by default.
+        #[arg(long)]
+        through: Option<usize>,
+        /// How far each action moves the clock, in seconds. The actions are the
+        /// clock: nothing here waits on wall time.
+        #[arg(long, default_value_t = flywheel::apply::PER_ACTION)]
+        per_action: i64,
+    },
 }
 
 /// This host's checkout of the state repository, opened where the operator
@@ -635,8 +656,33 @@ async fn main() -> Result<()> {
                 )?
             );
         }
+        Cmd::Scenario { cmd: ScenarioCmd::Apply { scenario, into, through, per_action } } => {
+            let applied = flywheel::apply::apply(
+                scenario,
+                into,
+                *through,
+                chrono::Utc::now(),
+                chrono::Duration::seconds(*per_action),
+            )?;
+            println!(
+                "seeded {} objects, then played {} of {} actions",
+                applied.seeded, applied.through, applied.actions
+            );
+            for line in &applied.lines {
+                println!("{line}");
+            }
+            println!("the instance stands at {}", applied.at.to_rfc3339());
+            println!("  state:    {}", applied.state.display());
+            println!("  manifest: {}", applied.manifest.display());
+            println!(
+                "serve it with: flywheel host --manifest {} --serve",
+                applied.manifest.display()
+            );
+        }
         Cmd::Scenario { cmd } => {
-            let ScenarioCmd::Run { paths, profile, hosts, definitions, trace } = cmd;
+            let ScenarioCmd::Run { paths, profile, hosts, definitions, trace } = cmd else {
+                unreachable!("apply is answered above")
+            };
             let options = conformance::RunOptions {
                 profile: conformance::Profile::parse(profile)?,
                 hosts_real: hosts.as_deref() == Some("real"),

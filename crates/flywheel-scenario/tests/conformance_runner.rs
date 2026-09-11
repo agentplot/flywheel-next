@@ -487,3 +487,130 @@ fn run_record_names_ran_and_skipped() {
 // ---- 11.9 the whole phase-1 set
 
 
+
+// ---- 19.4 the clock advances with the actions
+
+/// A scenario's actions are its clock: one action, one interval, whatever the
+/// wall clock says and however many ticks the action's own cascade takes
+/// (D15, D7).
+#[test]
+fn the_clock_advances_per_action() {
+    const BODY: &str = r#"
+scenario: T-clock
+title: three things arrive, and the clock moves once for each
+profiles: [all]
+satisfies: [94]
+given: {}
+when: [{tick: {}}]
+then: {}
+actions:
+  - capture: {text: "checkout declines on amex", by: dana, source: page}
+  - capture: {text: "the retry never fires", by: chuck, source: page}
+  - capture: {text: "declines are up again this morning", by: dana, source: page}
+"#;
+    // Under the repository, so the suite that closes it is found by walking up:
+    // there is one scenario mechanism, and a demo's file is closed by the same
+    // schema the acceptance set's is.
+    let dir = root().join("target/flywheel-clock").join(format!(
+        "{}-{:?}",
+        std::process::id(),
+        std::thread::current().id()
+    ));
+    let _ = std::fs::remove_dir_all(&dir);
+    std::fs::create_dir_all(&dir).expect("the directory is made");
+    std::fs::write(dir.join("scenario.yaml"), BODY).expect("the scenario is written");
+
+    let options = RunOptions {
+        definitions: Some(root().join("definitions")),
+        ..Default::default()
+    };
+    let (scenario, _) = flywheel_atoms::conformance::load(&dir).expect("the scenario loads");
+    assert_eq!(scenario.actions().expect("the actions parse").len(), 3);
+    let suite = Suite::for_scenario(&dir).expect("the suite closing it");
+
+    let first = drive::play(&scenario, &dir, &suite, &options).expect("the scenario plays");
+    // One `when` tick and three actions: four intervals. The ticks an action's
+    // own cascade takes move the clock no further, because they are one tick's
+    // cascade continuing.
+    assert_eq!(
+        first.runtime.store.now,
+        drive::start_of_time() + options.interval * 4,
+        "four intervals for one tick step and three actions, and nothing else moves the clock"
+    );
+    assert_eq!(
+        first.runtime.store.objects.values().filter(|o| o.machine == "capture").count(),
+        3,
+        "and each action really put a capture in place"
+    );
+
+    // Nothing sleeps: the same scenario twice is the same run and lands at the
+    // same moment, whatever the wall clock did in between.
+    std::thread::sleep(std::time::Duration::from_millis(5));
+    let second = drive::play(&scenario, &dir, &suite, &options).expect("it plays again");
+    assert_eq!(first.runtime.store.now, second.runtime.store.now);
+
+    // The interval is the run's, so a scenario that must age something says how
+    // far each action carries it.
+    let slower = RunOptions {
+        interval: chrono::Duration::minutes(30),
+        ..options.clone()
+    };
+    let aged = drive::play(&scenario, &dir, &suite, &slower).expect("it plays at a wider step");
+    assert_eq!(
+        aged.runtime.store.now,
+        drive::start_of_time() + chrono::Duration::minutes(120)
+    );
+    let _ = std::fs::remove_dir_all(&dir);
+}
+
+/// No test in this crate sleeps to wait for the machinery. The clock is
+/// virtual and moves for a `clock` step, a tick and an action alone (D15).
+///
+/// The two files that do sleep are the clock's own proofs — a run either side
+/// of a real pause lands at the same virtual moment — and the browser driver,
+/// which waits on a process it did not write. Anywhere else, a sleep is a test
+/// waiting on the wall clock, which is the thing the virtual clock exists to
+/// make unnecessary.
+#[test]
+fn no_test_sleeps() {
+    // Written in halves so this test's own source is not what it finds.
+    let calls = [concat!("thread::", "sleep("), concat!("time::", "sleep(")];
+    let mut sleeping: Vec<String> = Vec::new();
+    for dir in ["src", "tests"] {
+        let under = PathBuf::from(env!("CARGO_MANIFEST_DIR")).join(dir);
+        walk(&under, &mut |file| {
+            let Ok(body) = std::fs::read_to_string(file) else {
+                return;
+            };
+            if body.lines().any(|line| calls.iter().any(|call| line.contains(call))) {
+                sleeping.push(
+                    file.strip_prefix(env!("CARGO_MANIFEST_DIR"))
+                        .unwrap_or(file)
+                        .display()
+                        .to_string(),
+                );
+            }
+        });
+    }
+    sleeping.sort();
+    assert_eq!(
+        sleeping,
+        vec!["tests/conformance_runner.rs", "tests/driver/mod.rs"],
+        "a test that sleeps is waiting on the wall clock; only the clock's own proofs and the \
+         browser driver may"
+    );
+}
+
+fn walk(dir: &Path, act: &mut impl FnMut(&Path)) {
+    let Ok(entries) = std::fs::read_dir(dir) else {
+        return;
+    };
+    for entry in entries.flatten() {
+        let path = entry.path();
+        if path.is_dir() {
+            walk(&path, act);
+        } else if path.extension().is_some_and(|x| x == "rs") {
+            act(&path);
+        }
+    }
+}

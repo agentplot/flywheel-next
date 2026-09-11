@@ -1,0 +1,14 @@
+scenario: T-asking
+title: a reader session comes back with a question instead of an answer, and the question is on the rail
+profiles: [all]
+satisfies: [94, 10, 24, 68]
+given: {}
+when: [{tick: {}}]
+then:
+  decisions: [{present: [question], count: 1}]
+actions:
+  - capture: {adapter: "flywheel capture meeting 2026-09-02-storefront-weekly.vtt", by: dana}
+  - session:
+      object: capture/meeting-2026-09-02-storefront-weekly
+      exit: blocked
+      question: which of the two checkout flows is the one that declines?

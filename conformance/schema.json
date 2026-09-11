@@ -41,6 +41,16 @@
       }
     },
     "when": {"type": "array", "minItems": 1, "items": {"$ref": "#/$defs/step"}},
+    "actions": {
+      "type": "array",
+      "items": {"$ref": "#/$defs/action"},
+      "description": "what happens after the moment `given:` describes, in order: one thing a real actor does per entry, and the machinery runs between them. A scenario that asserts only a moment has none. The vocabulary is deliberately narrower than `when:`'s and closed at three, because there are three actors outside the machinery: something arrives as a capture, the operator answers a decision, and a session delivers and exits. Nothing here sets state; a demo that cannot be written in this vocabulary has found a hole in the machinery, which is the finding rather than a reason to widen it (125, 193)."
+    },
+    "tour": {
+      "type": "array",
+      "items": {"type": "string"},
+      "description": "a line of copy per action, for the overlay a viewer reads. Empty, or exactly as long as `actions:`. A scenario with actions and no tour copy is a long test; a scenario with tour copy is a demo; the same runner plays both."
+    },
     "then": {
       "type": "object", "additionalProperties": false,
       "properties": {
@@ -65,6 +75,32 @@
     }
   },
   "$defs": {
+    "action": {"type": "object", "minProperties": 1, "maxProperties": 1, "additionalProperties": false, "properties": {
+      "capture": {
+        "type": "object", "additionalProperties": false,
+        "description": "a capture arrived (111, 115, 215). Exactly one of `adapter:` and `text:`.",
+        "properties": {
+          "adapter": {"type": "string", "description": "the enumerator's own command, run from any machine (217g); a path in it resolves against the suite's fixtures"},
+          "text": {"type": "string", "description": "the sentence a person typed in the page's box or the message they forwarded from chat: a capture that is its own excerpt, so the capture machine's `ensure_signal` makes the signal and no judgment is involved (19, 112)"},
+          "source": {"enum": ["page", "forwarded-message", "service"], "description": "where a capture that is its own excerpt came from: the page's box, a message forwarded from chat, or a running service saying something with no human involved (19, 112, D13); `page` by default"},
+          "key": {"type": "string", "description": "the source-event key, where the source does not give one"},
+          "by": {"type": "string"}
+        }
+      },
+      "response": {"$ref": "#/$defs/step/properties/response"},
+      "session": {
+        "type": "object", "required": ["object", "exit"], "additionalProperties": false,
+        "description": "a session delivered what it had and reported its exit. There is nothing to run the session, so the object stalls where a real one would be working; this is the moment it comes back. What it delivered is copied out of the scenario's `bundle/` into the path the real session would have written, and the exit is reported by running the command a real session reports through (67, 93).",
+        "properties": {
+          "object": {"type": "string", "description": "the object whose session this is"},
+          "exit": {"enum": ["done", "blocked", "stalled", "invalid", "refused"]},
+          "deliver": {"type": "object", "additionalProperties": {"type": "string"}, "description": "a path under `bundle/` -> the path in the repository the real session would have written it at. The artifact is a real file at a real path from that moment on."},
+          "question": {"type": "string", "description": "what `blocked` is blocked on, which reaches the rail as a numbered decision (24, 15)"},
+          "verdict": {"type": "string"},
+          "offers": {"type": "array", "items": {"type": "object", "required": ["kind", "document"]}}
+        }
+      }
+    }},
     "object": {"type": "object", "required": ["id", "machine", "state"], "properties": {"id": {"type": "string"}, "machine": {"type": "string"}, "parent": {"type": "string"}, "state": {"type": "object"}, "record": {"type": "object"}, "applied_responses": {"type": "array"}}},
     "evidence": {"type": "object", "additionalProperties": {"type": "object"}, "description": "evidence name -> {object id -> value}; '*' for every object"},
     "files": {

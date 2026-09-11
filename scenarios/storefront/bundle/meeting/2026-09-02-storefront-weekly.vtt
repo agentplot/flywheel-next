@@ -1,0 +1,57 @@
+WEBVTT
+
+NOTE storefront weekly, 2026-09-02. Four speakers, twenty-eight minutes; the
+NOTE cues below are the part the flywheel's meeting adapter reads. Storefront
+NOTE is the shop — catalogue, cart, checkout — and payments is the service
+NOTE that talks to the card processor.
+
+1
+00:02:06.000 --> 00:02:21.500
+<v Dana>Declines at checkout are up since Monday. It is not a handful, it
+is most of a percent of every attempt, and it started on its own.
+
+2
+00:02:21.500 --> 00:02:39.100
+<v Priya>It is amex, mostly. I pulled a day of attempts and the amex share
+of the declines is four times what it is of the traffic.
+
+3
+00:02:39.100 --> 00:03:02.400
+<v Chuck>What does the retry do? Because I think it tries once, gets the
+same answer back inside a second, and gives up. That is not a retry, that
+is a second attempt at the same moment.
+
+4
+00:03:02.400 --> 00:03:19.900
+<v Priya>We do not log the processor's decline code. We log that it
+declined. So I cannot tell you whether these are do-not-honour or
+insufficient funds or something the retry would actually fix.
+
+5
+00:03:19.900 --> 00:03:37.200
+<v Sam>Cart abandonment is up twelve per cent week on week. I do not know
+that it is the same thing but the shape is the same and it started the
+same day.
+
+6
+00:03:37.200 --> 00:03:55.000
+<v Chuck>We never wrote the retry policy down anywhere. It is whatever the
+payments service does, and what it does is whatever someone typed in
+eighteen months ago.
+
+7
+00:04:12.800 --> 00:04:31.600
+<v Sam>Separately — the catalogue images are slow on mobile. Two seconds
+before anything paints on a mid-range phone. That is its own problem and I
+keep forgetting to raise it.
+
+8
+00:04:31.600 --> 00:04:52.300
+<v Priya>Can we get a staging card processor? I cannot reproduce any of
+this without putting real cards through production, which I would rather
+not do.
+
+9
+00:05:40.100 --> 00:05:58.700
+<v Dana>Coming back to it — the declines are up and we still do not know
+why. I want that to be the thing we work on.

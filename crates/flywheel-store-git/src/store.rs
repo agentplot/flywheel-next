@@ -717,6 +717,13 @@ impl Records for GitStore {
     }
 
     fn responses(&self, id: &str) -> Result<Vec<Response>> {
+        // The numbers this object's own register entries carry. An answer names
+        // the decision's number and nothing else — that is what 15 asks of a
+        // response, and it is the register that says which object the number
+        // belongs to — so a store that matched on `object` alone would deliver
+        // no answer given on the page or in the chat to the object it answers
+        // (`record-derived.yaml` responses, 15, 193).
+        let mine = self.numbers_of(id)?;
         let mut out = Vec::new();
         for path in self.tree(layout::RESPONSES)? {
             let Some(text) = self.read_file(&path)? else { continue };
@@ -724,7 +731,10 @@ impl Records for GitStore {
                 let response = records::response_from_record(&record)?;
                 // The responses in hand, or those this object's own record and
                 // register entries name (`record-derived.yaml`).
-                if id == "rail" || response.object.as_deref() == Some(id) {
+                let mine = id == flywheel_domain::RAIL
+                    || response.object.as_deref() == Some(id)
+                    || response.decision.is_some_and(|n| mine.contains(&n));
+                if mine {
                     out.push(response);
                 }
             }
@@ -762,6 +772,29 @@ impl Records for GitStore {
 }
 
 impl GitStore {
+    /// The decision numbers the register gave this object, standing or
+    /// retracted.
+    ///
+    /// A decision's id is `<object>/<kind>/<since>`, so the entries whose id
+    /// begins with this object's are this object's decisions, and the numbers
+    /// on them are the numbers an answer may name. A retracted entry is kept:
+    /// that is what lets a late answer resolve to the object it was for and be
+    /// reported rather than silently lost (`record-derived.yaml` responses, 6,
+    /// 15).
+    fn numbers_of(&self, id: &str) -> Result<Vec<u32>> {
+        if id == flywheel_domain::RAIL {
+            return Ok(vec![]);
+        }
+        let register = flywheel_domain::commands::register(self)?;
+        let under = format!("{id}/");
+        Ok(register
+            .entries
+            .iter()
+            .filter(|(decision, _)| decision.starts_with(&under))
+            .map(|(_, entry)| entry.number)
+            .collect())
+    }
+
     /// A lease whose holder stopped renewing past the expiry is free to take
     /// (128, 163).
     pub fn lease_expired(&self, lease: &LeaseRecord) -> bool {

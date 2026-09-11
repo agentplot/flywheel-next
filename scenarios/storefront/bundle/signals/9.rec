@@ -1,0 +1,12 @@
+%rec: signal
+
+format: flywheel-signal/1
+id: signal/meeting-2026-09-02-storefront-weekly-9
+capture: capture/meeting-2026-09-02-storefront-weekly
+kind: reaction
+asserted_by: dana
+subject_tags: checkout declines
+assertion: the declines are up and the cause is still unknown
+excerpt: Coming back to it - the declines are up and we still do not know why. I want that to be the thing we work on.
+position: cue 9
+argues_with:

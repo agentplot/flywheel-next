@@ -15,3 +15,4 @@ mod acceptance_sets;
 mod phone;
 mod real_hosts;
 mod scripted;
+mod storefront;

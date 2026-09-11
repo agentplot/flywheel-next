@@ -1,0 +1,12 @@
+%rec: signal
+
+format: flywheel-signal/1
+id: signal/meeting-2026-09-02-storefront-weekly-7
+capture: capture/meeting-2026-09-02-storefront-weekly
+kind: reaction
+asserted_by: sam
+subject_tags: catalogue mobile
+assertion: catalogue images take two seconds to paint on a mid-range phone
+excerpt: Separately - the catalogue images are slow on mobile. Two seconds before anything paints on a mid-range phone.
+position: cue 7
+argues_with:

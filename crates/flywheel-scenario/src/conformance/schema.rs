@@ -53,12 +53,24 @@ impl Suite {
             .canonicalize()
             .with_context(|| format!("resolving {}", start.display()))?;
         for dir in start.ancestors() {
-            if dir.join("schema.json").is_file() && dir.join("observations.yaml").is_file() {
+            if holds_a_suite(dir) {
                 return Ok(dir.to_path_buf());
             }
         }
+        // A scenario outside the suite's own tree — a demo under `scenarios/`,
+        // which is this repository's and not the model's — is still validated
+        // against the model's schema and the model's observations: there is one
+        // scenario mechanism and not two, so a demo that drifts from it fails
+        // as a test (D15).
+        for dir in start.ancestors() {
+            let conformance = dir.join("conformance");
+            if holds_a_suite(&conformance) {
+                return Ok(conformance);
+            }
+        }
         bail!(
-            "no conformance root above {}: none of its directories holds schema.json and observations.yaml",
+            "no conformance root above {} and no `conformance/` beside it: nothing holds \
+             schema.json and observations.yaml",
             path.display()
         )
     }
@@ -206,4 +218,10 @@ impl Suite {
             self.fixtures().display()
         )
     }
+}
+
+/// Whether a directory is a conformance root: the schema every vocabulary is
+/// closed by, beside the registry every observation is bound in.
+fn holds_a_suite(dir: &Path) -> bool {
+    dir.join("schema.json").is_file() && dir.join("observations.yaml").is_file()
 }

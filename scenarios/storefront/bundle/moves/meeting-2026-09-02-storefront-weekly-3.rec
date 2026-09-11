@@ -1,0 +1,7 @@
+%rec: move
+
+format: flywheel-move/1
+signal: signal/meeting-2026-09-02-storefront-weekly-3
+target: join intent/storefront-declines
+reason: the retry is part of why a decline stands
+at: 2026-09-04T09:40:00Z
