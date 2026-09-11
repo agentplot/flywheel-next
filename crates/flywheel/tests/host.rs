@@ -1181,3 +1181,180 @@ fn a_lease_is_not_a_decision() {
         "the uncovered object is under attention: {attention:?}"
     );
 }
+
+// ------------------------------------------------------- 16.10 the tick's cost
+
+/// A host over the manifest `flywheel init` writes, so the tick reads its
+/// blueprints through the world the binary binds and not a stand-in: the
+/// cost measured is the path the binary takes (169, audit 8).
+fn hosted(name: &str) -> Host {
+    let dir = dir(name);
+    let report = flywheel::init::run(flywheel::init::Init {
+        instance: "willdan".into(),
+        host: "mac-mini".into(),
+        root: dir.join("root"),
+        git_host: dir.join("git-host"),
+        app: "12345".into(),
+        app_key_from: format!("FLYWHEEL_TEST_KEY_{}", name.to_uppercase()),
+        app_key: Some("the operator placed this".into()),
+        address: "http://laptop.example".into(),
+        manifest: dir.join("flywheel.yaml"),
+        curation: None,
+    })
+    .expect("init runs");
+    assert_eq!(report.state, "hosted", "{report:?}");
+    Host::open(&dir.join("flywheel.yaml"), "mac-mini", None, at(0)).expect("the host opens")
+}
+
+/// A real tick spends what the git-only profile's mechanism says it spends,
+/// counted on the path the binary takes and not the scenario runner's: one
+/// fetch before it decides, no renewal while none is due, no process on the
+/// read path, every process it spawns a push, and the tick's commits at the
+/// shared line in one push (165, 167, 169, `git-only.yaml` observations;
+/// audit 8). The blueprints are read through the world the binary binds, and
+/// that read spawns nothing either (`host.yaml` Tools; audit 9).
+///
+/// Three ticks under `conformance/contract/cost.yaml`'s shape — nothing
+/// moves, one transition, nothing moves — with the clock still, so no lease
+/// comes due.
+///
+/// What is not asserted here is the contract's `pushes_per_tick: [0, 1, 0]`
+/// itself, because the real host spends one push more per tick than the
+/// contract counts and on a ref of its own: `heartbeat` pushes `hosts/<name>`
+/// on every tick through `put_orphan`, where the runner's hosts heartbeat in
+/// memory and `cost.yaml`'s numbers were written for that path. Whether the
+/// heartbeat rides the tick's one push, is pushed only when due, or is counted
+/// beside the contract's numbers is a ruling, and until it is made the strict
+/// numbers are a false test.
+#[test]
+fn a_real_tick_spends_what_the_profile_says() {
+    let mut host = hosted("cost");
+    // The first sweep takes the leases and writes what a fresh host writes;
+    // what it spends is the cost of arriving, not of a tick (147, 149).
+    host.sweep().unwrap();
+
+    let world_spawned_before = flywheel_world_host::git::spawned();
+    let mut costs = vec![];
+    // Nothing moves.
+    host.tick(&Scope::All).unwrap();
+    costs.push(flywheel_atoms::StateStore::cost(&host.store.git));
+    // Another host is described as last seen ten minutes ago, so the `older:`
+    // guard on its life fires on the next tick without the clock moving —
+    // one transition, one commit (130, D7).
+    seed(
+        &mut host,
+        "host/mini-2",
+        "host",
+        &[],
+        &[
+            ("last_seen", json!((at(0) - Duration::minutes(10)).to_rfc3339())),
+            ("bound", json!(1)),
+            ("intermittent", json!(false)),
+        ],
+    );
+    host.tick(&Scope::All).unwrap();
+    costs.push(flywheel_atoms::StateStore::cost(&host.store.git));
+    let held = host.store.get("host/mini-2").unwrap().unwrap();
+    assert_eq!(held.config.get("life").map(String::as_str), Some("stale"), "the guard did not fire");
+    // Nothing moves.
+    host.tick(&Scope::All).unwrap();
+    costs.push(flywheel_atoms::StateStore::cost(&host.store.git));
+
+    for (n, cost) in costs.iter().enumerate() {
+        // One fetch, before deciding, and no other (165).
+        assert_eq!(cost.fetches, 1, "tick {n} fetched {} times: {costs:?}", cost.fetches);
+        // No lease came due, so none was renewed (128, 150).
+        assert_eq!(cost.lease_renewals, 0, "tick {n} renewed a lease that was not due: {costs:?}");
+        // The read path spawns nothing (126, 165).
+        assert_eq!(cost.read_processes, 0, "tick {n} spawned a process to read: {costs:?}");
+        // Every process a tick spawns is a push (169, `git-only.yaml` Tools).
+        assert_eq!(cost.subprocesses, cost.pushes, "tick {n} spawned something that was not a push: {costs:?}");
+        // The tick's commits go at the shared line in one push, beside the
+        // heartbeat's own; never a push per commit (167, 169).
+        assert!(
+            (1..=2).contains(&cost.pushes),
+            "tick {n} pushed {} times — a push per commit, not per tick: {costs:?}",
+            cost.pushes
+        );
+    }
+    // The tick that moved something wrote it: the second tick's pushes are
+    // the heartbeat's and the shared line's.
+    assert_eq!(costs[1].pushes, 2, "the transition's commit was not pushed: {costs:?}");
+    // Reading the blueprints through the bound world forked nothing (audit 9).
+    assert_eq!(
+        flywheel_world_host::git::spawned() - world_spawned_before,
+        0,
+        "the world spawned a process to read the blueprints"
+    );
+}
+
+// ------------------------------------------------------ 16.12 a session refused
+
+/// A session that attempts a line operation is refused at the catalogue, the
+/// refusal stands on its own thread, and the next tick carries it to the run
+/// record and to attention with the identity and the operation (43, 79, 81;
+/// audit 10).
+#[test]
+fn a_session_is_refused_a_line_operation() {
+    let mut host = host("session-refused", &["atlas"]);
+    let session = "session/unit/atlas/u/main";
+    flywheel_sessions_operator::set(
+        &mut host.store.git,
+        session,
+        &[
+            ("runner", json!("operator")),
+            ("place", json!("unit/atlas/u")),
+            ("started_at", json!(at(0).to_rfc3339())),
+        ],
+    )
+    .unwrap();
+
+    // The session, as the caller, orders a take on its line.
+    let defs = host.defs.clone();
+    let call = flywheel_surface::catalogue::Call::new("take", session, "session")
+        .arg("line", json!("line/atlas/u"));
+    let refused = host
+        .store
+        .with_world(|store, world| flywheel_surface::catalogue::call(&mut store.git, world, &defs, &call))
+        .expect_err("a session never merges (43)");
+    assert!(format!("{refused}").contains("43"), "{refused}");
+
+    // The refusal is the session's own entry, naming the operation.
+    let entry = host
+        .store
+        .git
+        .thread(session)
+        .unwrap()
+        .into_iter()
+        .find(|e| e.kind == "refusal")
+        .expect("the refusal is on the session's thread");
+    assert_eq!(entry.fields.get("operation"), Some(&json!("take")));
+    assert_eq!(entry.fields.get("object"), Some(&json!("line/atlas/u")));
+    assert_eq!(entry.by.as_deref(), Some(session));
+
+    // And nothing was taken: no response record was written for it.
+    let responses = host.store.git.list(&Scope::Machine("response".into())).unwrap().objects;
+    assert!(responses.is_empty(), "the refused call wrote a response: {responses:?}");
+
+    // The next tick carries it to the run record and to attention (79, 81).
+    host.set_now(at(2));
+    host.sweep().unwrap();
+    let record = host.store.git.run_record().unwrap();
+    let refusal = record
+        .iter()
+        .find(|e| e.kind == "refusal")
+        .expect("the refusal is in the run record (4, 79)");
+    let fields: BTreeMap<&str, &str> = refusal.fields.iter().map(|(n, v)| (n.as_str(), v.as_str())).collect();
+    assert_eq!(fields.get("identity"), Some(&session));
+    assert_eq!(fields.get("operation"), Some(&"take"));
+    assert!(
+        host.attention().unwrap().iter().any(|a| a == &format!("refusal: {session}")),
+        "the refusal never reached attention (81, 82)"
+    );
+
+    // The operator, as the caller, is not a session: the same tool is theirs.
+    let call = flywheel_surface::catalogue::Call::new("take", "chuck", "page").arg("line", json!("line/atlas/u"));
+    host.store
+        .with_world(|store, world| flywheel_surface::catalogue::call(&mut store.git, world, &defs, &call))
+        .expect("the operator orders a take (50)");
+}

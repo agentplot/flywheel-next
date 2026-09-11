@@ -65,6 +65,15 @@ pub const CATALOGUE: &[Tool] = &[
         doc: "the operator's own session (69)",
     },
     Tool {
+        name: "curate",
+        args: &["session", "moves"],
+        doc: "the curator's moves on the unmoved signals — attach, join, route, \
+              challenge, drop — delivered as the charged curation session's \
+              `move` deliverable with its exit, the same record `flywheel exit \
+              done --deliverable move` writes; the operator running the session \
+              is the operator-as-session (93b, 107, 116, 67)",
+    },
+    Tool {
         name: "drop",
         args: &["object"],
         doc: "undo work (4)",
@@ -249,6 +258,16 @@ impl Call {
 /// tick applies it.
 pub type Outcome = Called;
 
+/// The operations of a line a session may never take: it commits inside its
+/// place only, and never merges, lands, or holds and releases a place (43, 55).
+pub const LINE_OPERATIONS: &[&str] = &["take", "close", "hold", "release"];
+
+/// The session a call comes from, where it comes from one: a session's own
+/// command names itself as the caller, and its identity is a session id.
+fn session_caller(call: &Call) -> Option<String> {
+    (call.delivery == "session" || call.by.starts_with("session/")).then(|| call.by.clone())
+}
+
 /// Invoke one tool of the catalogue, writing through the state store (193).
 ///
 /// Every caller ends here. A tool the catalogue lacks is not performed and is
@@ -260,6 +279,35 @@ pub fn call<S: StateStore, W: World + ?Sized>(
     defs: &Definitions,
     call: &Call,
 ) -> Result<Outcome> {
+    // A session that attempts a line operation is refused, and the refusal is
+    // on its own thread for `record_refusals` to carry to the run record and
+    // attention on the next tick (43, 79, 81).
+    if let Some(session) = session_caller(call) {
+        if LINE_OPERATIONS.contains(&call.tool.as_str()) {
+            let at = commands::now(store)?;
+            let reason = format!(
+                "a session commits inside its place only and never creates a line of work, \
+                 merges or lands: `{}` is refused (43)",
+                call.tool
+            );
+            let mut fields: BTreeMap<String, Value> = BTreeMap::new();
+            fields.insert("operation".into(), json!(call.tool));
+            if let Some(object) = first_object_argument(call) {
+                fields.insert("object".into(), json!(object));
+            }
+            fields.insert("reason".into(), json!(reason));
+            store.append(
+                &session,
+                &flywheel_atoms::ThreadEntry {
+                    at,
+                    kind: "refusal".into(),
+                    by: Some(session.clone()),
+                    fields,
+                },
+            )?;
+            bail!("{reason}");
+        }
+    }
 
     let Some(tool) = tool(&call.tool) else {
         // No such operation exists. Record it and let the response machine say
@@ -287,6 +335,7 @@ pub fn call<S: StateStore, W: World + ?Sized>(
         "capture" => capture(store, world, defs, call),
         "later" => later(store, defs, call),
         "open-session" => open_session(store, defs, call),
+        "curate" => curate(store, world, defs, call),
         // Every other tool takes the transition its decision would, on the
         // object its first argument names (4, 12).
         _ => {
@@ -302,7 +351,7 @@ pub fn call<S: StateStore, W: World + ?Sized>(
 /// The object a call names, for a tool the catalogue does not carry: whichever
 /// argument reads like an object id.
 fn first_object_argument(call: &Call) -> Option<String> {
-    for name in ["object", "item", "session", "unit", "elaboration", "bolt"] {
+    for name in ["object", "item", "session", "unit", "elaboration", "bolt", "line", "place"] {
         if let Some(value) = call.text(name) {
             return Some(value);
         }
@@ -393,6 +442,105 @@ fn dictate<S: StateStore>(
     Ok(record)
 }
 
+
+/// The curator's moves, as the charged curation session's delivery (93b, 107,
+/// 116). Each move is written into the blueprints under the machinery's prefix,
+/// and the session reports its exit with `move` as what it delivered — the
+/// same entry `flywheel exit done --deliverable move` writes, so what a person
+/// submits on the page and what a session's command writes are one record
+/// (67, D8). `record_moves` on the next tick applies them, unchanged (110).
+///
+/// The page's form and a client's JSON name the moves differently and are one
+/// tool: `moves` as a list of `{signal, move, target}`, or one `move.<signal>`
+/// field per signal with an optional `target.<signal>` beside it. A signal the
+/// operator left alone stays unmoved: nothing is judged by omission (107, 118).
+/// The session is the one charged where the call names none.
+fn curate<S: StateStore, W: World + ?Sized>(
+    store: &mut S,
+    world: &mut W,
+    _defs: &Definitions,
+    call: &Call,
+) -> Result<Outcome> {
+    let at = commands::now(store)?;
+    let session = match call.text("session").filter(|s| !s.trim().is_empty()) {
+        Some(session) => session,
+        None => {
+            let objects = store.list_records(&Scope::All)?;
+            crate::page::curating(&objects).ok_or_else(|| {
+                anyhow::anyhow!(
+                    "no curation session is charged; the tick charges one when the unmoved \
+                     signals cross the threshold or the cadence says so (110)"
+                )
+            })?
+        }
+    };
+    let reason = format!("the operator curated it on the {}", call.delivery);
+    let mut moves: Vec<signals::Move> = Vec::new();
+    let mut push = |signal: &str, word: &str, names: &str| {
+        let word = word.trim();
+        if signal.is_empty() || word.is_empty() {
+            return;
+        }
+        let names = names.trim();
+        moves.push(signals::Move {
+            signal: signal.to_string(),
+            target: match names.is_empty() {
+                true => word.to_string(),
+                false => format!("{word} {names}"),
+            },
+            reason: reason.clone(),
+            at: at.to_rfc3339(),
+        });
+    };
+    if let Some(Value::Array(listed)) = call.args.get("moves") {
+        for item in listed {
+            let text = |name: &str| item.get(name).and_then(Value::as_str).unwrap_or_default();
+            let signal = text("signal");
+            // `move` is the word and `target` what it names; a `target` alone
+            // carries both, as the record does (`attach <intent>`).
+            match text("move") {
+                "" => {
+                    let mut parts = text("target").splitn(2, char::is_whitespace);
+                    let word = parts.next().unwrap_or_default().to_string();
+                    let names = parts.next().unwrap_or_default().to_string();
+                    push(signal, &word, &names);
+                }
+                word => push(signal, word, text("target")),
+            }
+        }
+    }
+    for (name, value) in &call.args {
+        let Some(signal) = name.strip_prefix("move.") else {
+            continue;
+        };
+        let word = value.as_str().unwrap_or_default();
+        let names = call.text(&format!("target.{signal}")).unwrap_or_default();
+        push(signal, word, &names);
+    }
+    let mut journal = Vec::new();
+    for moved in &moves {
+        signals::write_move(world, moved)?;
+        journal.push(noted("move", &moved.signal, moved.target.clone()));
+    }
+    flywheel_domain::report::write_report(
+        store,
+        &session,
+        &call.by,
+        at,
+        &flywheel_domain::report::Report::Exit {
+            kind: "done".into(),
+            deliverables: vec!["move".into()],
+            question: None,
+            text: None,
+        },
+    )?;
+    journal.push(noted("exit", &session, format!("done: {} move(s)", moves.len())));
+    Ok(Called {
+        id: session.clone(),
+        outcome: Received::Recorded { id: session },
+        journal,
+    })
+}
 
 /// The operator's own session (69): opened by dictation at any time, on no
 /// thread, with no intent behind it. The machinery opens nothing here that the

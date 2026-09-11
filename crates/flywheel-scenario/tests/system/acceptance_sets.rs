@@ -2,6 +2,7 @@
 //! model's conformance suite, which is the third tier's subject whether or not
 //! a process is started (168, D15, D17).
 
+use super::phase;
 use flywheel_scenario::conformance::{self, Profile, RunOptions, Status};
 use std::path::PathBuf;
 
@@ -36,102 +37,56 @@ fn flywheel_binary_beside_the_test() -> PathBuf {
     binary
 }
 
-/// The scenarios group 10 admits: the rail derived, numbered and retracted, a
-/// standing session offered rather than ended, a proposal that created nothing,
-/// a thread closed on the operator's response, and — against a real state
-/// repository — the rail identical after a restart and a slow host starting one
-/// session (tasks 10.7–10.11).
+/// Every scenario of the suite, played on the phase's one profile in one run,
+/// and every row the acceptance table lists asserted through the runner: what
+/// ran passed, no listed row was skipped or found not applicable, and no listed
+/// row is missing from the run (168, 93a, D15; tasks 2.15 and 11.4; audit 3).
+///
+/// The set is enumerated from `conformance/scenarios/` and no list of what to
+/// play is kept here: a scenario that joins the suite joins this run, and what
+/// a run skips is decided by the scenario file alone. The rows the table does
+/// not list are played too, and one that fails is a failure — a scenario in
+/// the suite is a claim about the binary whether or not the phase accepts it.
+///
+/// This one driver is what stood as three hard-coded lists — the rail
+/// scenarios, the whole-set regressions and the host loop's — each of which
+/// named a subset and left nine listed rows asserted by nothing.
 #[test]
-fn the_rail_acceptance_scenarios_pass() {
+fn every_acceptance_row_passes() {
     // A scenario whose script reports through the command needs the binary,
     // and a test is not it (D8).
     std::env::set_var(
         flywheel_scenario::sessions::BINARY_ENV,
         flywheel_binary_beside_the_test(),
     );
-    for (path, profile) in [
-        ("scenarios/S01.yaml", conformance::Profile::GitOnly),
-        ("scenarios/S02.yaml", conformance::Profile::GitOnly),
-        ("scenarios/S04.yaml", conformance::Profile::GitOnly),
-        ("scenarios/S07.yaml", conformance::Profile::GitOnly),
-        ("scenarios/S05.yaml", conformance::Profile::GitOnly),
-        ("scenarios/S06.yaml", conformance::Profile::GitOnly),
-    ] {
-        let options = RunOptions {
-            definitions: Some(root().join("definitions")),
-            profile,
-            ..Default::default()
-        };
-        let outcome = conformance::run_one(&conformance_dir().join(path), &options);
-        assert_eq!(
-            outcome.status,
-            Status::Passed,
-            "{path} failed on {profile:?} ({:?}):\n{}",
-            outcome.reason,
-            outcome.failures.join("\n")
-        );
-    }
-}
-/// The three the whole-set run found, kept where a change that broke them
-/// again would be caught: a decision on an object a tick created is numbered in
-/// that tick on either profile (15, D15), a pane a scenario killed by its own
-/// name is read as gone (196, X08), and a capture that stands with its proof
-/// absent acts once per tick (73, 127, S21).
-#[test]
-fn the_whole_set_acceptance_scenarios_pass() {
-    std::env::set_var(
-        flywheel_scenario::sessions::BINARY_ENV,
-        flywheel_binary_beside_the_test(),
+    let options = RunOptions {
+        definitions: Some(root().join("definitions")),
+        profile: Profile::GitOnly,
+        ..Default::default()
+    };
+    let report = conformance::run(&[conformance_dir().join("scenarios")], &options)
+        .expect("the suite runs");
+    let rendered = report.render();
+
+    // Every listed row is in the run, by the name its file has.
+    let listed: Vec<String> = phase::ACCEPTED.iter().map(|s| s.to_string()).collect();
+    let missing = conformance::every_listed_scenario_ran(&listed, &report);
+    let held_back = report.listed_but_not_run();
+    let failed: Vec<String> = report
+        .outcomes
+        .iter()
+        .filter(|o| o.status == Status::Failed)
+        .map(|o| format!("{}:\n{}", o.line(), o.failures.join("\n")))
+        .collect();
+    assert!(
+        missing.is_empty() && held_back.is_empty() && failed.is_empty() && report.exit_code() == 0,
+        "the acceptance set is not green (exit {}):\n\nlisted rows that did not run: {missing:?}\n\
+         listed rows held back: {held_back:?}\n\nfailed rows:\n{}\n\n{rendered}",
+        report.exit_code(),
+        failed.join("\n\n")
     );
-    for (path, profile) in [
-        ("scenarios/S04.yaml", Profile::GitOnly),
-        ("scenarios/X08.yaml", Profile::GitOnly),
-        ("scenarios/S21.yaml", Profile::GitOnly),
-        ("scenarios/S16.yaml", Profile::GitOnly),
-    ] {
-        let options = RunOptions {
-            definitions: Some(root().join("definitions")),
-            profile,
-            ..Default::default()
-        };
-        let outcome = conformance::run_one(&conformance_dir().join(path), &options);
-        assert_eq!(
-            outcome.status,
-            Status::Passed,
-            "{path} failed on {profile:?} ({:?}):\n{}",
-            outcome.reason,
-            outcome.failures.join("\n")
-        );
-    }
 }
 
-/// The scenarios group 6 admits, on the profile each names. `status.yaml` and
-/// S20 run on the git-only profile because what they assert is the committed
-/// file a reader with no host running finds (D12, 145, S20).
-#[test]
-fn the_host_loops_acceptance_scenarios_pass() {
-    for (path, profile) in [
-        ("scenarios/X05.yaml", conformance::Profile::GitOnly),
-        ("scenarios/S29.yaml", conformance::Profile::GitOnly),
-        ("contract/status.yaml", conformance::Profile::GitOnly),
-        ("scenarios/S20.yaml", conformance::Profile::GitOnly),
-    ] {
-        let options = RunOptions {
-            definitions: Some(root().join("definitions")),
-            profile,
-            ..Default::default()
-        };
-        let outcome = conformance::run_one(&conformance_dir().join(path), &options);
-        assert_eq!(
-            outcome.status,
-            Status::Passed,
-            "{path} failed ({:?}, {:?}):\n{}",
-            outcome.status,
-            outcome.reason,
-            outcome.failures.join("\n")
-        );
-    }
-}
 /// The fourteen contract files, against a local bare state repository. This is
 /// the step that admits a profile: one scenario per
 /// operation of B.1, per guarantee of B.2, and one for the binding itself,

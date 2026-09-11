@@ -317,19 +317,16 @@ async fn invoke<S: StateStore + Send + 'static>(
 
 /// `POST /api/curate`: the curator's surface submitting its moves.
 ///
-/// This is not a tool and is not the catalogue's (193). It is the operator
-/// running the curation session (93b): the submission writes the `move`
-/// deliverable the session's exit names, and reports that exit through the same
-/// `write_report` that `flywheel exit` calls, so what a person submits here and
-/// what a session's command writes are one record (67, D8, D16). `record_moves`
-/// on the next tick is what applies them, unchanged (110, `curation.yaml`).
+/// The form is the page's control and the operation is the catalogue's
+/// `curate` tool, which the chat and a client reach as `/api/tools/curate`
+/// (193, 311). The route holds nothing of its own: it carries the form's
+/// fields to the same function the in-process caller uses, and comes back to
+/// the page (310, 311).
 async fn curate<S: StateStore + Send + 'static>(
     State(served): State<Served<S>>,
     headers: axum::http::HeaderMap,
     body: axum::body::Bytes,
 ) -> Response {
-    // The curator's surface is a form on the page like any other control, so
-    // it comes back to the page and never to a body (310, 311).
     let back = came_from(&headers);
     if let Err(refused) = served.admits(host_of(&headers)) {
         return (
@@ -338,74 +335,11 @@ async fn curate<S: StateStore + Send + 'static>(
         )
             .into_response();
     }
-    let fields = form_fields(&String::from_utf8_lossy(&body));
+    let mut call = Call::new("curate", served.operator(), "page");
+    call.args = form_fields(&String::from_utf8_lossy(&body));
     let mut store = served.store.lock().await;
     let mut world = served.world.lock().await;
-    let at = match flywheel_domain::commands::now(&mut *store) {
-        Ok(at) => at,
-        Err(e) => return back_with(&back, &e.to_string()),
-    };
-    // The session the moves are delivered under. The page names it, and it is
-    // checked against the store: a move is a session's delivery and never a
-    // write of its own (110, 93b).
-    let objects = match store.list_records(&flywheel_atoms::Scope::All) {
-        Ok(objects) => objects,
-        Err(e) => return back_with(&back, &e.to_string()),
-    };
-    let Some(session) = page::curating(&objects) else {
-        return back_with(
-            &back,
-            "no curation session is charged; the tick charges one when the unmoved signals \
-             cross the threshold or the cadence says so (110)",
-        );
-    };
-    let mut moves: Vec<flywheel_domain::signals::Move> = Vec::new();
-    for (name, value) in &fields {
-        let Some(signal) = name.strip_prefix("move.") else {
-            continue;
-        };
-        let word = value.as_str().unwrap_or_default().trim();
-        // A signal the operator left alone stays unmoved, and the next run sees
-        // it again: nothing is judged by omission (107, 118).
-        if word.is_empty() {
-            continue;
-        }
-        let names = fields
-            .get(&format!("target.{signal}"))
-            .and_then(|v| v.as_str())
-            .unwrap_or_default()
-            .trim()
-            .to_string();
-        moves.push(flywheel_domain::signals::Move {
-            signal: signal.to_string(),
-            target: match names.is_empty() {
-                true => word.to_string(),
-                false => format!("{word} {names}"),
-            },
-            reason: "the operator curated it on the page".into(),
-            at: at.to_rfc3339(),
-        });
-    }
-    for moved in &moves {
-        if let Err(refused) = flywheel_domain::signals::write_move(&mut **world, moved) {
-            return back_with(&back, &refused.to_string());
-        }
-    }
-    // The exit the session reports, with `move` as what it delivered: the same
-    // entry `flywheel exit done --deliverable move` writes (67, 80).
-    let reported = flywheel_domain::report::write_report(
-        &mut *store,
-        &session,
-        served.operator(),
-        at,
-        &flywheel_domain::report::Report::Exit {
-            kind: "done".into(),
-            deliverables: vec!["move".into()],
-            question: None,
-            text: None,
-        },
-    );
-    match reported {
+    match catalogue::call(&mut *store, &mut **world, &served.defs, &call) {
         Ok(_) => {
             // A session's report is a local cause too (130, D6).
             served.woken.notify_one();

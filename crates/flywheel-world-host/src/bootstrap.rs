@@ -150,6 +150,13 @@ impl Bootstrap {
     /// process's own environment; with none, the environment the manifest
     /// names is the place.
     pub fn app_installed(manifest: &Manifest, placed: Option<&str>) -> bool {
+        // An installation is seen for a recorded App and for no other: until
+        // `register_app` has written the id and where the key is, a key in hand
+        // installs nothing, and an instance that skipped past it would carry a
+        // manifest naming no App at all (204, 207).
+        if manifest.app.id.is_empty() || manifest.app.key_from.is_none() {
+            return false;
+        }
         if let Some(key) = placed {
             return !key.trim().is_empty();
         }

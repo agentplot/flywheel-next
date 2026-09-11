@@ -51,9 +51,11 @@ fn every_named_tool_has_a_body() {
     assert!(missing.is_empty(), "the catalogue lacks {missing:?}");
 
     // Beyond the spec's sixteen the catalogue carries the pair clause 47 grants
-    // past undo-or-defer, and the removal D9 puts there from day one.
+    // past undo-or-defer, the removal D9 puts there from day one, and the
+    // curator's moves — the one write the page made as no tool until audit 6
+    // (93b, 107, 116).
     let beyond: BTreeSet<String> = carried.difference(&named).cloned().collect();
-    let expected: BTreeSet<String> = ["start", "stop", "remove-instance"]
+    let expected: BTreeSet<String> = ["start", "stop", "remove-instance", "curate"]
         .iter()
         .map(|s| s.to_string())
         .collect();
@@ -68,6 +70,11 @@ fn every_named_tool_has_a_body() {
         if tool.name == "later" {
             // `later` names a decision the register gave; it is exercised on
             // its own below, where there is one to name.
+            continue;
+        }
+        if tool.name == "curate" {
+            // `curate` is a session's delivery and writes the session's exit,
+            // not a response record; it is exercised on its own below.
             continue;
         }
         let mut call = Call::new(tool.name, "chuck", "page");
@@ -98,6 +105,27 @@ fn every_named_tool_has_a_body() {
             tool.name
         );
     }
+
+    // `curate` has a body too: the moves land in the blueprints and the
+    // session's thread carries the exit naming `move` as what it delivered
+    // (67, 80, 107, 116).
+    let session = "curation/willdan/main/1";
+    let call = Call::new("curate", "chuck", "page")
+        .arg("session", json!(session))
+        .arg("moves", json!([{"signal": "signal/atlas/rows/1", "move": "drop", "target": ""}]));
+    let outcome = catalogue::call(&mut store, &mut world, &defs, &call).expect("`curate` has a body");
+    assert_eq!(outcome.id, session);
+    let exit = store
+        .thread(session)
+        .expect("a read")
+        .into_iter()
+        .find(|e| e.kind == "exit")
+        .expect("the session reported its exit");
+    assert_eq!(exit.fields.get("deliverables"), Some(&json!(["move"])));
+    let standing = flywheel_domain::signals::standing_move(&world, "signal/atlas/rows/1")
+        .expect("a read")
+        .expect("the move stands");
+    assert_eq!(standing.target, "drop");
 }
 
 /// A plausible value for an argument the schema names.

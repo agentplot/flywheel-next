@@ -352,3 +352,70 @@ fn the_manifests_curation_threshold_reaches_the_record() {
     host.declare().expect("the host declares");
     assert_eq!(threshold_of(&sandbox).0, 9, "the edited setting was not read");
 }
+
+/// The App's key and the token it makes are written nowhere a host writes:
+/// not the manifest, not any tracked line of the state repository — the run
+/// record under `runs/**` and the committed `status.html` included — and not
+/// the body of the page the host serves, after a tick that heartbeats (204,
+/// 207, 207a; audit 16).
+///
+/// The sweep is over what a real `Host` wrote, so the entries it covers are
+/// asserted present first: a sweep over an empty tree proves nothing.
+#[test]
+fn token_written_nowhere_else() {
+    use flywheel_world_host::git::{ls_tree, show, Repo};
+
+    let mut sandbox = Sandbox::new("nowhere");
+    sandbox.place_the_key();
+    let report = init::run(sandbox.ask()).expect("init runs");
+    assert_eq!(report.state, "hosted", "{report:?}");
+    let path = sandbox.dir.join("flywheel.yaml");
+
+    // The key is where the manifest says the operator put it, and the token the
+    // world mints from it is what the sweep looks for.
+    let key = "a-private-key-the-operator-placed";
+    std::env::set_var(&sandbox.key_from, key);
+    let now = chrono::Utc::now();
+    let mut host = flywheel::host::Host::open(&path, "mac-mini", None, now).expect("the host opens");
+    let token = host.store.world.app_token().expect("a key placed makes a token");
+    assert!(token.starts_with("installation:12345:"), "{token}");
+    assert!(!token.contains(key), "the token does not carry the key");
+
+    // A tick that heartbeats: it declares, decides, rewrites the status view
+    // and appends its run record, and pushes the lot at the shared line.
+    host.sweep().expect("a sweep runs");
+    let page = {
+        let flywheel::host::HostStore { git, world, .. } = &mut host.store;
+        let read = flywheel_surface::page::read(git, &**world, &host.defs, &host.sinks.address, "chuck")
+            .expect("the page reads");
+        flywheel_surface::page::render(&read)
+    };
+    std::env::remove_var(&sandbox.key_from);
+
+    // The manifest names where the key is, never the key.
+    let manifest = std::fs::read_to_string(&path).unwrap();
+    assert!(manifest.contains(&sandbox.key_from));
+    assert!(!manifest.contains(key), "the manifest holds the key");
+    assert!(!manifest.contains(&token), "the manifest holds the token");
+
+    // Every tracked file on the state repository's shared line, the run record
+    // and the status view among them.
+    let read = flywheel_world_host::Manifest::read(&path).unwrap();
+    let state = Repo::at(&read.state.remote);
+    let paths = ls_tree(&state, "main", "").expect("the shared line lists");
+    assert!(
+        paths.iter().any(|p| p.starts_with("runs/") && p.ends_with(".rec")),
+        "the tick wrote no run record to sweep: {paths:?}"
+    );
+    assert!(paths.iter().any(|p| p == "status.html"), "the tick wrote no status view to sweep: {paths:?}");
+    for path in &paths {
+        let text = show(&state, "main", path).unwrap().unwrap_or_default();
+        assert!(!text.contains(key), "{path} holds the key");
+        assert!(!text.contains(&token), "{path} holds the token");
+    }
+
+    // And the served page's body, rendered from the same state.
+    assert!(page.contains("mac-mini"), "the page is rendered from the host's state");
+    assert!(!page.contains(key), "the page holds the key");
+    assert!(!page.contains(&token), "the page holds the token");
+}

@@ -550,6 +550,19 @@ pub fn check(scenario: &Scenario, run: &Run, suite: &Suite) -> Vec<Failure> {
         }
     }
 
+    // ---- the invariants the scenario names, over the whole trace (I1–I16)
+    failures.extend(super::invariants::check(
+        &scenario.invariants,
+        &super::invariants::View {
+            given: &scenario.given.objects,
+            ticks: &run.ticks,
+            lease_log: &run.runtime.lease_log,
+            decisions_after: &run.decisions_after,
+            store: &run.runtime.store,
+            defs: &run.runtime.defs,
+        },
+    ));
+
     failures
 }
 
