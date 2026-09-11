@@ -22,12 +22,24 @@ pub struct Row {
     pub machine: String,
     pub group: String,
     pub states: Vec<String>,
+    /// The same, as a person reads it: what the object is doing, in the
+    /// model's own words and without the dotted paths the config is keyed by
+    /// (141, 310).
+    pub said: String,
     /// The host holding this object's lease, where one does (128, 143).
     pub holder: Option<String>,
     /// What runs the session under it, where one runs (93b, 217c).
     pub runner: Option<String>,
     /// The holder's liveness: alive, stale, away or gone (146, 150, 150a).
     pub liveness: Option<String>,
+    /// What the object's lease is in: `free`, `uncovered`, `acknowledged`,
+    /// `held`, `stale` or `expired` (`engine/lease.yaml`).
+    ///
+    /// A lease is the machinery's own bookkeeping and raises no decision on the
+    /// rail, so this is where it is read: an object no host's declaration
+    /// covers says `uncovered` here rather than taking a number the operator
+    /// cannot answer with anything but "seen" (79, 141, 149, 310).
+    pub lease: Option<String>,
     /// The question, the answer and the note kept on the object, in order (144).
     pub discussion: Vec<(String, String)>,
 }
@@ -52,6 +64,93 @@ impl Status {
             .filter(|r| r.group == name)
             .map(|r| r.object.as_str())
             .collect()
+    }
+}
+
+/// What an object is doing, as a person reads it (141, 310).
+///
+/// The config is keyed by the dotted path of every region and state above an
+/// entry, and printing those paths verbatim puts
+/// `life.in-type.stages.build.run.sessions.life.alive.presence: unknown` on a
+/// card, which says nothing to anyone. Three rules make it a sentence.
+///
+/// A state whose ancestors are not the ones the object is actually in is not
+/// what it is doing: a machine keeps what a branch it has left last stood in,
+/// and `session.life: lost` beside `session.life.alive.activity: idle` reads as
+/// a contradiction because only the first is live. An entry whose value merely
+/// names which sub-machine runs — `place: place`, `work: session` — says
+/// nothing the entries under it do not say better. And what is left is said by
+/// the region it is in rather than by the path that reaches it.
+pub fn said(object: &Object) -> String {
+    let mut out: Vec<String> = Vec::new();
+    for (region, state) in &object.config {
+        if !entered(&object.config, region) || selector(region, state) {
+            continue;
+        }
+        // A life whose stages are running is saying only that they are; the
+        // stage itself is the answer, and it is on the next line.
+        if object.config.contains_key(&format!("{region}.{state}.stages")) {
+            continue;
+        }
+        // A presence nobody has looked for says nothing either way (146).
+        if region.ends_with(".presence") && state == "unknown" {
+            continue;
+        }
+        out.push(match noun(region) {
+            Some(noun) => format!("{noun} {state}"),
+            None => state.clone(),
+        });
+    }
+    out.join(" · ")
+}
+
+/// Whether every state above this region is the one the object is in.
+///
+/// A key alternates region and state — `life.in-type.stages.build.run` is the
+/// region `run` under the state `build` of the region `stages` under the state
+/// `in-type` of the region `life` — so the states above it are at the odd
+/// positions, and each one has to be what the config records for the path that
+/// reaches it.
+fn entered(config: &std::collections::BTreeMap<String, String>, region: &str) -> bool {
+    let segments: Vec<&str> = region.split('.').collect();
+    let mut at = 1;
+    while at < segments.len() {
+        let above = segments[..at].join(".");
+        if config.get(&above).map(String::as_str) != Some(segments[at]) {
+            return false;
+        }
+        at += 2;
+    }
+    true
+}
+
+/// Whether an entry only names which sub-machine is running, which the entries
+/// under it say better: `place: place`, `line: line`, `work: session`,
+/// `run: sessions`.
+fn selector(region: &str, state: &str) -> bool {
+    let leaf = region.rsplit('.').next().unwrap_or(region);
+    leaf == state || leaf == "work" || leaf == "run"
+}
+
+/// What to call a state, from the region it is in. `life` is the word every
+/// machine uses for its own, so the state above it is what names it: the region
+/// `place.place.life` is the place, and `…sessions.life` is the session.
+fn noun(region: &str) -> Option<String> {
+    let segments: Vec<&str> = region.split('.').collect();
+    let leaf = match segments.len() {
+        1 => segments[0],
+        len if segments[len - 1] == "life" => segments[len - 2],
+        len => segments[len - 1],
+    };
+    match leaf {
+        // The object's own life needs no word in front of it.
+        "life" => None,
+        // A stage is what the item is in.
+        "stages" => Some("in".into()),
+        // The activity is the session's doing, and saying so twice is noise.
+        "activity" => None,
+        "sessions" => Some("session".into()),
+        other => Some(other.replace('_', " ")),
     }
 }
 
@@ -188,6 +287,7 @@ pub fn read_with<S: Records, R: crate::signals::Reads + ?Sized>(
             continue;
         }
         let lease = store.leases(&object.id)?;
+        let lease_state = lease.as_ref().map(|l| l.state.clone());
         let holder = lease.map(|l| l.holder);
         let runner = runners.get(&object.id).cloned();
         let group = group_of(defs, object, holder.is_some(), runner.is_some());
@@ -201,8 +301,10 @@ pub fn read_with<S: Records, R: crate::signals::Reads + ?Sized>(
             object: object.id.clone(),
             machine: object.machine.clone(),
             group,
+            said: said(object),
             states,
             liveness: holder.as_deref().and_then(liveness),
+            lease: lease_state,
             holder,
             runner,
             discussion: discussion(store, &object.id),
@@ -291,15 +393,16 @@ pub fn render(status: &Status) -> StatusView {
         }
         for row in rows {
             body.push_str(&format!(
-                "<article id=\"{}\" data-machine=\"{}\" data-holder=\"{}\" data-runner=\"{}\" data-liveness=\"{}\">\n",
+                "<article id=\"{}\" data-machine=\"{}\" data-holder=\"{}\" data-runner=\"{}\" data-liveness=\"{}\" data-lease=\"{}\">\n",
                 escape(&row.object),
                 escape(&row.machine),
                 escape(row.holder.as_deref().unwrap_or("none")),
                 escape(row.runner.as_deref().unwrap_or("none")),
                 escape(row.liveness.as_deref().unwrap_or("none")),
+                escape(row.lease.as_deref().unwrap_or("free")),
             ));
             body.push_str(&format!("<h3>{}</h3>\n", escape(&row.object)));
-            body.push_str(&format!("<p class=\"state\">{}</p>\n", escape(&row.states.join(" · "))));
+            body.push_str(&format!("<p class=\"state\">{}</p>\n", escape(&row.said)));
             body.push_str(&format!(
                 "<p class=\"holder\">held by {} ({})</p>\n",
                 escape(row.holder.as_deref().unwrap_or("no host")),
@@ -307,6 +410,15 @@ pub fn render(status: &Status) -> StatusView {
             ));
             if let Some(runner) = &row.runner {
                 body.push_str(&format!("<p class=\"runner\">run by the {}</p>\n", escape(runner)));
+            }
+            // An object no host's declaration covers is said here, in words, and
+            // not as a number on the rail: nothing about it is the operator's
+            // to answer beyond widening a declaration (79, 141, 149).
+            if row.lease.as_deref() == Some("uncovered") {
+                body.push_str(
+                    "<p class=\"lease\">no host's declaration covers this; it waits until one \
+                     does (149)</p>\n",
+                );
             }
             for (kind, said) in &row.discussion {
                 body.push_str(&format!(

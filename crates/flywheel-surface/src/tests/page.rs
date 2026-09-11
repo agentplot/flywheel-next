@@ -63,13 +63,14 @@ fn ids_within(html: &str, opening: &str, closing: &str) -> Vec<String> {
     out
 }
 
-/// What the header carries, and the action each one serves. Nothing stands
-/// here that the operator does not act on.
+/// What the header carries, and the work each element does. Nothing stands here
+/// that the operator does not act on — and an element that explains why a
+/// control is absent is doing work too, because it answers a question the
+/// operator would otherwise act on.
 ///
 /// This is the list the requirements justify, not the list the mockup draws.
-/// Two of the mockup's header elements do not survive the question and are
-/// named below the table with the reason each one failed it.
-const HEADER: [(&str, &str); 7] = [
+/// What the mockup draws and this does not is named below, with the reason.
+const HEADER: [(&str, &str); 8] = [
     (
         "orgname",
         "where the operator is: the instance this host serves, which is in the path of \
@@ -100,12 +101,13 @@ const HEADER: [(&str, &str); 7] = [
          given (154, 310)",
     ),
     ("sent", "how many those are: the count on that control (154)"),
+    (
+        "theme",
+        "why there is no control here: the page follows the system's theme, because a \
+         switch would be client state a reload loses, and saying so answers the question \
+         instead of leaving the operator to hunt for one (310)",
+    ),
 ];
-
-/// The one element kept that answers a question rather than an action: the page
-/// follows the system's theme and holds no client state a reload would lose, so
-/// the label says so in place of a switch that would (310).
-const KEPT_AS_A_STATEMENT: [&str; 1] = ["theme"];
 
 /// What the mockup puts in the header and the page does not, with what each one
 /// failed to name.
@@ -139,7 +141,6 @@ fn the_header_carries_no_element_without_an_action() {
     let unnamed: Vec<&String> = carried
         .iter()
         .filter(|id| !HEADER.iter().any(|(named, _)| *named == id.as_str()))
-        .filter(|id| !KEPT_AS_A_STATEMENT.contains(&id.as_str()))
         .collect();
     assert!(
         unnamed.is_empty(),
@@ -230,5 +231,160 @@ fn a_healthy_host_raises_no_pill() {
     assert!(
         strip.contains("data-liveness=\"stale\""),
         "it does not say what is wrong with it: {strip}"
+    );
+}
+
+// ---------------------------------------------------------------- the rail
+
+/// The scenario the page's own walkthrough stands on, read as data.
+///
+/// `scenarios/rail-mockup.yaml` holds every decision kind once, so the rail it
+/// raises is the set of forms a card has to have. The file's types are
+/// `flywheel-atoms`', so this reads it without the runner (94).
+fn rail_mockup(store: &mut FakeStore, defs: &Definitions) {
+    let path = std::path::Path::new(env!("CARGO_MANIFEST_DIR"))
+        .join("../../scenarios/rail-mockup.yaml");
+    let scenario = flywheel_atoms::scenario::load(&path).expect("the rail mockup's scenario");
+    let at = commands::now(store).expect("a point");
+    // What the world reports, which is what the guards read (B.3).
+    for (name, per_object) in &scenario.given.evidence {
+        for (object, value) in per_object {
+            store.given(object, name, value.clone());
+        }
+    }
+    for given in &scenario.given.objects {
+        commands::put_new(
+            store,
+            defs,
+            &given.id,
+            &given.machine,
+            given.parent.as_deref(),
+            given.record.clone(),
+            at,
+        )
+        .unwrap_or_else(|e| panic!("{}: {e}", given.id));
+        if given.state.is_empty() {
+            continue;
+        }
+        let mut object = Records::get(store, &given.id).expect("a read").expect("the object");
+        // The top-level state first, so a nested one is not cleared by the
+        // region above it being set after it.
+        let mut paths: Vec<(&String, &String)> = given.state.iter().collect();
+        paths.sort_by_key(|(region, _)| region.matches('.').count());
+        for (region, state) in paths {
+            let under = format!("{region}.");
+            let gone: Vec<String> = object
+                .config
+                .keys()
+                .filter(|held| held.starts_with(&under))
+                .cloned()
+                .collect();
+            for key in gone {
+                object.config.remove(&key);
+            }
+            object.config.insert(region.clone(), state.clone());
+            object.entered_at.insert(region.clone(), at);
+        }
+        flywheel_engine::initialise(defs, &mut object, at);
+        let base = object.seq;
+        Records::put(store, &given.id, &object, base).expect("the described state");
+    }
+    commands::rail(store, defs).expect("the rail derives");
+}
+
+/// Every card on the rail carries what its kind is, where it is, why it is
+/// being asked, and the answers that kind takes — each one a control
+/// (15, 11, 18, 209, 210, S7, 311).
+#[test]
+fn a_rail_card_carries_its_kind_controls() {
+    let (mut store, world, defs) = a_page();
+    rail_mockup(&mut store, &defs);
+    let read = crate::page::read(&mut store, &world, &defs, ADDRESS, "chuck").expect("the page");
+    let html = crate::page::render(&read);
+    assert!(
+        read.decisions.len() >= 6,
+        "the rail mockup raises every decision kind once: {}",
+        read.decisions.len()
+    );
+
+    let mut kinds: Vec<String> = Vec::new();
+    for decision in &read.decisions {
+        let number = decision.number.expect("the register numbered it");
+        let card = html
+            .split("<article ")
+            .find(|block| block.contains(&format!("data-number=\"{number}\"")))
+            .unwrap_or_else(|| panic!("decision {number} has no card"));
+        kinds.push(decision.kind.clone());
+
+        // What it is: the object's own machine, not the group it is filed
+        // under, which is the heading above it (209).
+        let machine = read
+            .objects
+            .iter()
+            .find(|o| o.id == decision.object)
+            .map(|o| o.machine.clone())
+            .expect("the decision's object");
+        assert!(
+            card.contains(&format!("<span class=\"kind\">{machine}</span>")),
+            "decision {number} does not say it is a {machine}: {card}"
+        );
+        // Where it is: the lane it sits in on the board (D16).
+        assert!(
+            card.contains("class=\"ph\" data-phase=\""),
+            "decision {number} carries no phase: {card}"
+        );
+        // The object it concerns, as a link that opens it (308).
+        assert!(
+            card.contains(&format!("class=\"object\" href=\"{ADDRESS}/{}\"", decision.object)),
+            "decision {number} does not link its object: {card}"
+        );
+        // And its own answers, each one a control that posts (311, 193).
+        assert!(!decision.answers.is_empty(), "decision {number} takes no answer");
+        for answer in &decision.answers {
+            assert!(
+                card.contains(&format!("data-answer=\"{}\"", crate::page::escape(answer))),
+                "decision {number} carries no `{answer}` control: {card}"
+            );
+        }
+    }
+
+    // The kinds the mockup draws a form for, each with the answers its machine
+    // names — which is what makes one kind's card a different thing from
+    // another's rather than one card with variants (209).
+    let card_for = |kind: &str| -> &crate::page::Read {
+        assert!(kinds.iter().any(|held| held == kind), "no `{kind}` on the rail: {kinds:?}");
+        &read
+    };
+    for (kind, answers) in [
+        ("intent-proposed", &["yes", "drop", "split"][..]),
+        ("unit-proposed", &["yes", "drop", "bolt <name>", "new bolt <name>"][..]),
+        ("elaboration-proposed", &["yes", "drop", "type <name>"][..]),
+    ] {
+        let read = card_for(kind);
+        let decision = read
+            .decisions
+            .iter()
+            .find(|d| d.kind == kind)
+            .expect("the kind is on the rail");
+        for answer in answers {
+            assert!(
+                decision.answers.iter().any(|held| held == answer),
+                "a `{kind}` takes `{answer}` and the card offers {:?}",
+                decision.answers
+            );
+        }
+    }
+
+    // The one-line why: what the machine's own `shows:` names is on the card,
+    // so a decision says what it is about and not only what it is (15, 11).
+    let intent = read
+        .decisions
+        .iter()
+        .find(|d| d.kind == "intent-proposed")
+        .expect("the intent's proposal");
+    let why = read.why.get(&intent.id).expect("the intent's card says why");
+    assert!(
+        why.iter().any(|said| said.contains("signals")),
+        "the intent cites signals and its card does not say how many: {why:?}"
     );
 }

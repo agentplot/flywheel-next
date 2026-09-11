@@ -64,6 +64,11 @@ pub struct Read {
     /// The intents a move may name, so attaching and joining are picked rather
     /// than remembered (194).
     pub intents: Vec<String>,
+    /// What each standing decision is about, in one line: the fields and the
+    /// evidence the machine's own `shows:` names for that decision kind,
+    /// resolved against the object, and how long it has stood. Keyed by the
+    /// decision's id (15, 11, 18).
+    pub why: BTreeMap<String, Vec<String>>,
     /// What the last control the operator used was refused for, where it was
     /// refused. The page's controls are plain forms with no script behind them,
     /// so a refusal comes back as the page itself with the reason on it and
@@ -184,6 +189,35 @@ pub fn read<S: StateStore, W: World + ?Sized>(
         }
         weight.insert(object.id.clone(), signals::weight_of(&files, &cited));
     }
+    // What each decision is about. `shows:` in the machine is the model's own
+    // answer to what a decision puts in front of the operator, so the line is
+    // read from the definitions rather than invented per kind (15, 11).
+    let mut why: BTreeMap<String, Vec<String>> = BTreeMap::new();
+    for decision in &decisions {
+        let Some(object) = objects.iter().find(|o| o.id == decision.object) else {
+            continue;
+        };
+        let evidence = store.read(&decision.object).map(|read| read.evidence).unwrap_or_default();
+        let mut said: Vec<String> = Vec::new();
+        for name in &decision.shows {
+            // The model names a field of the record or an atom of the
+            // evidence; an atom is named for the machine it belongs to
+            // (`elaboration.type`), and the record holds it under its own name
+            // (`type`), so the last segment is the third place to look.
+            let held = object
+                .record
+                .get(name)
+                .or_else(|| evidence.get(name))
+                .or_else(|| object.record.get(name.rsplit('.').next().unwrap_or(name)));
+            if let Some(line) = held.and_then(|value| shown(name, value)) {
+                said.push(line);
+            }
+        }
+        if let Some(age) = age(at, decision.since) {
+            said.push(age);
+        }
+        why.insert(decision.id.clone(), said);
+    }
     let answered = answers_of(&objects);
     // What curation has to judge, and the session the operator judges it in
     // (110, 118, 93b).
@@ -206,9 +240,94 @@ pub fn read<S: StateStore, W: World + ?Sized>(
         unmoved,
         curation,
         intents,
+        why,
         refused: None,
         opened: None,
     })
+}
+
+/// One thing a decision shows, as a line on its card, or nothing where the
+/// object does not carry it.
+///
+/// A list is said by how many are in it, because that is what the operator
+/// weighs; a flag that is not set says nothing; and everything else is said by
+/// its name and its value. The name is the model's, without the path that
+/// reaches it.
+fn shown(name: &str, value: &serde_json::Value) -> Option<String> {
+    let label = name.rsplit('.').next().unwrap_or(name).replace('_', " ");
+    match value {
+        serde_json::Value::Null => None,
+        serde_json::Value::Bool(false) => None,
+        serde_json::Value::Bool(true) => Some(label),
+        serde_json::Value::Array(held) if held.is_empty() => None,
+        serde_json::Value::Array(held) => Some(format!("{} {}", held.len(), counted(&label, held.len()))),
+        serde_json::Value::String(said) if said.trim().is_empty() => None,
+        serde_json::Value::String(said) => Some(format!("{label} {}", clipped(said))),
+        // What a structured field says is its values, not its JSON: `target
+        // {"bolt": "bolt/atlas/plan-rows"}` is read as `target
+        // bolt/atlas/plan-rows`.
+        serde_json::Value::Object(fields) if fields.is_empty() => None,
+        serde_json::Value::Object(fields) => {
+            let said: Vec<String> = fields
+                .values()
+                .filter_map(|value| match value {
+                    serde_json::Value::String(text) => Some(clipped(text)),
+                    serde_json::Value::Null => None,
+                    other => Some(other.to_string()),
+                })
+                .collect();
+            match said.is_empty() {
+                true => None,
+                false => Some(format!("{label} {}", said.join(" "))),
+            }
+        }
+        other => Some(format!("{label} {other}")),
+    }
+}
+
+/// One of a thing is not the thing's plural. The model's own names are plural
+/// where the field holds a list, so the `s` comes off when there is one.
+fn counted(label: &str, how_many: usize) -> String {
+    match how_many == 1 && label.ends_with('s') && !label.ends_with("ss") {
+        true => label[..label.len() - 1].to_string(),
+        false => label.to_string(),
+    }
+}
+
+/// A value long enough to push the controls off the card is cut, with the end
+/// kept where the end is what tells it apart — a path's file, a claim's version.
+fn clipped(said: &str) -> String {
+    let said = said.trim();
+    match said.chars().count() > 60 {
+        false => said.to_string(),
+        true => format!("…{}", said.chars().skip(said.chars().count() - 59).collect::<String>()),
+    }
+}
+
+/// How long a decision has stood, in the coarsest unit that says it: what the
+/// operator weighs a proposal by is its age, not its timestamp (15, 118).
+fn age(now: chrono::DateTime<chrono::Utc>, since: chrono::DateTime<chrono::Utc>) -> Option<String> {
+    let stood = now - since;
+    if stood < chrono::Duration::minutes(1) {
+        return None;
+    }
+    Some(match (stood.num_days(), stood.num_hours(), stood.num_minutes()) {
+        (days, _, _) if days > 0 => format!("{days}d"),
+        (_, hours, _) if hours > 0 => format!("{hours}h"),
+        (_, _, minutes) => format!("{minutes}m"),
+    })
+}
+
+/// Which of the board's four phases an object sits in. The phase is where it
+/// is, and its kind is what it is; a card says both because the operator reads
+/// the rail out of the board's order (D16, 209).
+fn phase_of(machine: &str) -> &'static str {
+    for ((_, machines), (title, _)) in LANES.iter().zip(LANE_HEADS.iter()) {
+        if machines.contains(&machine) {
+            return title;
+        }
+    }
+    "Construction"
 }
 
 /// The kinds the page gives a form of its own. The phase an object is in is
@@ -368,11 +487,22 @@ fn card(read: &Read, decision: &DecisionInstance) -> String {
         group = escape(&decision.group),
         object = escape(&decision.object)
     );
+    // What it is, and where it is: the kind is the object's own machine, and
+    // the phase is the lane it sits in on the board. The group is the heading
+    // the card is filed under and is not repeated here (209, D16).
+    let machine = read
+        .objects
+        .iter()
+        .find(|o| o.id == decision.object)
+        .map(|o| o.machine.as_str())
+        .unwrap_or(&decision.kind);
     let _ = write!(
         out,
         "<div class=\"ch\"><span class=\"n number\">{number}</span>\
-         <span class=\"kind\">{kind}</span></div>\n",
-        kind = escape(&decision.group)
+         <span class=\"kind\">{kind}</span>\
+         <span class=\"ph\" data-phase=\"{phase}\">{phase}</span></div>\n",
+        kind = escape(machine),
+        phase = escape(&phase_of(machine).to_lowercase()),
     );
     let _ = write!(
         out,
@@ -380,6 +510,15 @@ fn card(read: &Read, decision: &DecisionInstance) -> String {
         escape(&link),
         escape(&decision.object)
     );
+    // Why it is being asked: what the machine's own `shows:` names for this
+    // decision kind, and how long it has stood (15, 11, 18).
+    if let Some(said) = read.why.get(&decision.id).filter(|said| !said.is_empty()) {
+        let _ = write!(
+            out,
+            "<p class=\"tail why\">{}</p>\n",
+            escape(&said.join(" · "))
+        );
+    }
     if let Some(away) = read.away.get(&decision.object) {
         let _ = write!(
             out,
@@ -529,7 +668,7 @@ fn object_on_the_board(read: &Read, row: &status::Row) -> String {
     let _ = write!(
         out,
         "<p class=\"state\">{}</p>\n",
-        escape(&row.states.join(" · "))
+        escape(&row.said)
     );
     let _ = write!(
         out,

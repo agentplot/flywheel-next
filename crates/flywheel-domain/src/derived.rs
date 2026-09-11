@@ -108,6 +108,14 @@ pub fn evidence<S: Records>(
         "seq" => json!(held.as_ref()?.seq),
         "applied_responses" => json!(held.as_ref()?.applied_responses.clone()),
 
+        // ---- the capture's own record (111)
+        //
+        // What a capture came from is on the capture, and the capture machine
+        // reads it to tell a forwarded single message — its own excerpt, needing
+        // no judgment — from material a reader must go through (19, 112, 115,
+        // `capture.yaml` reading.captured).
+        "capture.source" => field("source")?,
+
         // ---- the host's own record (147, 163)
         "host.bound" => {
             let host = host_name(object);

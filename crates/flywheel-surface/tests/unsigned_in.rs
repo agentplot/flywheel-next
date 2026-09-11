@@ -6,7 +6,6 @@ mod store;
 
 use flywheel_atoms::{Records, StateStore};
 use flywheel_surface::http::Served;
-use serde_json::json;
 
 const ADDRESS: &str = "http://studio.tailnet.ts.net/willdan";
 

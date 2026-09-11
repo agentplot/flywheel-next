@@ -557,6 +557,17 @@ ul.sigs li{margin:0}
 @media (max-width: 760px) {
   :root{--hosts:38px}
   .hosts{flex-wrap:nowrap;overflow-x:auto;padding:0 12px}
+  /* The header must not set the width of the document: at 390px its own
+     content is wider than the screen, and a grid column of `1fr` then resolves
+     against that width, which puts a card's answer controls off the right edge
+     where no tap reaches them (306, 307, 311). */
+  .top{gap:10px;padding:0 10px;overflow:hidden}
+  /* The title is the one thing on the header a person on a phone already
+     knows — they opened it — and the room it takes is the room the instance
+     and the operator's own name need to survive (17.0, 153, 219). */
+  .top h1{display:none}
+  .top .meta{min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+  .top .theme{display:none}
   .top .keys{display:none}
   .top .count span.hint{display:none}
   .top .palbtn{display:none}
