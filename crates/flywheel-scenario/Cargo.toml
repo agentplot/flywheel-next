@@ -25,3 +25,15 @@ jsonschema = { version = "0.55.1", default-features = false }
 [dev-dependencies]
 headless_chrome = "1"
 tokio.workspace = true
+flywheel-atoms = { path = "../flywheel-atoms", features = ["testing"] }
+
+[features]
+# D17's third tier: the real binary, hosts that are processes of their own and
+# a headless browser. A feature and not an `#[ignore]`, so the everyday run
+# does not even compile them.
+system-tests = []
+
+[[test]]
+name = "system"
+path = "tests/system/main.rs"
+required-features = ["system-tests"]

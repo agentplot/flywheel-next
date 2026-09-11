@@ -14,4 +14,4 @@ serde_json.workspace = true
 
 [dev-dependencies]
 flywheel-domain = { path = "../flywheel-domain" }
-flywheel-store-git = { path = "../flywheel-store-git" }
+flywheel-atoms = { path = "../flywheel-atoms", features = ["testing"] }

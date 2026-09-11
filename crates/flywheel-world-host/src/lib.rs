@@ -15,3 +15,6 @@ pub mod world;
 
 pub use manifest::Manifest;
 pub use world::HostWorld;
+
+#[cfg(test)]
+mod tests;

@@ -15,6 +15,14 @@ axum.workspace = true
 tokio.workspace = true
 chrono.workspace = true
 
+[features]
+# The fakes the tests bind, for D17's first tier. Off in a shipped build.
+testing = []
+
 [dev-dependencies]
+# This crate's own fakes, for its integration tests: a dev-dependency on itself
+# turns the feature on for the test build and leaves the shipped build alone.
+flywheel-surface = { path = ".", features = ["testing"] }
 flywheel-store-git = { path = "../flywheel-store-git" }
+flywheel-atoms = { path = "../flywheel-atoms", features = ["testing"] }
 serde_yaml.workspace = true

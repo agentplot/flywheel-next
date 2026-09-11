@@ -18,3 +18,12 @@ pub mod links;
 pub mod page;
 
 pub use catalogue::{catalogue, enumerate, tool, Tool, CATALOGUE};
+
+/// Fakes the tests bind: a `World` held in memory, enforcing the same prefix
+/// rule a host does. Behind the `testing` feature, and always present for this
+/// crate's own tests (D17).
+#[cfg(any(feature = "testing", test))]
+pub mod testing;
+
+#[cfg(test)]
+mod tests;

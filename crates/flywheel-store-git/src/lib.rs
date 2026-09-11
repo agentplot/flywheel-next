@@ -27,3 +27,6 @@ pub mod objects;
 pub mod store;
 
 pub use store::GitStore;
+
+#[cfg(test)]
+mod tests;

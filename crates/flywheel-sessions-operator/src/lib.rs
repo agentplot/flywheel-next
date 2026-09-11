@@ -423,3 +423,6 @@ impl<S: Records> Sessions for OperatorSessions<S> {
         moved(&mut *self.locked()?, session, &self.host, self.now)
     }
 }
+
+#[cfg(test)]
+mod tests;

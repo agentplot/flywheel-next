@@ -61,55 +61,59 @@ this repository.
 
 ## Gates
 
-Two runs, and the difference is what a test costs, never what it proves.
+Three tiers, and a test's tier is decided by **what it touches**, never by what
+it proves. A test in the wrong tier is a defect like any other (D17).
 
-| when | command | costs |
-|---|---|---|
-| while iterating | `cargo test -p <the crate you touched>`, or `cargo test --workspace` | 137 s of test time |
-| at a group's end, and at 12.4 | `cargo test --workspace -- --include-ignored` | 513 s |
+| tier | touches | lives in | run by | the bar |
+|---|---|---|---|---|
+| unit | one crate's own code, and for the store crates a temp repository that is the subject rather than a dependency | `src/**` in `#[cfg(test)] mod tests`, beside the code | `cargo test --lib` | the whole tier under 10 s; high coverage, and a new public function arrives with its tests |
+| integration | several crates together over a real repository, in process | `crates/<crate>/tests/*.rs` | `cargo test --workspace` | happy paths only, as few as cover the seams; no single test over 5 s |
+| system | the real binary, real hosts, a browser | `crates/<crate>/tests/system/main.rs`, one target per crate | `cargo test --workspace --features system-tests` | it costs what it costs, and it runs at merge |
 
-Every test runs over a real state repository: a bare repository on this
-computer and a checkout of it, which is the only store this release binds (92).
-A tick spends at most one `git push` and nothing else: the fetch, the reads and
-the writing of blobs, trees, commits and refs all happen in process through
-`gix`, so a test is not paying for a process per read and not even for the fetch
-(`git-only.yaml` Tools, 169). `conformance/contract/cost.yaml` is what holds
-that: it asserts the counts the store keeps of itself —
-`subprocesses_per_tick: [0, 1, 0]`.
+**The fake store.** `flywheel-domain` and the projections take the `StateStore`
+trait, so a fake that holds objects in a map is all the first tier needs, and a
+fake is preferred to a mock: it behaves, it is not told what to expect. It is
+`flywheel_atoms::testing::FakeStore`, behind a `testing` feature, a
+dev-dependency of the crates that use it, and it is never named by `--profile`,
+never bound in a `profiles/` file and never present in the acceptance set. That
+is what keeps it clear of 92: what 92 retired was a second store *profile*
+claiming conformance, and this claims nothing. `flywheel_surface::testing`
+holds the fake `World` beside it.
 
-Marked `#[ignore = "group gate: …"]` and left out of the default run are only
-the tests that **start a process of their own**: a host under `--hosts real`, a
-headless browser for the 390px pass, or the `flywheel` binary itself. They are
-not optional — a group is not done until they pass, and 12.4 runs them.
+**The git store's own tests are unit tests.** A temp bare repository and a
+checkout are the store's subject, not a dependency of something else, and a
+tick against them spends at most one process, so they live in
+`flywheel-store-git/src/tests/` and hold to the first tier's bar.
 
-Where the time goes, so a change that costs something is noticed:
+**Tier three is a feature, not an `#[ignore]`.** `[[test]] required-features =
+["system-tests"]` keeps those targets out of the default build entirely, so the
+everyday run saves their compile time as well as their wall time. Nothing is
+marked `#[ignore]` to hide cost.
 
-| binary | default | with the ignored |
-|---|---|---|
-| `flywheel-scenario/tests/cascade.rs` | 37 s | 39 s |
-| `flywheel/tests/host.rs` | 23 s | 20 s |
-| `flywheel/tests/effects.rs` | 15 s | 15 s |
-| `flywheel/tests/curate.rs` | 12 s | 12 s |
-| `flywheel-scenario/tests/conformance_runner.rs` | 8 s | 23 s |
-| `flywheel/tests/init.rs` | 7 s | 7 s |
-| `flywheel-store-git/tests/disconnected.rs` | 7 s | 7 s |
-| `flywheel-surface/tests/dictation.rs` | 7 s | 7 s |
-| `flywheel/tests/signals.rs` | 6 s | 6 s |
-| `flywheel/tests/walkthrough.rs` | — | 165 s |
-| `flywheel-scenario/tests/phone.rs` | — | 143 s |
-| `flywheel-scenario/tests/real_hosts.rs` | — | 48 s |
-| everything else | under 4 s each | |
+**Worktrunk runs the tiers at the right moment.** `wt hook pre-commit` runs the
+integration tier and `wt hook pre-merge` runs the system tier, so a branch
+cannot land without the slow tests and nobody waits on them while working.
 
-`walkthrough.rs` is the largest of the ignored: it starts a real host with
-`--serve` and plays README.md's whole turn of the loop against it, and the
-machinery's own cascade advances about one transition per pass while the loop's
-quiet interval is the 30-second poll (`host::POLL`, D6, D7). A local cause — a
-page response, a session's report — wakes that loop at once; nothing yet
-shortens the passes the cascade itself needs.
+**What you run, and where a new test goes.** While building, the one crate you
+touched: `cargo test --lib -p <crate>` continuously and `cargo test -p <crate>`
+before calling a task done. Before reporting a group, `cargo test --workspace`
+once. The system tier is not yours to run except at 12.4 or when the brief says
+so. A new behaviour arrives with unit tests for the logic; an integration test
+is added only where the seam between crates is itself the thing under test, and
+then only on the happy path, because every one of them is paid for on every
+commit.
 
-A test that reaches a real process is marked when it is written, so the default
-run stays the one a person runs every few minutes. A test never sleeps: the
-clock is virtual and moves for a `clock` step and a tick interval alone (D15).
+Every test that touches a store runs over a real state repository: a bare
+repository on this computer and a checkout of it, which is the only store this
+release binds (92). A tick spends at most one `git push` and nothing else: the
+fetch, the reads and the writing of blobs, trees, commits and refs all happen in
+process through `gix`, so a test is not paying for a process per read and not
+even for the fetch (`git-only.yaml` Tools, 169).
+`conformance/contract/cost.yaml` is what holds that: it asserts the counts the
+store keeps of itself — `subprocesses_per_tick: [0, 1, 0]`.
+
+A test never sleeps: the clock is virtual and moves for a `clock` step and a
+tick interval alone (D15).
 
 ## Vocabulary
 

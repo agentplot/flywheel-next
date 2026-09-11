@@ -2,7 +2,7 @@
 
 mod caller;
 mod store;
-mod world;
+use flywheel_surface::testing as world;
 
 use serde_json::{json, Value};
 

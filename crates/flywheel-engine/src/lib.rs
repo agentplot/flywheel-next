@@ -56,3 +56,6 @@ fn init_nested_pub(defs: &Definitions, obj: &mut Object, path: &str, st: &defs::
         }
     }
 }
+
+#[cfg(test)]
+mod tests;

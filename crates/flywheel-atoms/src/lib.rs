@@ -11,6 +11,11 @@ pub mod conformance;
 pub mod scenario;
 pub mod traits;
 
+/// The fake `StateStore` of D17's first tier. Behind the `testing` feature, and
+/// always present for this crate's own tests.
+#[cfg(any(feature = "testing", test))]
+pub mod testing;
+
 pub use atoms::{AtomType, Effect, EffectAtom, Evidence, EvidenceAtom};
 pub use traits::{
     Cost, EffectWrite, Endpoint, EvidenceRead, HostRecord, LandingPolicy, LeaseOp, LeaseOutcome,
@@ -18,3 +23,6 @@ pub use traits::{
     RepositoryRef, Scope, SessionPresence, Sessions, StateStore, StatusView, TakeOutcome,
     ThreadEntry, WorkOrder, Workspace, World, WriteOutcome,
 };
+
+#[cfg(test)]
+mod tests;

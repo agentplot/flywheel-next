@@ -6,8 +6,7 @@
 //! fetched from anywhere else here either.
 #![allow(dead_code)]
 
-#[path = "../world/mod.rs"]
-pub mod world;
+pub use flywheel_surface::testing as world;
 
 use flywheel_atoms::World;
 use flywheel_store_git::GitStore;

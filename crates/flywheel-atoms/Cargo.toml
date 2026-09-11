@@ -4,6 +4,12 @@ version.workspace = true
 edition.workspace = true
 license.workspace = true
 
+[features]
+# The fake `StateStore` of D17's first tier. Off by default, a dev-dependency
+# of the crates that use it, and never a profile: it is named by no
+# `--profile`, bound in no `profiles/` file and present in no acceptance set.
+testing = []
+
 [dependencies]
 flywheel-engine = { path = "../flywheel-engine" }
 serde.workspace = true

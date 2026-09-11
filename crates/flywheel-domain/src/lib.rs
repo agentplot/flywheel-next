@@ -30,3 +30,6 @@ pub mod regions;
 pub const RAIL: &str = "rail";
 
 pub use envelope::{from_record, read_all, to_record, write_all, ENVELOPE_FIELDS};
+
+#[cfg(test)]
+mod tests;

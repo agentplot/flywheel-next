@@ -31,3 +31,14 @@ tokio.workspace = true
 
 [dev-dependencies]
 flywheel-sessions-operator = { path = "../flywheel-sessions-operator" }
+flywheel-atoms = { path = "../flywheel-atoms", features = ["testing"] }
+
+[features]
+# D17's third tier: the real binary. A feature and not an `#[ignore]`, so the
+# everyday run does not even compile them.
+system-tests = []
+
+[[test]]
+name = "system"
+path = "tests/system/main.rs"
+required-features = ["system-tests"]

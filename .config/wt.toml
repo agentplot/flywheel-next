@@ -1,0 +1,14 @@
+# Project configuration for worktrunk.
+#
+# The test tiers, run at the moment each is worth paying for (D17, AGENTS.md
+# **Gates**). Nothing here runs the unit tier: that is what a person runs
+# continuously while building, and a hook repeating it buys nothing.
+
+# Before a commit: the integration tier — several crates together over a real
+# state repository, in process.
+pre-commit = "cargo test --workspace"
+
+# Before a branch lands: the system tier — the real binary, hosts that are
+# processes of their own, a headless browser. It costs what it costs, and a
+# merge is where it is worth costing it.
+pre-merge = "cargo test --workspace --features system-tests"

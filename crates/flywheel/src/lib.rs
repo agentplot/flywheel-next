@@ -12,3 +12,6 @@ pub mod serve;
 /// `flywheel-scenario` so the conformance runner ticks the same code the
 /// command line does, over whichever store the profile bound (125, D15).
 pub use flywheel_scenario::console;
+
+#[cfg(test)]
+mod tests;

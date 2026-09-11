@@ -361,3 +361,6 @@ impl<S: Records> Workspace for RecordedWorkspace<'_, S> {
             .collect())
     }
 }
+
+#[cfg(test)]
+mod tests;

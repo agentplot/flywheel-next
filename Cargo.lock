@@ -824,7 +824,6 @@ dependencies = [
  "flywheel-atoms",
  "flywheel-domain",
  "flywheel-engine",
- "flywheel-store-git",
  "serde_json",
 ]
 
@@ -853,6 +852,7 @@ dependencies = [
  "flywheel-domain",
  "flywheel-engine",
  "flywheel-store-git",
+ "flywheel-surface",
  "serde",
  "serde_json",
  "serde_yaml",
@@ -867,7 +867,6 @@ dependencies = [
  "chrono",
  "flywheel-atoms",
  "flywheel-engine",
- "flywheel-store-git",
  "serde_json",
 ]
 
