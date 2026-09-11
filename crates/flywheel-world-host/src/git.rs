@@ -25,8 +25,26 @@ impl Said {
     }
 }
 
+// Every process this crate has spawned at any repository.
+//
+// `host.yaml`'s Tools header binds `gix` for reads, so reading the blueprints
+// spawns nothing; this is the count that holds the crate to it, and the one a
+// tick's cost is taken as a difference of (169, audit 8, audit 9). A host makes
+// a `Repo` per read, so the count is the crate's and not a repository's.
+// Counted per thread, because that is what a tick is: `Host::tick` runs the
+// world's reads and writes on the thread it was called on, so this counts the
+// tick's own processes and no other test's or host's.
+thread_local! {
+    static SPAWNED: std::cell::Cell<u32> = const { std::cell::Cell::new(0) };
+}
+
+/// How many processes this crate has spawned on this thread.
+pub fn spawned() -> u32 {
+    SPAWNED.with(|n| n.get())
+}
+
 /// A repository on disk, bare or checked out.
-#[derive(Debug, Clone)]
+#[derive(Debug, Clone, Default)]
 pub struct Repo {
     pub dir: PathBuf,
 }
@@ -37,6 +55,7 @@ impl Repo {
     }
 
     pub fn run(&self, args: &[&str]) -> Result<Said> {
+        SPAWNED.with(|n| n.set(n.get() + 1));
         let out = Command::new("git")
             .current_dir(&self.dir)
             .args(args)
@@ -122,27 +141,100 @@ pub fn checkout_line(bare: &Path, into: &Path, line: &str) -> Result<Repo> {
 
 /// One file at a repository's shared line, or none. Read from the bare
 /// repository, so no checkout is needed to read the world.
+///
+/// In process, through `gix`, as `host.yaml`'s Tools header binds it: a tick
+/// that reads N signals used to fork N `git show` children, which is the cost
+/// the state store had already stopped paying (audit 9).
 pub fn show(repo: &Repo, line: &str, path: &str) -> Result<Option<String>> {
-    let said = repo.run(&["show", &format!("{line}:{path}")])?;
-    Ok(if said.ok { Some(said.out) } else { None })
+    let Some(opened) = opened(repo) else {
+        return Ok(None);
+    };
+    let Some(mut tree) = tree_at(&opened, line)? else {
+        return Ok(None);
+    };
+    let Some(entry) = tree.peel_to_entry_by_path(path)? else {
+        return Ok(None);
+    };
+    if entry.mode().is_tree() {
+        return Ok(None);
+    }
+    let object = entry.object()?;
+    Ok(Some(String::from_utf8_lossy(&object.data).to_string()))
 }
 
-/// Every path at a repository's shared line under a prefix.
+/// Every path at a repository's shared line under a prefix, in process.
+///
+/// A prefix is a path the caller already spells with its trailing slash, and an
+/// empty one is the whole tree — which is `git ls-tree -r --name-only` without
+/// the spawn.
 pub fn ls_tree(repo: &Repo, line: &str, prefix: &str) -> Result<Vec<String>> {
-    let mut args = vec!["ls-tree", "-r", "--name-only", line];
-    if !prefix.is_empty() {
-        args.push(prefix);
-    }
-    let said = repo.run(&args)?;
-    if !said.ok {
+    let Some(opened) = opened(repo) else {
         return Ok(vec![]);
+    };
+    let Some(tree) = tree_at(&opened, line)? else {
+        return Ok(vec![]);
+    };
+    let mut out = Vec::new();
+    walk(&tree, "", &mut out)?;
+    if prefix.is_empty() {
+        return Ok(out);
     }
-    Ok(said
-        .out
-        .lines()
-        .map(|l| l.trim().to_string())
-        .filter(|l| !l.is_empty())
+    let under = prefix.trim_end_matches('/');
+    Ok(out
+        .into_iter()
+        .filter(|path| path == under || path.starts_with(&format!("{under}/")))
         .collect())
+}
+
+/// The repository, or none where the directory is not one — a host that has not
+/// cloned yet reads an empty world rather than failing.
+fn opened(repo: &Repo) -> Option<gix::Repository> {
+    gix::open(&repo.dir).ok()
+}
+
+/// The tree at a line, or none where the repository does not carry it.
+fn tree_at<'r>(repo: &'r gix::Repository, line: &str) -> Result<Option<gix::Tree<'r>>> {
+    let Some(id) = commit_of(repo, line) else {
+        return Ok(None);
+    };
+    let Ok(object) = repo.find_object(id) else {
+        return Ok(None);
+    };
+    Ok(Some(object.peel_to_tree()?))
+}
+
+/// The commit a line names: the head itself where the repository carries it,
+/// the remote-tracking head where it is a clone that has not checked it out.
+fn commit_of(repo: &gix::Repository, line: &str) -> Option<gix::ObjectId> {
+    for name in [
+        format!("refs/heads/{line}"),
+        format!("refs/remotes/origin/{line}"),
+    ] {
+        if let Ok(mut found) = repo.find_reference(&name) {
+            if let Ok(id) = found.peel_to_id() {
+                return Some(id.detach());
+            }
+        }
+    }
+    repo.rev_parse_single(line).ok().map(|id| id.detach())
+}
+
+fn walk(tree: &gix::Tree<'_>, under: &str, into: &mut Vec<String>) -> Result<()> {
+    for entry in tree.iter() {
+        let entry = entry?;
+        let name = entry.filename().to_string();
+        let path = match under.is_empty() {
+            true => name,
+            false => format!("{under}/{name}"),
+        };
+        if entry.mode().is_tree() {
+            let inner = entry.object()?.into_tree();
+            walk(&inner, &path, into)?;
+        } else {
+            into.push(path);
+        }
+    }
+    Ok(())
 }
 
 /// Write a file into a checkout, commit it and push the shared line.

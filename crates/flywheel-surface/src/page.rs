@@ -64,6 +64,11 @@ pub struct Read {
     /// The intents a move may name, so attaching and joining are picked rather
     /// than remembered (194).
     pub intents: Vec<String>,
+    /// The object a link opened the page at, where the request named one: the
+    /// dock's surface for it is the one already open, so a link the machinery
+    /// wrote lands on the object it names rather than on the board (308, 205a,
+    /// 209).
+    pub opened: Option<String>,
 }
 
 /// The curation session the operator runs, where one is charged: the session
@@ -196,6 +201,7 @@ pub fn read<S: StateStore, W: World + ?Sized>(
         unmoved,
         curation,
         intents,
+        opened: None,
     })
 }
 
@@ -674,8 +680,9 @@ fn dock(read: &Read) -> String {
         let _ = write!(
             out,
             "<article class=\"surface form-{kind}\" id=\"dock-{}\" data-kind=\"{kind}\" \
-             data-answerable=\"false\">\n",
-            escape(&object.id)
+             data-answerable=\"false\" data-opened=\"{opened}\">\n",
+            escape(&object.id),
+            opened = read.opened.as_deref() == Some(object.id.as_str()),
         );
         let _ = write!(
             out,
@@ -791,7 +798,7 @@ fn log(read: &Read) -> String {
     out
 }
 
-fn escape(text: &str) -> String {
+pub fn escape(text: &str) -> String {
     text.replace('&', "&amp;")
         .replace('<', "&lt;")
         .replace('>', "&gt;")

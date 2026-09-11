@@ -85,6 +85,12 @@ impl<S: StateStore + Send + 'static> Served<S> {
         }
     }
 
+    /// The instance this host serves, as it stands in the path of every link
+    /// the machinery writes (205a, 308).
+    pub fn instance(&self) -> &str {
+        self.address.trim_end_matches('/').rsplit('/').next().unwrap_or_default()
+    }
+
     /// The identity every response records as given by: the operators list's
     /// single entry (153, 236a, 253a).
     pub fn operator(&self) -> &str {
@@ -375,7 +381,83 @@ async fn page<S: StateStore + Send + 'static>(
     State(served): State<Served<S>>,
     headers: axum::http::HeaderMap,
 ) -> impl IntoResponse {
-    if let Err(refused) = served.admits(host_of(&headers)) {
+    rendered(&served, &headers, None).await
+}
+
+/// `GET /<instance>` — the page at the address every link the machinery writes
+/// is built on, which is the same page the operator's own port serves (205a,
+/// 308).
+async fn page_of_instance<S: StateStore + Send + 'static>(
+    State(served): State<Served<S>>,
+    Path(instance): Path<String>,
+    headers: axum::http::HeaderMap,
+) -> impl IntoResponse {
+    if instance != served.instance() {
+        return wrong_instance(&served, &instance);
+    }
+    rendered(&served, &headers, None).await
+}
+
+/// `GET /<instance>/<object>` — the link `links::to_object` writes, fetched.
+///
+/// An object's id carries slashes (`bolt/atlas/plan-rows`), so the rest of the
+/// path is the id, and what comes back is the page with that object's surface
+/// already open (205a, 209, 308).
+async fn page_of_object<S: StateStore + Send + 'static>(
+    State(served): State<Served<S>>,
+    Path((instance, object)): Path<(String, String)>,
+    headers: axum::http::HeaderMap,
+) -> impl IntoResponse {
+    if instance != served.instance() {
+        return wrong_instance(&served, &instance);
+    }
+    let object = object.trim_matches('/').to_string();
+    {
+        let store = served.store.lock().await;
+        match store.get(&object) {
+            Ok(Some(_)) => {}
+            Ok(None) => {
+                return (
+                    StatusCode::NOT_FOUND,
+                    Html(format!(
+                        "<p class=\"refused\">the instance holds no object `{}`</p>",
+                        page::escape(&object)
+                    )),
+                )
+            }
+            Err(refused) => {
+                return (
+                    StatusCode::INTERNAL_SERVER_ERROR,
+                    Html(format!("<p class=\"refused\">{refused}</p>")),
+                )
+            }
+        }
+    }
+    rendered(&served, &headers, Some(object)).await
+}
+
+/// What a link naming another instance gets: this host serves one (205a).
+fn wrong_instance<S: StateStore + Send + 'static>(
+    served: &Served<S>,
+    asked: &str,
+) -> (StatusCode, Html<String>) {
+    (
+        StatusCode::NOT_FOUND,
+        Html(format!(
+            "<p class=\"refused\">this host serves the instance `{}`, not `{}` (205a)</p>",
+            page::escape(served.instance()),
+            page::escape(asked)
+        )),
+    )
+}
+
+/// One read, one render, whatever path asked for it (310).
+async fn rendered<S: StateStore + Send + 'static>(
+    served: &Served<S>,
+    headers: &axum::http::HeaderMap,
+    opened: Option<String>,
+) -> (StatusCode, Html<String>) {
+    if let Err(refused) = served.admits(host_of(headers)) {
         return (
             StatusCode::FORBIDDEN,
             Html(format!("<p class=\"refused\">{refused}</p>")),
@@ -390,7 +472,10 @@ async fn page<S: StateStore + Send + 'static>(
         &served.address,
         served.operator(),
     ) {
-        Ok(read) => (StatusCode::OK, Html(page::render(&read))),
+        Ok(mut read) => {
+            read.opened = opened;
+            (StatusCode::OK, Html(page::render(&read)))
+        }
         Err(refused) => (
             StatusCode::INTERNAL_SERVER_ERROR,
             Html(format!("<p class=\"refused\">{refused}</p>")),
@@ -405,6 +490,11 @@ pub fn router<S: StateStore + Send + 'static>(served: Served<S>) -> Router {
         .route("/api/tools", get(tools::<S>))
         .route("/api/tools/:name", post(invoke::<S>))
         .route("/api/curate", post(curate::<S>))
+        // The address every link the machinery writes is built on has the
+        // instance in its path, so the link it wrote is a path this router
+        // serves (205a, 308).
+        .route("/:instance", get(page_of_instance::<S>))
+        .route("/:instance/*object", get(page_of_object::<S>))
         .with_state(served)
 }
 

@@ -879,6 +879,7 @@ dependencies = [
  "flywheel-atoms",
  "flywheel-domain",
  "flywheel-engine",
+ "gix",
  "serde",
  "serde_json",
  "serde_yaml",

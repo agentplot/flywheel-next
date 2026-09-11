@@ -173,3 +173,221 @@ fn served_host_answers_from_its_state_repository() {
     }
     let _ = std::fs::remove_dir_all(&dir);
 }
+
+/// One whole response, status line and all: a link that is not served answers
+/// 404, and nothing but the status line says so.
+fn speak_whole(address: std::net::SocketAddr, request: &str) -> String {
+    let mut socket = std::net::TcpStream::connect(address).expect("the page answers");
+    socket.write_all(request.as_bytes()).expect("the request is sent");
+    let mut text = String::new();
+    socket.read_to_string(&mut text).expect("the page replies");
+    text
+}
+
+/// A link the machinery wrote is fetched, and what comes back is the object it
+/// names (308, 205a).
+///
+/// `links::to_object` writes `<address>/<object>` with the instance already in
+/// the address, so the path a rail line, a chat rendering and a notification
+/// all carry is `/<instance>/<object>`. The router serves it, the object's own
+/// surface comes back open, and a link naming an object this instance does not
+/// hold is refused rather than answered with the board.
+#[test]
+fn a_link_the_machinery_wrote_is_fetched() {
+    let dir = base("link");
+    let now = at(0);
+    let git = sandbox(&dir, "mac-mini", now).unwrap();
+    let mut host = Host::over(
+        "mac-mini",
+        "willdan",
+        flywheel_domain::set::load().unwrap(),
+        git,
+        Bindings { world: "host".into(), workspace: "recorded".into(), sessions: "operator".into() },
+        Declaration { repositories: vec!["atlas".into()], types: vec![], kinds: vec!["all".into()] },
+        now,
+    );
+    host.sinks.address = "http://mac-mini.example/willdan".into();
+    seed(
+        &mut host,
+        "bolt/atlas/plan-rows",
+        "bolt",
+        &[("life", "open"), ("life.open.close", "offered")],
+        &[("repository", json!("atlas"))],
+    );
+    host.sweep().unwrap();
+
+    // The link the machinery writes for that object, not one the test spelled.
+    let link = flywheel_surface::links::to_object(&host.sinks.address, "bolt/atlas/plan-rows")
+        .expect("the machinery writes a link at the host's address");
+    assert_eq!(link, "http://mac-mini.example/willdan/bolt/atlas/plan-rows");
+    let path = link
+        .split_once("//")
+        .and_then(|(_, rest)| rest.split_once('/'))
+        .map(|(_, path)| format!("/{path}"))
+        .expect("the link has a path");
+
+    let host = Arc::new(Mutex::new(host));
+    let runtime = tokio::runtime::Builder::new_multi_thread().enable_all().build().unwrap();
+    let served = flywheel::serve::page_of(&host, 4242, &["chuck".to_string()]);
+    let address = runtime.block_on(async {
+        let listener = tokio::net::TcpListener::bind("127.0.0.1:0").await.unwrap();
+        let address = listener.local_addr().unwrap();
+        let served = served.clone();
+        tokio::spawn(async move {
+            let _ = flywheel_surface::http::serve_on(served, listener).await;
+        });
+        address
+    });
+
+    // The link opens, and the surface it opens is the object's own (209, 210).
+    let answered = speak_whole(
+        address,
+        &format!("GET {path} HTTP/1.1\r\nHost: mac-mini.example\r\nConnection: close\r\n\r\n"),
+    );
+    assert!(
+        answered.starts_with("HTTP/1.1 200"),
+        "the link the machinery wrote is not served: {}",
+        answered.lines().next().unwrap_or_default()
+    );
+    let body = answered.split_once("\r\n\r\n").map(|(_, b)| b).unwrap_or(&answered);
+    assert!(
+        body.contains("id=\"dock-bolt/atlas/plan-rows\" data-kind=\"bolt\" data-answerable=\"false\" data-opened=\"true\""),
+        "the object's own surface is not the one the link opened: {body}"
+    );
+    assert!(
+        body.contains("data-opened=\"false\""),
+        "every other surface stays shut: {body}"
+    );
+
+    // And the page at the address itself, which every chat rendering carries.
+    let page = flywheel_surface::links::to_page(&host.lock().unwrap().sinks.address.clone()).unwrap();
+    assert_eq!(page, "http://mac-mini.example/willdan");
+    let answered = speak_whole(
+        address,
+        "GET /willdan HTTP/1.1\r\nHost: mac-mini.example\r\nConnection: close\r\n\r\n",
+    );
+    assert!(
+        answered.starts_with("HTTP/1.1 200"),
+        "the page link is not served: {}",
+        answered.lines().next().unwrap_or_default()
+    );
+
+    // A link naming an object the instance does not hold is refused, and one
+    // naming another instance says so: this host serves one (205a).
+    let missing = speak_whole(
+        address,
+        "GET /willdan/bolt/atlas/nothing HTTP/1.1\r\nHost: mac-mini.example\r\nConnection: close\r\n\r\n",
+    );
+    assert!(
+        missing.starts_with("HTTP/1.1 404"),
+        "a link to no object answered {}",
+        missing.lines().next().unwrap_or_default()
+    );
+    let elsewhere = speak_whole(
+        address,
+        "GET /atlas/bolt/atlas/plan-rows HTTP/1.1\r\nHost: mac-mini.example\r\nConnection: close\r\n\r\n",
+    );
+    assert!(
+        elsewhere.starts_with("HTTP/1.1 404"),
+        "a link naming another instance answered {}",
+        elsewhere.lines().next().unwrap_or_default()
+    );
+    let _ = std::fs::remove_dir_all(&dir);
+}
+
+/// The workspace root, where the scenarios live.
+fn workspace() -> std::path::PathBuf {
+    std::path::Path::new(env!("CARGO_MANIFEST_DIR"))
+        .join("../..")
+        .canonicalize()
+        .expect("workspace root")
+}
+
+/// A host seeded from a scenario serves that scenario's rail (94, D15, 310).
+///
+/// `scenarios/rail-mockup.yaml` holds every decision kind once, running work
+/// and a tail, and until now the only thing that could stand on it was the
+/// scenario runner's in-process store — so there was no way to open a served
+/// page on a described state, and a fresh instance shows the operator nothing.
+/// The seed puts the described objects into the host's own state repository
+/// through the store's write path, and the page at the port carries that
+/// scenario's decisions, by the numbers the register gave them.
+#[test]
+fn a_seeded_host_serves_the_scenarios_rail() {
+    let dir = base("seeded");
+    let now = at(0);
+    let git = sandbox(&dir, "laptop", now).unwrap();
+    let mut host = Host::over(
+        "laptop",
+        "willdan",
+        flywheel_domain::set::load().unwrap(),
+        git,
+        Bindings { world: "host".into(), workspace: "recorded".into(), sessions: "operator".into() },
+        Declaration { repositories: vec![], types: vec![], kinds: vec!["all".into()] },
+        now,
+    );
+    host.sinks.address = "http://laptop.example/willdan".into();
+
+    let seeded = flywheel::seed::from_scenario(
+        &mut host.store.git,
+        &workspace().join("scenarios/rail-mockup.yaml"),
+        now,
+    )
+    .expect("the scenario's given state goes into the state store");
+    assert_eq!(seeded.register_start, Some(412), "the scenario names the register's start");
+    assert!(seeded.objects >= 27, "the scenario describes a whole instance: {}", seeded.objects);
+
+    // What the description makes stand, read the way the page reads it.
+    let defs = host.defs.clone();
+    let rail = flywheel_domain::commands::rail(&mut host.store, &defs).unwrap();
+    let standing: Vec<(u32, String, String)> = rail
+        .iter()
+        .map(|d| (d.number.expect("every standing decision is numbered"), d.kind.clone(), d.object.clone()))
+        .collect();
+    // The nine the description raises, in the order the register numbered
+    // them, which is the order the chat prints (15).
+    assert_eq!(
+        standing,
+        vec![
+            (412, "intent-proposed".into(), "intent/atlas-provider-limits".into()),
+            (413, "elaboration-proposed".into(), "elaboration/atlas-provider-limits/research".into()),
+            (414, "elaboration-proposed".into(), "elaboration/atlas-provider-limits/prototype".into()),
+            (415, "claim-moved".into(), "bolt/atlas/plan-rows".into()),
+            (416, "unit-proposed".into(), "unit/atlas/status-writer".into()),
+            (417, "question".into(), "unit/atlas/rail-tail/wi-1".into()),
+            (418, "unit-proposed".into(), "unit/atlas/retry-jitter".into()),
+            (419, "unit-proposed".into(), "unit/atlas/chores-1".into()),
+            (420, "unit-proposed".into(), "unit/new-repo/baseline-1".into()),
+        ],
+        "the seeded host raises what the scenario runner raises in process, and numbers it the same"
+    );
+
+    // And the page serves them: the rail the operator opens is that rail.
+    let host = Arc::new(Mutex::new(host));
+    let runtime = tokio::runtime::Builder::new_multi_thread().enable_all().build().unwrap();
+    let served = flywheel::serve::page_of(&host, 4242, &["chuck".to_string()]);
+    let address = runtime.block_on(async {
+        let listener = tokio::net::TcpListener::bind("127.0.0.1:0").await.unwrap();
+        let address = listener.local_addr().unwrap();
+        let served = served.clone();
+        tokio::spawn(async move {
+            let _ = flywheel_surface::http::serve_on(served, listener).await;
+        });
+        address
+    });
+    let page = speak(
+        address,
+        "GET / HTTP/1.1\r\nHost: laptop.example\r\nConnection: close\r\n\r\n",
+    );
+    for (number, _, object) in &standing {
+        assert!(
+            page.contains(&format!("data-number=\"{number}\"")),
+            "decision {number} is not on the served rail"
+        );
+        assert!(
+            page.contains(object.as_str()),
+            "decision {number}'s object {object} is not on the served page"
+        );
+    }
+    let _ = std::fs::remove_dir_all(&dir);
+}

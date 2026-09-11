@@ -236,6 +236,14 @@ enum HostCmd {
     /// Clone what the manifest names under this host's root, and check the
     /// layout (205, 222).
     Join,
+    /// Put a scenario's described state into this host's state store, so a
+    /// served page stands on something (94, D15). A seed is one commit on the
+    /// shared line through the store's own write path, not a second way to make
+    /// an object (125, 193); `flywheel host --serve` then runs over it.
+    Seed {
+        /// The scenario file whose `given:` is put in place.
+        scenario: PathBuf,
+    },
     /// Run the loop, and say what each pass did rather than staying silent.
     Run {
         /// Stop after this many passes; zero runs until the process is stopped.
@@ -420,6 +428,35 @@ async fn main() -> Result<()> {
                             println!("refused: {refusal}");
                         }
                     }
+                }
+                HostCmd::Seed { scenario } => {
+                    let mut host =
+                        flywheel::host::Host::open(manifest, name, root.as_deref(), chrono::Utc::now())?;
+                    let at = host.now();
+                    let seeded = flywheel::seed::from_scenario(&mut host.store.git, &scenario, at)?;
+                    println!(
+                        "seeded {} objects from {} at {}",
+                        seeded.objects,
+                        scenario.display(),
+                        at.to_rfc3339()
+                    );
+                    if let Some(next) = seeded.register_start {
+                        println!("the register's next number is {next}");
+                    }
+                    // The rail is derived and numbered once here, so the page
+                    // the operator opens carries the numbers rather than
+                    // waiting on the first pass of a loop nobody started (15).
+                    let defs = host.defs.clone();
+                    let rail = flywheel_domain::commands::rail(&mut host.store, &defs)?;
+                    for decision in &rail {
+                        println!(
+                            "  {} {} {}",
+                            decision.number.map(|n| n.to_string()).unwrap_or_else(|| "-".into()),
+                            decision.kind,
+                            decision.object
+                        );
+                    }
+                    println!("{} decisions stand", rail.len());
                 }
                 HostCmd::Run { passes, driven } => {
                     let mut host =

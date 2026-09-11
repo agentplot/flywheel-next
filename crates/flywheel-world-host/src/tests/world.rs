@@ -418,3 +418,60 @@ hosts:
     );
     assert!(world.route("unit/atlas/u").is_err());
 }
+
+/// Reading the blueprints spawns no process (`host.yaml` Tools, 169).
+///
+/// `host.yaml` binds "libgit2 through the `gix` crate for reads", and a tick
+/// reads one file per signal. While `show` and `ls_tree` forked `git show` and
+/// `git ls-tree`, a tick reading N signals forked N processes — the cost the
+/// state store had already stopped paying, in another crate (audit 9). So the
+/// count this thread has spawned does not move across a listing and a read of
+/// every path it named, however many there are.
+#[test]
+fn reads_spawn_no_process() {
+    let sandbox = Sandbox::new("reads");
+    let manifest = sandbox.initialized("mac-mini");
+    let mut world = HostWorld::open(manifest, "mac-mini").unwrap();
+    world.clone_repositories().unwrap();
+
+    // The clone is a process; every read after it is this one's.
+    let before = crate::git::spawned();
+    let paths = world.list_files("flywheel-blueprints", "").unwrap();
+    assert!(
+        paths.len() > 4,
+        "the template puts more than a handful of files on the shared line: {paths:?}"
+    );
+    let mut read = 0;
+    for path in &paths {
+        if world.read_file("flywheel-blueprints", path).unwrap().is_some() {
+            read += 1;
+        }
+    }
+    assert_eq!(read, paths.len(), "every path the listing named reads back");
+    // A path that is not there, and a repository never cloned: neither forks.
+    assert!(world
+        .read_file("flywheel-blueprints", "nothing/here.md")
+        .unwrap()
+        .is_none());
+    assert_eq!(
+        crate::git::spawned(),
+        before,
+        "{} reads and a listing spawned {} process(es); `host.yaml` binds gix for reads",
+        read,
+        crate::git::spawned() - before
+    );
+
+    // And a prefix reads as `ls-tree -r` does: what is under it and nothing
+    // beside it.
+    let under = world.list_files("flywheel-blueprints", "flywheel/").unwrap();
+    assert!(!under.is_empty(), "the machinery's own prefix holds files");
+    assert!(
+        under.iter().all(|p| p.starts_with("flywheel/")),
+        "a prefix lists only what is under it: {under:?}"
+    );
+    assert!(
+        under.len() < paths.len(),
+        "and the whole tree holds more than one prefix of it"
+    );
+    assert_eq!(crate::git::spawned(), before, "still nothing spawned");
+}
