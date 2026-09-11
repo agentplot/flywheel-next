@@ -478,3 +478,44 @@ fn an_answer_that_names_only_its_number_reaches_the_object_the_register_gave_it(
     // decides anything.
     assert_eq!(a.responses(flywheel_domain::RAIL).unwrap().len(), 1);
 }
+
+#[test]
+fn a_response_notifies_the_object_it_answers() {
+    // The operator's answer is state that changed, and what changed by it is
+    // the object it answers — which is named nowhere in the response's path.
+    // Without this the notify-tick passes over the object, nothing on the rail
+    // moves, and the answer waits out the sweep: a minute of the page showing
+    // the decision still standing, which is what makes an operator reach for
+    // the nudge 13 says they never make (130, 13).
+    let sandbox = Sandbox::new("notify-response");
+    let mut a = sandbox.host("a");
+    a.put("lamp/1", &a_lamp("lamp/1"), 0).unwrap();
+    let mut register = flywheel_engine::runtime::Register::default();
+    let number = register.number_for("lamp/1/lamp-proposed/2026-01-01T00:00:00Z", Some(at(0)));
+    flywheel_domain::commands::set_register(
+        &mut a,
+        &register,
+        &["lamp/1/lamp-proposed/2026-01-01T00:00:00Z".to_string()],
+    )
+    .unwrap();
+
+    let before = a.as_of();
+    a.receive(&Response {
+        id: "page-1".into(),
+        kind: ResponseKind::Answer,
+        decision: Some(number),
+        object: None,
+        answer: "on".into(),
+        given_by: "chuck".into(),
+        given_at: at(1),
+        delivery: "page".into(),
+    })
+    .unwrap();
+
+    let notice = a.notify(&before).unwrap();
+    assert!(
+        notice.objects.iter().any(|id| id == "lamp/1"),
+        "the answer did not notify the object it answers: {:?}",
+        notice.objects
+    );
+}

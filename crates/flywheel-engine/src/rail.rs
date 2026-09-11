@@ -162,3 +162,37 @@ pub fn tail(
     out.sort_by(|a, b| a.at.cmp(&b.at).then(a.object.cmp(&b.object)));
     out
 }
+
+/// The groups, in the order every reader walks them: approve, decide, answer,
+/// then attention (model.md §5.1, S3).
+///
+/// `derive` returns the decisions in number order, because the number is what a
+/// response names and what the register gives. The grouping is the reader's,
+/// and it is not decoration: 11 asks that the decisions be grouped so that
+/// "yes to all" is a meaningful answer, and a list that walks approve, decide,
+/// approve, decide, attention offers no group for a yes-to-all to mean.
+pub const GROUPS: [&str; 4] = ["approve", "decide", "answer", "attention"];
+
+/// Whether a group counts toward the number of decisions standing.
+///
+/// Attention is shown on the rail and stands outside the count: it is what the
+/// machinery could not do, reported and never dropped, rather than a choice the
+/// operator is being asked to make (S3, S8, 6).
+pub fn counted(group: &str) -> bool {
+    group != "attention"
+}
+
+/// The decisions as a reader shows them: the groups in the model's order, each
+/// sorted by the number the register gave, and any group the model does not
+/// name after them, in the order they derived.
+pub fn in_reading_order(decisions: &[DecisionInstance]) -> Vec<&DecisionInstance> {
+    let mut out: Vec<&DecisionInstance> = Vec::with_capacity(decisions.len());
+    for group in GROUPS {
+        let mut mine: Vec<&DecisionInstance> =
+            decisions.iter().filter(|d| d.group == group).collect();
+        mine.sort_by_key(|d| d.number.unwrap_or(u32::MAX));
+        out.extend(mine);
+    }
+    out.extend(decisions.iter().filter(|d| !GROUPS.contains(&d.group.as_str())));
+    out
+}

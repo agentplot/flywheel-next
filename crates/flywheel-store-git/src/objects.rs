@@ -8,7 +8,7 @@
 //! `git-only.yaml` cost, model.md §12.8).
 
 use anyhow::{anyhow, Context, Result};
-use std::collections::BTreeSet;
+use std::collections::{BTreeMap, BTreeSet};
 use std::path::Path;
 
 /// The repository at a checkout.
@@ -90,21 +90,35 @@ pub fn fetch(repo: &gix::Repository, from: &Origin, prune: bool) -> Result<()> {
 /// spawned, not even the `git upload-pack` a file transport would ask for.
 fn fetch_locally(repo: &gix::Repository, remote: &gix::Repository, prune: bool) -> Result<()> {
     let mut brought: BTreeSet<String> = BTreeSet::new();
+    // What this checkout's remote-tracking refs already say, read in one walk:
+    // a ref already at the commit it is being moved to is not moved (130, 166).
+    // Every `set_ref` takes a lock file — a tempfile made, renamed and swept up
+    // — and an instance with forty leases has forty of those refs, so a fetch
+    // that rewrote all of them wrote a hundred and twenty files to say nothing
+    // had changed. A tick fetches first and a sweep settles in several passes,
+    // so that was most of what a pass over a small instance spent.
+    let held: BTreeMap<String, String> = refs_under(repo, "refs/remotes/origin/")?
+        .into_iter()
+        .collect();
     for (name, id) in refs_under(remote, "refs/heads/")? {
         let Some(short) = name.strip_prefix("refs/heads/") else {
             continue;
         };
         let tracking = format!("refs/remotes/origin/{short}");
-        copy_history(remote, repo, &id)?;
-        set_ref(repo, &tracking, &id, None)?;
+        if held.get(&tracking) != Some(&id) {
+            copy_history(remote, repo, &id)?;
+            set_ref(repo, &tracking, &id, None)?;
+        }
         brought.insert(tracking);
     }
     if prune {
-        for (name, _) in refs_under(repo, "refs/remotes/origin/")? {
+        // The same walk, not a second one: a ref walk reads a file per ref and
+        // this profile keeps a branch per lease (D5).
+        for name in held.keys() {
             // `origin/HEAD` names no head of the remote; it is the clone's own
             // note of which one it started at.
-            if !brought.contains(&name) && !name.ends_with("/HEAD") {
-                delete_ref(repo, &name)?;
+            if !brought.contains(name) && !name.ends_with("/HEAD") {
+                delete_ref(repo, name)?;
             }
         }
     }

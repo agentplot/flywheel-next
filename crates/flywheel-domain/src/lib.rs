@@ -29,7 +29,7 @@ pub mod regions;
 /// last derive (`profiles/record-derived.yaml`).
 pub const RAIL: &str = "rail";
 
-pub use envelope::{from_record, read_all, to_record, write_all, ENVELOPE_FIELDS};
+pub use envelope::{from_record, read_all, same_object, to_record, write_all, ENVELOPE_FIELDS};
 
 #[cfg(test)]
 mod tests;

@@ -124,3 +124,21 @@ pub fn read_all(text: &str) -> Result<Vec<Object>> {
         .map(from_record)
         .collect()
 }
+
+/// Whether two readings of one object say the same thing.
+///
+/// `seq` is the store's own counter for the compare-and-swap and says nothing
+/// about the object, so it is no part of the comparison. What this answers is
+/// whether writing the second over the first would change anything a reader
+/// could see — and a tick that moves nothing writes nothing (78, 127).
+pub fn same_object(was: &Object, now: &Object) -> bool {
+    was.id == now.id
+        && was.machine == now.machine
+        && was.parent == now.parent
+        && was.config == now.config
+        && was.entered_at == now.entered_at
+        && was.record == now.record
+        && was.counters == now.counters
+        && was.applied_responses == now.applied_responses
+        && was.created == now.created
+}

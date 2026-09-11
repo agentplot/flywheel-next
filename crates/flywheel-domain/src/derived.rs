@@ -193,6 +193,18 @@ pub fn evidence<S: Records>(
                     || reading.declarations.iter().any(|d| d.covers(&held))),
             }
         }
+        // ---- the rail's projection (77, 142, 145)
+        //
+        // The projection's as-of equals the newest sequence across the state it
+        // projects, or it is stale and this tick rewrites it from its source
+        // (`record-derived.yaml` rail.status_current). Unbound, this read
+        // answers null, the machine's `not: is true` holds on every pass, and
+        // the rail fires `render_status` and writes its record for ever —
+        // which is most of what an idle instance was committing.
+        "rail.status_current" => {
+            json!(crate::commands::status_as_of(store).ok()?
+                >= crate::commands::newest_state_seq(store).ok()?)
+        }
         "lease.holder_is_me" => json!(store
             .leases(lease_object(object))
             .ok()?

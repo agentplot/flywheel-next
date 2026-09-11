@@ -308,6 +308,21 @@ pub fn match_answer(pattern: &str, answer: &str) -> Option<String> {
         }
         return Some(rest.trim().to_string());
     }
+    // `<name>: drop` — the argument leads and a fixed tail follows. A machine
+    // whose answer names one of several things and then says what to do with it
+    // is written this way, and a matcher that only read a trailing placeholder
+    // could never match one: the answer was unanswerable however it was given.
+    if let Some(tail) = p.strip_prefix('<').and_then(|rest| rest.split_once('>')).map(|(_, tail)| tail) {
+        let tail = tail.trim();
+        let bound = match tail.is_empty() {
+            true => a,
+            false => a.strip_suffix(tail)?.trim().trim_end_matches(':').trim(),
+        };
+        return match bound.is_empty() {
+            true => None,
+            false => Some(bound.to_string()),
+        };
+    }
     if a == p {
         return Some(String::new());
     }

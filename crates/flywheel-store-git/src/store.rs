@@ -86,11 +86,23 @@ pub struct GitStore {
     /// What has already been read at the fetched commit: the commit it was
     /// read at, the files, and the trees. A commit is immutable, so this is a
     /// memory and never a second source of truth (126, 135).
-    read_at: RefCell<(String, BTreeMap<String, Option<String>>, BTreeMap<String, Vec<String>>)>,
+    read_at: RefCell<ReadAt>,
     /// The heartbeats as the refs held them when they were last read. Refs move
     /// without the shared line moving, so this is discarded on every fetch and
     /// on every write of a heartbeat or a lease (D5).
     heartbeats: RefCell<Option<Vec<HostRecord>>>,
+    /// When this host last wrote its heartbeat. Once a minute is the rule, as
+    /// it is for a lease renewal (128, 150).
+    beat_at: Option<DateTime<Utc>>,
+    /// Every lease as the refs held them when they were last read.
+    ///
+    /// A lease is a branch, so `commands::objects` makes one lease object per
+    /// object and every guard over a lease reads one — which was a ref lookup
+    /// and a blob read per object per guard, and the whole of why a pass over
+    /// forty objects took six seconds while a pass over four took a third of
+    /// one. They are read together, once, and discarded on every fetch and on
+    /// every write of a lease, exactly as the heartbeats are (D5, 169).
+    held_leases: RefCell<Option<BTreeMap<String, Option<LeaseRecord>>>>,
     /// The repository itself, held open: refs, trees, blobs, the fetch and the
     /// commits this host writes, all in process (`git-only.yaml`, model.md §13).
     odb: gix::Repository,
@@ -100,6 +112,33 @@ pub struct GitStore {
     /// That remote, opened at the first fetch and held: a tick's fetch is the
     /// objects that moved and not a repository opened again (169).
     origin: Option<objects::Origin>,
+}
+
+/// What has already been read at one commit: the commit it is of, the files,
+/// the trees, and the objects as parsed.
+///
+/// A commit is immutable, so every one of these is a memory and never a second
+/// source of truth (126, 135). Any write discards the whole of it.
+#[derive(Debug, Default)]
+struct ReadAt {
+    at: String,
+    files: BTreeMap<String, Option<String>>,
+    trees: BTreeMap<String, Vec<String>>,
+    /// The objects as `get` returns them. A tick reads one object under a dozen
+    /// guards and `list_records` reads every object under each of them, so
+    /// parsing on every read was most of what a pass over a small instance
+    /// spent — ten seconds of it, which the page waited out behind the host's
+    /// lock (169).
+    objects: BTreeMap<String, Option<Object>>,
+}
+
+impl ReadAt {
+    fn forget(&mut self, at: &str) {
+        self.at = at.to_string();
+        self.files.clear();
+        self.trees.clear();
+        self.objects.clear();
+    }
 }
 
 impl GitStore {
@@ -139,8 +178,10 @@ impl GitStore {
             reads_since_notify: 0,
             pending: vec![],
             owed_run: vec![],
-            read_at: RefCell::new((String::new(), BTreeMap::new(), BTreeMap::new())),
+            read_at: RefCell::new(ReadAt::default()),
             heartbeats: RefCell::new(None),
+            held_leases: RefCell::new(None),
+            beat_at: None,
             odb,
             remote,
             origin: None,
@@ -189,6 +230,7 @@ impl GitStore {
         self.shared = self.read_given()?;
         // The refs moved with the fetch, so what was read of them is read again.
         *self.heartbeats.borrow_mut() = None;
+        *self.held_leases.borrow_mut() = None;
         Ok(self.fetched.clone())
     }
 
@@ -292,8 +334,8 @@ impl GitStore {
         }
         {
             let read = self.read_at.borrow();
-            if read.0 == self.fetched {
-                if let Some(held) = read.1.get(path) {
+            if read.at == self.fetched {
+                if let Some(held) = read.files.get(path) {
                     return Ok(held.clone());
                 }
             }
@@ -304,12 +346,10 @@ impl GitStore {
             Err(e) => return Err(e).with_context(|| format!("reading {path}")),
         };
         let mut read = self.read_at.borrow_mut();
-        if read.0 != self.fetched {
-            read.0 = self.fetched.clone();
-            read.1.clear();
-            read.2.clear();
+        if read.at != self.fetched {
+            read.forget(&self.fetched);
         }
-        read.1.insert(path.to_string(), text.clone());
+        read.files.insert(path.to_string(), text.clone());
         Ok(text)
     }
 
@@ -318,8 +358,8 @@ impl GitStore {
     fn tree(&self, prefix: &str) -> Result<Vec<String>> {
         {
             let read = self.read_at.borrow();
-            if read.0 == self.at() {
-                if let Some(held) = read.2.get(prefix) {
+            if read.at == self.at() {
+                if let Some(held) = read.trees.get(prefix) {
                     return Ok(held.clone());
                 }
             }
@@ -328,12 +368,11 @@ impl GitStore {
         under(&self.repo.dir, prefix.trim_end_matches('/'), &mut paths);
         paths.sort();
         let mut read = self.read_at.borrow_mut();
-        if read.0 != self.at() {
-            read.0 = self.at().to_string();
-            read.1.clear();
-            read.2.clear();
+        if read.at != self.at() {
+            let at = self.at().to_string();
+            read.forget(&at);
         }
-        read.2.insert(prefix.to_string(), paths.clone());
+        read.trees.insert(prefix.to_string(), paths.clone());
         Ok(paths)
     }
 
@@ -365,7 +404,7 @@ impl GitStore {
         let from = objects::rev(&self.odb, "HEAD")?.unwrap_or_default();
         objects::put_worktree_at(&self.odb, &self.repo.dir, &from, to)?;
         objects::set_ref(&self.odb, layout::MAIN, to, None)?;
-        self.read_at.borrow_mut().0 = String::new();
+        self.read_at.borrow_mut().forget("");
         Ok(())
     }
 
@@ -392,10 +431,7 @@ impl GitStore {
     /// is remembered while the point stands and dropped the moment it moves
     /// (126, 135).
     fn forget(&self) {
-        let mut read = self.read_at.borrow_mut();
-        read.0 = String::new();
-        read.1.clear();
-        read.2.clear();
+        self.read_at.borrow_mut().forget("");
     }
 
     /// Write one file into the checkout. The commit's tree is written from the
@@ -553,9 +589,33 @@ impl GitStore {
 
     /// The lease branches, by object.
     fn lease_record(&self, object: &str) -> Result<Option<LeaseRecord>> {
-        let reference = layout::lease_ref(object);
+        if self.held_leases.borrow().is_none() {
+            let held = self.read_leases()?;
+            *self.held_leases.borrow_mut() = Some(held);
+        }
+        if let Some(held) = self
+            .held_leases
+            .borrow()
+            .as_ref()
+            .and_then(|held| held.get(object).cloned())
+        {
+            return Ok(held);
+        }
+        // Not among the refs the last walk saw, or taken out of the map by a
+        // write this host has just made: read that one branch, and remember
+        // what it said — including that it says nothing, so an object with no
+        // lease is not a ref lookup on every guard that reads one.
+        let one = self.one_lease(object)?;
+        if let Some(held) = self.held_leases.borrow_mut().as_mut() {
+            held.insert(object.to_string(), one.clone());
+        }
+        Ok(one)
+    }
+
+    /// One lease, read from its own branch.
+    fn one_lease(&self, object: &str) -> Result<Option<LeaseRecord>> {
         let Some(sha) = objects::rev(&self.odb, &layout::lease_remote(object))?
-            .or(objects::rev(&self.odb, &reference)?)
+            .or(objects::rev(&self.odb, &layout::lease_ref(object))?)
         else {
             return Ok(None);
         };
@@ -563,11 +623,37 @@ impl GitStore {
             return Ok(None);
         };
         let text = String::from_utf8_lossy(&body).to_string();
-        let parsed = rec::parse(&text);
-        let Some(record) = parsed.first() else {
+        let Some(record) = rec::parse(&text).first().cloned() else {
             return Ok(None);
         };
-        Ok(Some(records::lease_from_record(record)?))
+        Ok(Some(records::lease_from_record(&record)?))
+    }
+
+    /// Every lease the refs hold, read in one walk (D5).
+    ///
+    /// The remote-tracking branch is what the shared line says and the local
+    /// one is this host's own intention, so the remote wins where both stand —
+    /// which is what `lease_ref` and `lease_remote` said one object at a time.
+    fn read_leases(&self) -> Result<BTreeMap<String, Option<LeaseRecord>>> {
+        let mut out: BTreeMap<String, Option<LeaseRecord>> = BTreeMap::new();
+        for prefix in [layout::LEASES_LOCAL, layout::LEASES_REMOTE] {
+            for (reference, sha) in objects::refs_under(&self.odb, prefix)? {
+                // A lease branch and no other: the leaf is what says so
+                // (`git-only.yaml layout`).
+                let Some(object) = layout::lease_of_ref(&reference) else {
+                    continue;
+                };
+                let Some(body) = objects::blob_at(&self.odb, &sha, layout::RECORD)? else {
+                    continue;
+                };
+                let text = String::from_utf8_lossy(&body).to_string();
+                let Some(record) = rec::parse(&text).first().cloned() else {
+                    continue;
+                };
+                out.insert(object.to_string(), Some(records::lease_from_record(&record)?));
+            }
+        }
+        Ok(out)
     }
 
     /// Write one orphan commit whose tree is the record, and push the branch
@@ -589,6 +675,18 @@ impl GitStore {
         )?;
         let before = objects::rev(&self.odb, reference)?;
         objects::set_ref(&self.odb, reference, &commit, None)?;
+        // A ref moved, so what was read of it is read again — that one ref and
+        // not every one of them. Dropping the whole map put a walk of every
+        // lease branch behind each renewal, which is the cost the map exists to
+        // avoid (D5).
+        if layout::host_of_ref(reference).is_some() {
+            *self.heartbeats.borrow_mut() = None;
+        }
+        if let Some(object) = layout::lease_of_ref(reference) {
+            if let Some(held) = self.held_leases.borrow_mut().as_mut() {
+                held.remove(object);
+            }
+        }
         self.pushes += 1;
         let landed = git::push_expecting(&self.repo, &commit, reference, expected)?;
         if !landed {
@@ -631,14 +729,27 @@ impl Records for GitStore {
                 self.now,
             )));
         }
-        let Some(text) = self.read_file(&layout::object(id))? else {
-            return Ok(None);
+        {
+            let read = self.read_at.borrow();
+            if read.at == self.fetched {
+                if let Some(held) = read.objects.get(id) {
+                    return Ok(held.clone());
+                }
+            }
+        }
+        let object = match self.read_file(&layout::object(id))? {
+            None => None,
+            Some(text) => match rec::parse(&text).first() {
+                None => None,
+                Some(record) => Some(envelope::from_record(record)?),
+            },
         };
-        let parsed = rec::parse(&text);
-        let Some(record) = parsed.first() else {
-            return Ok(None);
-        };
-        Ok(Some(envelope::from_record(record)?))
+        let mut read = self.read_at.borrow_mut();
+        if read.at != self.fetched {
+            read.forget(&self.fetched);
+        }
+        read.objects.insert(id.to_string(), object.clone());
+        Ok(object)
     }
 
     fn put(&mut self, id: &str, record: &Object, base_seq: u64) -> Result<PutOutcome> {
@@ -772,6 +883,29 @@ impl Records for GitStore {
 }
 
 impl GitStore {
+    /// The object a response file concerns: the one it names, or the one the
+    /// register says its number belongs to (130, `record-derived.yaml`).
+    fn answered_object(&self, path: &str) -> Result<Option<String>> {
+        let Some(text) = self.read_file(path)? else {
+            return Ok(None);
+        };
+        let Some(record) = rec::parse(&text).first().cloned() else {
+            return Ok(None);
+        };
+        let response = records::response_from_record(&record)?;
+        if response.object.is_some() {
+            return Ok(response.object);
+        }
+        let Some(number) = response.decision else {
+            return Ok(None);
+        };
+        // A decision's id is `<object>/<kind>/<since>`.
+        Ok(flywheel_domain::commands::register(self)?
+            .decision_of(number)
+            .and_then(|decision| decision.rsplitn(3, '/').nth(2))
+            .map(String::from))
+    }
+
     /// The decision numbers the register gave this object, standing or
     /// retracted.
     ///
@@ -814,8 +948,26 @@ impl GitStore {
     }
 
     /// Write this host's heartbeat on its own branch, never on `main` (D5).
+    ///
+    /// Once a minute, whatever happens in between, exactly as a lease is
+    /// renewed and for the same reason: the window a host is read stale at is
+    /// five minutes, and a heartbeat says nothing a heartbeat a moment ago did
+    /// not (128, 150, `git-only.yaml` records.leases, `record-derived.yaml`
+    /// engine_windows).
+    ///
+    /// A sweep settles in up to six passes and every one of them was pushing
+    /// this branch. The push spawns the `git` binary — the one process the
+    /// profile allows a tick — and on this computer that was a quarter of
+    /// everything a pass spent, with the page waiting behind the host's lock
+    /// for all of it (169).
     pub fn heartbeat(&mut self, bound: u32, intermittent: bool) -> Result<()> {
         if self.disconnected {
+            return Ok(());
+        }
+        if self
+            .beat_at
+            .is_some_and(|beat| self.now - beat < RENEW_EVERY && self.now >= beat)
+        {
             return Ok(());
         }
         let reference = layout::host_ref(&self.host);
@@ -828,6 +980,7 @@ impl GitStore {
             intermittent,
         });
         self.put_orphan(&reference, &record, &expected)?;
+        self.beat_at = Some(self.now);
         *self.heartbeats.borrow_mut() = None;
         Ok(())
     }
@@ -1092,6 +1245,7 @@ impl StateStore for GitStore {
                     }
                     _ => {
                         objects::delete_ref(&self.odb, &reference).ok();
+                        *self.held_leases.borrow_mut() = None;
                         self.pushes += 1;
                         git::delete_expecting(&self.repo, &reference, &expected)?;
                         Ok(LeaseOutcome::Released)
@@ -1116,10 +1270,23 @@ impl StateStore for GitStore {
     fn notify(&self, since: &ReadPoint) -> Result<Notice> {
         // After a fetch, `git diff --name-only <old>..<new>` names the object
         // files that moved, so a host re-reads only those (130, 166).
-        let mut objects: Vec<String> = objects::changed_paths(&self.odb, &since.mark, self.at())?
+        let changed = objects::changed_paths(&self.odb, &since.mark, self.at())?;
+        let mut objects: Vec<String> = changed
             .iter()
             .filter_map(|p| layout::touched(p).map(str::to_string))
             .collect();
+        // A response is state that changed too, and what changed by it is the
+        // object it answers — which is not named anywhere in its path (130).
+        // Without this the operator's answer waits for the sweep: the page
+        // records it, the loop takes a pass, nothing on the rail moves, and the
+        // decision sits there answered for up to a minute. 13 says a response
+        // is enough and the operator never nudges; a minute of the rail
+        // unchanged is what makes them reach for the nudge.
+        for path in changed.iter().filter(|p| p.starts_with(layout::RESPONSES)) {
+            if let Some(object) = self.answered_object(path)? {
+                objects.push(object);
+            }
+        }
         objects.sort();
         objects.dedup();
         Ok(Notice {
@@ -1534,7 +1701,7 @@ fn under(root: &Path, prefix: &str, into: &mut Vec<String>) {
 /// A status body without the line stating the point it is as of, which is what
 /// tells a projection that moved from one that only says when it was read
 /// (77, 145).
-fn without_the_stamp(body: &str) -> String {
+pub fn without_the_stamp(body: &str) -> String {
     body.lines()
         .filter(|line| !line.contains("as-of") && !line.contains("as of"))
         .collect::<Vec<_>>()

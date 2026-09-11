@@ -188,15 +188,41 @@ fn substitute(v: &Value, arg: &str, obj: &Object) -> Value {
             obj.record.get(field).cloned().unwrap_or(Value::String(s.clone()))
         }
         Value::String(s) => {
-            // `target.new_name`, `parent.repository`: record paths
+            // A record path — `target.new_name` — is the field it names.
             let mut it = s.split('.');
-            match (it.next(), it.next()) {
-                (Some(a), Some(b)) if obj.record.get(a).and_then(|x| x.get(b)).is_some() => obj.record[a][b].clone(),
-                _ => v.clone(),
+            if let (Some(a), Some(b)) = (it.next(), it.next()) {
+                if let Some(held) = obj.record.get(a).and_then(|x| x.get(b)) {
+                    return held.clone();
+                }
+            }
+            // A path the record does not carry is not an argument. Handing it
+            // on as its own text made the effect act on the literal string —
+            // `x: parent.thing` named a thing called `parent.thing`, and what
+            // the effect created was named after the path rather than after
+            // what the path meant, in front of the operator. An absent
+            // argument is what the effect's own binding falls back from, which
+            // is the answer the machine meant.
+            match looks_like_a_path(s) {
+                true => Value::String(String::new()),
+                false => v.clone(),
             }
         }
         _ => v.clone(),
     }
+}
+
+/// Whether a string is written as a path into a record — two or more segments,
+/// each a plain name — rather than as a value that happens to hold a dot.
+fn looks_like_a_path(said: &str) -> bool {
+    let mut segments = said.split('.');
+    let enough = said.matches('.').count() >= 1;
+    enough
+        && segments.all(|segment| {
+            !segment.is_empty()
+                && segment
+                    .chars()
+                    .all(|c| c.is_ascii_lowercase() || c.is_ascii_digit() || c == '_')
+        })
 }
 
 /// Apply one fired transition to its object. Returns tail entries created.

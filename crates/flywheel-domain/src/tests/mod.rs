@@ -6,3 +6,4 @@ mod blueprints;
 mod envelope;
 mod set;
 mod signals;
+mod quiet;

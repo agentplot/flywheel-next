@@ -563,11 +563,29 @@ impl Host {
         let id = format!("host/{}", self.name);
         let held = self.store.get(&id)?;
         let seq = held.as_ref().map(|o| o.seq).unwrap_or(0);
-        let mut record = held.map(|o| o.record).unwrap_or_default();
-        record.insert("bound".into(), json!(self.bound));
-        record.insert("intermittent".into(), json!(self.intermittent));
-        record.insert("last_seen".into(), json!(now.to_rfc3339()));
-        record.insert(
+        // The host's own object is an object like any other: what its machine
+        // reached is state, and a tick reads state rather than remembering it
+        // (7, 136). Its states and their entry times are carried forward —
+        // rebuilding the object from the record alone put every region back at
+        // its initial state with `entered_at` set to now on every tick, so the
+        // host machine could never hold a state and no `older:` guard on it
+        // could ever fire.
+        let mut object = held.unwrap_or_else(|| Object {
+            id: id.clone(),
+            machine: "host".into(),
+            parent: None,
+            config: Default::default(),
+            entered_at: Default::default(),
+            record: Default::default(),
+            counters: Default::default(),
+            applied_responses: vec![],
+            seq,
+            created: 0,
+        });
+        let was = object.clone();
+        object.record.insert("bound".into(), json!(self.bound));
+        object.record.insert("intermittent".into(), json!(self.intermittent));
+        object.record.insert(
             "declares".into(),
             json!({
                 "repositories": self.declaration.repositories,
@@ -575,22 +593,21 @@ impl Host {
                 "kinds": self.declaration.kinds,
             }),
         );
-        let mut object = Object {
-            id: id.clone(),
-            machine: "host".into(),
-            parent: None,
-            config: Default::default(),
-            entered_at: Default::default(),
-            record,
-            counters: Default::default(),
-            applied_responses: vec![],
-            seq,
-            created: 0,
-        };
         if object.config.is_empty() {
             flywheel_engine::initialise(&self.defs, &mut object, now);
         }
-        self.store.put(&id, &object, seq)?;
+        // What a host was last seen at is the heartbeat's, on its own branch,
+        // and never a file on the shared line: `main`'s history is state
+        // changes and nothing else, which is what makes it readable as an audit
+        // record after months of minute-by-minute renewals (D5, 161, 167). The
+        // record keeps it only as the first stamp for a host that has never
+        // heartbeat, so a declaration that says nothing new writes nothing (78).
+        if !object.record.contains_key("last_seen") {
+            object.record.insert("last_seen".into(), json!(now.to_rfc3339()));
+        }
+        if !flywheel_domain::same_object(&was, &object) {
+            self.store.put(&id, &object, seq)?;
+        }
         self.settle_settings()?;
         Ok(())
     }
@@ -1219,6 +1236,28 @@ impl Host {
         // is as of is not a write (77, 78, 127, 134). The lease gate outlived
         // its reason and cost 145: a holder that stops ticking left the
         // projection stale with the machine asking for it on every pass.
+        // The projection is rewritten whenever the state it projects moved, and
+        // not otherwise: reading twice with nothing changed writes nothing, and
+        // rendering it is a read of every object (78, `engine/rail.yaml`
+        // status, `record-derived.yaml` rail.status_current).
+        //
+        // Two things have to be true to skip it, and the second is what keeps
+        // 77 and 142: the state has not moved *and* what is committed is still
+        // what this host wrote. A projection somebody edited by hand is not the
+        // truth however still the state is, so a body whose digest is not the
+        // one recorded is rewritten from its source and reported as drift.
+        let newest = flywheel_domain::commands::newest_state_seq(&self.store.git)?;
+        let held = self.store.git.committed_status()?;
+        let committed = held
+            .as_deref()
+            .map(flywheel_store_git::store::without_the_stamp)
+            .map(|body| digest(&body));
+        if flywheel_domain::commands::status_as_of(&self.store.git)? >= newest
+            && committed.is_some()
+            && committed == flywheel_domain::commands::status_digest(&self.store.git)?
+        {
+            return Ok(());
+        }
         let as_of = self.store.git.as_of();
         let now = self.now();
         let status = flywheel_domain::status::read_with(
@@ -1231,19 +1270,24 @@ impl Host {
             &flywheel_domain::signals::Blueprints(&*self.store.world),
         )?;
         let view = flywheel_domain::status::render(&status);
-        let held = self.store.git.committed_status()?;
-        if let Some(held) = &held {
-            if held != &view.body {
-                // Drift is rewritten from the source and reported with both
-                // values; nothing about the projection is ever the truth (77).
+        let fresh = digest(&flywheel_store_git::store::without_the_stamp(&view.body));
+        // Drift is rewritten from the source and reported with both values;
+        // nothing about the projection is ever the truth (77). The point it is
+        // as of is not something it projects, so a body differing only in its
+        // stamp has not drifted (78, 145).
+        if let Some(committed) = &committed {
+            if committed != &fresh {
                 self.run.push(
                     RunEntry::new(now, &self.name, "drift", flywheel_domain::RAIL, "the status projection differed from its source and was rewritten")
-                        .with("was", &digest(held))
-                        .with("now", &digest(&view.body)),
+                        .with("was", committed)
+                        .with("now", &fresh),
                 );
             }
         }
         self.store.git.commit_status(&view.body)?;
+        // What the next tick reads to know the projection is current: the point
+        // the state was at, and the body this host wrote (77, 78, 145).
+        flywheel_domain::commands::set_projection(&mut self.store.git, newest, &fresh)?;
         Ok(())
     }
 

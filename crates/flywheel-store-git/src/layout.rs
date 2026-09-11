@@ -90,6 +90,19 @@ pub const LEAF: &str = "lease";
 /// The leaf every heartbeat branch ends in.
 pub const HEARTBEAT: &str = "heartbeat";
 
+/// Where every lease branch is, as a prefix, local and remote-tracking. The
+/// fixed leaf is what tells a lease from anything under it.
+pub const LEASES_LOCAL: &str = "refs/heads/lease/";
+pub const LEASES_REMOTE: &str = "refs/remotes/origin/lease/";
+
+/// The object a lease branch names.
+pub fn lease_of_ref(reference: &str) -> Option<&str> {
+    reference
+        .strip_prefix(LEASES_REMOTE)
+        .or_else(|| reference.strip_prefix(LEASES_LOCAL))?
+        .strip_suffix(&format!("/{LEAF}"))
+}
+
 /// The host a heartbeat branch names.
 pub fn host_of_ref(reference: &str) -> Option<&str> {
     reference

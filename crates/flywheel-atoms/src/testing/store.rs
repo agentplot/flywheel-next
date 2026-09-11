@@ -70,6 +70,14 @@ impl FakeStore {
         }
     }
 
+    /// How many writes this store has taken. On the real profile every one of
+    /// them is a commit at the shared line, so a test that asserts a read wrote
+    /// nothing, or that a tick which moved nothing wrote nothing, asserts this
+    /// (78, 167).
+    pub fn writes(&self) -> u64 {
+        self.writes
+    }
+
     /// Put an object in place without going through `put`: what a test
     /// describes as already true before it begins.
     pub fn seed(&mut self, object: Object) -> &mut Self {
