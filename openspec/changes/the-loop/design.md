@@ -453,10 +453,17 @@ such publication.
 ### D12. `status.html` is committed; the rail is not
 
 `render_status` is an effect of the `rail` object (`machines/engine/rail.yaml`,
-`status` region), so the holder of the rail's lease is its only writer. That
-matters for D4: `status.html` is the one file every host would otherwise write,
-and it is the single-writer rule, not the one-file-per-object rule, that keeps
-it from conflicting on content. It writes the status projection from `list` and
+`status` region), fired by any host whose pass finds the projection behind the
+state it projects. `status.html` is the one file every host would otherwise
+write, and what keeps it from conflicting on content is the write itself: the
+push carries the expected old commit, and a body differing from the committed
+one only in its as-of stamp is the body that is already there, so a second host
+writing the same projection writes nothing. Single-writer is not the guard here
+and must not be made one — a projection whose only writer is the holder of a
+lease that expires in twenty-four hours is stale for a day whenever that host
+stops ticking, against 142 and 145. The rail's lease stays single-writer for
+what actually needs it, `number_decisions` over the decision register
+(`model.md` §5.3). `render_status` writes the projection from `list` and
 `get` alone and commits it on `main`, stating the commit and time it is as of;
 any running host serves it, and with no host running the operator reads the
 committed file (132, 141–146, S20). The rail is served and never committed,

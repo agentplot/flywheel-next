@@ -253,7 +253,7 @@ impl RealHosts {
             .arg("--driven")
             .stdin(Stdio::piped())
             .stdout(Stdio::piped())
-            .stderr(Stdio::piped())
+            .stderr(if std::env::var("SHOWERR").is_ok() { Stdio::inherit() } else { Stdio::piped() })
             .spawn()
             .with_context(|| format!("starting host `{name}` as {}", binary.display()))?;
         let input = child.stdin.take().ok_or_else(|| anyhow!("no input to host `{name}`"))?;

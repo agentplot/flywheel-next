@@ -450,6 +450,19 @@ pub fn commits_between(repo: &gix::Repository, from: &str, to: &str) -> Result<V
         .collect())
 }
 
+/// The newest commit two tips both reach: the point one host's own commits
+/// were made on top of, and the base a replay puts them over. A host that made
+/// several commits while its route was down replays all of them, not the last
+/// (134, 161, 165, D4a).
+pub fn common_ancestor(repo: &gix::Repository, ours: &str, theirs: &str) -> Result<Option<String>> {
+    let reached: std::collections::BTreeSet<gix::ObjectId> =
+        commits_from(repo, theirs)?.into_iter().collect();
+    Ok(commits_from(repo, ours)?
+        .into_iter()
+        .find(|id| reached.contains(id))
+        .map(|id| id.to_string()))
+}
+
 /// Whether one commit is reachable from another.
 pub fn reaches(repo: &gix::Repository, from: &str, to: &str) -> Result<bool> {
     if from == to {

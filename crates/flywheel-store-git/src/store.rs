@@ -77,6 +77,12 @@ pub struct GitStore {
     pub reads_since_notify: usize,
     /// Effect ids written locally but not yet landed (161, D4a).
     pub pending: Vec<String>,
+    /// Run-record entries this host has said it made and whose commit has not
+    /// landed. A rejected push and a lost race both discard the checkout's
+    /// commits, and the record of what a host did is not the checkout's to
+    /// discard: it is owed until it lands, and the next append carries it
+    /// (79, 81, 167, `git-only.yaml records.put`).
+    owed_run: Vec<records::RunEntry>,
     /// What has already been read at the fetched commit: the commit it was
     /// read at, the files, and the trees. A commit is immutable, so this is a
     /// memory and never a second source of truth (126, 135).
@@ -132,6 +138,7 @@ impl GitStore {
             reread_after_rejection: false,
             reads_since_notify: 0,
             pending: vec![],
+            owed_run: vec![],
             read_at: RefCell::new((String::new(), BTreeMap::new(), BTreeMap::new())),
             heartbeats: RefCell::new(None),
             odb,
@@ -512,9 +519,15 @@ impl GitStore {
     /// writer touched too is a content conflict, and a conflict is a loss
     /// (3, 134, 164, I15).
     fn replay_onto(&mut self, ours: &str, onto: &str) -> Result<bool> {
-        let parent = objects::first_parent(&self.odb, ours)?;
-        let mine = objects::changed_paths(&self.odb, &parent, ours)?;
-        let theirs = objects::changed_paths(&self.odb, &parent, onto)?;
+        // The base is the newest commit both reach, not this commit's parent: a
+        // host whose route was down made several commits, and all of them are
+        // its own to put over what it found (161, 165, D4a).
+        let base = match objects::common_ancestor(&self.odb, ours, onto)? {
+            Some(base) => base,
+            None => objects::first_parent(&self.odb, ours)?,
+        };
+        let mine = objects::changed_paths(&self.odb, &base, ours)?;
+        let theirs = objects::changed_paths(&self.odb, &base, onto)?;
         if mine.iter().any(|path| theirs.contains(path)) {
             return Ok(false);
         }
@@ -574,9 +587,21 @@ impl GitStore {
             &format!("{reference} at {}", self.now.to_rfc3339()),
             self.now,
         )?;
+        let before = objects::rev(&self.odb, reference)?;
         objects::set_ref(&self.odb, reference, &commit, None)?;
         self.pushes += 1;
-        git::push_expecting(&self.repo, &commit, reference, expected)
+        let landed = git::push_expecting(&self.repo, &commit, reference, expected)?;
+        if !landed {
+            // The push *is* the compare-and-swap, so a rejected push never
+            // happened: a local branch left at what this host asked for would
+            // answer the next read with this host as the holder of a lease it
+            // does not hold (D5, 128, 134, 162, I15).
+            match &before {
+                Some(sha) => objects::set_ref(&self.odb, reference, sha, None)?,
+                None => objects::delete_ref(&self.odb, reference)?,
+            }
+        }
+        Ok(landed)
     }
 }
 
@@ -969,7 +994,11 @@ impl StateStore for GitStore {
                     Ok(LeaseOutcome::Held(record))
                 } else {
                     // A rejected push means another host holds it; the loser
-                    // fetches and reads who does (134, 162).
+                    // fetches and reads who does (134, 162,
+                    // `git-only.yaml records.lease`). Without the fetch the
+                    // read is of refs this host brought before the winner
+                    // wrote, which answers with nobody or with itself.
+                    self.fetch()?;
                     self.reread_after_rejection = true;
                     match self.lease_record(&object)? {
                         Some(h) => Ok(LeaseOutcome::HeldByAnother(h)),
@@ -1166,27 +1195,54 @@ impl GitStore {
     /// Append entries to today's run record and commit them: what this host did
     /// and why, readable with no host running (79-82, 167).
     pub fn append_run(&mut self, entries: &[records::RunEntry]) -> Result<()> {
-        if entries.is_empty() {
+        // What an earlier append owes is written with this one. A host appends
+        // to its own file and to no other's, so entries that did not land are
+        // still this host's to say and are carried until they do (79, 167).
+        let mut owed = std::mem::take(&mut self.owed_run);
+        owed.extend_from_slice(entries);
+        if owed.is_empty() {
             return Ok(());
         }
+        // The checkout is moved to what was fetched before the file is read:
+        // a rejection or a lost race resets the tree, and the record to append
+        // to is the one on the shared line rather than whatever the reset left.
+        self.on_fetched_head()?;
         let path = layout::run_record(&self.host, &self.now.format("%Y-%m-%d").to_string());
         let mut held = self
             .read_file(&path)?
             .map(|text| rec::parse(&text))
             .unwrap_or_default();
-        held.extend(entries.iter().map(records::run_to_record));
-        self.on_fetched_head()?;
+        held.extend(owed.iter().map(records::run_to_record));
         self.write_file(&path, &rec::write(&held))?;
-        self.commit_and_push(&format!(
+        let landed = self.commit_and_push(&format!(
             "run record: {} {} on {}\n\nreason: what this host did and why (79)",
-            entries.len(),
-            match entries.len() {
+            owed.len(),
+            match owed.len() {
                 1 => "entry",
                 _ => "entries",
             },
             self.host
         ))?;
-        Ok(())
+        match landed {
+            // A commit made while the route was down is an intention that
+            // pushes when the route comes back, and its entries are in it
+            // (161, D4a).
+            Landed::Written { .. } | Landed::Pending { .. } => Ok(()),
+            // Three rejections, or a race lost: the commit is not on the shared
+            // line and the tree that held it is gone. The entries stay owed
+            // (`git-only.yaml records.put`).
+            Landed::Lost | Landed::Refused => {
+                self.owed_run = owed;
+                Ok(())
+            }
+        }
+    }
+
+    /// How many entries this host has said it made that have not landed. A host
+    /// that stops owing entries has lost part of its own record, so the driven
+    /// loop writes them before it goes (79, 167).
+    pub fn owed_run(&self) -> usize {
+        self.owed_run.len()
     }
 
     /// Today's run record, as written.

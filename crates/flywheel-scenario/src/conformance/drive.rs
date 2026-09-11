@@ -132,6 +132,7 @@ pub fn play(
         read_at: Default::default(),
         offline: Default::default(),
         places: places.clone(),
+        record: vec![],
     };
     // The script is the scenario's, and entries play at the step they name.
     let script = scenario.given.script.clone();
@@ -192,6 +193,18 @@ pub fn play(
     // behind is not a fact about the store (126, 165).
     run.runtime.fetch();
     take_reading(&mut run);
+    // What every host said it did and why, read whole and once. A scenario's
+    // `then:` is answered from this, so a repository the runner cannot read
+    // fails the run here instead of answering every clause with nothing
+    // (79, 167, D15).
+    if let Some(durable) = run.runtime.store.durable() {
+        let held = durable
+            .lock()
+            .map_err(|_| anyhow!("the state repository is poisoned"))?;
+        run.record = held
+            .all_run_records()
+            .context("reading what the hosts did from the shared line")?;
+    }
     // The status projection as a reader with no host running finds it: the
     // committed file on the shared line, read before the run's own directories
     // go (145, 160, 167, S20).
@@ -234,12 +247,35 @@ pub fn play(
                 )))),
             );
         }
+        // The projection as the state now stands, so what a scenario asks about
+        // the committed one is answered against its source and not against its
+        // stamp: a body that differs only in the point it is as of is the body
+        // that is already there, and rewriting it would be a write with nothing
+        // to say (77, 78, 127, 131, D12).
+        if let Ok(status) = flywheel_domain::status::read(
+            &run.runtime.store,
+            &run.runtime.defs,
+            &flywheel_atoms::ReadPoint {
+                mark: format!("write {}", run.runtime.store.writes),
+                seq: run.runtime.store.writes,
+                at: run.runtime.store.now,
+            },
+            run.runtime.store.now,
+            chrono::Duration::minutes(5),
+            chrono::Duration::minutes(30),
+        ) {
+            run.observations.insert(
+                "status_from_source".into(),
+                json!(flywheel_domain::status::render(&status).body),
+            );
+        }
         run.observations
             .insert("status_written".into(), json!(body));
     }
-    if !options.keep_places {
-        let _ = std::fs::remove_dir_all(&places);
-    }
+    // The run's directories outlive the run: what a scenario asserts is read
+    // from the state repository under them, and a reader of a directory that
+    // has gone reads an empty record rather than failing (79, 167). The caller
+    // removes them once the run has been asserted.
     Ok(run)
 }
 

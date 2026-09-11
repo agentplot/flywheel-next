@@ -734,6 +734,16 @@ fn contested(run: &Run, scenario: &Scenario) -> Vec<flywheel_domain::records::Ru
         .collect()
 }
 
+/// A status body without the line stating the point it is as of: what two
+/// renderings are compared on, because that point is not something the view
+/// projects (77, 78, 131, 145).
+fn without_the_stamp(body: &str) -> String {
+    body.lines()
+        .filter(|line| !line.contains("as-of") && !line.contains("as of"))
+        .collect::<Vec<_>>()
+        .join("\n")
+}
+
 /// Whether a moment fell inside one of a host's offline windows (151, D4a).
 fn while_offline(run: &Run, host: &str, at: chrono::DateTime<chrono::Utc>) -> bool {
     run.offline
@@ -762,16 +772,10 @@ fn hosts_of(run: &Run) -> Vec<String> {
     out
 }
 
-/// Every run-record entry the shared line holds, whoever wrote it (79, 167).
-fn run_record(run: &Run) -> Vec<flywheel_domain::records::RunEntry> {
-    match run.runtime.store.durable() {
-        Some(durable) => durable
-            .lock()
-            .ok()
-            .and_then(|git| git.all_run_records().ok())
-            .unwrap_or_default(),
-        None => vec![],
-    }
+/// Every run-record entry the shared line holds, whoever wrote it, as the run
+/// read it when its last step had been played (79, 167).
+fn run_record(run: &Run) -> &[flywheel_domain::records::RunEntry] {
+    &run.record
 }
 
 /// Every session the store holds a record of, whoever ran it (93b).
@@ -1096,6 +1100,10 @@ pub fn observe(run: &Run, scenario: &Scenario, key: &str) -> Option<Value> {
                     .unwrap_or_default()
                     .iter()
                     .filter_map(|o| Records::leases(&run.runtime.store, &o.id).ok().flatten())
+                    // What the run took, not what it was seeded holding: a
+                    // scenario's clock starts at one fixed point and a lease
+                    // described as held was taken before the first step (D15).
+                    .filter(|l| l.taken_at > super::drive::start_of_time())
                     .filter(|l| l.holder == host && while_offline(run, &host, l.taken_at))
                     .count();
                 out.insert(host, json!(taken));
@@ -1143,24 +1151,24 @@ pub fn observe(run: &Run, scenario: &Scenario, key: &str) -> Option<Value> {
                 .and_then(|v| v.as_str())
                 .unwrap_or_default()
                 .to_string();
-            // The point the projection states it is as of, and the newest
-            // state write on the shared line: the projection is latest when
-            // nothing it projects landed after it (145, 167).
+            // The projection is latest when it says what point it is as of and
+            // what it holds is what the state it projects renders now. The
+            // stamp alone is not the measure: a body that differs only in the
+            // point it is as of is the body that is already there, and the
+            // heartbeat and the rail's own record move on every tick without
+            // changing anything the view shows (77, 78, 127, 145, D12).
             let as_of = body
                 .split("as of commit ")
                 .nth(1)
                 .and_then(|rest| rest.split(' ').next())
                 .unwrap_or_default()
                 .to_string();
-            let current = match run.runtime.store.durable() {
-                Some(durable) => durable.lock().ok().is_some_and(|git| {
-                    match git.newest_state_write().ok().flatten() {
-                        Some(newest) => !as_of.is_empty() && git.is_ancestor(&newest, &as_of),
-                        None => !as_of.is_empty(),
-                    }
-                }),
-                None => false,
-            };
+            let source = run
+                .observations
+                .get("status_from_source")
+                .and_then(|v| v.as_str())
+                .unwrap_or_default();
+            let current = !as_of.is_empty() && without_the_stamp(&body) == without_the_stamp(source);
             json!(match current {
                 true => "latest",
                 false => "behind",

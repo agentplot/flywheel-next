@@ -859,7 +859,37 @@ impl Host {
             }
         }
         self.last_sweep = Some(self.now());
+        self.settle_record()?;
         Ok(fired)
+    }
+
+    /// Write what this host still owes its run record. A tick's append is one
+    /// push at a shared line other hosts are pushing at too, and three
+    /// rejections leave the entries owed rather than written
+    /// (`git-only.yaml records.put`). What a host did and why is read with no
+    /// host running, so a sweep does not end while its own record is unsaid
+    /// (79, 81, 167).
+    fn settle_record(&mut self) -> Result<()> {
+        for _ in 0..flywheel_store_git::store::RETRIES {
+            if self.store.git.owed_run() == 0 {
+                return Ok(());
+            }
+            self.store.git.append_run(&[])?;
+        }
+        if self.store.git.owed_run() > 0 && !self.store.git.disconnected {
+            self.report_problem(
+                &format!("host/{}", self.name),
+                &format!(
+                    "{} run-record entr{} could not be written at the shared line",
+                    self.store.git.owed_run(),
+                    match self.store.git.owed_run() {
+                        1 => "y",
+                        _ => "ies",
+                    }
+                ),
+            );
+        }
+        Ok(())
     }
 
     /// What moved since the last read, so a host re-reads only what a notice
@@ -1073,14 +1103,15 @@ impl Host {
         if self.store.git.disconnected {
             return Ok(());
         }
-        let held = self
-            .store
-            .leases(flywheel_domain::RAIL)?
-            .map(|l| l.holder == self.name || l.holder.is_empty())
-            .unwrap_or(true);
-        if !held {
-            return Ok(());
-        }
+
+        // The projection is written by the host the rail's machine told to
+        // render it, which is the host that is ticking. D12 made the rail's
+        // lease holder its only writer so two hosts could not conflict on the
+        // one file every host writes; `commit_status` is that rule now — the
+        // push is a compare-and-swap and a body differing only in the point it
+        // is as of is not a write (77, 78, 127, 134). The lease gate outlived
+        // its reason and cost 145: a holder that stops ticking left the
+        // projection stale with the machine asking for it on every pass.
         let as_of = self.store.git.as_of();
         let now = self.now();
         let status = flywheel_domain::status::read_with(
