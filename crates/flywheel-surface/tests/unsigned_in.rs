@@ -37,7 +37,7 @@ fn unsigned_in_single_operator() {
     );
 
     let answered = page.form("/api/tools/capture", &[("text", "look at the rows")]);
-    assert_eq!(answered["recorded"], json!(true), "{answered}");
+    assert!(answered.recorded(), "the control sent the operator back to the page: {:?}", answered.refused());
 
     page.with_store(|store| {
         let responses = StateStore::list(store, &flywheel_atoms::Scope::Machine("response".into()))
@@ -79,10 +79,12 @@ fn refuses_on_second_operator() {
     // And no call is taken either: the refusal is the host's, not the page's.
     let refused = page.form("/api/tools/capture", &[("text", "anything")]);
     assert!(
-        refused["refused"]
-            .as_str()
+        refused
+            .refused()
             .is_some_and(|s| s.contains("unsigned-in")),
-        "{refused}"
+        "{:?} {:?}",
+        refused.status,
+        refused.body
     );
 }
 

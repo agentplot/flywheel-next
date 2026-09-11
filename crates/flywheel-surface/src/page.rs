@@ -64,6 +64,11 @@ pub struct Read {
     /// The intents a move may name, so attaching and joining are picked rather
     /// than remembered (194).
     pub intents: Vec<String>,
+    /// What the last control the operator used was refused for, where it was
+    /// refused. The page's controls are plain forms with no script behind them,
+    /// so a refusal comes back as the page itself with the reason on it and
+    /// never as a body the operator is stranded on (310, 311).
+    pub refused: Option<String>,
     /// The object a link opened the page at, where the request named one: the
     /// dock's surface for it is the one already open, so a link the machinery
     /// wrote lands on the object it names rather than on the board (308, 205a,
@@ -201,6 +206,7 @@ pub fn read<S: StateStore, W: World + ?Sized>(
         unmoved,
         curation,
         intents,
+        refused: None,
         opened: None,
     })
 }
@@ -250,7 +256,6 @@ pub fn render(read: &Read) -> String {
         .replace("{{OPERATOR}}", &escape(&read.operator))
         .replace("{{CLOCK}}", &escape(&short(&read.status.at.to_rfc3339())))
         .replace("{{COUNT}}", &standing.to_string())
-        .replace("{{COUNTHINT}}", &count_hint(read))
         .replace("{{SENT}}", &sent.to_string())
         .replace("{{OBJECTS}}", &read.status.rows.len().to_string())
         .replace("{{HOSTS}}", &hosts(read))
@@ -265,51 +270,46 @@ pub fn render(read: &Read) -> String {
     out
 }
 
-/// What the count's hint says: the numbers standing, in the order the register
-/// gave them (15).
-fn count_hint(read: &Read) -> String {
-    let numbers: Vec<String> = read
-        .decisions
-        .iter()
-        .filter_map(|d| d.number)
-        .map(|n| n.to_string())
-        .collect();
-    match numbers.is_empty() {
-        true => String::new(),
-        false => escape(&format!("· {}", numbers.join(", "))),
-    }
-}
-
-/// The hosts strip: each host holding an object, with its liveness and how much
-/// it holds. It administers nothing (141, 143, 146).
+/// What is wrong with a host, and nothing when nothing is (141, 143, 146, 79).
+///
+/// A host answers a real need — noticing that one has gone or stalled, so work
+/// is not silently stopped — but that is an attention need and not a permanent
+/// fixture. Every host is reported under the status view, where it stands with
+/// the rest of the instance; here it is raised into the operator's way only
+/// when something is wrong with it. A healthy instance raises nothing.
 fn hosts(read: &Read) -> String {
-    let mut held: BTreeMap<&str, (usize, &str)> = BTreeMap::new();
+    // What each host holds, and what is wrong with it where something is.
+    let mut wrong: BTreeMap<&str, (usize, &str)> = BTreeMap::new();
     for row in &read.status.rows {
-        let Some(holder) = row.holder.as_deref() else {
+        let (Some(holder), Some(liveness)) = (row.holder.as_deref(), row.liveness.as_deref())
+        else {
             continue;
         };
-        let entry = held.entry(holder).or_insert((0, "alive"));
-        entry.0 += 1;
-        if let Some(liveness) = row.liveness.as_deref() {
-            entry.1 = liveness;
+        if liveness == "alive" {
+            continue;
         }
+        let entry = wrong.entry(holder).or_insert((0, liveness));
+        entry.0 += 1;
+        entry.1 = liveness;
     }
-    let mut out = String::from("<span class=\"lab\">hosts</span>");
-    if held.is_empty() {
-        out.push_str("<span class=\"note\">no host holds an object</span>");
-        return out;
+    if wrong.is_empty() {
+        return String::new();
     }
-    for (host, (holds, liveness)) in held {
+    let mut out = String::from("<span class=\"lab\">attention</span>");
+    for (host, (holds, liveness)) in wrong {
+        let since = read
+            .away
+            .values()
+            .find(|away| away.host == host)
+            .map(|away| format!(" since {}", short(&away.since.to_rfc3339())))
+            .unwrap_or_default();
         let _ = write!(
             out,
-            "<span class=\"host {gone}\" data-host=\"{h}\" data-liveness=\"{l}\">\
-             <b class=\"hn\">{h}</b><span class=\"hm\">{holds} held · <b>{l}</b></span></span>",
-            gone = match liveness {
-                "alive" => "",
-                _ => "gone",
-            },
+            "<span class=\"host gone\" data-host=\"{h}\" data-liveness=\"{l}\">\
+             <b class=\"hn\">{h}</b><span class=\"hm\">{l}{since} · {holds} held</span></span>",
             h = escape(host),
-            l = escape(liveness)
+            l = escape(liveness),
+            since = escape(&since),
         );
     }
     out
@@ -323,6 +323,16 @@ fn rail(read: &Read) -> String {
          <span class=\"sub\">the plan, in the order the chat prints it</span>\
          <a class=\"btn sm phone-only\" id=\"pal-open-rail\" href=\"#pal-scrim\">capture…</a></div>\n",
     );
+    // A control that was refused says so where the control is, and the page is
+    // otherwise the page: nothing is lost and nothing has to be gone back for
+    // (81, 310, 311).
+    if let Some(refused) = &read.refused {
+        let _ = write!(
+            out,
+            "<article class=\"card refused\" data-refused=\"true\"><p class=\"refused\">{}</p></article>\n",
+            escape(refused)
+        );
+    }
     if read.decisions.is_empty() {
         out.push_str(
             "<div class=\"empty\">Nothing waits on you. The board runs on its own until the \

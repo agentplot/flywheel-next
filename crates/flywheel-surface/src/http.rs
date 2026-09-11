@@ -7,9 +7,9 @@
 use crate::catalogue::{self, Call};
 use crate::page;
 use axum::{
-    extract::{Path, State},
+    extract::{Path, Query, State},
     http::StatusCode,
-    response::{Html, IntoResponse},
+    response::{Html, IntoResponse, Response},
     routing::{get, post},
     Json, Router,
 };
@@ -145,6 +145,71 @@ pub fn private_host(address: &str) -> Option<String> {
     }
 }
 
+/// Where a control the operator used came from, so answering it returns them
+/// there rather than to a body they have to go back from (310, 311).
+///
+/// The page is served at `/` for the operator at the machine and at
+/// `/<instance>` and `/<instance>/<object>` for every link the machinery writes
+/// (205a, 308), and a browser sends the address of the page the form was on as
+/// the referrer. Only its path is used, and only a path this router serves:
+/// nothing a request says decides where the operator is sent but the shape of
+/// the page they were on.
+fn came_from(headers: &axum::http::HeaderMap) -> String {
+    let referrer = headers
+        .get(axum::http::header::REFERER)
+        .and_then(|v| v.to_str().ok())
+        .unwrap_or_default();
+    let rest = referrer.split_once("//").map(|(_, r)| r).unwrap_or(referrer);
+    let path = match referrer.contains("//") {
+        true => rest.find('/').map(|at| &rest[at..]).unwrap_or("/"),
+        false => rest,
+    };
+    let path = path.split(['?', '#']).next().unwrap_or("/");
+    match path.starts_with('/') && !path.starts_with("//") && !path.starts_with("/api/") {
+        true => path.to_string(),
+        false => "/".to_string(),
+    }
+}
+
+/// The page, with a reason on it. A refusal is not a dead end: the operator is
+/// returned to the page they were on and reads there what was refused (81, 310).
+fn back_with(path: &str, refused: &str) -> Response {
+    to_the_page(&format!("{path}?refused={}", encode(refused)))
+}
+
+/// Back to the page, with nothing to say. See Other and not a redirect of the
+/// post itself: what follows is a fresh read of the page, so a reload does not
+/// answer twice (310).
+fn to_the_page(location: &str) -> Response {
+    (
+        StatusCode::SEE_OTHER,
+        [(axum::http::header::LOCATION, location.to_string())],
+    )
+        .into_response()
+}
+
+/// Percent-encode what goes in a query.
+fn encode(text: &str) -> String {
+    let mut out = String::new();
+    for byte in text.as_bytes() {
+        match byte {
+            b'A'..=b'Z' | b'a'..=b'z' | b'0'..=b'9' | b'-' | b'_' | b'.' | b'~' => {
+                out.push(*byte as char)
+            }
+            b' ' => out.push('+'),
+            other => out.push_str(&format!("%{other:02X}")),
+        }
+    }
+    out
+}
+
+/// What a page request says about the last control the operator used (310).
+#[derive(Debug, Deserialize, Default)]
+#[serde(default)]
+pub struct Asked {
+    pub refused: Option<String>,
+}
+
 /// `GET /api/tools`: the catalogue as the HTTP caller enumerates it.
 async fn tools<S: StateStore + Send + 'static>(
     State(served): State<Served<S>>,
@@ -183,11 +248,16 @@ async fn invoke<S: StateStore + Send + 'static>(
     Path(name): Path<String>,
     headers: axum::http::HeaderMap,
     body: axum::body::Bytes,
-) -> impl IntoResponse {
+) -> Response {
+    // Which caller this is, taken from the request and not from a second route:
+    // a form body is a control on the page, which has no script behind it and
+    // must land back on a page; anything else is a client, which reads the
+    // record it made (310, 311).
     let form = headers
         .get(axum::http::header::CONTENT_TYPE)
         .and_then(|v| v.to_str().ok())
         .is_some_and(|t| t.starts_with("application/x-www-form-urlencoded"));
+    let back = came_from(&headers);
     let text = String::from_utf8_lossy(&body);
     let input: Invocation = match form {
         true => Invocation {
@@ -202,31 +272,46 @@ async fn invoke<S: StateStore + Send + 'static>(
                     StatusCode::BAD_REQUEST,
                     Json(json!({"refused": unreadable.to_string()})),
                 )
+                    .into_response()
             }
         },
     };
     if let Err(refused) = served.admits(host_of(&headers)) {
-        return (StatusCode::FORBIDDEN, Json(json!({"refused": refused})));
+        return match form {
+            true => (
+                StatusCode::FORBIDDEN,
+                Html(format!("<p class=\"refused\">{refused}</p>")),
+            )
+                .into_response(),
+            false => (StatusCode::FORBIDDEN, Json(json!({"refused": refused}))).into_response(),
+        };
     }
     let mut call = Call::new(&name, served.operator(), "page");
     call.args = input.args;
     call.delivery_id = input.delivery_id;
     let mut store = served.store.lock().await;
     let mut world = served.world.lock().await;
-    match catalogue::call(&mut *store, &mut **world, &served.defs, &call) {
-        Ok(outcome) => {
-            // A page response is one of the three local causes, and it does not
-            // wait for the poll (130, D6).
-            served.woken.notify_one();
-            (
-                StatusCode::OK,
-                Json(json!({"id": outcome.id, "recorded": catalogue::recorded(&outcome)})),
-            )
-        }
-        Err(refused) => (
+    let outcome = catalogue::call(&mut *store, &mut **world, &served.defs, &call);
+    // A page response is one of the three local causes, and it does not wait
+    // for the poll (130, D6).
+    if outcome.is_ok() {
+        served.woken.notify_one();
+    }
+    match (outcome, form) {
+        // The control the operator used sends them back to the page they were
+        // on, which renders the answer they just gave (137, 310).
+        (Ok(_), true) => to_the_page(&back),
+        (Ok(outcome), false) => (
+            StatusCode::OK,
+            Json(json!({"id": outcome.id, "recorded": catalogue::recorded(&outcome)})),
+        )
+            .into_response(),
+        (Err(refused), true) => back_with(&back, &refused.to_string()),
+        (Err(refused), false) => (
             StatusCode::BAD_REQUEST,
             Json(json!({"refused": refused.to_string()})),
-        ),
+        )
+            .into_response(),
     }
 }
 
@@ -242,29 +327,36 @@ async fn curate<S: StateStore + Send + 'static>(
     State(served): State<Served<S>>,
     headers: axum::http::HeaderMap,
     body: axum::body::Bytes,
-) -> impl IntoResponse {
+) -> Response {
+    // The curator's surface is a form on the page like any other control, so
+    // it comes back to the page and never to a body (310, 311).
+    let back = came_from(&headers);
     if let Err(refused) = served.admits(host_of(&headers)) {
-        return (StatusCode::FORBIDDEN, Json(json!({"refused": refused})));
+        return (
+            StatusCode::FORBIDDEN,
+            Html(format!("<p class=\"refused\">{refused}</p>")),
+        )
+            .into_response();
     }
     let fields = form_fields(&String::from_utf8_lossy(&body));
     let mut store = served.store.lock().await;
     let mut world = served.world.lock().await;
     let at = match flywheel_domain::commands::now(&mut *store) {
         Ok(at) => at,
-        Err(e) => return (StatusCode::INTERNAL_SERVER_ERROR, Json(json!({"refused": e.to_string()}))),
+        Err(e) => return back_with(&back, &e.to_string()),
     };
     // The session the moves are delivered under. The page names it, and it is
     // checked against the store: a move is a session's delivery and never a
     // write of its own (110, 93b).
     let objects = match store.list_records(&flywheel_atoms::Scope::All) {
         Ok(objects) => objects,
-        Err(e) => return (StatusCode::INTERNAL_SERVER_ERROR, Json(json!({"refused": e.to_string()}))),
+        Err(e) => return back_with(&back, &e.to_string()),
     };
     let Some(session) = page::curating(&objects) else {
-        return (
-            StatusCode::BAD_REQUEST,
-            Json(json!({"refused": "no curation session is charged; the tick charges one when \
-                        the unmoved signals cross the threshold or the cadence says so (110)"})),
+        return back_with(
+            &back,
+            "no curation session is charged; the tick charges one when the unmoved signals \
+             cross the threshold or the cadence says so (110)",
         );
     };
     let mut moves: Vec<flywheel_domain::signals::Move> = Vec::new();
@@ -294,16 +386,9 @@ async fn curate<S: StateStore + Send + 'static>(
             at: at.to_rfc3339(),
         });
     }
-    let mut written = 0usize;
     for moved in &moves {
-        match flywheel_domain::signals::write_move(&mut **world, moved) {
-            Ok(_) => written += 1,
-            Err(refused) => {
-                return (
-                    StatusCode::BAD_REQUEST,
-                    Json(json!({"refused": refused.to_string()})),
-                )
-            }
+        if let Err(refused) = flywheel_domain::signals::write_move(&mut **world, moved) {
+            return back_with(&back, &refused.to_string());
         }
     }
     // The exit the session reports, with `move` as what it delivered: the same
@@ -324,15 +409,9 @@ async fn curate<S: StateStore + Send + 'static>(
         Ok(_) => {
             // A session's report is a local cause too (130, D6).
             served.woken.notify_one();
-            (
-                StatusCode::OK,
-                Json(json!({"recorded": true, "session": session, "moves": written})),
-            )
+            to_the_page(&back)
         }
-        Err(refused) => (
-            StatusCode::BAD_REQUEST,
-            Json(json!({"refused": refused.to_string()})),
-        ),
+        Err(refused) => back_with(&back, &refused.to_string()),
     }
 }
 
@@ -379,9 +458,10 @@ fn decode(text: &str) -> String {
 /// and stored nowhere (15, 310).
 async fn page<S: StateStore + Send + 'static>(
     State(served): State<Served<S>>,
+    Query(asked): Query<Asked>,
     headers: axum::http::HeaderMap,
 ) -> impl IntoResponse {
-    rendered(&served, &headers, None).await
+    rendered(&served, &headers, None, asked.refused).await
 }
 
 /// `GET /<instance>` — the page at the address every link the machinery writes
@@ -390,12 +470,13 @@ async fn page<S: StateStore + Send + 'static>(
 async fn page_of_instance<S: StateStore + Send + 'static>(
     State(served): State<Served<S>>,
     Path(instance): Path<String>,
+    Query(asked): Query<Asked>,
     headers: axum::http::HeaderMap,
 ) -> impl IntoResponse {
     if instance != served.instance() {
         return wrong_instance(&served, &instance);
     }
-    rendered(&served, &headers, None).await
+    rendered(&served, &headers, None, asked.refused).await
 }
 
 /// `GET /<instance>/<object>` — the link `links::to_object` writes, fetched.
@@ -406,6 +487,7 @@ async fn page_of_instance<S: StateStore + Send + 'static>(
 async fn page_of_object<S: StateStore + Send + 'static>(
     State(served): State<Served<S>>,
     Path((instance, object)): Path<(String, String)>,
+    Query(asked): Query<Asked>,
     headers: axum::http::HeaderMap,
 ) -> impl IntoResponse {
     if instance != served.instance() {
@@ -433,7 +515,7 @@ async fn page_of_object<S: StateStore + Send + 'static>(
             }
         }
     }
-    rendered(&served, &headers, Some(object)).await
+    rendered(&served, &headers, Some(object), asked.refused).await
 }
 
 /// What a link naming another instance gets: this host serves one (205a).
@@ -456,6 +538,7 @@ async fn rendered<S: StateStore + Send + 'static>(
     served: &Served<S>,
     headers: &axum::http::HeaderMap,
     opened: Option<String>,
+    refused: Option<String>,
 ) -> (StatusCode, Html<String>) {
     if let Err(refused) = served.admits(host_of(headers)) {
         return (
@@ -474,6 +557,7 @@ async fn rendered<S: StateStore + Send + 'static>(
     ) {
         Ok(mut read) => {
             read.opened = opened;
+            read.refused = refused;
             (StatusCode::OK, Html(page::render(&read)))
         }
         Err(refused) => (

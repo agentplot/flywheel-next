@@ -86,15 +86,29 @@ impl Server {
 
     /// The page's own controls: a plain form, sent as a form, with no script
     /// running and nothing fetched from anywhere else (310, 311).
-    pub fn form(&self, path: &str, fields: &[(&str, &str)]) -> Value {
+    ///
+    /// A browser submitting one is answered with a place to go, never a body:
+    /// see `Posted`.
+    pub fn form(&self, path: &str, fields: &[(&str, &str)]) -> Posted {
+        self.form_from(path, fields, None)
+    }
+
+    /// The same, saying which page the control was on, which is what a browser
+    /// sends and what decides where the operator lands (310).
+    pub fn form_from(&self, path: &str, fields: &[(&str, &str)], referrer: Option<&str>) -> Posted {
         let host = self.host.clone();
         let body = fields
             .iter()
             .map(|(name, value)| format!("{name}={}", encode(value)))
             .collect::<Vec<_>>()
             .join("&");
-        let text = speak_form(self.address, path, &body, &host);
-        serde_json::from_str(&text).unwrap_or_else(|e| panic!("the body {text:?}: {e}"))
+        Posted::read(&speak_form(self.address, path, &body, &host, referrer))
+    }
+
+    /// Follow where a form post sent the operator, as a browser does.
+    pub fn follow(&self, posted: &Posted) -> String {
+        let to = posted.location.clone().expect("a form post says where to go");
+        self.html(&to)
     }
 
     /// The page itself, as a document.
@@ -174,10 +188,97 @@ fn speak(
 }
 
 /// One form post, encoded the way a browser encodes one.
-fn speak_form(address: std::net::SocketAddr, path: &str, body: &str, host: &str) -> String {
+/// What a browser gets back from a control on the page: a status, somewhere to
+/// go, and — only where the page refused before it read the form at all — a
+/// body (310, 311).
+pub struct Posted {
+    pub status: u16,
+    pub location: Option<String>,
+    pub body: String,
+}
+
+impl Posted {
+    fn read(answer: &str) -> Posted {
+        let (head, body) = answer
+            .split_once("\r\n\r\n")
+            .map(|(h, b)| (h.to_string(), b.to_string()))
+            .unwrap_or_else(|| (answer.to_string(), String::new()));
+        let status = head
+            .lines()
+            .next()
+            .and_then(|line| line.split_whitespace().nth(1))
+            .and_then(|code| code.parse().ok())
+            .unwrap_or(0);
+        let location = head
+            .lines()
+            .find_map(|line| line.strip_prefix("location: ").or_else(|| line.strip_prefix("Location: ")))
+            .map(|to| to.trim().to_string());
+        Posted { status, location, body }
+    }
+
+    /// Whether the control did what it said: the operator is sent back to a
+    /// page, with nothing refused on the way (310).
+    pub fn recorded(&self) -> bool {
+        self.status == 303 && self.refused().is_none()
+    }
+
+    /// What the operator is told was refused, read where they will read it: off
+    /// the page they are sent back to.
+    pub fn refused(&self) -> Option<String> {
+        if let Some(query) = self.location.as_deref().and_then(|to| to.split_once("?refused=")) {
+            return Some(decode(query.1));
+        }
+        match self.body.contains("class=\"refused\"") {
+            true => Some(self.body.clone()),
+            false => None,
+        }
+    }
+}
+
+fn decode(text: &str) -> String {
+    let bytes = text.as_bytes();
+    let mut out: Vec<u8> = Vec::new();
+    let mut at = 0;
+    while at < bytes.len() {
+        match bytes[at] {
+            b'%' if at + 2 < bytes.len() => {
+                match u8::from_str_radix(&text[at + 1..at + 3], 16) {
+                    Ok(byte) => {
+                        out.push(byte);
+                        at += 3;
+                    }
+                    Err(_) => {
+                        out.push(bytes[at]);
+                        at += 1;
+                    }
+                }
+            }
+            b'+' => {
+                out.push(b' ');
+                at += 1;
+            }
+            other => {
+                out.push(other);
+                at += 1;
+            }
+        }
+    }
+    String::from_utf8_lossy(&out).to_string()
+}
+
+fn speak_form(
+    address: std::net::SocketAddr,
+    path: &str,
+    body: &str,
+    host: &str,
+    referrer: Option<&str>,
+) -> String {
     let mut socket = TcpStream::connect(address).expect("the served address");
+    // A browser says which page the form was on; that is what sends the
+    // operator back where they were (310).
+    let referrer = format!("Referer: http://{host}{}\r\n", referrer.unwrap_or("/"));
     let head = format!(
-        "POST {path} HTTP/1.1\r\nHost: {host}\r\nConnection: close\r\n\
+        "POST {path} HTTP/1.1\r\nHost: {host}\r\nConnection: close\r\n{referrer}\
          Content-Type: application/x-www-form-urlencoded\r\nContent-Length: {}\r\n\r\n",
         body.len()
     );
@@ -186,9 +287,6 @@ fn speak_form(address: std::net::SocketAddr, path: &str, body: &str, host: &str)
     let mut answer = String::new();
     socket.read_to_string(&mut answer).expect("the response");
     answer
-        .split_once("\r\n\r\n")
-        .map(|(_, b)| b.to_string())
-        .unwrap_or(answer)
 }
 
 fn encode(text: &str) -> String {

@@ -296,7 +296,7 @@ fn capture_box_parses_nothing() {
 
     let typed = "drop unit/atlas/u and close the bolt";
     let answered = page.form("/api/tools/capture", &[("text", typed), ("source", "page")]);
-    assert_eq!(answered["recorded"], json!(true), "{answered}");
+    assert!(answered.recorded(), "the control sent the operator back to the page: {:?}", answered.refused());
 
     page.with_store(|store| {
         let captures = StateStore::list(store, &flywheel_atoms::Scope::Machine("capture".into()))
@@ -349,7 +349,7 @@ fn box_writes_one_ask_signal() {
     let (_sandbox, page) = a_page("ask-signal");
     let typed = "the rows lose their numbers on the second page";
     let answered = page.form("/api/tools/capture", &[("text", typed), ("source", "page")]);
-    assert_eq!(answered["recorded"], json!(true), "{answered}");
+    assert!(answered.recorded(), "the control sent the operator back to the page: {:?}", answered.refused());
 
     // The record and its one signal live under the machinery's prefix in the
     // blueprints, where a person reads the same material by hand (203, 110).
@@ -556,6 +556,17 @@ const NOT_THIS_PHASE: [(&str, &str); 20] = [
 /// rail offers, and that is what 11 asks any one answer to do.
 const YES_ALL: [&str; 2] = ["yesall", "yesall2"];
 
+/// What the mockup draws and the page does not, because it survives no action.
+/// The mockup is the record of what we were picturing, not an authority to copy
+/// element-by-element; before an element is carried across, the action it
+/// serves is named, and one that serves none does not ship (amends D16, 17.0).
+const NO_ACTION: [(&str, &str); 1] = [(
+    "yesallhint",
+    "a bare strip of every waiting decision number across the top of the page names no \
+     action. It is a mis-rendering of S2, which asks for the `yes all` control with the \
+     numbers it will answer: the numbers belong on the control that answers them (S2, 17.5)",
+)];
+
 /// Every id the mockup gives, in the order it gives them.
 fn ids_of(html: &str) -> Vec<String> {
     let mut out: Vec<String> = Vec::new();
@@ -603,6 +614,13 @@ fn page_carries_the_mockups_regions() {
             assert!(
                 !html.contains(&format!("id=\"{id}\"")),
                 "`{id}` is on the page, and it is named as a part phase 1 does not have: {why}"
+            );
+            continue;
+        }
+        if let Some((_, why)) = NO_ACTION.iter().find(|(name, _)| *name == id) {
+            assert!(
+                !html.contains(&format!("id=\"{id}\"")),
+                "`{id}` is on the page, and it is named as an element that serves no action: {why}"
             );
             continue;
         }

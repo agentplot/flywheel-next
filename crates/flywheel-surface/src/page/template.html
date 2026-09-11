@@ -65,6 +65,9 @@ kbd{font:11px var(--mono);border:1px solid var(--line);border-bottom-width:2px;b
 
 
 /* ---------- hosts strip ---------- */
+/* Nothing is wrong with any host, so nothing is raised and the band is not
+   there to be read past (79, 141). */
+.hosts:empty{display:none}
 .hosts{flex:none;min-height:var(--hosts);display:flex;flex-wrap:wrap;align-items:center;gap:4px 8px;padding:4px 14px;border-bottom:1px solid var(--line);background:var(--surface2)}
 @media (max-width:1700px){.hosts .note{display:none}}
 .hosts .lab{font-size:11px;letter-spacing:.08em;text-transform:uppercase;color:var(--ink3);font-weight:700;margin-right:4px;white-space:nowrap}
@@ -599,13 +602,14 @@ ul.sigs li{margin:0}
   <h1>Rail and Board</h1>
   <span class="meta"><b id="orgname">{{INSTANCE}}</b> · <span class="mono" id="clock">{{CLOCK}}</span></span>
   <a class="palbtn" id="pal-open" href="#pal-scrim" title="the capture box: text is captured whole and nothing in it is read as a command (19, 194)"><span class="t">Capture</span></a>
-  <div class="count"><b id="count">{{COUNT}}</b><span>decisions</span><span class="hint" id="yesallhint">{{COUNTHINT}}</span></div>
+  <div class="count"><b id="count">{{COUNT}}</b><span>decisions</span></div>
   <span class="acct-wrap" id="acct-wrap"><span class="given-by">{{OPERATOR}}</span></span>
   <span class="btn quiet theme" id="theme" title="the page follows the system's theme; it holds no client state a reload loses (310)">system</span>
   <a class="btn" id="logbtn" href="#log"><b id="sent">{{SENT}}</b> sent</a>
 </header>
-<!-- The hosts strip: each host holding an object, its liveness and what it
-     holds (141, 143, 146). It administers nothing. -->
+<!-- Where a host that has gone or stalled is raised into the operator's way,
+     and empty while nothing is wrong. Every host is reported under the status
+     view; this is the attention, not a fixture (141, 143, 146, 79). -->
 <div class="hosts" id="hosts">{{HOSTS}}</div>
 <main class="wrap">
   <section class="tab-panel" id="decisions">
