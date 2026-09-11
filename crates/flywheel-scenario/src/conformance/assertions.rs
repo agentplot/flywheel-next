@@ -69,12 +69,34 @@ pub fn check(scenario: &Scenario, run: &Run, suite: &Suite) -> Vec<Failure> {
     let then = &scenario.then;
 
     // ---- transitions, in order across all ticks
+    //
+    // The order is the ticks': a listed transition is found in the tick of
+    // the one before it or a later one. Two transitions one tick took are
+    // simultaneous — two guards read the same clock and the same fetch — and
+    // the order the record wrote them in is the engine's iteration over its
+    // objects, which the model promises nothing about (D7, D15; S13's
+    // `host alive→stale` beside `lease held→stale`). Each record is matched
+    // once.
     let taken: Vec<&crate::runner::TransitionRecord> =
         run.ticks.iter().flat_map(|t| t.transitions.iter()).collect();
+    let tick_starts: Vec<usize> = run
+        .ticks
+        .iter()
+        .scan(0usize, |start, t| {
+            let here = *start;
+            *start += t.transitions.len();
+            Some(here)
+        })
+        .collect();
+    let tick_start_of = |index: usize| -> usize {
+        tick_starts.iter().rev().find(|s| **s <= index).copied().unwrap_or(0)
+    };
+    let mut used: Vec<bool> = vec![false; taken.len()];
     let mut from = 0usize;
     for want in &then.transitions {
-        let found = taken[from..].iter().position(|t| {
-            t.object == want.object
+        let found = taken[from..].iter().enumerate().position(|(i, t)| {
+            !used[from + i]
+                && t.object == want.object
                 && t.to == want.to
                 && want.from.as_ref().is_none_or(|f| &t.from == f)
                 && want.region.as_ref().is_none_or(|r| &t.region == r)
@@ -86,7 +108,10 @@ pub fn check(scenario: &Scenario, run: &Run, suite: &Suite) -> Vec<Failure> {
                 && want.host.as_ref().is_none_or(|h| t.host.as_ref() == Some(h))
         });
         match found {
-            Some(at) => from += at + 1,
+            Some(at) => {
+                used[from + at] = true;
+                from = tick_start_of(from + at);
+            }
             None => failures.push(Failure {
                 clause: "transitions".into(),
                 step: None,
