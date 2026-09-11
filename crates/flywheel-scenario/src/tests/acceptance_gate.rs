@@ -58,3 +58,27 @@ fn a_skipped_row_fails_the_run() {
     let invalid = report(vec![outcome("S02", Status::Invalid, ""), outcome("S18", Status::Skipped, "")]);
     assert_eq!(invalid.exit_code(), 2);
 }
+
+/// A row declares the mode it needs beside `profiles:`, in its own file, and
+/// the runner provides that mode rather than skipping the row: `requires:
+/// [real-hosts]` is met under `--hosts real` and by no in-process run (D15,
+/// 93a). The schema the model mirrors here admits the value once the model
+/// does; until then no shipped row can declare it.
+#[test]
+fn a_row_declares_the_mode_it_needs() {
+    use crate::conformance::{Profile, RunOptions};
+    use flywheel_atoms::conformance::Requirement;
+
+    let parsed: Vec<Requirement> = serde_yaml::from_str("[real-hosts, real-workspace]").unwrap();
+    assert_eq!(parsed, vec![Requirement::RealHosts, Requirement::RealWorkspace]);
+    assert!(Requirement::RealHosts.reason().contains("processes of their own"));
+
+    let in_process = RunOptions { profile: Profile::GitOnly, ..Default::default() };
+    assert!(in_process.provides().is_empty(), "an in-process run provides no real mode");
+    let real = in_process.with_real_hosts();
+    assert!(real.hosts_real);
+    assert_eq!(real.provides(), vec![Requirement::RealHosts]);
+    // The recorded workspace and the scripted sessions are what every run has,
+    // so neither is ever provided and a row requiring them is skipped (11.4).
+    assert!(!real.provides().contains(&Requirement::RealWorkspace));
+}

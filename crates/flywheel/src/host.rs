@@ -32,6 +32,7 @@ use flywheel_workspace_recorded::RecordedWorkspace;
 use flywheel_world_host::{HostWorld, Manifest};
 use serde_json::{json, Value};
 use std::cell::RefCell;
+use std::collections::BTreeMap;
 use std::path::Path;
 
 /// How often the sweep runs, whatever else happens (D7, 130). The default the
@@ -129,6 +130,11 @@ pub struct HostStore {
     /// The machine never takes that transition, because the effect is what
     /// makes it; the run record is where the host says so (79, 167).
     pub marked: RefCell<Vec<(String, String, String)>>,
+    /// What the world reports about the instance — its repositories, its App,
+    /// its hosts — read from the manifest this host opened, so the instance
+    /// machine's guards are answered on a running host and not only under
+    /// `flywheel init` (204, 207, 221; `host.yaml` instance evidence).
+    pub instance: BTreeMap<String, Value>,
 }
 
 impl HostStore {
@@ -141,6 +147,7 @@ impl HostStore {
             world: Box::new(flywheel_scenario::bindings::FilesWorld::new()),
             trace: RefCell::new(vec![]),
             marked: RefCell::new(vec![]),
+            instance: BTreeMap::new(),
         }
     }
 
@@ -321,6 +328,74 @@ impl EvidenceSource for HostStore {
                     name,
                 )
             })
+            // The change directory behind an intent, on the same shared line
+            // (A.11, 227).
+            .or_else(|| {
+                flywheel_domain::changes::evidence(
+                    &flywheel_domain::signals::Blueprints(&*self.world),
+                    object,
+                    name,
+                )
+            })
+            // What the manifest says the instance is (204, 207).
+            .or_else(|| name.starts_with("instance.").then(|| self.instance.get(name).cloned()).flatten())
+            // Curation's proofs read the blueprints and the records together
+            // (107, 109, 116).
+            .or_else(|| {
+                flywheel_domain::signals::proofs(
+                    &self.git,
+                    &flywheel_domain::signals::Blueprints(&*self.world),
+                    name,
+                )
+            })
+            // The proof of `record_refusals`: every refusal on the session's
+            // thread is in the run record (43, 79).
+            .or_else(|| {
+                (name == "session.refusals_recorded").then(|| {
+                    let stem = session_stem(object, region, self.kind_of(object).as_deref());
+                    let session = flywheel_sessions_operator::current(&self.git, &stem);
+                    let refused = self
+                        .git
+                        .thread(&session)
+                        .unwrap_or_default()
+                        .iter()
+                        .filter(|e| e.kind == "refusal")
+                        .count();
+                    let recorded = self
+                        .git
+                        .run_record()
+                        .unwrap_or_default()
+                        .iter()
+                        .filter(|e| e.kind == "refusal" && e.object == session)
+                        .count();
+                    json!(recorded >= refused)
+                })
+            })
+            // The one adapter this release ships is the meeting transcript: a
+            // source is due while the file it names has no capture yet, and
+            // run once it has (111, 215, D13; `host.yaml` host.adapters_due).
+            .or_else(|| {
+                matches!(name, "host.adapters_due" | "host.adapters_run").then(|| {
+                    let host = object.strip_prefix("host/").unwrap_or(object);
+                    let due = self.sources_declared(host).iter().any(|source| {
+                        let Some(path) = source.split_whitespace().last() else {
+                            return false;
+                        };
+                        let Ok(key) = flywheel_domain::adapters::meeting_key(path) else {
+                            return false;
+                        };
+                        std::path::Path::new(path).exists()
+                            && flywheel_domain::signals::read_capture(&*self.world, &key)
+                                .ok()
+                                .flatten()
+                                .is_none()
+                    });
+                    json!(match name {
+                        "host.adapters_due" => due,
+                        _ => !due,
+                    })
+                })
+            })
             .or_else(|| {
                 flywheel_workspace_recorded::evidence(
                     &self.git,
@@ -494,6 +569,7 @@ impl Host {
         // The host's one address, from the router the manifest names: every
         // link a delivery carries is written at it (191, 205a, D10a).
         host.sinks.address = world.address_of(name)?;
+        host.store.instance = flywheel_world_host::effects::evidence(&read, None);
         host.store.world = Box::new(world);
         Ok(host)
     }

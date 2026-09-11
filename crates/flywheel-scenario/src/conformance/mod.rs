@@ -96,7 +96,20 @@ impl RunOptions {
     /// records the workspace and scripts the sessions, so it provides neither
     /// (93a, 93b).
     pub fn provides(&self) -> Vec<Requirement> {
-        vec![]
+        // The workspace is recorded and the sessions are scripted in every
+        // configuration this release runs; hosts are real under `--hosts real`.
+        match self.hosts_real {
+            true => vec![Requirement::RealHosts],
+            false => vec![],
+        }
+    }
+
+    /// The same run, with the hosts as processes of their own (D15).
+    pub fn with_real_hosts(&self) -> RunOptions {
+        RunOptions {
+            hosts_real: true,
+            ..self.clone()
+        }
     }
 
     /// Hooks are honoured only when the runner holds the engine itself, which
@@ -375,7 +388,16 @@ pub fn run(paths: &[PathBuf], options: &RunOptions) -> Result<RunReport> {
     }
     for path in paths {
         for file in scenario_files(path)? {
-            let outcome = run_one(&file, options);
+            // A row that declares the mode it needs is run in that mode, so a
+            // set run in process still plays its real-host rows and a skip
+            // means the row named nothing this run could provide (93a, D15).
+            let declared_real_hosts = flywheel_atoms::conformance::load(&file)
+                .map(|(scenario, _)| scenario.requires.contains(&Requirement::RealHosts))
+                .unwrap_or(false);
+            let outcome = match declared_real_hosts && !options.hosts_real {
+                true => run_one(&file, &options.with_real_hosts()),
+                false => run_one(&file, options),
+            };
             report.record.saw(&outcome);
             report.outcomes.push(outcome);
         }

@@ -5,6 +5,7 @@
 pub mod adapters;
 pub mod blueprints;
 pub mod cadence;
+pub mod changes;
 pub mod commands;
 pub mod context;
 pub mod deliverables;

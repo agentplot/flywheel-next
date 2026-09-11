@@ -12,7 +12,7 @@
 
 use anyhow::{bail, Result};
 use chrono::{DateTime, Utc};
-use flywheel_atoms::{Scope, StateStore, World};
+use flywheel_atoms::{Records, Scope, StateStore, World};
 use flywheel_engine::{rec, Definitions};
 use serde_json::{json, Value};
 use std::collections::BTreeMap;
@@ -457,7 +457,15 @@ pub fn evidence<R: Reads + ?Sized>(files: &R, object: &str, name: &str) -> Optio
         // elsewhere.
         "signal.move" => {
             let Some(text) = files.read(&move_path(object)) else {
-                return None;
+                // No move file: a signal the material holds is unmoved, and
+                // the signal machine reads `none` for it (107). Reading nothing
+                // here left every unmoved signal's guards unanswered on a real
+                // host. A signal the material does not hold is answered for
+                // elsewhere.
+                return all_signals_from(files)
+                    .iter()
+                    .any(|s| s.id == object)
+                    .then(|| json!("none"));
             };
             match rec::parse(&text).first().map(Move::from_record) {
                 Some(moved) if !moved.target.is_empty() => json!(moved.word()),
@@ -474,6 +482,30 @@ pub fn evidence<R: Reads + ?Sized>(files: &R, object: &str, name: &str) -> Optio
             }
             json!(unmoved(files).len())
         }
+        _ => return None,
+    })
+}
+
+/// Curation's proofs, which read the blueprints and the records together: the
+/// moves the session delivered against what `record_moves` wrote on the
+/// signals, and the intents those moves propose against the intents that
+/// exist (107, 109, 110, 116).
+pub fn proofs<S: Records, R: Reads + ?Sized>(store: &S, files: &R, name: &str) -> Option<Value> {
+    Some(match name {
+        // Every move in the blueprints stands on its signal's record.
+        "curation.moves_recorded" => json!(moves(files).iter().all(|moved| {
+            store
+                .get(&moved.signal)
+                .ok()
+                .flatten()
+                .and_then(|s| s.record.get("move").cloned())
+                .and_then(|m| m.get("target").and_then(|t| t.as_str().map(String::from)))
+                .is_some_and(|t| t == moved.target)
+        })),
+        // Every intent the joins name exists.
+        "curation.intents_proposed" => json!(proposals_of(&moves(files))
+            .iter()
+            .all(|p| store.get(&p.id).ok().flatten().is_some())),
         _ => return None,
     })
 }
@@ -558,10 +590,26 @@ impl Move {
     }
 
     /// What the move names: the intent, the claim, the offer. Empty for a drop.
+    /// A join's `challenges` clause is not what it names; `challenges` reads it.
     pub fn names(&self) -> &str {
-        self.target
+        let rest = self
+            .target
             .split_once(char::is_whitespace)
             .map(|(_, rest)| rest.trim())
+            .unwrap_or_default();
+        rest.split(" challenges ").next().unwrap_or_default().trim()
+    }
+
+    /// The claims the cluster this signal joins argues with, by name and
+    /// version: `join <intent> challenges <claim>@<v> [<claim>@<v> …]`. A
+    /// signal has one move (107), so a signal that joins a proposed intent and
+    /// argues with a standing claim says both in the one judgment, and the
+    /// proposed intent carries the claim — which is what lets a challenge
+    /// stale that claim's verdicts (116, S08).
+    pub fn challenges(&self) -> Vec<String> {
+        self.target
+            .split_once(" challenges ")
+            .map(|(_, rest)| rest.split_whitespace().map(String::from).collect())
             .unwrap_or_default()
     }
 
@@ -865,6 +913,12 @@ pub fn proposals_of(moves: &[Move]) -> Vec<Proposal> {
         if let Some(claim) = challenged.get(moved.signal.as_str()) {
             if !out[at].challenges.iter().any(|c| c == claim) {
                 out[at].challenges.push(claim.to_string());
+            }
+        }
+        // The claims the join itself says its cluster argues with (116, S08).
+        for claim in moved.challenges() {
+            if !out[at].challenges.contains(&claim) {
+                out[at].challenges.push(claim);
             }
         }
     }

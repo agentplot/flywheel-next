@@ -62,9 +62,16 @@ pub fn curation(commits: &[String], key: &str, at: &str) -> Delivered {
                         for _ in 0..n {
                             let id = signal(&delivered);
                             proposal.signals.push(id.clone());
+                            // The join carries the claims its cluster argues
+                            // with, so a host reading the moves alone proposes
+                            // the same intent the session did (116, S08).
+                            let target = match proposal.challenges.is_empty() {
+                                true => format!("join {into}"),
+                                false => format!("join {into} challenges {}", proposal.challenges.join(" ")),
+                            };
                             delivered.moves.push(Move {
                                 signal: id,
-                                target: format!("join {into}"),
+                                target,
                                 reason: "curation clustered it".into(),
                                 at: at.to_string(),
                             });

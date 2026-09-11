@@ -31,6 +31,12 @@ pub enum Requirement {
     RealWorkspace,
     /// It asserts a real agent session rather than a scripted one.
     RealSessions,
+    /// It asserts what only hosts that are processes of their own produce —
+    /// lease contention between hosts, a second host reading the holder, a
+    /// reconnect — so the runner's one in-process host cannot serve it. A row
+    /// declaring this is run under `--hosts real` rather than skipped (D15,
+    /// group 11).
+    RealHosts,
 }
 
 impl Requirement {
@@ -41,6 +47,9 @@ impl Requirement {
             }
             Requirement::RealSessions => {
                 "the sessions are scripted, and this asserts a real agent session (93)"
+            }
+            Requirement::RealHosts => {
+                "the hosts are in process, and this asserts what only hosts that are processes of their own produce (D15)"
             }
         }
     }
