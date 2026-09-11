@@ -478,3 +478,49 @@ fn an_answer_that_names_only_its_number_reaches_the_object_the_register_gave_it(
     // decides anything.
     assert_eq!(a.responses(flywheel_domain::RAIL).unwrap().len(), 1);
 }
+
+#[test]
+fn a_put_of_what_is_already_there_is_not_a_write() {
+    // Reading the same stores twice with nothing changed produces the same
+    // conclusion and no writes (78). A put is how a caller says what an object
+    // now is, and a caller that has read an object, decided nothing moved and
+    // put it back has said nothing: the sequence is the token of a change and
+    // not of a pass, so it does not move and there is no commit on the shared
+    // line to say it did (127, 167).
+    let sandbox = Sandbox::new("put-unchanged");
+    let mut a = sandbox.host("a");
+    let commits = |store: &GitStore| -> usize {
+        store
+            .repo
+            .git(&["log", "--format=%H", "HEAD"])
+            .unwrap()
+            .lines()
+            .count()
+    };
+
+    let outcome = a.put("lamp/1", &a_lamp("lamp/1"), 0).unwrap();
+    assert_eq!(outcome, PutOutcome::Written { seq: 1 });
+    let after_the_write = commits(&a);
+
+    // The same object, read back and put again unchanged.
+    let held = a.get("lamp/1").unwrap().expect("the object is there");
+    let outcome = a.put("lamp/1", &held, held.seq).unwrap();
+    assert_eq!(
+        outcome,
+        PutOutcome::Written { seq: 1 },
+        "the sequence moved for a put that changed nothing"
+    );
+    assert_eq!(
+        commits(&a),
+        after_the_write,
+        "a put of what is already there made a commit (78, 167)"
+    );
+    assert_eq!(a.get("lamp/1").unwrap().unwrap().seq, 1);
+
+    // A put that does change something writes, and the sequence moves with it.
+    let mut moved = a.get("lamp/1").unwrap().unwrap();
+    moved.config.insert("state".into(), "lit".into());
+    let outcome = a.put("lamp/1", &moved, moved.seq).unwrap();
+    assert_eq!(outcome, PutOutcome::Written { seq: 2 });
+    assert_eq!(commits(&a), after_the_write + 1);
+}

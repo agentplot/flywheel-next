@@ -4,5 +4,6 @@
 mod binding;
 mod blueprints;
 mod envelope;
+mod rail_record;
 mod set;
 mod signals;

@@ -96,7 +96,7 @@ const DEMO_KEY_FROM: &str = "FLYWHEEL_DEMO_KEY";
 ///
 /// It is `flywheel init` and nothing else — a demo instance is a real instance
 /// or it proves nothing.
-pub fn make_instance(under: &Path, name: &str, host: &str) -> Result<Instance> {
+pub fn make_instance(under: &Path, name: &str, host: &str, repositories: &[String]) -> Result<Instance> {
     std::fs::create_dir_all(under)
         .with_context(|| format!("making {}", under.display()))?;
     // Absolute from here on: a bare repository's remote is written into the
@@ -138,6 +138,37 @@ pub fn make_instance(under: &Path, name: &str, host: &str) -> Result<Instance> {
                 .unwrap_or_default()
         );
     }
+    // The repositories the scenario names, tracked by the instance before
+    // anything is seeded into it. A seed that put an object naming a
+    // repository the instance does not track left that object uncovered by
+    // every host's declaration — correctly reported as a decision under
+    // attention, but a decision about the seed rather than about the work
+    // (149, 205, 206). So the instance is made to cover what is about to be
+    // seeded into it, which is the same act `flywheel init` does for the
+    // blueprints and the state.
+    if !repositories.is_empty() {
+        let mut read = flywheel_world_host::Manifest::read(&instance.manifest)?;
+        let bootstrap = flywheel_world_host::bootstrap::Bootstrap::new(
+            under.join("git-host"),
+            instance.root.join(".scratch"),
+        );
+        for repository in repositories {
+            if read.repositories.contains_key(repository) {
+                continue;
+            }
+            let made = bootstrap
+                .create_repository(name, repository)
+                .with_context(|| format!("creating the `{repository}` repository the scenario names"))?;
+            read.repositories.insert(repository.clone(), made);
+            // The App covers what the instance tracks: a demo's git host is a
+            // directory on this computer, so there is no installation to
+            // extend and an untracked repository would be the one thing under
+            // attention that the operator could do nothing about (207).
+            read.app.installation_covers.push(repository.clone());
+        }
+        read.write(&instance.manifest)?;
+    }
+
     // The host clones what the manifest names and checks the layout, which is
     // how a host comes to hold a checkout at all: by one command and never by
     // hand (205, 222).
@@ -224,7 +255,12 @@ pub fn apply(
     // The instance is named for the scenario, so the singletons an instance
     // has — `curation/<instance>` among them — are the objects the scenario
     // names, whichever binding plays it (110, 218).
-    let instance = make_instance(into, &instance_name(&read.scenario), "local")?;
+    let instance = make_instance(
+        into,
+        &instance_name(&read.scenario),
+        "local",
+        &read.repositories_named(),
+    )?;
     let mut host = instance.open(at)?;
     host.set_now(at);
     host.declare().context("the host declaring itself")?;
@@ -232,7 +268,8 @@ pub fn apply(
     // The moment the scenario describes, put into the real state store through
     // the store's own write path — the `given:` half, which is what `flywheel
     // host seed` already does and this goes on from (125, 193).
-    let seeded = crate::seed::from_conformance(&mut host.store.git, &read, at)
+    let declaration = host.declaration.clone();
+    let seeded = crate::seed::from_conformance(&mut host.store.git, &read, at, &declaration)
         .context("seeding the scenario's given: state")?;
     settle(&mut host)?;
 

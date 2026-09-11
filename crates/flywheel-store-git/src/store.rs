@@ -73,6 +73,15 @@ pub struct GitStore {
     guards: BTreeMap<String, u64>,
     /// Whether a tick is open. Its writes are one push, made when it ends.
     in_tick: bool,
+    /// How many state records this store has actually written, and how many it
+    /// had written when the status projection was last brought up to date.
+    /// `rail.status_current` is the two being equal: the projection is as-of
+    /// the newest state write, which is what `record-derived.yaml` asks of any
+    /// profile and what stops the rail's `status` region firing on a tick that
+    /// projects nothing new (77, 78, 142, `record-derived.yaml`
+    /// rail.status_current).
+    state_writes: u64,
+    status_at: u64,
     pub reread_after_rejection: bool,
     pub reads_since_notify: usize,
     /// Effect ids written locally but not yet landed (161, D4a).
@@ -135,6 +144,12 @@ impl GitStore {
             spawned_at_tick: 0,
             guards: BTreeMap::new(),
             in_tick: false,
+            state_writes: 0,
+            // A store just opened has written nothing and projected nothing,
+            // and a projection on the shared line was written by some other
+            // host's run: the first tick renders, which is what a host coming
+            // up must do anyway (145).
+            status_at: u64::MAX,
             reread_after_rejection: false,
             reads_since_notify: 0,
             pending: vec![],
@@ -173,11 +188,19 @@ impl GitStore {
         // intentions, not facts (161), but they are the state it is working
         // and it must read back what it wrote or it would decide the same
         // thing again on every tick (151, D4a).
+        let was = std::mem::take(&mut self.fetched);
         self.fetched = match self.disconnected {
             true => objects::rev(&self.odb, "HEAD")?.or(self.shared_head()?),
             false => self.shared_head()?.or(objects::rev(&self.odb, "HEAD")?),
         }
         .unwrap_or_else(|| git::ZERO.to_string());
+        // Another host's writes came down the line, so the projection is
+        // as-of a state that has moved and the rail renders again: what
+        // `status_current` counts is this store's own writes, and this is the
+        // one way state changes without one (77, 136, 145).
+        if !was.is_empty() && was != self.fetched {
+            self.status_at = u64::MAX;
+        }
         // The checkout is what every read is answered from, so it goes to what
         // came back — unless this host's own commits are ahead of it, which are
         // intentions it keeps (161, D4a, 169).
@@ -652,13 +675,29 @@ impl Records for GitStore {
             })?;
             return Ok(PutOutcome::Written { seq: record.seq + 1 });
         }
-        let held = self.get(id)?.map(|o| o.seq).unwrap_or(0);
+        let standing = self.get(id)?;
+        let held = standing.as_ref().map(|o| o.seq).unwrap_or(0);
         if held != base_seq {
             return Ok(PutOutcome::Rejected { held_seq: held });
         }
-        self.on_fetched_head()?;
+        // Writing what is already there is not a write: reading the same
+        // stores twice with nothing changed produces the same conclusion and
+        // no writes, and the sequence is the token of a change rather than of a
+        // pass (78, 127, 167). The test is the file itself — the bytes this put
+        // would leave against the bytes on the shared line, with the sequence
+        // taken out of both, because the sequence is the one field a put of its
+        // own accord moves.
         let mut next = record.clone();
+        next.seq = held;
+        let would = envelope::write_all(std::slice::from_ref(&next));
+        if let Some(standing) = &standing {
+            if would == envelope::write_all(std::slice::from_ref(standing)) {
+                return Ok(PutOutcome::Written { seq: held });
+            }
+        }
+        self.on_fetched_head()?;
         next.seq = held + 1;
+        self.state_writes += 1;
         self.write_file(&layout::object(id),
             &envelope::write_all(std::slice::from_ref(&next)),
         )?;
@@ -1362,6 +1401,12 @@ impl GitStore {
         // point it is as of is not something it projects: a body that differs
         // only in its stamp is the body that is already there, and writing what
         // is already there is not a write (77, 78, 127, 131, 142, D12).
+        // Rendered now, from the state as it now stands: whether or not the
+        // body turns out to be the one already there, the projection is as-of
+        // this store's newest state write and the rail's `status` region has
+        // nothing left to ask for (77, 78, `record-derived.yaml`
+        // rail.status_current).
+        self.status_at = self.state_writes;
         let held = self.read_file(layout::STATUS)?;
         if held.as_deref().map(without_the_stamp) == Some(without_the_stamp(body)) {
             return Ok(());
@@ -1390,6 +1435,13 @@ impl GitStore {
         objects::reaches(&self.odb, older, newer).unwrap_or(false)
     }
 
+    /// Whether the projection on the shared line is as of this store's newest
+    /// state write — `rail.status_current` as the git profile answers it
+    /// (`record-derived.yaml`).
+    pub fn status_is_current(&self) -> bool {
+        self.status_at == self.state_writes
+    }
+
     /// The status file as it stands on the shared line: what the operator reads
     /// with no host running (145, S20).
     pub fn committed_status(&self) -> Result<Option<String>> {
@@ -1399,6 +1451,15 @@ impl GitStore {
 
 impl flywheel_engine::runtime::EvidenceSource for GitStore {
     fn evidence(&self, object: &str, _region: &str, name: &str) -> Option<Value> {
+        // The projection carries the read's as-of point: it was last rendered
+        // after this store's newest state write, so there is nothing for the
+        // rail's `status` region to ask for and it does not fire. Without an
+        // answer here the region re-entered on every tick, which is a
+        // transition, a run-record entry and a commit for a projection that had
+        // not moved (77, 78, 142, `record-derived.yaml` rail.status_current).
+        if name == "rail.status_current" {
+            return Some(Value::Bool(self.status_at == self.state_writes));
+        }
         // What this process was told first, then what the shared line holds:
         // a host that has just been told something has not yet committed it,
         // and both are the same world (B.3).
@@ -1534,7 +1595,7 @@ fn under(root: &Path, prefix: &str, into: &mut Vec<String>) {
 /// A status body without the line stating the point it is as of, which is what
 /// tells a projection that moved from one that only says when it was read
 /// (77, 145).
-fn without_the_stamp(body: &str) -> String {
+pub fn without_the_stamp(body: &str) -> String {
     body.lines()
         .filter(|line| !line.contains("as-of") && !line.contains("as of"))
         .collect::<Vec<_>>()

@@ -297,6 +297,16 @@ fn a_link_the_machinery_wrote_is_fetched() {
     let _ = std::fs::remove_dir_all(&dir);
 }
 
+/// The repositories `scenarios/rail-mockup.yaml` describes work in.
+///
+/// A host seeded with that description declares them, because a described
+/// instance whose host covers none of the repositories it names is an instance
+/// in which every object of it waits under attention and none of the decisions
+/// it was written to show can stand (149).
+fn mockup_repositories() -> Vec<String> {
+    vec!["atlas".into(), "switchboard".into(), "new-repo".into()]
+}
+
 /// The workspace root, where the scenarios live.
 fn workspace() -> std::path::PathBuf {
     std::path::Path::new(env!("CARGO_MANIFEST_DIR"))
@@ -325,7 +335,7 @@ fn a_seeded_host_serves_the_scenarios_rail() {
         flywheel_domain::set::load().unwrap(),
         git,
         Bindings { world: "host".into(), workspace: "recorded".into(), sessions: "operator".into() },
-        Declaration { repositories: vec![], types: vec![], kinds: vec!["all".into()] },
+        Declaration { repositories: mockup_repositories(), types: vec![], kinds: vec!["all".into()] },
         now,
     );
     host.sinks.address = "http://laptop.example/willdan".into();
@@ -334,6 +344,7 @@ fn a_seeded_host_serves_the_scenarios_rail() {
         &mut host.store.git,
         &workspace().join("scenarios/rail-mockup.yaml"),
         now,
+        &host.declaration.clone(),
     )
     .expect("the scenario's given state goes into the state store");
     assert_eq!(seeded.register_start, Some(412), "the scenario names the register's start");
@@ -464,7 +475,7 @@ fn a_tap_on_the_seeded_rail_answers_and_the_next_render_shows_it() {
         flywheel_domain::set::load().unwrap(),
         git,
         Bindings { world: "host".into(), workspace: "recorded".into(), sessions: "operator".into() },
-        Declaration { repositories: vec![], types: vec![], kinds: vec!["all".into()] },
+        Declaration { repositories: mockup_repositories(), types: vec![], kinds: vec!["all".into()] },
         now,
     );
     host.sinks.address = "http://laptop.example/willdan".into();
@@ -472,6 +483,7 @@ fn a_tap_on_the_seeded_rail_answers_and_the_next_render_shows_it() {
         &mut host.store.git,
         &workspace().join("scenarios/rail-mockup.yaml"),
         now,
+        &host.declaration.clone(),
     )
     .expect("the scenario's given state goes into the state store");
 
