@@ -187,7 +187,7 @@ fn readme_walkthrough_runs() {
             "/api/tools/capture",
             &format!("text=the rows lose their numbers on page {n}&source=page"),
         );
-        assert!(answered.contains("\"recorded\":true"), "{answered}");
+        used(&answered);
     }
     // The curator's surface, once the tick has charged curation (110, 93b).
     let page = wait_for("id=\"curate-box\"");
@@ -212,7 +212,7 @@ fn readme_walkthrough_runs() {
         .collect::<Vec<_>>()
         .join("&");
     let curated = post("/api/curate", &body);
-    assert!(curated.contains("\"recorded\":true"), "{curated}");
+    used(&curated);
 
     // The decision the joins raise, on the served rail with its number (15,
     // 109, 110).
@@ -222,7 +222,7 @@ fn readme_walkthrough_runs() {
 
     // And the answer, through the same tool a numbered chat reply calls (193).
     let answered = post("/api/tools/answer", &format!("decision={number}&answer=yes"));
-    assert!(answered.contains("\"recorded\":true"), "{answered}");
+    used(&answered);
     let _ = host.kill();
     let _ = host.wait();
 
@@ -290,14 +290,36 @@ fn wait_for_the_page() -> String {
     panic!("the page never answered at the operator's own port");
 }
 
+/// A control on the page, submitted the way a browser submits one: a form
+/// body, with the whole reply kept, because what a control answers is a status
+/// and a place to go and not a document (310, 311).
 fn post(path: &str, body: &str) -> String {
-    speak(&format!(
-        "POST {path} HTTP/1.1\r\nHost: localhost:4242\r\n\
-         Content-Type: application/x-www-form-urlencoded\r\nContent-Length: {}\r\n\
-         Connection: close\r\n\r\n{body}",
-        body.len()
-    ))
-    .expect("the page takes the call")
+    let mut socket = std::net::TcpStream::connect("127.0.0.1:4242").expect("the page answers");
+    socket
+        .write_all(
+            format!(
+                "POST {path} HTTP/1.1\r\nHost: localhost:4242\r\n\
+                 Content-Type: application/x-www-form-urlencoded\r\nContent-Length: {}\r\n\
+                 Connection: close\r\n\r\n{body}",
+                body.len()
+            )
+            .as_bytes(),
+        )
+        .expect("the request is sent");
+    let mut text = String::new();
+    socket.read_to_string(&mut text).expect("the page replies");
+    text
+}
+
+/// A control used: the operator is returned to the page they were on, and the
+/// page they land on carries no refusal (310). What the control did is read
+/// from the page and the state afterwards, never from the reply.
+fn used(answered: &str) {
+    assert!(
+        answered.starts_with("HTTP/1.1 303 See Other"),
+        "a control returns the operator to the page (310): {answered}"
+    );
+    assert!(!answered.contains("?refused="), "the control was refused: {answered}");
 }
 
 fn speak(request: &str) -> std::io::Result<String> {

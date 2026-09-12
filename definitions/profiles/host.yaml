@@ -12,9 +12,10 @@
 # default host — and the machines, their proofs and every name below are the
 # same under either.
 #
-# Tools: git (libgit2 through the `gix` crate for reads, the `git` binary for
-# merges, rebases and pushes so hooks and credentials behave as the operator's
-# do); worktrunk `wt` for places (`wt worktree add/remove`, `wt tether` for
+# Tools: git (the `gix` crate, a pure-Rust implementation, for every read —
+# in the host's own process, never a `git show`, `git cat-file` or `git
+# ls-tree` per file; the `git` binary for merges, rebases and pushes so hooks
+# and credentials behave as the operator's do); worktrunk `wt` for places (`wt worktree add/remove`, `wt tether` for
 # the processes bound to a worktree, portless for ports and, under the local
 # router, endpoints; the `router:` section below binds the other routers);
 # mdBook books; OpenSpec change directories;
@@ -242,8 +243,9 @@ tier:
     a chat message, a webhook body — beside it (217e), both bounded per tick
     with the remainder carried to the next. Which of the two a tick runs at
     all, and at which model class, is the plan's fact (294, identity.yaml
-    plans.limits): a plan that buys neither has its free text interpreted in
-    the page by the browser model (216a) and its self-contained captures
+    plans.limits): a plan that buys neither has no free-text interpretation
+    at all, its page being controls, commands and the numbered grammar
+    (216a, 19), and its self-contained captures
     triaged in one daily batch at the sweep (273, 281). Two things never run in it:
     triage over raw material a capture points at (263) and every elaboration
     and construction session, which run on a machine of the operator's own or
@@ -262,7 +264,7 @@ tier:
   tagging: "the session tag of 259 is matched by the tier role's own policy over every key and object of the account, the resource's instance tag equal to the session's, so no key names a role and no role is added for an instance"
   liveness: "an invoked host is alive while its scheduler entry stands or its queue holds items (292): it heartbeats once per tick, `host.last_seen` reads the later of that heartbeat and the standing entry's due time and reads now while an item is queued (record-derived.yaml), so its stale window is the due time it wrote plus the engine's grace and 150's takeover is raised for it only past that. A host with no entry, no queued item and no heartbeat inside the window is gone"
   notify: "notification is primary and the poll is the backstop (274, 166): seconds where a live push reaches the host, a named interval where none does; no unconditional poll is the floor"
-  model: "model access on a hosted tier is the service's, carried by the tier role and metered into the plan (279, 294, identity.yaml plans.limits), unless the instance places a model key of its own instead (207) — welcome on every plan and required on none; which model provider sees rail text and messages is named in the tier statement (261). Each plan includes a budget on the small model class for the jobs the dispatcher runs inside a tick, reading a capture and answering a message (217b), and overage is metered through the payment provider (282). The model class per job is the plan's ceiling and the type's choice within it (285, stage.yaml agents). A budget spent is one attention line and a slower cadence, never a stopped loop (280): free text falls to the page's browser model (216a) and self-contained captures to the daily batch at the sweep (273, 281). The runners heading on a host's detail shows which model key that host uses and the month's model spend beside the pool hours (surfaces.md S115)"
+  model: "model access on a hosted tier is the service's, carried by the tier role and metered into the plan (279, 294, identity.yaml plans.limits), unless the instance places a model key of its own instead (207) — welcome on every plan and required on none; which model provider sees rail text and messages is named in the tier statement (261). Each plan includes a budget on the small model class for the jobs the dispatcher runs inside a tick, reading a capture and answering a message (217b), and overage is metered through the payment provider (282). The model class per job is the plan's ceiling and the type's choice within it (285, stage.yaml agents). A budget spent is one attention line and a slower cadence, never a stopped loop (280): the page needs no model and goes on working (216a), and self-contained captures fall to the daily batch at the sweep (273, 281). The runners heading on a host's detail shows which model key that host uses and the month's model spend beside the pool hours (surfaces.md S115)"
   key: "the instance's key is unwrapped only for the duration of a tick and only by the role that runs it (257); a key the host cannot reach fails closed with one attention line naming the key and since when, running work uninterrupted and nothing kept unencrypted as a fallback (260)"
   away: "an intermittent host keeps its place on a hosted tier (150a, 278): a laptop closed past its stale window is away, its leases stand and its sessions' clocks pause, and the cloud agent keeps ticking everything else, so only the work that host alone covers waits for the lid"
   add_offers: "what `+ host` offers depends on the host serving the surface, the identity kind and the plan together (295, 243, surfaces.md S120). On a `github` host the offers are only hosts the operator controls — another computer of theirs, a virtual machine on their own network, a container on a platform of their own reached with their own credentials and their own secret store (230, surfaces.yaml tools.add-host), and `adopt existing`, enrolment by token alone — with no cloud agent and no pool among them and one line in their place offering to move the instance to the hosted service (247a, identity.yaml kinds.github.upgrade). On a `frontegg` host those same offers stand and the managed ones stand beside them, each gated by the plan (279–282, identity.yaml plans): the cloud agent where `fw.ff.cloud-agent` is on (Hobby and up), a pool where `fw.ff.pools` is (Pro and up), and the dedicated compute of tier 3's second shape where `fw.ff.dedicated-compute` is (Enterprise, 276a, tier.dedicated). An offer the plan does not unlock is not shown; the tool behind it is still guarded by its permission (280, 250)"

@@ -341,6 +341,7 @@ async fn main() -> Result<()> {
             manifest,
         } => {
             let report = init::run(init::Init {
+                at: chrono::Utc::now(),
                 instance: instance.clone(),
                 host: host.clone(),
                 root: root.clone(),
@@ -454,7 +455,17 @@ async fn main() -> Result<()> {
                     let mut host =
                         flywheel::host::Host::open(manifest, name, root.as_deref(), chrono::Utc::now())?;
                     let at = host.now();
-                    let seeded = flywheel::seed::from_scenario(&mut host.store.git, &scenario, at)?;
+                    // A seed naming what this host's declaration does not cover
+                    // is refused with what is missing, rather than put into an
+                    // instance where every object of it waits under attention
+                    // (149, 205).
+                    let declaration = host.declaration.clone();
+                    let seeded = flywheel::seed::from_scenario(
+                        &mut host.store.git,
+                        &scenario,
+                        at,
+                        &declaration,
+                    )?;
                     println!(
                         "seeded {} objects from {} at {}",
                         seeded.objects,

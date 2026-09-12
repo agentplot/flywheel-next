@@ -174,6 +174,10 @@ impl GitStore {
             spawned_at_tick: 0,
             guards: BTreeMap::new(),
             in_tick: false,
+            // A store just opened has written nothing and projected nothing,
+            // and a projection on the shared line was written by some other
+            // host's run: the first tick renders, which is what a host coming
+            // up must do anyway (145).
             reread_after_rejection: false,
             reads_since_notify: 0,
             pending: vec![],
@@ -214,6 +218,7 @@ impl GitStore {
         // intentions, not facts (161), but they are the state it is working
         // and it must read back what it wrote or it would decide the same
         // thing again on every tick (151, D4a).
+        self.fetched = String::new();
         self.fetched = match self.disconnected {
             true => objects::rev(&self.odb, "HEAD")?.or(self.shared_head()?),
             false => self.shared_head()?.or(objects::rev(&self.odb, "HEAD")?),
@@ -763,12 +768,27 @@ impl Records for GitStore {
             })?;
             return Ok(PutOutcome::Written { seq: record.seq + 1 });
         }
-        let held = self.get(id)?.map(|o| o.seq).unwrap_or(0);
+        let standing = self.get(id)?;
+        let held = standing.as_ref().map(|o| o.seq).unwrap_or(0);
         if held != base_seq {
             return Ok(PutOutcome::Rejected { held_seq: held });
         }
-        self.on_fetched_head()?;
+        // Writing what is already there is not a write: reading the same
+        // stores twice with nothing changed produces the same conclusion and
+        // no writes, and the sequence is the token of a change rather than of a
+        // pass (78, 127, 167). The test is the file itself — the bytes this put
+        // would leave against the bytes on the shared line, with the sequence
+        // taken out of both, because the sequence is the one field a put of its
+        // own accord moves.
         let mut next = record.clone();
+        next.seq = held;
+        let would = envelope::write_all(std::slice::from_ref(&next));
+        if let Some(standing) = &standing {
+            if would == envelope::write_all(std::slice::from_ref(standing)) {
+                return Ok(PutOutcome::Written { seq: held });
+            }
+        }
+        self.on_fetched_head()?;
         next.seq = held + 1;
         self.write_file(&layout::object(id),
             &envelope::write_all(std::slice::from_ref(&next)),
@@ -883,29 +903,6 @@ impl Records for GitStore {
 }
 
 impl GitStore {
-    /// The object a response file concerns: the one it names, or the one the
-    /// register says its number belongs to (130, `record-derived.yaml`).
-    fn answered_object(&self, path: &str) -> Result<Option<String>> {
-        let Some(text) = self.read_file(path)? else {
-            return Ok(None);
-        };
-        let Some(record) = rec::parse(&text).first().cloned() else {
-            return Ok(None);
-        };
-        let response = records::response_from_record(&record)?;
-        if response.object.is_some() {
-            return Ok(response.object);
-        }
-        let Some(number) = response.decision else {
-            return Ok(None);
-        };
-        // A decision's id is `<object>/<kind>/<since>`.
-        Ok(flywheel_domain::commands::register(self)?
-            .decision_of(number)
-            .and_then(|decision| decision.rsplitn(3, '/').nth(2))
-            .map(String::from))
-    }
-
     /// The decision numbers the register gave this object, standing or
     /// retracted.
     ///
@@ -915,6 +912,39 @@ impl GitStore {
     /// that is what lets a late answer resolve to the object it was for and be
     /// reported rather than silently lost (`record-derived.yaml` responses, 6,
     /// 15).
+    /// The objects the responses in one response file answer: the one each
+    /// names, and the one the register says its number belongs to (15, 137).
+    ///
+    /// A register entry is keyed `<object>/<kind>/<entered_at>`, and neither the
+    /// kind nor the moment carries a `/`, so the object is what is left when
+    /// the last two are taken off.
+    fn answers_for(&self, path: &str) -> Result<Vec<String>> {
+        let Some(text) = self.read_file(path)? else {
+            return Ok(vec![]);
+        };
+        let register = flywheel_domain::commands::register(self)?;
+        let mut out = Vec::new();
+        for record in rec::parse(&text) {
+            let Ok(response) = records::response_from_record(&record) else {
+                continue;
+            };
+            if let Some(object) = &response.object {
+                out.push(object.clone());
+            }
+            let Some(number) = response.decision else {
+                continue;
+            };
+            for (decision, _) in register.entries.iter().filter(|(_, e)| e.number == number) {
+                let mut parts = decision.rsplitn(3, '/');
+                let (_moment, _kind, object) = (parts.next(), parts.next(), parts.next());
+                if let Some(object) = object {
+                    out.push(object.to_string());
+                }
+            }
+        }
+        Ok(out)
+    }
+
     fn numbers_of(&self, id: &str) -> Result<Vec<u32>> {
         if id == flywheel_domain::RAIL {
             return Ok(vec![]);
@@ -1275,17 +1305,16 @@ impl StateStore for GitStore {
             .iter()
             .filter_map(|p| layout::touched(p).map(str::to_string))
             .collect();
-        // A response is state that changed too, and what changed by it is the
-        // object it answers — which is not named anywhere in its path (130).
-        // Without this the operator's answer waits for the sweep: the page
-        // records it, the loop takes a pass, nothing on the rail moves, and the
-        // decision sits there answered for up to a minute. 13 says a response
-        // is enough and the operator never nudges; a minute of the rail
-        // unchanged is what makes them reach for the nudge.
+        // An answer moves no object file — a response is a record of its own,
+        // under `responses/` and not under `objects/` — so a notice taken from
+        // the changed object files alone named nothing at all when the operator
+        // answered. The loop woke, found nothing to tick, and the answer waited
+        // out the sweep: up to a minute in which the operator had clicked and
+        // the page showed them nothing, which is the moment 13 says they never
+        // have to nudge through. What a response is a notice about is the
+        // object it answers (13, 129, 130, D6).
         for path in changed.iter().filter(|p| p.starts_with(layout::RESPONSES)) {
-            if let Some(object) = self.answered_object(path)? {
-                objects.push(object);
-            }
+            objects.extend(self.answers_for(path)?);
         }
         objects.sort();
         objects.dedup();

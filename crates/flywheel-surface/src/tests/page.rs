@@ -730,3 +730,71 @@ fn an_answer_that_takes_an_argument_takes_it_on_the_card() {
     let bare = &bare[..bare.find("</form>").expect("it closes")];
     assert!(!bare.contains("type=\"text\""), "a yes asks for something to type: {bare}");
 }
+
+/// The curator's surface stands while the curation is running and goes when it
+/// is not (110, `curation.yaml`).
+///
+/// It was read off the session fact carrying no `ended_at`, which is not a
+/// reading of anything: a session that reports an exit reaches `exited`, and
+/// `end_session` — the only writer of `ended_at` — runs from `ended` alone,
+/// which the owner's explicit end reaches (`session.yaml`). So the box stayed on
+/// the page after the curation closed, offering the operator moves over signals
+/// whose moves were already recorded, and a submit on it would have delivered a
+/// second exit for a session that had already reported one.
+#[test]
+fn the_curators_surface_goes_when_the_curation_does() {
+    let mut store = FakeStore::default();
+    let defs = flywheel_domain::set::load().expect("the embedded definitions");
+    let at = commands::now(&store).expect("a point");
+    commands::put_new(
+        &mut store,
+        &defs,
+        "curation/willdan",
+        "curation",
+        None,
+        [("threshold".to_string(), json!(2))].into_iter().collect(),
+        at,
+    )
+    .unwrap();
+    // The session the run charged, as the operator's runner records it.
+    let session = flywheel_engine::Object {
+        id: "fact/session/curation/willdan/main/1".into(),
+        machine: "fact".into(),
+        parent: None,
+        config: Default::default(),
+        entered_at: Default::default(),
+        record: [
+            ("started_at".to_string(), json!(at.to_rfc3339())),
+            ("ended_at".to_string(), serde_json::Value::Null),
+            ("place".to_string(), json!("curation/willdan")),
+        ]
+        .into_iter()
+        .collect(),
+        counters: Default::default(),
+        applied_responses: vec![],
+        seq: 0,
+        created: 0,
+    };
+    store.put(&session.id, &session, 0).unwrap();
+
+    let running = |store: &FakeStore, state: &str| -> Option<String> {
+        let mut curation = Records::get(store, "curation/willdan").unwrap().unwrap();
+        curation.config.insert("run".into(), state.into());
+        let objects: Vec<flywheel_engine::Object> = vec![curation, session.clone()];
+        crate::page::curating(&objects)
+    };
+
+    assert_eq!(
+        running(&store, "running").as_deref(),
+        Some("curation/willdan/main/1"),
+        "the operator is being asked, so the surface names the session to deliver under"
+    );
+    // The exit was reported: the run applied the moves and went idle. The
+    // session fact still carries no `ended_at`, and there is nothing to curate.
+    assert_eq!(running(&store, "applying"), None);
+    assert_eq!(
+        running(&store, "idle"),
+        None,
+        "the curator's surface outlived the curation it belonged to"
+    );
+}

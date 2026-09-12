@@ -2,6 +2,7 @@ scenario: S18
 title: a host's network drops for an hour; it finishes what it owned and commits locally; on reconnect its commits land and nothing of others is lost
 profiles: [git-only]
 satisfies: [151, 165]
+requires: [real-hosts]
 given:
   objects:
     - {id: bolt/atlas/plan-rows, machine: bolt, state: {life: open, line: current, place: ready, open.citations: current, open.close: not-offered}, record: {repository: atlas}}

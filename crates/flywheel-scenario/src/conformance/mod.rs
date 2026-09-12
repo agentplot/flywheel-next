@@ -11,6 +11,8 @@ pub mod assertions;
 pub mod drive;
 pub mod hosts;
 pub mod interpreter;
+pub mod invariants;
+pub mod phase;
 pub mod record;
 pub mod schema;
 pub mod trace;
@@ -94,7 +96,20 @@ impl RunOptions {
     /// records the workspace and scripts the sessions, so it provides neither
     /// (93a, 93b).
     pub fn provides(&self) -> Vec<Requirement> {
-        vec![]
+        // The workspace is recorded and the sessions are scripted in every
+        // configuration this release runs; hosts are real under `--hosts real`.
+        match self.hosts_real {
+            true => vec![Requirement::RealHosts],
+            false => vec![],
+        }
+    }
+
+    /// The same run, with the hosts as processes of their own (D15).
+    pub fn with_real_hosts(&self) -> RunOptions {
+        RunOptions {
+            hosts_real: true,
+            ..self.clone()
+        }
     }
 
     /// Hooks are honoured only when the runner holds the engine itself, which
@@ -189,7 +204,30 @@ impl RunReport {
         if self.outcomes.iter().any(|o| o.status == Status::Failed) {
             return 1;
         }
+        // A row the acceptance table lists that this run skipped, or found not
+        // applicable, is a failure of the run: the phase accepts the row, so
+        // a configuration under which it never plays proves nothing about it
+        // (93a, tasks 2.15 and 11.4).
+        if !self.listed_but_not_run().is_empty() {
+            return 1;
+        }
         0
+    }
+
+    /// The rows of the acceptance table this run held and did not play — each
+    /// with the reason the run gave (93a).
+    pub fn listed_but_not_run(&self) -> Vec<(String, String)> {
+        self.outcomes
+            .iter()
+            .filter(|o| !matches!(o.status, Status::Passed | Status::Failed))
+            .filter(|o| phase::accepted(&o.scenario) || phase::accepted(&file_name(&o.path)))
+            .map(|o| {
+                (
+                    o.scenario.clone(),
+                    format!("{:?}: {}", o.status, o.reason.clone().unwrap_or_default()),
+                )
+            })
+            .collect()
     }
 
     pub fn ran(&self) -> Vec<&Outcome> {
@@ -350,7 +388,16 @@ pub fn run(paths: &[PathBuf], options: &RunOptions) -> Result<RunReport> {
     }
     for path in paths {
         for file in scenario_files(path)? {
-            let outcome = run_one(&file, options);
+            // A row that declares the mode it needs is run in that mode, so a
+            // set run in process still plays its real-host rows and a skip
+            // means the row named nothing this run could provide (93a, D15).
+            let declared_real_hosts = flywheel_atoms::conformance::load(&file)
+                .map(|(scenario, _)| scenario.requires.contains(&Requirement::RealHosts))
+                .unwrap_or(false);
+            let outcome = match declared_real_hosts && !options.hosts_real {
+                true => run_one(&file, &options.with_real_hosts()),
+                false => run_one(&file, options),
+            };
             report.record.saw(&outcome);
             report.outcomes.push(outcome);
         }
@@ -515,6 +562,12 @@ pub struct Run {
 /// A scenario that runs against no configuration at all is a failure, never a
 /// silent pass (D15). The acceptance table is the caller's; this is the check
 /// it uses.
+/// A scenario file's name without its extension: how the acceptance table and
+/// this repository's tasks name a scenario.
+fn file_name(path: &Path) -> String {
+    path.file_stem().map(|s| s.to_string_lossy().to_string()).unwrap_or_default()
+}
+
 pub fn every_listed_scenario_ran(listed: &[String], report: &RunReport) -> Vec<String> {
     listed
         .iter()

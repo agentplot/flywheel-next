@@ -202,8 +202,8 @@ pub fn evidence<S: Records>(
         // the rail fires `render_status` and writes its record for ever —
         // which is most of what an idle instance was committing.
         "rail.status_current" => {
-            json!(crate::commands::status_as_of(store).ok()?
-                >= crate::commands::newest_state_seq(store).ok()?)
+            let drawn = crate::commands::status_of(store).ok()?;
+            json!(drawn.is_some() && drawn == crate::commands::state_mark(store).ok())
         }
         "lease.holder_is_me" => json!(store
             .leases(lease_object(object))
@@ -501,7 +501,242 @@ pub fn evidence<S: Records>(
         // what a session delivered, so they are the sessions binding's and are
         // answered where the session id is known
         // (`flywheel-sessions-operator::evidence`, 93b).
+        // ---- the rail's register (15, `record-derived.yaml` rail.unnumbered)
+        //
+        // Read against the decisions standing after the last derive and the
+        // register that numbered them, which the tick hands in: a standing
+        // decision the register has no entry for is unnumbered.
+        "rail.unnumbered" => json!(reading
+            .standing
+            .iter()
+            .any(|id| !reading.register.entries.contains_key(id))),
+        "rail.numbered" => json!(reading
+            .standing
+            .iter()
+            .all(|id| reading.register.entries.contains_key(id))),
+
+        // ---- intents and their elaborations (22, 39, 188)
+        //
+        // `get(parent).state is proposed`: the elaboration's decision folds
+        // into the intent's while the intent itself is proposed.
+        "elaboration.shown_with_parent" => json!(held
+            .as_ref()
+            .and_then(|o| o.parent.clone())
+            .and_then(|p| store.get(&p).ok().flatten())
+            .and_then(|p| p.top_state().map(String::from))
+            .is_some_and(|s| s == "proposed")),
+        // `get(id).kept_at`: absent until the operator keeps it, and a guard
+        // reading `older:` on an absent time reads it as not yet (26).
+        "elaboration.kept_since" => field("kept_at").filter(|v| !v.is_null())?,
+        // Every covered intent beyond the parent has its records; true at once
+        // when `covers` names the parent alone (188, `record_per_intent`).
+        "elaboration.records_fanned_out" => {
+            let parent = held.as_ref().and_then(|o| o.parent.clone()).unwrap_or_default();
+            let covers: Vec<String> = field("covers")
+                .and_then(|v| serde_json::from_value(v).ok())
+                .unwrap_or_default();
+            let fanned: Vec<String> = field("fanned_out")
+                .and_then(|v| serde_json::from_value(v).ok())
+                .unwrap_or_default();
+            json!(covers.iter().filter(|i| **i != parent).all(|i| fanned.contains(i)))
+        }
+        // The state of the newest elaboration owned by another intent whose
+        // `covers` name this one: none, proposed, active or done (188).
+        "intent.covered_by" => {
+            let newest = store
+                .list_records(&Scope::Machine("elaboration".into()))
+                .unwrap_or_default()
+                .into_iter()
+                .filter(|e| e.parent.as_deref().is_some_and(|p| p != object))
+                .filter(|e| crate::effects::covers(e).iter().any(|c| c == object))
+                .max_by_key(|e| e.entered_at.get("life").copied());
+            json!(match newest.as_ref().and_then(|e| e.top_state()) {
+                None => "none",
+                Some("proposed") => "proposed",
+                Some("done") | Some("finished") | Some("closed") | Some("landed") => "done",
+                Some(_) => "active",
+            })
+        }
+        // `get(intent).close_declined_at` is newer than every child
+        // elaboration's entry into done (22, 39).
+        "intent.close_declined_since_last_final" => {
+            let Some(declined) = time_field(field("close_declined_at")) else {
+                return Some(json!(false));
+            };
+            let last_final = crate::effects::children(store, object, "elaboration")
+                .unwrap_or_default()
+                .into_iter()
+                .filter(|e| e.top_state().is_some_and(|s| s == "done"))
+                .filter_map(|e| e.entered_at.get("life").copied())
+                .max();
+            json!(last_final.is_none_or(|t| declined > t))
+        }
+
+        // ---- bolts and their units (35, 55, 103)
+        //
+        // A unit of the bolt in in-flight or merged cites a claim the records
+        // hold at a newer version, with no citation choice recorded on the
+        // bolt for that claim and version.
+        "bolt.citations_moved" => {
+            let choices = choices_of(held.as_ref());
+            json!(crate::effects::children(store, object, "unit")
+                .unwrap_or_default()
+                .iter()
+                .filter(|u| u.top_state().is_some_and(|s| s == "in-flight" || s == "merged"))
+                .any(|u| moved_citation(store, u, &choices).is_some()))
+        }
+        // `get(id).claims` names claim@v, the records hold that claim at a
+        // version above v, and `get(id).citation_choices` holds no choice for it.
+        "unit.claim_moved" => json!(held
+            .as_ref()
+            .and_then(|u| moved_citation(store, u, &choices_of(Some(u))))
+            .is_some()),
+        // A unit with parent = bolt, type chore, in a state before merged.
+        "bolt.chores_outstanding" => json!(crate::effects::children(store, object, "unit")
+            .unwrap_or_default()
+            .iter()
+            .filter(|u| u.record.get("type").and_then(|v| v.as_str()) == Some("chore"))
+            .any(|u| !u.top_state().is_some_and(|s| matches!(
+                s,
+                "merged" | "landed" | "withdrawn" | "retired" | "dropped" | "superseded"
+            )))),
+        // `get(bolt).held_at` is newer than every child unit's entry into merged.
+        "bolt.hold_since_last_merge" => {
+            let Some(held_at) = time_field(field("held_at")) else {
+                return Some(json!(false));
+            };
+            let last_merge = crate::effects::children(store, object, "unit")
+                .unwrap_or_default()
+                .into_iter()
+                .filter(|u| u.top_state().is_some_and(|s| s == "merged" || s == "landed"))
+                .filter_map(|u| u.entered_at.get("life").copied())
+                .max();
+            json!(last_merge.is_none_or(|t| held_at > t))
+        }
+
+        // The proof of `drop_signals`: every signal the intent cites carries a
+        // drop (107, 116).
+        "intent.signals_dropped" => {
+            let cited: Vec<String> = field("signals")
+                .and_then(|v| serde_json::from_value(v).ok())
+                .unwrap_or_default();
+            json!(cited.iter().all(|named| {
+                let id = match named.starts_with("signal/") {
+                    true => named.clone(),
+                    false => format!("signal/{named}"),
+                };
+                store
+                    .get(&id)
+                    .ok()
+                    .flatten()
+                    .and_then(|s| s.record.get("move").cloned())
+                    .and_then(|m| m.get("target").and_then(|t| t.as_str()).map(String::from))
+                    .is_some_and(|t| t.starts_with("drop"))
+            }))
+        }
+        // The proof of `set_covers`: the record's covers are set (188).
+        "elaboration.covers_set" => json!(field("covers")
+            .and_then(|v| v.as_array().map(|a| !a.is_empty()))
+            .unwrap_or(false)),
+        // The proof of `record_citation_choice`, on a unit or a bolt: no cited
+        // claim has moved without a choice recorded for it (35, 103).
+        "citation_choice_recorded" => {
+            let Some(mine) = held.as_ref() else {
+                return Some(json!(true));
+            };
+            let moved = match mine.machine.as_str() {
+                "unit" => moved_citation(store, mine, &choices_of(Some(mine))).is_some(),
+                "bolt" => {
+                    let choices = choices_of(Some(mine));
+                    crate::effects::children(store, object, "unit")
+                        .unwrap_or_default()
+                        .iter()
+                        .any(|u| moved_citation(store, u, &choices).is_some())
+                }
+                _ => false,
+            };
+            json!(!moved)
+        }
+
+        // The state of the proposal that names this unit, or none where the
+        // unit names no proposal (172, `record-derived.yaml` unit.proposal).
+        "unit.proposal" => json!(field("proposal")
+            .and_then(|v| v.as_str().map(String::from))
+            .filter(|p| !p.is_empty())
+            .and_then(|p| store.get(&p).ok().flatten())
+            .and_then(|p| p.top_state().map(String::from))
+            .unwrap_or_else(|| "none".into())),
+
+        // ---- planning and proposals (28, 35, 172)
+        "planning.planned_fingerprint" => field("planned_fingerprint").filter(|v| !v.is_null())?,
+        "planning.redo_pending" => json!(field("redo_notes").is_some_and(|v| match v {
+            Value::String(s) => !s.trim().is_empty(),
+            Value::Array(a) => !a.is_empty(),
+            Value::Null => false,
+            _ => true,
+        })),
+        // A proposal record of the same repository with a newer entered_at.
+        "proposal.replaced" => {
+            let Some(mine) = held.as_ref() else {
+                return Some(json!(false));
+            };
+            let repository = mine.record.get("repository").cloned();
+            let since = mine.entered_at.get("life").copied();
+            json!(store
+                .list_records(&Scope::Machine("proposal".into()))
+                .unwrap_or_default()
+                .iter()
+                .filter(|p| p.id != mine.id && p.record.get("repository") == repository.as_ref())
+                .any(|p| p.entered_at.get("life").copied() > since))
+        }
         _ => return None,
+    })
+}
+
+/// A record field holding a time, where it holds one.
+fn time_field(value: Option<Value>) -> Option<DateTime<Utc>> {
+    value
+        .and_then(|v| v.as_str().map(String::from))
+        .and_then(|t| DateTime::parse_from_rfc3339(&t).ok())
+        .map(|t| t.with_timezone(&Utc))
+}
+
+/// The citation choices a record holds: `claim@version` names the operator
+/// chose for (35, 103).
+fn choices_of(object: Option<&flywheel_engine::Object>) -> Vec<String> {
+    object
+        .and_then(|o| o.record.get("citation_choices").cloned())
+        .and_then(|v| serde_json::from_value(v).ok())
+        .unwrap_or_default()
+}
+
+/// The first claim a unit cites whose standing version, as the records hold
+/// it, is newer than the one cited and for which no choice is recorded: the
+/// claim's record is `claim/<repository>/<name>` with its `version` (35, 103).
+fn moved_citation<S: Records>(
+    store: &S,
+    unit: &flywheel_engine::Object,
+    choices: &[String],
+) -> Option<String> {
+    let cited: Vec<String> = unit
+        .record
+        .get("claims")
+        .cloned()
+        .and_then(|v| serde_json::from_value(v).ok())
+        .unwrap_or_default();
+    let repository = unit.record.get("repository").and_then(|v| v.as_str()).unwrap_or_default();
+    cited.into_iter().find(|named| {
+        let (name, version) = crate::signals::claim_named(named);
+        let Some(version) = version else {
+            return false;
+        };
+        let standing = store
+            .get(&format!("claim/{repository}/{name}"))
+            .ok()
+            .flatten()
+            .and_then(|c| c.record.get("version").and_then(|v| v.as_u64()))
+            .map(|v| v as u32);
+        standing.is_some_and(|v| v > version) && !choices.iter().any(|c| c == named)
     })
 }
 

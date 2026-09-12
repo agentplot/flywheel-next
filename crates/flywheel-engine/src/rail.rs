@@ -32,10 +32,6 @@ pub fn batch_of(defs: &Definitions, obj: &Object, region: &str) -> Option<(Strin
     Some((field.clone(), value))
 }
 
-/// The engine machine whose objects carry no rail decision: a lease is the
-/// machinery's own and is reported under the status view (79, 141).
-pub const LEASE: &str = "lease";
-
 /// Whether two objects' decisions of one kind are the same decision: they fold
 /// by the same field to the same value (11).
 pub fn folds_together(defs: &Definitions, a: &Object, b: &Object, kind: &str) -> bool {
@@ -77,16 +73,6 @@ pub fn derive(defs: &Definitions, objects: &BTreeMap<String, Object>, register: 
             if !crate::tick::is_live(obj, region) { continue; }
             let Some((_reg, st)) = state_def(defs, obj, region) else { continue };
             let Some(d) = &st.decision else { continue };
-            // A lease is the machinery's own bookkeeping: which host holds an
-            // object, and whether any host's declaration covers it. Neither is
-            // a decision the operator makes, and one card per lease buries the
-            // work the rail is for — nine decisions read as seventeen. What a
-            // lease is in is reported where 141 already puts the holder: on the
-            // status view's row for the object, beside which host holds it and
-            // whether that host is alive (79, 141, 310).
-            if obj.machine == LEASE {
-                continue;
-            }
             // Decisions whose `batch` field is equal are one decision: the
             // first of them stands and names the rest, so "yes" to it is yes
             // to all of them and the rail carries one number, not six (11).

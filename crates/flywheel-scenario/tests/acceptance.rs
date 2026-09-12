@@ -10,7 +10,7 @@
 mod phase;
 
 use flywheel_atoms::conformance::{Requirement, Scenario};
-pub use phase::{ACCEPTED, DEFERRED, REAL_WORKSPACE};
+pub use phase::{ACCEPTED, DEFERRED, REAL_HOSTS, REAL_WORKSPACE};
 use flywheel_scenario::conformance::{Profile, RunOptions};
 use std::path::PathBuf;
 
@@ -58,15 +58,33 @@ fn recorded_workspace_excludes_nine() {
     );
 
     let scenarios = scenarios();
-    let skipped: Vec<&str> = scenarios
+    // What an in-process run cannot provide, read from the files: the nine
+    // that need a real workspace, which are skipped, and the three that
+    // declare real hosts, which the runner plays in that mode instead (D15).
+    let unmet: Vec<&str> = scenarios
         .iter()
         .filter(|(_, s)| s.unmet(&provided).is_some())
         .map(|(name, _)| name.as_str())
         .collect();
+    let mut declared: Vec<&str> = REAL_WORKSPACE.iter().chain(REAL_HOSTS).copied().collect();
+    declared.sort();
     assert_eq!(
-        skipped, REAL_WORKSPACE,
-        "the skipped set is what the scenario files require and nothing else"
+        unmet, declared,
+        "the set an in-process run cannot serve is what the scenario files require and nothing else"
     );
+    for name in REAL_HOSTS {
+        let (_, scenario) = scenarios
+            .iter()
+            .find(|(n, _)| n == name)
+            .unwrap_or_else(|| panic!("{name} is a scenario of the suite"));
+        assert_eq!(scenario.unmet(&provided), Some(Requirement::RealHosts), "{name} declares real hosts");
+        assert_eq!(
+            scenario.unmet(&options.with_real_hosts().provides()),
+            None,
+            "{name} is served under `--hosts real`"
+        );
+        assert!(ACCEPTED.contains(name), "{name} declares a mode and is in the acceptance table");
+    }
     for name in REAL_WORKSPACE {
         let (_, scenario) = scenarios
             .iter()
@@ -80,17 +98,22 @@ fn recorded_workspace_excludes_nine() {
     }
 
     // The twenty-one the acceptance table lists are excluded by nothing: every
-    // one applies to this store binding and requires nothing this phase does
-    // not provide, so a run of them is a run and never a silent pass (D15).
+    // one applies to this store binding and requires nothing the runner cannot
+    // provide — in process, or in the mode the row declares — so a run of them
+    // is a run and never a silent pass (D15).
     for name in ACCEPTED {
         let (_, scenario) = scenarios
             .iter()
             .find(|(n, _)| n == name)
             .unwrap_or_else(|| panic!("{name} is a scenario of the suite"));
         assert_eq!(
-            scenario.unmet(&provided),
+            scenario.unmet(&options.with_real_hosts().provides()),
             None,
-            "{name} is in the acceptance table and would be skipped"
+            "{name} is in the acceptance table and would be skipped in every mode"
+        );
+        assert!(
+            scenario.unmet(&provided).is_none() || REAL_HOSTS.contains(name),
+            "{name} is in the acceptance table and would be skipped in process for a mode it does not declare"
         );
         assert!(
             scenario.runs_on(options.profile.name()),

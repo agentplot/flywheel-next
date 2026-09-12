@@ -81,23 +81,43 @@ pub struct Read {
     pub opened: Option<String>,
 }
 
-/// The curation session the operator runs, where one is charged: the session
-/// fact with no `ended_at`, whose stem is the curation object's (93b, 110).
+/// The curation session the operator runs, where one is charged: the newest
+/// attempt under a curation object whose `run` region is `running` (93b, 110,
+/// `curation.yaml`).
+///
+/// The machine is what says whether the operator is being asked. `run` is
+/// `running` while a session stands over the unmoved signals, and the moment
+/// that session's exit is reported the run applies the moves and goes idle. A
+/// session fact carrying no `ended_at` is not that reading and never was: a
+/// session that reports an exit reaches `exited`, which is final, and
+/// `end_session` — the only thing that writes `ended_at` — runs from `ended`
+/// alone, which the owner's explicit end reaches (`session.yaml`). So the box
+/// stood on the page long after the curation it belonged to had closed, over
+/// signals whose moves were already recorded, and a submit on it would have
+/// delivered a second exit for a session that had already reported one.
 ///
 /// It is read from the same objects the rest of the page is, so the whole page
 /// is still one read (310).
 pub fn curating(objects: &[Object]) -> Option<String> {
-    let curation: Vec<&Object> = objects.iter().filter(|o| o.machine == "curation").collect();
+    let running: Vec<&str> = objects
+        .iter()
+        .filter(|o| o.machine == "curation")
+        .filter(|o| o.config.get("run").map(String::as_str) == Some("running"))
+        .map(|o| o.id.as_str())
+        .collect();
     objects
         .iter()
         .filter_map(|o| o.id.strip_prefix("fact/session/"))
-        .filter(|session| curation.iter().any(|c| session.starts_with(&format!("{}/", c.id))))
-        .find(|session| {
-            objects
-                .iter()
-                .find(|o| o.id == format!("fact/session/{session}"))
-                .and_then(|o| o.record.get("ended_at"))
-                .is_none_or(|v| v.is_null())
+        .filter(|session| running.iter().any(|c| session.starts_with(&format!("{c}/"))))
+        // The attempt standing now is the newest: a run that failed and came
+        // round again left the earlier one readable under its own number
+        // (`session.yaml` id).
+        .max_by_key(|session| {
+            session
+                .rsplit('/')
+                .next()
+                .and_then(|n| n.parse::<u64>().ok())
+                .unwrap_or(0)
         })
         .map(String::from)
 }

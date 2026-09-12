@@ -32,6 +32,7 @@ use flywheel_workspace_recorded::RecordedWorkspace;
 use flywheel_world_host::{HostWorld, Manifest};
 use serde_json::{json, Value};
 use std::cell::RefCell;
+use std::collections::BTreeMap;
 use std::path::Path;
 
 /// How often the sweep runs, whatever else happens (D7, 130). The default the
@@ -129,6 +130,11 @@ pub struct HostStore {
     /// The machine never takes that transition, because the effect is what
     /// makes it; the run record is where the host says so (79, 167).
     pub marked: RefCell<Vec<(String, String, String)>>,
+    /// What the world reports about the instance — its repositories, its App,
+    /// its hosts — read from the manifest this host opened, so the instance
+    /// machine's guards are answered on a running host and not only under
+    /// `flywheel init` (204, 207, 221; `host.yaml` instance evidence).
+    pub instance: BTreeMap<String, Value>,
 }
 
 impl HostStore {
@@ -141,6 +147,7 @@ impl HostStore {
             world: Box::new(flywheel_scenario::bindings::FilesWorld::new()),
             trace: RefCell::new(vec![]),
             marked: RefCell::new(vec![]),
+            instance: BTreeMap::new(),
         }
     }
 
@@ -321,6 +328,74 @@ impl EvidenceSource for HostStore {
                     name,
                 )
             })
+            // The change directory behind an intent, on the same shared line
+            // (A.11, 227).
+            .or_else(|| {
+                flywheel_domain::changes::evidence(
+                    &flywheel_domain::signals::Blueprints(&*self.world),
+                    object,
+                    name,
+                )
+            })
+            // What the manifest says the instance is (204, 207).
+            .or_else(|| name.starts_with("instance.").then(|| self.instance.get(name).cloned()).flatten())
+            // Curation's proofs read the blueprints and the records together
+            // (107, 109, 116).
+            .or_else(|| {
+                flywheel_domain::signals::proofs(
+                    &self.git,
+                    &flywheel_domain::signals::Blueprints(&*self.world),
+                    name,
+                )
+            })
+            // The proof of `record_refusals`: every refusal on the session's
+            // thread is in the run record (43, 79).
+            .or_else(|| {
+                (name == "session.refusals_recorded").then(|| {
+                    let stem = session_stem(object, region, self.kind_of(object).as_deref());
+                    let session = flywheel_sessions_operator::current(&self.git, &stem);
+                    let refused = self
+                        .git
+                        .thread(&session)
+                        .unwrap_or_default()
+                        .iter()
+                        .filter(|e| e.kind == "refusal")
+                        .count();
+                    let recorded = self
+                        .git
+                        .run_record()
+                        .unwrap_or_default()
+                        .iter()
+                        .filter(|e| e.kind == "refusal" && e.object == session)
+                        .count();
+                    json!(recorded >= refused)
+                })
+            })
+            // The one adapter this release ships is the meeting transcript: a
+            // source is due while the file it names has no capture yet, and
+            // run once it has (111, 215, D13; `host.yaml` host.adapters_due).
+            .or_else(|| {
+                matches!(name, "host.adapters_due" | "host.adapters_run").then(|| {
+                    let host = object.strip_prefix("host/").unwrap_or(object);
+                    let due = self.sources_declared(host).iter().any(|source| {
+                        let Some(path) = source.split_whitespace().last() else {
+                            return false;
+                        };
+                        let Ok(key) = flywheel_domain::adapters::meeting_key(path) else {
+                            return false;
+                        };
+                        std::path::Path::new(path).exists()
+                            && flywheel_domain::signals::read_capture(&*self.world, &key)
+                                .ok()
+                                .flatten()
+                                .is_none()
+                    });
+                    json!(match name {
+                        "host.adapters_due" => due,
+                        _ => !due,
+                    })
+                })
+            })
             .or_else(|| {
                 flywheel_workspace_recorded::evidence(
                     &self.git,
@@ -404,11 +479,23 @@ pub struct Host {
     pub intermittent: bool,
     /// The run record this tick is building (79-82).
     pub run: Vec<RunEntry>,
+    /// The refusals already in today's run record, by object, effect and
+    /// reason. An effect this release does not bind leaves its proof absent, so
+    /// the engine plans it on every tick and the binding refuses it on every
+    /// tick; writing that refusal each time put one commit a second on the
+    /// shared line for a deferral nothing was going to act on. 81 asks that a
+    /// refusal be reported and never dropped, not that it be reported again for
+    /// every pass in which it is still true (81, 167).
+    said: std::collections::BTreeSet<String>,
     pub last_sweep: Option<DateTime<Utc>>,
     pub last_point: ReadPoint,
     /// An away host's leases stand and its clocks pause; it writes no heartbeat
     /// while it is away (150a).
     pub away_since: Option<DateTime<Utc>>,
+    /// When this host last wrote its heartbeat. Liveness is recorded on the
+    /// sweep's cadence and not on every pass: a tick that moved nothing writes
+    /// nothing, and `cost.yaml`'s quiet tick costs no push (78, 147, 169).
+    pub last_heartbeat: Option<DateTime<Utc>>,
     /// The sinks this host presents (148, D9).
     pub sinks: Sinks,
     /// Whether the last pass moved anything that was not a re-entry. A sweep
@@ -494,6 +581,7 @@ impl Host {
         // The host's one address, from the router the manifest names: every
         // link a delivery carries is written at it (191, 205a, D10a).
         host.sinks.address = world.address_of(name)?;
+        host.store.instance = flywheel_world_host::effects::evidence(&read, None);
         host.store.world = Box::new(world);
         Ok(host)
     }
@@ -520,6 +608,7 @@ impl Host {
             bound: 4,
             intermittent: true,
             run: vec![],
+            said: Default::default(),
             last_sweep: None,
             last_point: ReadPoint {
                 mark: String::new(),
@@ -527,6 +616,7 @@ impl Host {
                 at: now,
             },
             away_since: None,
+            last_heartbeat: None,
             moved: false,
             progressed: false,
             curation: None,
@@ -558,19 +648,27 @@ impl Host {
         if self.away_since.is_some() {
             return Ok(());
         }
-        self.store.git.heartbeat(self.bound, self.intermittent)?;
         let now = self.now();
+        // The heartbeat is a push on the host's own ref, so it is written on
+        // the sweep's cadence: at the first declare of a run and then once per
+        // sweep interval, which keeps `last_seen` inside the five-minute
+        // window a stale host is read by. Every pass in between writes nothing
+        // (78, 130, 147, 150; `cost.yaml` pushes_per_tick).
+        let due = self
+            .last_heartbeat
+            .is_none_or(|last| now - last >= self.sweep_interval());
+        if due {
+            self.store.git.heartbeat(self.bound, self.intermittent)?;
+            self.last_heartbeat = Some(now);
+        }
         let id = format!("host/{}", self.name);
-        let held = self.store.get(&id)?;
-        let seq = held.as_ref().map(|o| o.seq).unwrap_or(0);
-        // The host's own object is an object like any other: what its machine
-        // reached is state, and a tick reads state rather than remembering it
-        // (7, 136). Its states and their entry times are carried forward —
-        // rebuilding the object from the record alone put every region back at
-        // its initial state with `entered_at` set to now on every tick, so the
-        // host machine could never hold a state and no `older:` guard on it
-        // could ever fire.
-        let mut object = held.unwrap_or_else(|| Object {
+        // The host object as it stands. Its own machine's states and the
+        // moments they were entered are the machine's, not this writer's: a
+        // fresh object here erased them on every tick and `initialise` put them
+        // back stamped at that tick, so the host machine started from nothing
+        // every pass and every `older:` guard on it read zero
+        // (`host.yaml`, 147).
+        let mut object = self.store.get(&id)?.unwrap_or_else(|| Object {
             id: id.clone(),
             machine: "host".into(),
             parent: None,
@@ -579,35 +677,45 @@ impl Host {
             record: Default::default(),
             counters: Default::default(),
             applied_responses: vec![],
-            seq,
+            seq: 0,
             created: 0,
         });
-        let was = object.clone();
-        object.record.insert("bound".into(), json!(self.bound));
-        object.record.insert("intermittent".into(), json!(self.intermittent));
-        object.record.insert(
-            "declares".into(),
-            json!({
-                "repositories": self.declaration.repositories,
-                "types": self.declaration.types,
-                "kinds": self.declaration.kinds,
-            }),
-        );
+        let seq = object.seq;
+        let record = &mut object.record;
+        let declared = [
+            ("bound".to_string(), json!(self.bound)),
+            ("intermittent".to_string(), json!(self.intermittent)),
+            (
+                "declares".to_string(),
+                json!({
+                    "repositories": self.declaration.repositories,
+                    "types": self.declaration.types,
+                    "kinds": self.declaration.kinds,
+                }),
+            ),
+        ];
+        // The record says what this host declares; the heartbeat says it is
+        // alive. Stamping the hour onto the record on every tick made a commit
+        // on the shared line out of a host that had done nothing and said
+        // nothing new, which is the one thing 78 asks a tick not to do. So the
+        // hour rides along with a declaration that changed and is written on
+        // its own at the first declare of a run, where a reader with no
+        // heartbeat to read needs it (78, 147, 150a, `git-only.yaml`
+        // records.hosts).
+        let changed = declared.iter().any(|(name, value)| record.get(name) != Some(value))
+            || !record.contains_key("last_seen");
+        for (name, value) in declared {
+            record.insert(name, value);
+        }
+        if changed {
+            record.insert("last_seen".into(), json!(now.to_rfc3339()));
+        }
         if object.config.is_empty() {
             flywheel_engine::initialise(&self.defs, &mut object, now);
         }
-        // What a host was last seen at is the heartbeat's, on its own branch,
-        // and never a file on the shared line: `main`'s history is state
-        // changes and nothing else, which is what makes it readable as an audit
-        // record after months of minute-by-minute renewals (D5, 161, 167). The
-        // record keeps it only as the first stamp for a host that has never
-        // heartbeat, so a declaration that says nothing new writes nothing (78).
-        if !object.record.contains_key("last_seen") {
-            object.record.insert("last_seen".into(), json!(now.to_rfc3339()));
-        }
-        if !flywheel_domain::same_object(&was, &object) {
-            self.store.put(&id, &object, seq)?;
-        }
+        // Writing what is already there is not a write, and the store is what
+        // keeps that (78, `records.put`).
+        self.store.put(&id, &object, seq)?;
         self.settle_settings()?;
         Ok(())
     }
@@ -831,6 +939,10 @@ impl Host {
         // Two closures write here, so the entries are held where both reach
         // them; the order they are written in is the order they happened.
         let run: RefCell<Vec<RunEntry>> = RefCell::new(Vec::new());
+        // What this host has already said it could not do, so it says it once
+        // (81). Taken for the tick and given back at the end of it.
+        let said: RefCell<std::collections::BTreeSet<String>> =
+            RefCell::new(std::mem::take(&mut self.said));
         // A self-transition re-enters the state it is in, so a pass that only
         // re-entered has settled (model.md the tick).
         let moved = std::cell::Cell::new(false);
@@ -864,6 +976,15 @@ impl Host {
                             did.why(),
                         )
                         .with("attention", "true");
+                    // Said once, and not again while it goes on being true. An
+                    // effect no binding covers is refused on every tick for as
+                    // long as the object stands there, and a record that
+                    // repeats it is a commit a second saying nothing new
+                    // (81, 167).
+                    let again = format!("{object}\t{}\t{}", effect.name, did.why());
+                    if !said.borrow_mut().insert(again) {
+                        return did.done();
+                    }
                 }
                 run.borrow_mut().push(entry);
                 did.done()
@@ -918,6 +1039,7 @@ impl Host {
         // the record is kept here where every tick passes (78).
         self.progressed |= self.moved;
         self.run.extend(run.into_inner());
+        self.said = said.into_inner();
         // What an effect moved out of band, said in the same record and after
         // the write that caused it (79, 167).
         for (object, from, to) in self.store.marked.take() {
@@ -1011,17 +1133,28 @@ impl Host {
         // and never the count, because a self-transition is not progress
         // (model.md the tick, 78).
         self.progressed = false;
-        for object in self.notified()? {
-            for scope in self.chain(&object)? {
-                fired += self.tick(&scope)?;
-            }
-        }
         let due = self
             .last_sweep
             .map(|last| self.now() - last >= self.sweep_interval())
             .unwrap_or(true);
-        if due {
-            fired += self.sweep()?;
+        // The notify-tick is what saves a host from reading everything when one
+        // object moved; when the sweep is due on the same pass it reads
+        // everything anyway, over every scope the notice names and more, so
+        // doing both is reading the same store twice (78, 130, D6, D7). It is
+        // the whole of a host's first pass, where nothing has been notified
+        // since a point this host never held: every object came back as news,
+        // each took a tick of its own, and the sweep then read them all again —
+        // which is the second or so each of those ticks costs, held against the
+        // page waiting on the same host (D11).
+        match due {
+            true => fired += self.sweep()?,
+            false => {
+                for object in self.notified()? {
+                    for scope in self.chain(&object)? {
+                        fired += self.tick(&scope)?;
+                    }
+                }
+            }
         }
         Ok(fired)
     }
@@ -1135,6 +1268,25 @@ impl Host {
     fn report_sessions(&mut self) -> Result<()> {
         let now = self.now();
         let me = self.name.clone();
+        // What this host has already said about a session, on the shared line
+        // and in the entries this tick still owes. A thread entry is said once:
+        // deduplicating against the tick's own pending entries alone made every
+        // later tick report the same exit again, so one session's delivery
+        // became a run-record entry and a commit on every pass for the rest of
+        // the day (78, 79, 127).
+        let said: std::collections::HashSet<(String, String)> = self
+            .store
+            .git
+            .run_record()
+            .unwrap_or_default()
+            .into_iter()
+            .filter_map(|r| {
+                r.fields
+                    .iter()
+                    .find(|(n, _)| n == "entry")
+                    .map(|(_, v)| (r.object.clone(), v.clone()))
+            })
+            .collect();
         let sessions: Vec<Object> = self
             .store
             .list_records(&Scope::All)?
@@ -1150,7 +1302,10 @@ impl Host {
                 .unwrap_or_default();
             for entry in self.store.thread(&session)? {
                 let reported = format!("{}/{}", entry.kind, entry.at.to_rfc3339());
-                if self.run.iter().any(|r| r.object == session && r.fields.iter().any(|(n, v)| n == "entry" && *v == reported)) {
+                if said.contains(&(session.clone(), reported.clone()))
+                    || self.run.iter().any(|r| r.object == session
+                        && r.fields.iter().any(|(n, v)| n == "entry" && *v == reported))
+                {
                     continue;
                 }
                 match entry.kind.as_str() {
@@ -1246,13 +1401,13 @@ impl Host {
         // what this host wrote. A projection somebody edited by hand is not the
         // truth however still the state is, so a body whose digest is not the
         // one recorded is rewritten from its source and reported as drift.
-        let newest = flywheel_domain::commands::newest_state_seq(&self.store.git)?;
+        let mark = flywheel_domain::commands::state_mark(&self.store.git)?;
         let held = self.store.git.committed_status()?;
         let committed = held
             .as_deref()
             .map(flywheel_store_git::store::without_the_stamp)
             .map(|body| digest(&body));
-        if flywheel_domain::commands::status_as_of(&self.store.git)? >= newest
+        if flywheel_domain::commands::status_of(&self.store.git)?.as_deref() == Some(mark.as_str())
             && committed.is_some()
             && committed == flywheel_domain::commands::status_digest(&self.store.git)?
         {
@@ -1271,12 +1426,20 @@ impl Host {
         )?;
         let view = flywheel_domain::status::render(&status);
         let fresh = digest(&flywheel_store_git::store::without_the_stamp(&view.body));
-        // Drift is rewritten from the source and reported with both values;
-        // nothing about the projection is ever the truth (77). The point it is
-        // as of is not something it projects, so a body differing only in its
-        // stamp has not drifted (78, 145).
+        // Drift is the projection saying something its source does not, and the
+        // difference the report is for is the one nothing accounts for. A body
+        // that is what was last written and differs from the source is the
+        // source having moved on, which is the ordinary case and what the
+        // rewrite below is for; a body that is neither what was last written
+        // nor what the source now says was put there by a hand or by a host
+        // reading something else, and that is what 77 asks be reported with
+        // both values. Reading drift off the whole difference reported the
+        // ordinary case on every tick, which buried the one case the report is
+        // for (77, 78, 142).
         if let Some(committed) = &committed {
-            if committed != &fresh {
+            let written = flywheel_domain::commands::status_digest(&self.store.git)?;
+            let ours = written.as_deref() == Some(committed.as_str());
+            if !ours && committed != &fresh {
                 self.run.push(
                     RunEntry::new(now, &self.name, "drift", flywheel_domain::RAIL, "the status projection differed from its source and was rewritten")
                         .with("was", committed)
@@ -1286,8 +1449,11 @@ impl Host {
         }
         self.store.git.commit_status(&view.body)?;
         // What the next tick reads to know the projection is current: the point
-        // the state was at, and the body this host wrote (77, 78, 145).
-        flywheel_domain::commands::set_projection(&mut self.store.git, newest, &fresh)?;
+        // the state was at, and the body that was written. It goes on the rail
+        // record and not in this process, so a host that restarts reads what
+        // the last one wrote rather than calling the file drifted (77, 78, 136,
+        // 145, I14).
+        flywheel_domain::commands::set_projection(&mut self.store.git, &mark, &fresh)?;
         Ok(())
     }
 

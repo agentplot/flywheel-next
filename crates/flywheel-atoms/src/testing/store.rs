@@ -169,6 +169,21 @@ impl FakeStore {
     }
 }
 
+/// Whether two readings of one object say the same thing, `seq` aside. The
+/// same question `flywheel-domain`'s `same_object` asks; `flywheel-atoms` sits
+/// under it, so it is asked here rather than borrowed.
+fn flywheel_domain_same(a: &Object, b: &Object) -> bool {
+    a.id == b.id
+        && a.machine == b.machine
+        && a.parent == b.parent
+        && a.config == b.config
+        && a.entered_at == b.entered_at
+        && a.record == b.record
+        && a.counters == b.counters
+        && a.applied_responses == b.applied_responses
+        && a.created == b.created
+}
+
 impl Records for FakeStore {
     fn get(&self, id: &str) -> Result<Option<Object>> {
         Ok(self.objects.get(id).cloned())
@@ -177,9 +192,22 @@ impl Records for FakeStore {
     fn put(&mut self, id: &str, record: &Object, base_seq: u64) -> Result<PutOutcome> {
         // A write against a sequence the store has moved past is a lost race:
         // the loser is told what the store holds and reads again (134).
-        let held = self.objects.get(id).map(|o| o.seq).unwrap_or(0);
+        let standing = self.objects.get(id).cloned();
+        let held = standing.as_ref().map(|o| o.seq).unwrap_or(0);
         if held != base_seq {
             return Ok(PutOutcome::Rejected { held_seq: held });
+        }
+        // Writing what is already there is not a write, as the real store has
+        // it: the sequence is the token of a change and not of a pass (78, 127,
+        // `git-only.yaml` records.put). A fake behaves; a fake that wrote where
+        // the store would not is a fake nothing can be proved against.
+        if let Some(standing) = &standing {
+            let mut would = record.clone();
+            would.id = id.to_string();
+            would.seq = standing.seq;
+            if flywheel_domain_same(&would, standing) {
+                return Ok(PutOutcome::Written { seq: held });
+            }
         }
         self.writes += 1;
         let mut written = record.clone();

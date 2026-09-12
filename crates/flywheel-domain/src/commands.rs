@@ -66,37 +66,52 @@ pub fn standing(store: &impl Records) -> Result<Vec<String>> {
 
 // ------------------------------------------------------------ the projection
 
-/// The newest sequence across the state the status view projects.
+/// A mark for the state the status view projects: what it would show, as one
+/// short string.
 ///
-/// The rail's own record is not part of it: what the rail holds is the register
+/// `record-derived.yaml` puts it as the newest seq across `list(all)`, and the
+/// newest seq alone has a hole: an object that has just appeared carries seq
+/// zero and raises no maximum, so a projection drawn before it existed read as
+/// current and the new object never reached the file. The mark is over every
+/// object's id and sequence together, so a state that gained an object, moved
+/// one or lost one is a different mark. It is derived from `list` alone, as the
+/// projection itself is (77, 142, 146).
+///
+/// The rail's own record is no part of it: what the rail holds is the register
 /// and the point the projection is as of, neither of which the projection
 /// shows. Counting it would make the projection stale the instant writing it
-/// bumped the rail, and the machine would ask for it again on every tick for
-/// ever (`record-derived.yaml` rail.status_current, 78).
-pub fn newest_state_seq(store: &impl Records) -> Result<u64> {
-    Ok(store
-        .list_records(&Scope::All)?
-        .iter()
-        .filter(|o| o.id != RAIL)
-        .map(|o| o.seq)
-        .max()
-        .unwrap_or(0))
+/// moved the rail, and the machine would ask for it again on every tick for
+/// ever (78).
+pub fn state_mark(store: &impl Records) -> Result<String> {
+    let mut hash: u64 = 0xcbf2_9ce4_8422_2325;
+    let mut eat = |bytes: &[u8]| {
+        for byte in bytes {
+            hash ^= *byte as u64;
+            hash = hash.wrapping_mul(0x0000_0100_0000_01b3);
+        }
+    };
+    for object in store.list_records(&Scope::All)?.iter().filter(|o| o.id != RAIL) {
+        eat(object.id.as_bytes());
+        eat(&object.seq.to_le_bytes());
+    }
+    Ok(format!("{hash:016x}"))
 }
 
-/// The sequence the committed status projection is as of (145).
-pub fn status_as_of(store: &impl Records) -> Result<u64> {
-    Ok(store
-        .get(RAIL)?
-        .and_then(|o| o.record.get("status_as_of").and_then(|v| v.as_u64()))
-        .unwrap_or(0))
+/// The state the committed projection was drawn from (145).
+pub fn status_of(store: &impl Records) -> Result<Option<String>> {
+    Ok(store.get(RAIL)?.and_then(|o| {
+        o.record
+            .get("status_of")
+            .and_then(|v| v.as_str().map(String::from))
+    }))
 }
 
-/// The body this host last wrote the projection as, without its as-of stamp.
+/// The body the projection was last written as, without its as-of stamp.
 ///
-/// The seq alone cannot say whether the committed file is still the projection:
-/// a file somebody edited by hand leaves the state exactly where it was, and a
-/// projection is never the truth (77, 142). This is what the next tick compares
-/// the committed body against.
+/// The state's own mark cannot say whether the committed file is still the
+/// projection: a file somebody edited by hand leaves the state exactly where it
+/// was, and a projection is never the truth (77, 142). This is what the next
+/// tick compares the committed body against.
 pub fn status_digest(store: &impl Records) -> Result<Option<String>> {
     Ok(store.get(RAIL)?.and_then(|o| {
         o.record
@@ -105,20 +120,16 @@ pub fn status_digest(store: &impl Records) -> Result<Option<String>> {
     }))
 }
 
-/// Record what a projection just written is as of and what it says, so the next
-/// tick reads it as current and writes nothing (77, 78, 145,
+/// Record what a projection just written was drawn from and what it says, so
+/// the next tick reads it as current and writes nothing (77, 78, 145,
 /// `engine/rail.yaml` record).
-pub fn set_projection(store: &mut impl Records, seq: u64, digest: &str) -> Result<()> {
+pub fn set_projection(store: &mut impl Records, mark: &str, digest: &str) -> Result<()> {
     let Some(mut rail) = store.get(RAIL)? else {
         return Ok(());
     };
-    let was = rail.clone();
     let base = rail.seq;
-    rail.record.insert("status_as_of".into(), json!(seq));
+    rail.record.insert("status_of".into(), json!(mark));
     rail.record.insert("status_digest".into(), json!(digest));
-    if crate::same_object(&was, &rail) {
-        return Ok(());
-    }
     store.put(RAIL, &rail, base)?;
     Ok(())
 }
@@ -129,22 +140,14 @@ pub fn set_register(
     register: &Register,
     standing: &[String],
 ) -> Result<()> {
-    let mut record: BTreeMap<String, Value> = BTreeMap::new();
-    record.insert("next".into(), json!(register.next_number));
-    // The register as the rail machine's record names it: one entry per
-    // numbered decision, carrying its number, when it was raised, when it was
-    // retracted and the response that answered it (`engine/rail.yaml` record).
-    // `numbers` beside it is the same thing as id → number, which is what a
-    // reader that only wants the number reads.
-    record.insert("register".into(), json!(register.entries));
-    record.insert("numbers".into(), json!(register.numbers()));
-    record.insert("standing".into(), json!(standing));
-    // The rail is an object like any other: what its machine reached is state,
-    // and rebuilding it from the register alone every derive would put its
-    // regions back at their initial states on every tick.
-    let held = store.get(RAIL)?;
-    let seq = held.as_ref().map(|o| o.seq).unwrap_or(0);
-    let mut rail = held.unwrap_or_else(|| Object {
+    // The rail is an object like any other and the register is four fields of
+    // its record. What stands beside them — the states its own two regions are
+    // in, and when they were entered — is the machine's and not this writer's,
+    // so the held object is what is written back with those four fields
+    // changed. A fresh object here erased the rail's own state on every derive,
+    // which left its machine starting from nothing on every tick
+    // (`engine/rail.yaml`, 148).
+    let mut rail = store.get(RAIL)?.unwrap_or_else(|| Object {
         id: RAIL.into(),
         machine: "rail".into(),
         parent: None,
@@ -153,19 +156,26 @@ pub fn set_register(
         record: Default::default(),
         counters: Default::default(),
         applied_responses: vec![],
-        seq,
+        seq: 0,
         created: 0,
     });
     let was = rail.clone();
-    for (name, value) in record {
-        rail.record.insert(name, value);
-    }
+    rail.record.insert("next".into(), json!(register.next_number));
+    // The register as the rail machine's record names it: one entry per
+    // numbered decision, carrying its number, when it was raised, when it was
+    // retracted and the response that answered it (`engine/rail.yaml` record).
+    // `numbers` beside it is the same thing as id → number, which is what a
+    // reader that only wants the number reads.
+    rail.record.insert("register".into(), json!(register.entries));
+    rail.record.insert("numbers".into(), json!(register.numbers()));
+    rail.record.insert("standing".into(), json!(standing));
     // Numbering that gave no new number and retracted nothing has nothing to
     // write, and the rail record is written once per tick at the end of it: a
     // derive that says what the record already says writes no commit (78, 15).
     if crate::same_object(&was, &rail) {
         return Ok(());
     }
+    let seq = rail.seq;
     store.put(RAIL, &rail, seq)?;
     Ok(())
 }
@@ -633,24 +643,19 @@ where
             .map(|o| tick::commanded_effects(defs, o, f))
             .unwrap_or_default();
         let mut tail = Vec::new();
+        // Whether this transition moved anything. A machine re-entering the
+        // state it is already in fires and moves nothing: no state changed, no
+        // response was consumed, no counter turned. The store is what keeps
+        // that from becoming a commit — writing what is already there is not a
+        // write (78, `records.put`) — and this is the other half: what the run
+        // record says happened.
         let mut nothing_moved = false;
         if let Some(object) = store.get(&f.object)? {
             let base = object.seq;
             let mut moved = object.clone();
             tail = tick::apply(defs, &mut moved, f, at);
-            // A machine re-entering the state it is already in fires a
-            // transition and moves nothing: no state changed, no response was
-            // consumed, no counter turned. Writing it would be a commit on the
-            // shared line saying only that the sequence went up — which is what
-            // 78 forbids, and on a store whose writes are commits it is the
-            // whole difference between an idle instance that is quiet and one
-            // writing four commits a pass forever.
-            match crate::same_object(&object, &moved) {
-                false => {
-                    store.put(&f.object, &moved, base)?;
-                }
-                true => nothing_moved = true,
-            }
+            nothing_moved = crate::same_object(&object, &moved);
+            store.put(&f.object, &moved, base)?;
         }
         // What the host records about the transition, and what the state's
         // `tail:` put on the SINCE list; the run record in group 6 (79–82, 14).
