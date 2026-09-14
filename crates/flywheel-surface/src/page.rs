@@ -967,15 +967,22 @@ fn answered(read: &Read, number: Option<u32>) -> String {
     out
 }
 
+/// A commit's mark as a person reads it: its first seven characters, with the
+/// whole on hover (D12).
+fn short_mark(mark: &str) -> String {
+    mark.chars().take(7).collect()
+}
+
 /// The board's header: what the read is as of, which is what the committed
 /// projection states too (145, D12).
 fn board_header(read: &Read) -> String {
     let mut out = String::new();
     let _ = write!(
         out,
-        "<span class=\"as-of\">as of commit {} at {}</span>",
+        "<span class=\"as-of\" title=\"{}\">as of commit {} · {}</span>",
         escape(&read.status.as_of.mark),
-        escape(&read.status.as_of.at.to_rfc3339())
+        escape(&short_mark(&read.status.as_of.mark)),
+        escape(&read.status.as_of.at.format("%H:%M UTC").to_string())
     );
     let _ = write!(
         out,
@@ -1658,7 +1665,7 @@ fn silhouette(machine: &str) -> &'static str {
 fn unmoved(read: &Read) -> String {
     let mut out = String::from(
         "<section id=\"unmoved-signals\"><div class=\"sec-h\">unmoved signals\
-         <span class=\"r\">by source, with the oldest one's age</span></div>\n",
+         <span class=\"r\">by source</span></div>\n",
     );
     if read.status.unmoved.is_empty() {
         out.push_str("<div class=\"empty\">nothing unmoved</div>\n");
@@ -1696,13 +1703,11 @@ fn unmoved(read: &Read) -> String {
 fn curator(read: &Read) -> String {
     let mut out = String::from(
         "<section id=\"curate\" class=\"curation\"><div class=\"sec-h\">curation\
-         <span class=\"r\">one move per signal; the submit is the session's delivery \
-         and its exit (110, 116)</span></div>\n",
+         <span class=\"r\">one move per signal</span></div>\n",
     );
     let Some(session) = &read.curation else {
         out.push_str(
-            "<div class=\"empty\">no curation session is charged; the tick charges one when \
-             the unmoved signals cross the threshold or the cadence says so (110)</div>\n\
+            "<div class=\"empty\">not charged; it charges at the threshold or on the cadence</div>\n\
              </section>\n",
         );
         return out;

@@ -614,7 +614,11 @@ async fn main() -> Result<()> {
                                     // never look outward again (78, model.md
                                     // the tick).
                                     cascading = held.progressed();
-                                    if fired > 0 {
+                                    // Said only when something moved: a
+                                    // machine re-entering its own state
+                                    // fires and writes nothing, and a line
+                                    // for it every sweep is noise.
+                                    if fired > 0 && cascading {
                                         println!("{fired} transitions");
                                     }
                                 }

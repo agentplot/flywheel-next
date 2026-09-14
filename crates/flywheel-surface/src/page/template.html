@@ -54,7 +54,7 @@ h1,h2,h3,h4{margin:0;font-weight:700;text-wrap:balance}
 .marks a.mark{text-decoration:none;cursor:pointer}
 .record .rc-name a{color:inherit;text-decoration:none}
 .lane .quiet{color:var(--ink3);font-size:12.5px;padding:10px 2px}
-.sec-h-group.empty h2{opacity:.45}
+.sec-h-group.empty{display:none}
 .tn{font-variant-numeric:tabular-nums}
 kbd{font:11px var(--mono);border:1px solid var(--line);border-bottom-width:2px;border-radius:4px;padding:0 5px;color:var(--ink2);background:var(--surface2)}
 .eyebrow{font-size:11px;letter-spacing:.08em;text-transform:uppercase;color:var(--ink3);font-weight:700}
@@ -163,7 +163,7 @@ kbd{font:11px var(--mono);border:1px solid var(--line);border-bottom-width:2px;b
 .wrap{display:grid;grid-template-columns:var(--rail) minmax(0,1fr);flex:1 1 auto;min-height:0}
 .rail{border-right:1px solid var(--line);background:var(--surface);overflow:auto;padding:10px 12px 60px}
 .board{display:flex;flex-direction:column;position:relative;overflow:hidden;min-width:0}
-.board-h{flex:none;display:flex;align-items:center;gap:10px;padding:6px 12px;border-bottom:1px solid var(--line2);background:var(--surface2);font-size:12px;color:var(--ink3);min-height:36px;flex-wrap:wrap}
+.board-h{flex:none;display:flex;align-items:center;gap:10px;padding:6px 12px;border-bottom:1px solid var(--line2);background:var(--surface2);font-size:11.5px;color:var(--ink3);min-height:36px;flex-wrap:wrap}
 .seg{display:inline-flex;border:1px solid var(--line);border-radius:6px;overflow:hidden;background:var(--surface)}
 .seg button{padding:3px 10px;font-size:12px;font-weight:600;color:var(--ink2)}
 .seg button[aria-pressed="true"]{background:var(--accent);color:var(--accent-ink)}
@@ -288,9 +288,9 @@ label.chore .f{margin-left:auto;font:11px var(--mono);color:var(--ink3)}
 .thread .th-head .pickbox{position:absolute;left:0;top:4px;width:14px;height:14px;margin:0;accent-color:var(--accent)}
 .thread.pickable .th-head::before{display:none}
 .thread .th-head .pickbox:checked~.th-name{color:var(--accent)}
-.thread .th-k{font:600 9.5px var(--mono);letter-spacing:.1em;text-transform:uppercase;color:var(--ink3)}
-.thread .th-name{font-weight:700;font-size:13px;padding:0 3px;border-radius:3px;flex:1 1 auto;min-width:0}
-.thread .th-state{margin-left:auto;font:11px var(--mono);color:var(--ink3);white-space:nowrap}
+.thread .th-k{font:600 10px var(--mono);letter-spacing:.1em;text-transform:uppercase;color:var(--ink3)}
+.thread .th-name{font-weight:700;font-size:13.5px;padding:0 3px;border-radius:3px;flex:1 1 auto;min-width:0}
+.thread .th-state{margin-left:auto;font:11.5px var(--mono);color:var(--ink2);white-space:nowrap}
 .thread .th-line{margin-left:8px;border-left:2px solid var(--ink2);padding:2px 0 4px 16px;min-height:14px}
 .thread .th-note{color:var(--ink2);font-size:12px;margin:0 0 3px}
 .thread .bead{position:relative;display:flex;align-items:center;gap:8px;flex-wrap:wrap;padding:3px 0;font-size:12px}
@@ -303,8 +303,8 @@ label.chore .f{margin-left:auto;font:11px var(--mono);color:var(--ink3)}
 .thread .bead .en{font-weight:600}
 .thread .bead{cursor:pointer;border-radius:4px}
 .thread .bead.open-in-dock .en{background:var(--accent-soft);box-shadow:0 0 0 2px var(--accent-soft);border-radius:3px}
-.thread .bead .bk{font:600 9.5px var(--mono);letter-spacing:.08em;text-transform:uppercase;color:var(--ink3);flex:none}
-.thread .bead .bs{font:11px var(--mono);color:var(--ink3)}
+.thread .bead .bk{font:600 10px var(--mono);letter-spacing:.08em;text-transform:uppercase;color:var(--ink3);flex:none}
+.thread .bead .bs{font:11.5px var(--mono);color:var(--ink2)}
 .thread .bead .bs.leave.soon{color:var(--warn)}
 .thread .bead .bead-chip{display:inline-flex}
 @media (max-width:1400px){.thread .bead .bead-chip{flex-basis:100%}}
