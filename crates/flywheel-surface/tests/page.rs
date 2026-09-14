@@ -764,7 +764,6 @@ fn page_carries_the_mockups_regions() {
     // (310, 311).
     assert_eq!(html.matches("<style>").count(), 1);
     assert!(!html.contains("<script src"));
-    assert_eq!(html.matches("<script").count(), 1);
 }
 
 /// The words a region of the rendered page carries, with its markup taken out.

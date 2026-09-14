@@ -85,13 +85,10 @@ kbd{font:11px var(--mono);border:1px solid var(--line);border-bottom-width:2px;b
 .btn .k{font:10px var(--mono);color:inherit;opacity:.65;border:1px solid currentColor;border-radius:3px;padding:0 3px}
 
 
-/* The capture box, in the header: a field a person clicks into or reaches
-   with / or ⌘K, typed into and sent with return (19, 194, 311). */
-.top .top-capture{flex:1 1 auto;max-width:560px;margin:0 auto;display:inline-flex;align-items:center;gap:8px;border:1px solid var(--line);border-radius:999px;padding:3px 6px 3px 12px;background:var(--surface2)}
-.top .top-capture:focus-within{border-color:var(--accent);background:var(--surface)}
-.top .top-capture input{flex:1;min-width:0;border:0;background:transparent;font:13px var(--sans);color:var(--ink);padding:3px 0;outline:none}
-.top .top-capture input::placeholder{color:var(--ink3)}
-.top .top-capture .k{text-decoration:none;display:inline-flex}
+/* The capture control in the header opens the palette, which is the one
+   place text is typed: the click, / and ⌘K all land there (19, 194, 311). */
+.top .palbtn{flex:1 1 auto;max-width:560px;margin:0 auto;justify-content:space-between;text-decoration:none;cursor:text}
+.top .palbtn:hover{border-color:var(--ink3)}
 /* ---------- hosts strip ---------- */
 /* Nothing is wrong with any host, so nothing is raised and the band is not
    there to be read past (79, 141). */
@@ -601,6 +598,7 @@ ul.sigs li{margin:0}
    rest: the dock opens on the surface a link names, the palette on its scrim,
    the log on itself, and under 760px the tabs are the two panels. */
 #decisions{display:flex;min-height:0}
+#decisions .rail{flex:1 1 auto;min-width:0}
 .tabs{display:none}
 .back { display: none; }
 .scrim{display:none}
@@ -614,7 +612,7 @@ ul.sigs li{margin:0}
 .dock .surface[data-opened="true"]{display:block}
 body:has(.dock .surface:target) .dock .surface[data-opened="true"]:not(:target){display:none}
 .pal-scrim{display:none}
-.pal-scrim:target{display:flex}
+.pal-scrim:target,.pal-scrim.open{display:flex}
 .log{display:none}
 .log:target{display:block}
 .phone-only{display:none}
@@ -784,7 +782,7 @@ a.btn.pri{color:var(--accent-ink)}
      knows — they opened it — and the room it takes is the room the instance
      and the operator's own name need to survive (17.0, 153, 219). */
   .top h1{display:none}
-  .top .top-capture{display:none}
+  .top .palbtn{display:none}
   .top .meta{min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
   .top .theme{display:none}
   .top .keys{display:none}
@@ -837,12 +835,7 @@ a.btn.pri{color:var(--accent-ink)}
 <header class="top">
   <h1>Flywheel</h1>
   <span class="meta"><b id="orgname">{{INSTANCE}}</b> <span class="mono" id="clock">{{CLOCK}}</span></span>
-  <form class="capture top-capture" method="post" action="/api/tools/capture">
-    <input type="hidden" name="source" value="page">
-    <label class="sr-only" for="capture-text">Capture</label>
-    <input type="text" id="capture-text" name="text" autocomplete="off" placeholder="Capture what you noticed">
-    <a class="k" id="pal-open" href="#pal-scrim" title="the capture box, with what you sent lately"><kbd>⌘K</kbd></a>
-  </form>
+  <a class="palbtn" id="pal-open" href="#pal-scrim" title="capture: type what you noticed and press return"><span class="t">Capture what you noticed</span><kbd>⌘K</kbd></a>
   <div class="count"><b id="count">{{COUNT}}</b><span>decisions</span></div>
   <span class="acct-wrap" id="acct-wrap"><span class="given-by">{{OPERATOR}}</span></span>
   <span class="btn quiet theme" id="theme" title="the page follows the system's theme; it holds no client state a reload loses (310)">system</span>
@@ -896,10 +889,9 @@ a.btn.pri{color:var(--accent-ink)}
       <input type="hidden" name="source" value="page">
       <div class="pal-f">
         <label class="sr-only" for="pal-q">Capture</label>
-        <input type="text" id="pal-q" name="text" autocomplete="off" placeholder="what happened, in your own words">
+        <input type="text" id="pal-q" name="text" autocomplete="off" spellcheck="false" placeholder="Capture what you noticed">
         <a class="x" id="pal-close" href="#decisions" aria-label="close">×</a>
       </div>
-      <div class="pal-will">the text is captured whole and unparsed; one signal of kind <b>ask</b> is written with it (19, 113)</div>
       <div class="pal-body" id="pal-dyn">{{SENTLIST}}</div>
       <div class="pal-foot">
         <button class="btn pri" type="submit" id="pal-go">capture</button>
@@ -912,26 +904,39 @@ a.btn.pri{color:var(--accent-ink)}
      (153, 154). -->
 <aside class="log" id="log"><h3>Responses sent <span>each one on its own, the moment it was given</span></h3><ol id="loglist">{{LOG}}</ol></aside>
 <div class="toasts" id="toasts" aria-live="polite"></div>
-<!-- The keys. No state, nothing fetched, nothing a reload loses (310, 311):
-     every key here reaches a control the page already carries. Escape closes
-     what is open — the dock, the capture box, a field; / and ⌘K reach the
-     capture box. -->
+<!-- The page's own script: the palette and the keys. Nothing here is state a
+     reload loses and nothing is fetched (310); every key reaches a control the
+     page carries (311). The capture control in the header, / and ⌘K open the
+     palette and put the cursor in its field; Escape closes the palette, the
+     dock, or leaves the field; a click on the scrim closes the palette. -->
 <script>
 (function(){
-  var box=document.getElementById('capture-text');
-  function typing(el){return el&&(el.tagName==='INPUT'||el.tagName==='TEXTAREA'||el.tagName==='SELECT');}
-  function close(){location.replace(location.pathname+location.search+'#');}
-  addEventListener('keydown',function(e){
+  var scrim=document.getElementById('pal-scrim');
+  var q=document.getElementById('pal-q');
+  function palOpen(){ if(!scrim) return; scrim.classList.add('open'); if(q){ q.focus(); q.select(); } }
+  function palClose(){ if(!scrim) return; scrim.classList.remove('open');
+    if(location.hash==='#pal-scrim') location.replace(location.pathname+location.search+'#'); }
+  function palIsOpen(){ return scrim && (scrim.classList.contains('open') || location.hash==='#pal-scrim'); }
+  function typing(el){ return el && el.matches && el.matches('input,textarea,select'); }
+  document.addEventListener('click',function(e){
+    var b=e.target.closest && e.target.closest('#pal-open,#pal-open-rail,#pal-open-phone');
+    if(b){ e.preventDefault(); palOpen(); return; }
+    if(e.target===scrim){ palClose(); return; }
+    if(e.target.closest && e.target.closest('#pal-close,#pal-cancel')){ e.preventDefault(); palClose(); return; }
+  });
+  addEventListener('hashchange',function(){ if(location.hash==='#pal-scrim' && q){ q.focus(); } });
+  if(location.hash==='#pal-scrim' && q){ q.focus(); }
+  document.addEventListener('keydown',function(e){
     var t=e.target;
+    if((e.metaKey||e.ctrlKey)&&(e.key==='k'||e.key==='K')){ e.preventDefault(); palIsOpen()?palClose():palOpen(); return; }
+    if(palIsOpen()){ if(e.key==='Escape'){ e.preventDefault(); palClose(); } return; }
     if(e.key==='Escape'){
-      if(typing(t)){t.blur();if(t===box)box.value='';}
-      else if(location.hash&&location.hash!=='#'){close();}
+      if(typing(t)){ t.blur(); return; }
+      if(location.hash&&location.hash!=='#'){ location.replace(location.pathname+location.search+'#'); }
       return;
     }
-    if(typing(t))return;
-    if(e.key==='/'||((e.metaKey||e.ctrlKey)&&(e.key==='k'||e.key==='K'))){
-      if(box){e.preventDefault();if(location.hash==='#pal-scrim')close();box.focus();}
-    }
+    if(typing(t)||e.metaKey||e.ctrlKey||e.altKey) return;
+    if(e.key==='/'){ e.preventDefault(); palOpen(); }
   });
 })();
 </script>
