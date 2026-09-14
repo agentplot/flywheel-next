@@ -243,18 +243,10 @@ group, and after 14 and 15.
 
 ## 17. A page you can open and use
 
-This group is the priority of the change. Group 14 is ticked and its
-tests are green, and the served page is still not the surface the mockup
-shows: served from a fresh instance at 1440x900 it is a text board
-reading "nothing" in every column, with no decision cards, no answer
-controls and roughly a quarter of the mockup's styles.
-`page_carries_the_mockups_regions` passes because ids can be present on
-empty regions, so the test proved the wrong thing.
-
-What this group delivers is one thing: a page the operator opens and
-uses, with the rail carrying decisions and controls that move state, seeded
-from a scenario that already holds every decision kind once, running work
-and a tail, so the walkthrough is real without driving a real session.
+The operator opens the page, reads what is waiting, answers it, and the
+board moves. The rail carries decisions with their own controls, the board
+and the dock read as sentences a person reads rather than as the machine's
+own state, and a session's deliverables are files the page opens.
 
 **The order of authority.** The requirements and `surfaces.md` first, the
 operator's actual intended action second, and
@@ -265,6 +257,12 @@ porting it element-by-element makes every one of them a requirement and
 every improvement a test failure. Before carrying an element across, name
 the action it serves; an element that serves none does not ship, whatever
 the mockup shows (amends D16).
+
+**A green structural test is not evidence the page renders.**
+`page_carries_the_mockups_regions` once passed over a page that read
+"nothing" in every column, because an id can be present on an empty
+region. Serve it, open it in a browser, and look, before calling anything
+done.
 
 - [x] 17.1 Seed a host from a scenario so the page has something on it. `scenarios/rail-mockup.yaml` is played today only by the scenario runner in process; there is no way to open a served page standing on it. Add the path: a seed of the scenario's `given:` into a real state store, and `flywheel host --serve` over it, so the page at the port shows that scenario's rail. The seed writes through the state store like anything else and is not a second way to make an object (125, 193). Verify `cargo test -p flywheel a_seeded_host_serves_the_scenarios_rail` asserting the six decisions of `rail-mockup.yaml` are on the served page by number
 - [x] 17.0 Settle what the header carries, from what the operator does with it. Today it is a title, the instance and clock, a capture control, a count, a bare strip of every waiting decision number, the operator's name, and a sent count; beneath it a row of host pills. Two of those do not survive the question. The number strip is a mis-rendering of S2 -- the numbers belong on the "yes all" control that will answer them (17.5), not strung across the top where they name no action. The host pills answer a real need, which is noticing that a host has gone or stalled so work is not silently stopped, but that is an attention need and not a permanent fixture: report a host under the status view, and raise it into view when something is wrong rather than standing a pill there when nothing is (141, 310, 79). What the header keeps is what the operator acts on: where they are and who they are, what is waiting on them, the one control that answers it all at once, a way to capture, and anything wrong. Verify `cargo test -p flywheel-surface the_header_carries_no_element_without_an_action` naming each region against the requirement it serves, and `a_healthy_host_raises_no_pill`

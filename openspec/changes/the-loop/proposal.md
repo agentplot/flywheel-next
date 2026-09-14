@@ -26,7 +26,7 @@ The four phases after it, for context, because nothing here may foreclose them:
 |---|---|---|---|
 | 2 | construction | units and bolts landing on willdan repositories — spec, build, review, merge, landing by pull request; the tracker profile (C.1) joining for willdan's board; sessions charged by the machinery on the pane runner; the flywheel instrument | A.17–A.21, A.27 (types) |
 | 3 | context | the context map, the books, the claims, the ledger, the OpenSpec artifact views in the dock, packages and the package store, scenario packs | A.14, A.21, A.26–A.28 |
-| 4 | dispatch | dispatch as a host with its four jobs, the receiver, the interpreter in the page's browser and in-process, triage placements, several instances on one host, users and ownership, environments | A.25, A.26, A.29, A.30 |
+| 4 | dispatch | dispatch as a host with its four jobs, the receiver, the chat agent as a bounded tool-use loop in the binary, triage placements, several instances on one host, users and ownership, environments, and a member's own client over the model context protocol | A.25, A.26, A.29, A.30, A.40 |
 | 5 | scale | the hosted tiers: identity, the per-tier dispatcher, queues, cache, scheduler, pools, tenancy and encryption, plans and presets, the management console, the MCP endpoint | A.31–A.36 |
 
 A.37 is the control plane, which belongs to flywheel-cloud and not to this
