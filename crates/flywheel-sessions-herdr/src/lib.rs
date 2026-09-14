@@ -157,6 +157,53 @@ impl Herdr {
     pub fn close_pane(&self, pane: &str) -> Result<()> {
         self.run(&["pane", "close", pane]).map(|_| ())
     }
+
+    /// The pane's visible text, plain: what the agent is showing (196).
+    pub fn read_visible(&self, name: &str) -> Result<String> {
+        let out = Command::new(&self.binary)
+            .args(["agent", "read", name, "--source", "visible", "--lines", "60"])
+            .output()
+            .with_context(|| format!("running {} agent read {name}", self.binary))?;
+        Ok(String::from_utf8_lossy(&out.stdout).to_string())
+    }
+
+    pub fn send_keys(&self, name: &str, keys: &[&str]) -> Result<()> {
+        let mut args = vec!["agent", "send-keys", name];
+        args.extend_from_slice(keys);
+        self.run(&args).map(|_| ())
+    }
+
+    /// The agent's status as Herdr reports it: working, idle, blocked, done,
+    /// unknown; `absent` when Herdr lists no such agent.
+    pub fn status(&self, name: &str) -> Result<String> {
+        Ok(self
+            .agent(name)?
+            .and_then(|a| a.get("agent_status").and_then(|s| s.as_str()).map(String::from))
+            .unwrap_or_else(|| "absent".into()))
+    }
+
+    /// An agent just started may stand at its own first-run question before it
+    /// takes a prompt: Claude Code asks whether the folder is trusted, and a
+    /// place the machinery made is. The question is answered from what the
+    /// pane shows, and the prompt waits until the agent is at its prompt line
+    /// (72, 196, 197). What Herdr shows is evidence, so a pane showing nothing
+    /// of the kind is left alone.
+    pub fn clear_the_way(&self, name: &str) -> Result<()> {
+        for _ in 0..30 {
+            match self.status(name)?.as_str() {
+                "idle" | "done" => return Ok(()),
+                "blocked" => {
+                    let shown = self.read_visible(name)?;
+                    if shown.contains("trust") && shown.contains("folder") {
+                        self.send_keys(name, &["down", "enter"])?;
+                    }
+                }
+                _ => {}
+            }
+            std::thread::sleep(std::time::Duration::from_millis(1000));
+        }
+        Ok(())
+    }
 }
 
 fn text_at(v: &Value, pointers: &[&str]) -> Result<String> {
@@ -211,6 +258,7 @@ pub fn start<S: Records>(
         herdr
             .start_agent(&name, &placement.kind, &pane_id)
             .with_context(|| format!("starting `{name}` ({}) in pane {pane_id}", placement.kind))?;
+        herdr.clear_the_way(&name)?;
         herdr.prompt(&name, &first_prompt())?;
         pane = Some(pane_id);
         workspace = Some((ws, tab));

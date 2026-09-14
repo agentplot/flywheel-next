@@ -2264,15 +2264,21 @@ fn work_order(
     // The exact command, with the two things it reads from the environment: the
     // session it reports on and this host's checkout of the state repository
     // (67, 89, 92).
+    // The binary this host runs, by its full path: a session's shell need not
+    // have it on the path, and the order is exact (67, 89).
+    let flywheel = std::env::current_exe()
+        .ok()
+        .map(|p| p.display().to_string())
+        .unwrap_or_else(|| "flywheel".into());
     body.push_str("\n## how to report\n\n");
     body.push_str("When the work is done, from this directory:\n\n");
     body.push_str(&format!(
-        "    FLYWHEEL_SESSION={session} FLYWHEEL_STATE={state} flywheel exit done{} --host {host}\n\n",
+        "    FLYWHEEL_SESSION={session} FLYWHEEL_STATE={state} {flywheel} exit done{} --host {host}\n\n",
         named.iter().map(|d| format!(" --deliverable {d}")).collect::<String>()
     ));
     body.push_str("When you cannot go on without the operator's answer:\n\n");
     body.push_str(&format!(
-        "    FLYWHEEL_SESSION={session} FLYWHEEL_STATE={state} flywheel exit blocked --question \"<the question>\" --host {host}\n\n"
+        "    FLYWHEEL_SESSION={session} FLYWHEEL_STATE={state} {flywheel} exit blocked --question \"<the question>\" --host {host}\n\n"
     ));
     body.push_str("The machinery reads the report and nothing else you leave here; what you leave here is your work (66, 67).\n");
     body.push_str("\n## rules\n\n");
