@@ -289,6 +289,13 @@ pub struct ResponseStep {
     /// For a dictation: the object it names.
     #[serde(default)]
     pub object: Option<String>,
+    /// For a dictation that is a catalogue tool with a body rather than a
+    /// transition — `propose-unit`, `open-session` — the tool's arguments by
+    /// name, as the page's form posts them; `answer` is then the tool's name
+    /// and the call goes through the catalogue, recorded once under `id`
+    /// (193, 153).
+    #[serde(default)]
+    pub args: Option<BTreeMap<String, Value>>,
     pub answer: String,
     pub id: String,
     #[serde(default)]

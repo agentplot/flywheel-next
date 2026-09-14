@@ -383,11 +383,14 @@ pub fn read<S: StateStore, W: World + ?Sized>(
         .filter(|o| o.machine == "intent")
         .map(|o| o.id.clone())
         .collect();
+    // The built repositories alone: the state and the blueprints are the
+    // machinery's own, and nothing lands a unit on them (205, 206).
     let repositories: Vec<String> = world
         .repositories()
         .unwrap_or_default()
         .into_iter()
         .map(|r| r.name)
+        .filter(|name| name != "flywheel-state" && name != "flywheel-blueprints")
         .collect();
     Ok(Read {
         decisions,
@@ -1397,7 +1400,7 @@ fn slip(read: &Read, row: &status::Row, lane: &[&status::Row]) -> String {
 fn quote(read: &Read, row: &status::Row) -> String {
     let record = read.objects.iter().find(|o| o.id == row.object).map(|o| &o.record);
     let said = record
-        .and_then(|r| r.get("assertion").or_else(|| r.get("excerpt")))
+        .and_then(|r| r.get("assertion").or_else(|| r.get("excerpt")).or_else(|| r.get("raw")))
         .and_then(|value| value.as_str())
         .filter(|said| !said.trim().is_empty())
         .map(clipped)

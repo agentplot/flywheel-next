@@ -90,7 +90,7 @@ fn storefront_runs_through_its_authored_actions() {
     // And it carries the three optional parts a demo adds, all of them read
     // from the one file: the actions, the tour copy, and the bundle beside it.
     let actions = scenario.actions().expect("the actions parse");
-    assert_eq!(actions.len(), 15, "stages 1 to 3 of the arc");
+    assert_eq!(actions.len(), 19, "stages 1 to 3 of the arc, and the thinnest construction");
     assert_eq!(scenario.tour.len(), actions.len(), "a line of copy per action");
     let bundle = flywheel_atoms::conformance::bundle_of(&path).expect("a bundle beside it");
     assert!(bundle.join("meeting/2026-09-02-storefront-weekly.vtt").is_file());

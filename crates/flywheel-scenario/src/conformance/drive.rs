@@ -1701,6 +1701,28 @@ fn play_response(run: &mut Run, step: &ResponseStep) -> Result<()> {
     let by = step.by.clone().unwrap_or_else(|| "operator".to_string());
     let now = run.runtime.store.now;
 
+    // A dictation that is a catalogue tool with a body — `propose-unit`,
+    // `open-session` — goes through the catalogue, as the page's form does,
+    // and the tool records the call once under this id (193, 153).
+    if let Some(args) = &step.args {
+        let call = flywheel_surface::catalogue::Call {
+            tool: step.answer.clone(),
+            args: args.clone(),
+            by: by.clone(),
+            delivery: "page".into(),
+            delivery_id: Some(step.id.clone()),
+            event_key: None,
+            proposed_by: None,
+        };
+        let defs = run.runtime.defs.clone();
+        crate::bindings::with_files(&mut run.runtime.store, |store, world| {
+            flywheel_surface::catalogue::call(store, world, &defs, &call)
+        })
+        .with_context(|| format!("the dictation `{}` on `{}`", step.answer, step.object.clone().unwrap_or_default()))?;
+        run.runtime.store.log("dictation", &step.answer, step.object.clone().unwrap_or_default());
+        return Ok(());
+    }
+
     let (kind, number, object) = match (&step.decision, step.number, &step.object) {
         // The id form is the readable default: it resolves through the
         // register at the moment the step runs, and a scenario naming no

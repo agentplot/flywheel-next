@@ -456,6 +456,31 @@ fn arrived(host: &mut Host, capture: &CaptureAction, suite: &Suite) -> Result<St
 /// D15).
 fn answered(host: &mut Host, response: &ResponseStep) -> Result<String> {
     let defs = host.defs.clone();
+    // A dictation that is a catalogue tool with a body — `propose-unit`,
+    // `open-session` — goes through the catalogue, as the page's form does,
+    // and the tool records the call once under this id (193, 153).
+    if let Some(args) = &response.args {
+        let by = response.by.clone().unwrap_or_else(|| "operator".into());
+        let call = flywheel_surface::catalogue::Call {
+            tool: response.answer.clone(),
+            args: args.clone(),
+            by,
+            delivery: "page".into(),
+            delivery_id: Some(response.id.clone()),
+            event_key: None,
+            proposed_by: None,
+        };
+        let outcome = host
+            .store
+            .with_world(|store, world| flywheel_surface::catalogue::call(store, world, &defs, &call))
+            .with_context(|| format!("the dictation `{}`", response.answer))?;
+        return Ok(format!(
+            "dictation · {} · {} · {}",
+            response.answer,
+            response.object.clone().unwrap_or_default(),
+            outcome.id
+        ));
+    }
     let rail = flywheel_domain::commands::rail(&mut host.store, &defs)?;
     let number = match (&response.decision, response.number) {
         (_, Some(number)) => number,
@@ -523,18 +548,36 @@ fn delivered(
                  which is where the real session's place would have put it"
             )
         })?;
-        // Committed on the repository's shared line as the session, because
-        // that is what a real session's landing does and because the machinery
-        // reads a repository at its line and not at a working tree (167, 203).
-        // It is a session's write and not the machinery's, so the reason names
-        // the session rather than the prefix rule.
-        instance.commit(
-            repository,
-            under,
-            &std::fs::read_to_string(&source)
-                .with_context(|| format!("reading {}", source.display()))?,
-            &format!("{under}\n\nreason: delivered by {id}"),
-        )?;
+        let body = std::fs::read_to_string(&source)
+            .with_context(|| format!("reading {}", source.display()))?;
+        match place_of(host, &session.object) {
+            // A construction session works in a place: what it delivers is a
+            // commit there, as the session, and the machinery merges the place
+            // into its line and lands the line (42, 67, 93a).
+            Some(dir) => {
+                let full = dir.join(under);
+                if let Some(parent) = full.parent() {
+                    std::fs::create_dir_all(parent)?;
+                }
+                std::fs::write(&full, &body)?;
+                let tree = flywheel_world_host::git::Repo::at(&dir);
+                tree.git(&["add", "--", under])?;
+                let said = tree.run(&["commit", "--quiet", "-m", &format!("{under}\n\nreason: delivered by {id}")])?;
+                if !said.ok && !said.out.contains("nothing to commit") && !said.err.contains("nothing to commit") {
+                    bail!("committing {under} in the place: {}", said.err.trim());
+                }
+            }
+            // Everything else — an elaboration's document, a reader's signals,
+            // curation's moves — lands on the repository's shared line as the
+            // session, because that is where a real session's landing leaves
+            // it and the machinery reads a repository at its line (167, 203).
+            None => instance.commit(
+                repository,
+                under,
+                &body,
+                &format!("{under}\n\nreason: delivered by {id}"),
+            )?,
+        }
         delivered.push(to.clone());
     }
 
@@ -580,6 +623,26 @@ fn delivered(
             false => format!(" · {}", delivered.join(", ")),
         }
     ))
+}
+
+/// The directory of a work item's own place, where a construction session
+/// works: the fact the workspace binding wrote when it made the worktree, or
+/// none where places are recorded (93a).
+fn place_of(host: &Host, object: &str) -> Option<PathBuf> {
+    if !object.starts_with("work-item/") {
+        return None;
+    }
+    let fact = flywheel_workspace_recorded::place_fact(&format!("{object}#own"));
+    let dir = host
+        .store
+        .get(&fact)
+        .ok()
+        .flatten()?
+        .record
+        .get("dir")
+        .and_then(|v| v.as_str())
+        .map(PathBuf::from)?;
+    dir.join(".git").exists().then_some(dir)
 }
 
 /// The session standing on an object: the one this host started and that has

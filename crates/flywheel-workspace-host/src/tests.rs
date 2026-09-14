@@ -85,16 +85,16 @@ fn a_line_is_a_branch_with_a_worktree_and_a_place_is_a_worktree_off_it() {
     assert!(line.join("README.md").is_file(), "the line's worktree is at the shared line's head");
     assert!(ws.branch_exists("storefront", "bolt/storefront/plan-rows").unwrap());
 
-    ws.prepare_place("work-item/storefront/plan-rows/wi-1", "work-item/storefront/plan-rows/wi-1", "# the job\n")
+    ws.prepare_place("work-item/storefront/plan-rows/wi-1#own", "work-item/storefront/plan-rows/wi-1", "# the job\n")
         .expect("the place");
-    let place = place_dir(&root, "storefront", "work-item/storefront/plan-rows/wi-1", "bolt/storefront/plan-rows");
+    let place = place_dir(&root, "storefront", "work-item/storefront/plan-rows/wi-1#own", "bolt/storefront/plan-rows");
     assert!(place.join("README.md").is_file(), "the place is a worktree off the line");
     assert_eq!(std::fs::read_to_string(place.join(".flywheel/work-order.md")).unwrap(), "# the job\n");
     let status = Repo::at(&place).git(&["status", "--porcelain"]).unwrap();
     assert!(status.trim().is_empty(), "the work order is untracked and excluded (203): {status}");
 
     // The facts the machines read are the recorded binding's, written alike.
-    let evidence = |name: &str| flywheel_workspace_recorded::evidence(ws.store, "work-item/storefront/plan-rows/wi-1", name);
+    let evidence = |name: &str| flywheel_workspace_recorded::evidence(ws.store, "work-item/storefront/plan-rows/wi-1#own", name);
     assert_eq!(evidence("place.exists"), Some(json!(true)));
     assert_eq!(evidence("place.contains_line"), Some(json!(true)));
     assert_eq!(
@@ -104,7 +104,7 @@ fn a_line_is_a_branch_with_a_worktree_and_a_place_is_a_worktree_off_it() {
 
     // Twice is once (73).
     ws.create_line("bolt/storefront/plan-rows", "").expect("a repeat changes nothing");
-    ws.prepare_place("work-item/storefront/plan-rows/wi-1", "", "# the job\n").expect("a repeat changes nothing");
+    ws.prepare_place("work-item/storefront/plan-rows/wi-1#own", "", "# the job\n").expect("a repeat changes nothing");
 }
 
 #[test]
@@ -114,22 +114,22 @@ fn a_places_commits_merge_into_the_line_and_the_line_lands_on_the_git_host() {
     a_bolt(&mut store);
     let mut ws = HostWorkspace::new(&mut store, &root);
     ws.create_line("bolt/storefront/plan-rows", "").unwrap();
-    ws.prepare_place("work-item/storefront/plan-rows/wi-1", "", "").unwrap();
-    let place = place_dir(&root, "storefront", "work-item/storefront/plan-rows/wi-1", "bolt/storefront/plan-rows");
+    ws.prepare_place("work-item/storefront/plan-rows/wi-1#own", "", "").unwrap();
+    let place = place_dir(&root, "storefront", "work-item/storefront/plan-rows/wi-1#own", "bolt/storefront/plan-rows");
 
     // The session's work: one commit in the place (67).
     commit_in(&place, "src/rows.rs", "fn rows() {}\n", "feat(rows): number the rows");
 
-    assert_eq!(ws.merge_place("work-item/storefront/plan-rows/wi-1").unwrap(), TakeOutcome::Done);
+    assert_eq!(ws.merge_place("work-item/storefront/plan-rows/wi-1#own").unwrap(), TakeOutcome::Done);
     let line = line_dir(&root, "storefront", "bolt/storefront/plan-rows");
     assert!(line.join("src/rows.rs").is_file(), "the line holds the place's work");
     assert_eq!(
-        flywheel_workspace_recorded::evidence(ws.store, "work-item/storefront/plan-rows/wi-1", "place.merged"),
+        flywheel_workspace_recorded::evidence(ws.store, "work-item/storefront/plan-rows/wi-1#own", "place.merged"),
         Some(json!(true))
     );
-    ws.remove_place("work-item/storefront/plan-rows/wi-1").unwrap();
+    ws.remove_place("work-item/storefront/plan-rows/wi-1#own").unwrap();
     assert!(!place.exists(), "the worktree is gone");
-    assert!(!ws.branch_exists("storefront", &place_branch("work-item/storefront/plan-rows/wi-1")).unwrap());
+    assert!(!ws.branch_exists("storefront", &place_branch("work-item/storefront/plan-rows/wi-1#own")).unwrap());
 
     // The landing: take, acceptance, land (50, 192, 175).
     assert_eq!(ws.take_parent("bolt/storefront/plan-rows").unwrap(), TakeOutcome::Done);
@@ -158,23 +158,23 @@ fn a_merge_that_conflicts_is_aborted_whole_and_says_so() {
     a_bolt(&mut store);
     let mut ws = HostWorkspace::new(&mut store, &root);
     ws.create_line("bolt/storefront/plan-rows", "").unwrap();
-    ws.prepare_place("work-item/storefront/plan-rows/wi-1", "", "").unwrap();
+    ws.prepare_place("work-item/storefront/plan-rows/wi-1#own", "", "").unwrap();
     let line = line_dir(&root, "storefront", "bolt/storefront/plan-rows");
-    let place = place_dir(&root, "storefront", "work-item/storefront/plan-rows/wi-1", "bolt/storefront/plan-rows");
+    let place = place_dir(&root, "storefront", "work-item/storefront/plan-rows/wi-1#own", "bolt/storefront/plan-rows");
 
     commit_in(&line, "README.md", "# the shop, by the line\n", "the line moved");
     commit_in(&place, "README.md", "# the shop, by the place\n", "the place moved");
 
-    let outcome = ws.merge_place("work-item/storefront/plan-rows/wi-1").unwrap();
+    let outcome = ws.merge_place("work-item/storefront/plan-rows/wi-1#own").unwrap();
     assert!(matches!(outcome, TakeOutcome::Conflicted { .. }), "{outcome:?}");
     let status = Repo::at(&line).git(&["status", "--porcelain"]).unwrap();
     assert!(status.trim().is_empty(), "aborted whole (179): {status}");
     assert_eq!(
-        flywheel_workspace_recorded::evidence(ws.store, "work-item/storefront/plan-rows/wi-1", "place.conflicted"),
+        flywheel_workspace_recorded::evidence(ws.store, "work-item/storefront/plan-rows/wi-1#own", "place.conflicted"),
         Some(json!(true))
     );
     assert_eq!(
-        flywheel_workspace_recorded::evidence(ws.store, "work-item/storefront/plan-rows/wi-1", "place.merged"),
+        flywheel_workspace_recorded::evidence(ws.store, "work-item/storefront/plan-rows/wi-1#own", "place.merged"),
         Some(json!(false))
     );
 }
@@ -202,7 +202,9 @@ fn the_repository_and_the_line_are_found_from_the_object_and_its_parents() {
     store.seed(object("elaboration/declines/1", "elaboration", Some("intent/declines"), &[]));
     let ws = HostWorkspace::new(&mut store, "/nowhere");
     assert_eq!(ws.repository_of("work-item/storefront/plan-rows/wi-1").unwrap(), "storefront");
-    assert_eq!(ws.line_of("work-item/storefront/plan-rows/wi-1").unwrap(), "bolt/storefront/plan-rows");
+    assert_eq!(ws.line_of("work-item/storefront/plan-rows/wi-1#own").unwrap(), "bolt/storefront/plan-rows");
+    assert!(!is_the_lines_own("work-item/storefront/plan-rows/wi-1#own", "bolt/storefront/plan-rows"));
+    assert!(is_the_lines_own("bolt/storefront/plan-rows#own", "bolt/storefront/plan-rows"));
     assert_eq!(ws.line_of("bolt/storefront/plan-rows#own").unwrap(), "bolt/storefront/plan-rows");
     assert_eq!(ws.repository_of("elaboration/declines/1").unwrap(), BLUEPRINTS);
     assert_eq!(ws.line_of("elaboration/declines/1").unwrap(), "intent/declines");

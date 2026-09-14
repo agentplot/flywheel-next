@@ -143,6 +143,12 @@ pub fn evidence<S: Records>(
             }
         }
         // The sessions this host runs: session records naming it, still alive.
+        // "sessions of this host with a pane present" (`record-derived.yaml`
+        // host.running, 31). A session that reported done, stalled or invalid
+        // has no pane: the same rule the sessions binding's `present` reads
+        // by, which no exit writes `ended_at` for (68, 70, I5). Counted with
+        // `ended_at` alone, four finished sessions held the host's bound of
+        // four for ever and no work item ever got a slot.
         "host.running" => {
             let host = host_name(object);
             json!(store
@@ -154,6 +160,13 @@ pub fn evidence<S: Records>(
                 .filter(|o| {
                     o.record.get("started_at").is_some_and(|v| !v.is_null())
                         && !o.record.get("ended_at").is_some_and(|v| !v.is_null())
+                })
+                .filter(|o| {
+                    let session = o.id.trim_start_matches("fact/session/");
+                    !matches!(
+                        crate::stages::exit_of(store, session).as_deref(),
+                        Some("done" | "stalled" | "invalid")
+                    )
                 })
                 .count())
         }

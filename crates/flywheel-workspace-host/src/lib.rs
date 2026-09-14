@@ -18,8 +18,11 @@
 //! places/<repo>/<place slug>/  one worktree per place, on branch place/<slug>
 //! ```
 //!
-//! A bolt's own place (`<bolt>#own`, 44) is the line's worktree itself: the
-//! operator's place at the head of the line, refreshed by every merge.
+//! Every object's own place is `<object>#own` (`regions::place_key`). A bolt's
+//! own place (44) is the line's worktree itself — the operator's place at the
+//! head of the line, refreshed by every merge — because the bolt is its line;
+//! a work item's or an elaboration's own place is a worktree off its owner's
+//! line.
 //!
 //! The git binary does the merging, as `host.yaml`'s Tools header binds it;
 //! every spawn goes through the world host's `Repo`, so the count a tick
@@ -59,11 +62,17 @@ pub fn line_dir(root: &Path, repository: &str, line: &str) -> PathBuf {
     root.join("lines").join(repository).join(slug(line))
 }
 
-/// Where a place's worktree is. A bolt's own place is its line's worktree.
+/// Whether a place is its line's own worktree: the object it belongs to is
+/// the line (a bolt's own place, 44).
+pub fn is_the_lines_own(place: &str, line: &str) -> bool {
+    !line.is_empty() && place.strip_suffix("#own") == Some(line)
+}
+
+/// Where a place's worktree is. A line's own place is its worktree.
 pub fn place_dir(root: &Path, repository: &str, place: &str, line: &str) -> PathBuf {
-    match place.strip_suffix("#own") {
-        Some(_) => line_dir(root, repository, line),
-        None => root.join("places").join(repository).join(slug(place)),
+    match is_the_lines_own(place, line) {
+        true => line_dir(root, repository, line),
+        false => root.join("places").join(repository).join(slug(place)),
     }
 }
 
@@ -323,7 +332,7 @@ impl<S: Records> Workspace for HostWorkspace<'_, S> {
             false => line.clone(),
         };
         let dir = place_dir(&self.root, &repository, place, &base);
-        if place.ends_with("#own") {
+        if is_the_lines_own(place, &line) {
             // The line's own worktree: made with the line (44).
             self.worktree(&repository, &dir, &base, None)
                 .with_context(|| format!("the own place of `{base}`"))?;
@@ -353,7 +362,7 @@ impl<S: Records> Workspace for HostWorkspace<'_, S> {
             true => self.shared_line(&repository)?,
             false => line,
         };
-        if place.ends_with("#own") {
+        if is_the_lines_own(place, &base) {
             return self.facts().rebase_place(place);
         }
         let dir = place_dir(&self.root, &repository, place, &base);
@@ -377,7 +386,7 @@ impl<S: Records> Workspace for HostWorkspace<'_, S> {
             true => self.shared_line(&repository)?,
             false => line,
         };
-        if place.ends_with("#own") {
+        if is_the_lines_own(place, &base) {
             // The own place is the line: nothing to merge (44).
             return self.facts().merge_place(place);
         }
@@ -406,12 +415,12 @@ impl<S: Records> Workspace for HostWorkspace<'_, S> {
 
     fn remove_place(&mut self, place: &str) -> Result<()> {
         let repository = self.repository_of(place)?;
-        if !place.ends_with("#own") {
-            let line = self.line_of(place)?;
-            let base = match line.is_empty() {
-                true => self.shared_line(&repository)?,
-                false => line,
-            };
+        let line = self.line_of(place)?;
+        let base = match line.is_empty() {
+            true => self.shared_line(&repository)?,
+            false => line,
+        };
+        if !is_the_lines_own(place, &base) {
             let dir = place_dir(&self.root, &repository, place, &base);
             self.remove_worktree(&repository, &dir, Some(&place_branch(place)))?;
         }

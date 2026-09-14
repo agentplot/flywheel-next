@@ -1,7 +1,7 @@
 scenario: storefront
 title: a team building a shop; noise arrives from four places, curation makes one subject of it, and the intent is understood before anything is planned
 profiles: [all]
-satisfies: [19, 20, 21, 24, 25, 26, 27, 58, 68, 70, 107, 109, 110, 111, 112, 113, 115, 116, 118, 187, 215]
+satisfies: [12, 19, 20, 21, 24, 25, 26, 27, 34, 38, 39, 42, 58, 60, 68, 70, 107, 109, 110, 111, 112, 113, 115, 116, 118, 187, 215]
 given:
   # The instance is a week old: one intent is already open about the catalogue
   # on mobile, which is what gives curation somewhere to route a signal that
@@ -15,6 +15,10 @@ given:
       machine: curation
       state: {run: idle}
       record: {threshold: 12, cadence: "0 6 * * 1-5"}
+  # The one laptop, running four sessions at once: what a work item's slot is
+  # read against (31, 32). With no host declared the runner's bound is nought
+  # and no item ever leaves `ready`.
+  hosts: [{name: local, bound: 4}]
 when:
   - tick: {}
 actions:
@@ -88,6 +92,26 @@ actions:
       exit: done
       deliver:
         prototype/retry-report.html: flywheel-blueprints/openspec/changes/storefront-declines/prototype/retry-report.html
+  # ---- 5. construction, the thinnest way in: a capture becomes a chore on a
+  # bolt by the operator's own dictation (34, 12), a session works it in a
+  # real place, and the bolt lands on the shop's shared line.
+  - capture:
+      text: "the order confirmation email says undefined where the total should be"
+      source: page
+      key: page/2026-09-05/order-total
+      by: chuck
+  - response:
+      object: capture/page-2026-09-05-order-total
+      answer: propose-unit
+      args: {bolt: bolt/storefront/order-total, capture: capture/page-2026-09-05-order-total, type: chore}
+      id: page/7
+      by: chuck
+  - session:
+      object: work-item/storefront/order-total/wi-1
+      exit: done
+      deliver:
+        build/confirmation.rs: storefront/src/mail/confirmation.rs
+  - response: {decision: bolt/storefront/order-total/bolt-close, answer: "yes", id: page/8, by: chuck}
 tour:
   - "A transcript of yesterday's weekly lands. Nobody wrote a ticket; the meeting already happened."
   - "A reader goes through it and comes back with nine signals — several of them about the same thing."
@@ -104,6 +128,10 @@ tour:
   - "This one comes back with a question rather than an answer. It stopped itself — nothing else stopped — and the question is a numbered decision like any other."
   - "The operator answers it in a sentence. The answer goes to the session and it carries on from where it stopped."
   - "The prototype delivers a report: a page at its own address, with the numbers the research could not get. Two attempts, an hour and a day apart, on soft declines only."
+  - "Something small and certain: a customer's confirmation email says `undefined` where the total belongs. One sentence in the box, as before."
+  - "This one needs no research. The operator names a bolt on the capture itself — order-total — and that is the approval: a chore unit on a new bolt, one item, one session, and the place it works in is a real branch of the shop."
+  - "The session comes back with its work: a commit in its place. The stage passes, the place merges into the bolt's line, and the bolt asks to close."
+  - "Yes. The line takes the shared line one last time, the acceptance file goes on it, and the bolt lands: the shop's main now carries the fix, and the board shows it landed."
 then:
   transitions:
     # 1 and 2: the transcript is read and comes back as nine signals.
@@ -123,6 +151,11 @@ then:
     # back to working, which is the whole of 68 and 70 in two transitions.
     - {object: elaboration/storefront-declines/finding-1, from: working, to: blocked}
     - {object: elaboration/storefront-declines/finding-1, from: blocked, to: working}
+    # 17 to 19: the dictation approved the unit; its item ran the chore's one
+    # stage in a real place, merged, and the bolt landed (34, 60, 38, 39).
+    - {object: unit/storefront/order-total, from: approved, to: in-flight}
+    - {object: work-item/storefront/order-total/wi-1, from: merging, to: merged}
+    - {object: bolt/storefront/order-total, from: landing, to: landed}
   states:
     capture/meeting-2026-09-02-storefront-weekly: {reading: read}
     intent/storefront-declines: {life: open}
@@ -130,12 +163,16 @@ then:
     # standing, because only the operator finishes one (25, 26).
     elaboration/storefront-declines/proposed-1: {life: done}
     elaboration/storefront-declines/finding-1: {life: working}
+    bolt/storefront/order-total: {life: landed}
+    unit/storefront/order-total: {life: landed}
   effects:
     # The finding the research offered is one record, made once (58, 62).
     - {do: record_offers, count: 1}
     # The answer reached the session, and it took no second session to do it
     # (68, 70).
     - {do: deliver_answer, count: 1}
+    # One landing, of the one bolt (39).
+    - {do: land_line, count: 1}
   decisions:
     # What is left standing is the elaboration curation proposed on the
     # catalogue intent, which nobody has answered: not everything that arrives
