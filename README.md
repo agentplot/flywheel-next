@@ -176,7 +176,9 @@ and `--state` say the same thing by hand.
 | `flywheel-store-git` | `StateStore` over the state repository |
 | `flywheel-world-host` | `World` over git, the manifest and the host's router |
 | `flywheel-workspace-recorded` | `Workspace` as records (93a) |
+| `flywheel-workspace-host` | `Workspace` over git, on the clones a host keeps: a line is a branch, a place is a worktree, a landing pushes the shared line |
 | `flywheel-sessions-operator` | `Sessions` with the operator as the session (93b) |
+| `flywheel-sessions-herdr` | `Sessions` over Herdr, one `herdr agent start` in a pane at the place (196) |
 | `flywheel-surface` | the page, the chat sink, the tool catalogue and its HTTP server |
 | `flywheel-scenario` | the conformance runner, the scripted sessions, the trace renderer |
 | `flywheel` | the binary: `init`, `host`, `scenario`, `capture`, `exit`, `offer`, `note`, `refuse` |
