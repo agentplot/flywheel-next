@@ -287,6 +287,16 @@ pub struct RepositoryRef {
     pub shared_line: String,
 }
 
+/// One commit on a line, as the page shows it: the hash, the subject, who
+/// made it and when (185, S28).
+#[derive(Debug, Clone, PartialEq, Eq, Default, Serialize, Deserialize)]
+pub struct CommitRef {
+    pub hash: String,
+    pub subject: String,
+    pub author: String,
+    pub at: String,
+}
+
 /// The endpoint a host's router gives a service in a place (46, 191).
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct Endpoint {
@@ -319,6 +329,13 @@ pub trait World {
 
     /// Every file under a path on a repository's shared line, by path.
     fn list_files(&self, repository: &str, under: &str) -> Result<Vec<String>>;
+
+    /// The last `limit` commits on a line of a repository, newest first, or
+    /// none where the world keeps no such history (185, S28).
+    fn line_log(&self, repository: &str, line: &str, limit: usize) -> Result<Vec<CommitRef>> {
+        let _ = (repository, line, limit);
+        Ok(vec![])
+    }
 
     /// Write one file on a repository's shared line.
     ///

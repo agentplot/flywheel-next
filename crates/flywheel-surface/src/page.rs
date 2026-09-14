@@ -19,7 +19,10 @@
 //! served, and its version is the binary's (307).
 
 use crate::links;
-use flywheel_atoms::{StateStore, World};
+use flywheel_atoms::{CommitRef, StateStore, World};
+
+mod dock;
+pub use dock::Session;
 use flywheel_domain::signals;
 use flywheel_domain::sinks;
 use flywheel_domain::{commands, status};
@@ -76,6 +79,11 @@ pub struct Read {
     /// The intents a move may name, so attaching and joining are picked rather
     /// than remembered (194).
     pub intents: Vec<String>,
+    /// The last commits on every bolt's line, by bolt id (185, S28).
+    pub commits: BTreeMap<String, Vec<CommitRef>>,
+    /// Every session the bindings recorded, by session id, with what its
+    /// thread says it did (141, 144, S28).
+    pub sessions: BTreeMap<String, Session>,
     /// What each standing decision is about, in one line: the fields and the
     /// evidence the machine's own `shows:` names for that decision kind,
     /// resolved against the object, and how long it has stood. Keyed by the
@@ -392,6 +400,57 @@ pub fn read<S: StateStore, W: World + ?Sized>(
         .map(|r| r.name)
         .filter(|name| name != "flywheel-state" && name != "flywheel-blueprints")
         .collect();
+    // The commits on each bolt's line, from the world, and every session the
+    // bindings recorded, with its exit from its own thread (185, 144, S28).
+    let mut commits: BTreeMap<String, Vec<CommitRef>> = BTreeMap::new();
+    for bolt in objects.iter().filter(|o| o.machine == "bolt") {
+        let Some(repository) = bolt.record.get("repository").and_then(|v| v.as_str()) else {
+            continue;
+        };
+        let mut held = world.line_log(repository, &bolt.id, 12).unwrap_or_default();
+        if held.is_empty() && bolt.config.get("life").map(String::as_str) == Some("landed") {
+            held = world.line_log(repository, "main", 8).unwrap_or_default();
+        }
+        if !held.is_empty() {
+            commits.insert(bolt.id.clone(), held);
+        }
+    }
+    let mut sessions: BTreeMap<String, Session> = BTreeMap::new();
+    for fact in objects.iter().filter(|o| o.machine == "fact" && o.id.starts_with("fact/session/")) {
+        let id = fact.id.trim_start_matches("fact/session/").to_string();
+        let text = |name: &str| fact.record.get(name).and_then(|v| v.as_str()).map(String::from);
+        let item = id.rsplitn(3, '/').nth(2).unwrap_or(&id).to_string();
+        let mut session = Session {
+            id: id.clone(),
+            item,
+            host: text("host").unwrap_or_default(),
+            runner: text("runner").unwrap_or_else(|| "operator".into()),
+            agent: text("herdr_agent"),
+            pane: text("herdr_pane"),
+            started: text("started_at"),
+            ..Default::default()
+        };
+        for entry in store.thread(&id).unwrap_or_default() {
+            match entry.kind.as_str() {
+                "exit" => {
+                    session.exit = entry.fields.get("exit").and_then(|v| v.as_str()).map(String::from);
+                    session.exit_at = Some(entry.at.to_rfc3339());
+                    session.deliverables = entry
+                        .fields
+                        .get("deliverables")
+                        .and_then(|v| v.as_array())
+                        .map(|d| d.iter().filter_map(|v| v.as_str().map(String::from)).collect())
+                        .unwrap_or_default();
+                    if let Some(q) = entry.fields.get("question").and_then(|v| v.as_str()) {
+                        session.question = Some(q.to_string());
+                    }
+                }
+                _ => {}
+            }
+        }
+        sessions.insert(id, session);
+    }
+
     Ok(Read {
         decisions,
         status,
@@ -407,6 +466,8 @@ pub fn read<S: StateStore, W: World + ?Sized>(
         intents,
         why,
         delivered,
+        commits,
+        sessions,
         reading: None,
         tour: flywheel_domain::tour::read(store, instance_of(address)),
         refused: None,
@@ -805,7 +866,73 @@ fn rail(read: &Read) -> String {
         }
         out.push_str(&card(read, decision));
     }
+    out.push_str(&since(read));
     out
+}
+
+/// What finished lately, under the decisions: a capture built or dropped, a
+/// unit merged, a bolt landed — each with its word and when, newest first
+/// (14, S59). A finished thing leaves the lane and stands here, so the board
+/// is what is moving and the rail is what happened.
+fn since(read: &Read) -> String {
+    let mut rows: Vec<(chrono::DateTime<chrono::Utc>, &Object, String)> = Vec::new();
+    for object in &read.objects {
+        let verb = match object.machine.as_str() {
+            "signal" => match object.config.get("move").map(String::as_str) {
+                Some("routed") => "built",
+                Some("joined") => "intent",
+                Some("dropped") => "dropped",
+                _ => continue,
+            },
+            "unit" => match object.config.get("life").map(String::as_str) {
+                Some("merged") => "merged",
+                Some("dropped") => "dropped",
+                _ => continue,
+            },
+            "bolt" => match object.config.get("life").map(String::as_str) {
+                Some("landed") => "landed",
+                _ => continue,
+            },
+            "intent" => match object.config.get("life").map(String::as_str) {
+                Some("closed") | Some("done") => "closed",
+                Some("dropped") => "dropped",
+                _ => continue,
+            },
+            _ => continue,
+        };
+        let Some(at) = object.entered_at.values().max().copied() else {
+            continue;
+        };
+        rows.push((at, object, verb.to_string()));
+    }
+    if rows.is_empty() {
+        return String::new();
+    }
+    rows.sort_by(|a, b| b.0.cmp(&a.0));
+    let mut out = String::from("<div class=\"grp since\"><span class=\"g\">since</span></div>\n<ul class=\"since\">\n");
+    for (at, object, verb) in rows.iter().take(8) {
+        let name = match object.machine.as_str() {
+            "signal" => signals::text_of(object).map(|s| clipped_to(&s, 56)).unwrap_or_else(|| name_of(&object.id).to_string()),
+            _ => name_of(&object.id).to_string(),
+        };
+        let _ = write!(
+            out,
+            "<li><span class=\"v {verb}\">{verb}</span><a class=\"grow\" href=\"#dock-{id}\">{name}</a><span class=\"t\">{when}</span></li>\n",
+            id = escape(&object.id),
+            name = escape(&name),
+            when = escape(&at.format("%H:%M").to_string()),
+        );
+    }
+    out.push_str("</ul>\n");
+    out
+}
+
+/// A text cut at a length, from its beginning (S215).
+fn clipped_to(said: &str, at: usize) -> String {
+    match said.chars().count() > at {
+        false => said.trim().to_string(),
+        true => format!("{}…", said.chars().take(at - 1).collect::<String>().trim_end()),
+    }
 }
 
 /// One decision, in the mockup's card silhouette — the only answerable form on
@@ -1102,6 +1229,9 @@ fn lane(read: &Read, title: &str, sub: &str, machines: &[&str]) -> String {
         let rows: Vec<&&status::Row> = mine
             .iter()
             .filter(|row| row.group == group && !nested_in_its_parent(read, row, &mine))
+            // A capture that is done stands in the rail's since list, with
+            // what became of it on its page; the lane is what is moving.
+            .filter(|row| !(group == "done" && row.machine == "capture"))
             .collect();
         // A group with nothing in it keeps its heading and says nothing
         // under it: four "nothing"s down a lane read as the machine talking to
@@ -1859,8 +1989,8 @@ fn dock(read: &Read) -> String {
             opened = read.opened.as_deref() == Some(object.id.as_str()),
         );
         out.push_str(&dock_head(read, object, row));
-        out.push_str(&dock_body(read, object, row));
-        out.push_str(&dock_answers(read, &object.id));
+        out.push_str(&dock::body(read, object, row));
+        out.push_str(&dock_answers(read, &dock::answers_object(read, object)));
         out.push_str("</article>\n");
     }
     out
@@ -1896,7 +2026,10 @@ fn dock_head(read: &Read, object: &Object, row: Option<&status::Row>) -> String 
         out,
         "<span class=\"kind\">{machine}</span>\
          <span class=\"ph\" data-phase=\"{phase}\">{phase}</span>",
-        machine = escape(&object.machine),
+        machine = escape(match object.machine.as_str() {
+            "signal" => "capture",
+            other => other,
+        }),
         phase = escape(&phase_of(&object.machine).to_lowercase()),
     );
     // The link at the host's address, which is the one every notification and
@@ -1909,9 +2042,10 @@ fn dock_head(read: &Read, object: &Object, row: Option<&status::Row>) -> String 
         escape(&link),
         escape(&object.id)
     );
-    let _ = write!(out, "<h2>{}</h2>\n", escape(name_of(&object.id)));
-    if let Some(said) = row.map(|r| r.said.as_str()).filter(|s| !s.is_empty()) {
-        let _ = write!(out, "<div class=\"tail\">{}</div>\n", escape(said));
+    let _ = write!(out, "<h2>{}</h2>\n", escape(&dock::title(read, object)));
+    let said = dock::subtitle(read, object, row);
+    if !said.is_empty() {
+        let _ = write!(out, "<div class=\"tail\">{}</div>\n", escape(&said));
     }
     out.push_str("</div>\n");
     out
@@ -1966,188 +2100,6 @@ fn deliverables(read: &Read, object: &str) -> String {
     out
 }
 
-/// The body of a surface: what the object is, where it sits, what hangs off it,
-/// what it records, and what has been said on it (S28, 141, 144, 209, 210).
-fn dock_body(read: &Read, object: &Object, row: Option<&status::Row>) -> String {
-    let mut out = String::from("<div class=\"dk-b\">\n");
-
-    // A link to a host past its stale window opens this surface and says the
-    // host is away and since when, rather than failing silently (308, 150a).
-    if let Some(away) = read.away.get(&object.id) {
-        let _ = write!(
-            out,
-            "<p class=\"away\" data-away-host=\"{}\">{}</p>\n",
-            escape(&away.host),
-            escape(&away.said())
-        );
-    }
-
-    // Why the decision on it is being asked, in the machine's own words. The
-    // rail card carries the same line; a link that opened here instead must
-    // not make the operator go back for it (15, 308).
-    let why: Vec<String> = read
-        .decisions
-        .iter()
-        .filter(|d| d.object == object.id)
-        .filter_map(|d| read.why.get(&d.id))
-        .filter(|said| !said.is_empty())
-        .map(|said| format!("<div class=\"dtext\">{}</div>\n", escape(&said.join(" · "))))
-        .collect();
-    out.push_str(&sec(
-        "the decision",
-        "why it is being asked",
-        &why.join(""),
-    ));
-
-    // What the sessions on it left behind. A session that finishes leaves real
-    // files at real paths, and until the page linked them the operator could
-    // see that an elaboration was done and not read what it produced, which
-    // empties out the whole stage (190, 213).
-    out.push_str(&sec(
-        "what it delivered",
-        "a file at a path, as the session left it",
-        &deliverables(read, &object.id),
-    ));
-
-    // Which host holds it, which host runs it, whether that host is alive, and
-    // what its lease is in: the four things 141 asks for per object.
-    if let Some(row) = row {
-        let mut standing = String::new();
-        let held = held_by(row);
-        if !held.is_empty() {
-            let _ = write!(&mut standing, "<div class=\"row\">{}</div>\n", escape(&held));
-        }
-        if let Some(lease) = &row.lease {
-            let _ = write!(
-                &mut standing,
-                "<div class=\"row\">lease {}</div>\n",
-                escape(lease)
-            );
-        }
-        let _ = write!(
-            &mut standing,
-            "<div class=\"row\">{} · {}</div>\n",
-            escape(&row.group),
-            escape(phase_of(&object.machine))
-        );
-        out.push_str(&sec("where it stands", "the host, the lease and the group", &standing));
-    }
-
-    // A proposed intent shows its weight: the signals it cites, how many, from
-    // which sources and over what span, counted by event date (109, 118).
-    if let Some(weight) = read.weight.get(&object.id) {
-        // How many, from which sources and over what span — and a source list
-        // nobody recorded says nothing rather than "from " with a blank after
-        // it (109, 118).
-        let mut said = format!(
-            "{} signal{}",
-            weight.count,
-            match weight.count {
-                1 => "",
-                _ => "s",
-            }
-        );
-        if !weight.sources.is_empty() {
-            let _ = write!(&mut said, " from {}", escape(&weight.sources.join(", ")));
-        }
-        if let Some(span) = weight.span() {
-            let _ = write!(&mut said, ", {}", escape(&span));
-        }
-        let mut cited = format!(
-            "<p class=\"weight\" data-signals=\"{}\" data-sources=\"{}\">{said}</p>\n",
-            weight.count,
-            escape(&weight.sources.join(" ")),
-        );
-        cited.push_str("<ul class=\"cited\">\n");
-        for signal in &weight.signals {
-            let _ = write!(&mut cited, "<li class=\"signal\">{}</li>\n", escape(signal));
-        }
-        cited.push_str("</ul>\n");
-        out.push_str(&sec("what it weighs", "the signals it cites", &cited));
-    }
-
-    // What the object records of itself — its type, what it covers, the claims
-    // it cites, the document behind it — said rather than printed as JSON.
-    let already: Vec<&str> = read
-        .decisions
-        .iter()
-        .filter(|d| d.object == object.id)
-        .filter_map(|d| read.why.get(&d.id))
-        .flatten()
-        .map(String::as_str)
-        .collect();
-    let mut recorded = String::new();
-    for (name, value) in &object.record {
-        if let Some(said) = shown(name, value).filter(|said| !already.contains(&said.as_str())) {
-            let _ = write!(
-                &mut recorded,
-                "<div class=\"row\" data-field=\"{}\">{}</div>\n",
-                escape(name),
-                escape(&said)
-            );
-        }
-    }
-    out.push_str(&sec("what it records", "the object's own fields", &recorded));
-
-    // What hangs off it: an intent lists its elaborations in order and opens
-    // each, a bolt its units, a unit its work items (209, 210).
-    let children: Vec<&Object> = read
-        .objects
-        .iter()
-        .filter(|o| o.parent.as_deref() == Some(object.id.as_str()))
-        .collect();
-    if !children.is_empty() {
-        let holds = match object.machine.as_str() {
-            "intent" => "its elaborations, in order",
-            "bolt" => "its units, in order",
-            "unit" => "the work items on it",
-            _ => "what hangs off it",
-        };
-        let mut held = String::from("<ol class=\"elaborations\">\n");
-        for child in &children {
-            let said = read
-                .status
-                .rows
-                .iter()
-                .find(|r| r.object == child.id)
-                .map(|r| r.said.clone())
-                .unwrap_or_default();
-            let _ = write!(
-                &mut held,
-                "<li><a class=\"elaboration\" href=\"#dock-{id}\">{name}</a>\
-                 <span class=\"r\">{said}</span></li>\n",
-                id = escape(&child.id),
-                name = escape(name_of(&child.id)),
-                said = escape(&said),
-            );
-        }
-        held.push_str("</ol>\n");
-        out.push_str(&sec("what it holds", holds, &held));
-    }
-
-    // And what it hangs off, which is how an elaboration gets back to its
-    // thread and a unit to its ledger (210, S28).
-    if let Some(parent) = &object.parent {
-        out.push_str(&sec(
-            "what it is part of",
-            "back to it",
-            &format!(
-                "<div class=\"row\"><a class=\"elaboration\" href=\"#dock-{id}\">{name}</a></div>\n",
-                id = escape(parent),
-                name = escape(parent),
-            ),
-        ));
-    }
-
-    // The question, the answer and the note stay with the object and are shown
-    // under it once the session that said them is gone (144).
-    let said = row.map(discussion).unwrap_or_default();
-    out.push_str(&sec("what was said on it", "it stays with the object (144)", &said));
-
-    out.push_str("</div>\n");
-    out
-}
-
 /// The foot of one dock surface: the object's answers where a decision stands
 /// on it, and what there is to answer and why not where none does (S27, 308).
 ///
@@ -2163,18 +2115,14 @@ fn dock_answers(read: &Read, object: &str) -> String {
         .collect();
     if standing.is_empty() {
         return String::from(
-            "<div class=\"dk-f\"><div class=\"dk-answers none\" data-answerable=\"false\">\
-             <span class=\"fl\">answers</span>\
-             <span class=\"r\">nothing stands on this object; the machinery takes it from \
-             here and raises the next decision that is yours (13)</span></div></div>\n",
+            "<div class=\"dk-f\"><div class=\"dk-answers none\" data-answerable=\"false\"></div></div>\n",
         );
     }
     // What the footer says of itself is "one response each" and no more: why
     // answering here is answering on the rail is said once, at the foot of the
     // panel, rather than on all twenty-seven surfaces (15, S27).
     let mut out = String::from(
-        "<div class=\"dk-f\"><div class=\"fl\">answer<span class=\"r\">one response each\
-         </span></div>\n<div class=\"dk-answers\" data-answerable=\"true\">\n",
+        "<div class=\"dk-f\"><div class=\"dk-answers\" data-answerable=\"true\">\n",
     );
     for decision in standing {
         let number = decision.number.map(|n| n.to_string()).unwrap_or_default();

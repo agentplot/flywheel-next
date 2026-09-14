@@ -180,6 +180,21 @@ impl World for HostWorld {
         Ok(git::show(&bare, &line, path)?.map(|s| s.into_bytes()))
     }
 
+    fn line_log(&self, repository: &str, line: &str, limit: usize) -> Result<Vec<flywheel_atoms::CommitRef>> {
+        let bare = Repo::at(self.bare(repository));
+        if !bare.exists() {
+            return Ok(vec![]);
+        }
+        // A line's own commits: what it carries that the shared line does not
+        // yet. The shared line itself is read whole (185).
+        let shared = self.repository(repository)?.shared_line.clone();
+        let rev = match line == shared {
+            true => line.to_string(),
+            false => format!("{shared}..{line}"),
+        };
+        git::log(&bare, &rev, limit)
+    }
+
     fn list_files(&self, repository: &str, under: &str) -> Result<Vec<String>> {
         let repo = self.repository(repository)?;
         let line = repo.shared_line.clone();

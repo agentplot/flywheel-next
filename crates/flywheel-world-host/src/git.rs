@@ -253,3 +253,30 @@ pub fn commit_file(repo: &Repo, line: &str, path: &str, content: &str, message: 
     repo.git(&["push", "--quiet", "origin", line])?;
     Ok(())
 }
+
+/// The last `limit` commits reachable from `rev`, newest first (185, S28).
+pub fn log(repo: &Repo, rev: &str, limit: usize) -> Result<Vec<flywheel_atoms::CommitRef>> {
+    let said = repo.run(&[
+        "log",
+        "--format=%h%x1f%s%x1f%an%x1f%cI",
+        &format!("-n{limit}"),
+        rev,
+        "--",
+    ])?;
+    if !said.ok {
+        return Ok(vec![]);
+    }
+    Ok(said
+        .text()?
+        .lines()
+        .filter_map(|line| {
+            let mut parts = line.split('\x1f');
+            Some(flywheel_atoms::CommitRef {
+                hash: parts.next()?.to_string(),
+                subject: parts.next()?.to_string(),
+                author: parts.next()?.to_string(),
+                at: parts.next()?.to_string(),
+            })
+        })
+        .collect())
+}

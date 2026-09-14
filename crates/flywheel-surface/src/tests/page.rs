@@ -460,9 +460,12 @@ fn the_rail_is_grouped_and_each_group_is_named_once() {
         );
         seen.push(group);
     }
-    // In the model's order, with attention last.
+    // In the model's order, with attention last. `since` is the mockup's own
+    // list of what finished lately, under the decisions, and no group of the
+    // count (14, S59).
     let order: Vec<usize> = headings
         .iter()
+        .filter(|group| group.as_str() != "since")
         .map(|group| {
             flywheel_engine::rail::GROUPS
                 .iter()

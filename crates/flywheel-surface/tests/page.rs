@@ -503,7 +503,7 @@ fn proposed_intent_shows_weight() {
     // And it cites them, each one (109).
     for signal in &cited {
         assert!(
-            html.contains(&format!("<li class=\"signal\">{signal}</li>")),
+            html.contains(&format!("<li class=\"signal\"><a class=\"elaboration\" href=\"#dock-{signal}\">")),
             "the intent does not cite `{signal}`"
         );
     }

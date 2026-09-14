@@ -122,6 +122,9 @@ impl World for SharedWorld {
     fn list_files(&self, repository: &str, under: &str) -> Result<Vec<String>> {
         self.with(|w| w.list_files(repository, under))
     }
+    fn line_log(&self, repository: &str, line: &str, limit: usize) -> Result<Vec<flywheel_atoms::CommitRef>> {
+        self.with(|w| w.line_log(repository, line, limit))
+    }
     fn write_file(
         &mut self,
         repository: &str,
