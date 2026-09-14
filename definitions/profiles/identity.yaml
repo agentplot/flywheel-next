@@ -110,7 +110,7 @@ permissions:
     fw.read:             [status view, book, map, the query tools, artifact views, the instrument]
     fw.rail.answer:      [answer, yes all, drop, later, hold, release, finish, end, close, send-back, retire, takeover, revive, take, start, stop, filter]
     fw.rail.assign:      [assign]
-    fw.capture.write:    [capture, mark-intent, ask, propose-unit, propose-chore, explore, open-session]
+    fw.capture.write:    [capture, ask, propose-unit, propose-chore, explore, open-session]
     fw.proposal.edit:    [the per-unit answers on a proposal before its yes]
     fw.map.edit:         [map-edit, set-home, set-status, attach, detach, add-repository, create-repository, adopt-repository]
     fw.review.mark:      [mark-reviewed]

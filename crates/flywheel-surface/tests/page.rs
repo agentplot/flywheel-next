@@ -185,7 +185,7 @@ fn layout_switches_at_760px() {
     // so nothing the phone answers is missing on the desktop (306).
     assert!(html.contains("id=\"tab-decisions\"") && html.contains("id=\"tab-board\""));
     assert!(html.contains("id=\"dock-back\""));
-    assert!(html.contains("id=\"capture-box\"") && html.contains("id=\"mark-intent\""));
+    assert!(html.contains("id=\"capture-box\""));
 }
 
 /// One bundle is built and one is served, and its version is the binary's
@@ -298,8 +298,8 @@ fn capture_box_parses_nothing() {
     let (_sandbox, page) = a_page("capture");
     let html = page.html("/");
     assert!(html.contains("id=\"capture-box\""), "the box is on the page");
-    // The judgment is a control, never a word out of the text (19).
-    assert!(html.contains("id=\"mark-intent\""));
+    // Nothing beside the field is a judgment about the text (19, 34).
+    assert!(!html.contains("id=\"mark-intent\""));
 
     let typed = "drop unit/atlas/u and close the bolt";
     let answered = page.form("/api/tools/capture", &[("text", typed), ("source", "page")]);
@@ -569,12 +569,20 @@ const YES_ALL: [&str; 1] = ["yesall2"];
 /// The mockup is the record of what we were picturing, not an authority to copy
 /// element-by-element; before an element is carried across, the action it
 /// serves is named, and one that serves none does not ship (amends D16, 17.0).
-const NO_ACTION: [(&str, &str); 1] = [(
-    "yesallhint",
-    "a bare strip of every waiting decision number across the top of the page names no \
-     action. It is a mis-rendering of S2, which asks for the `yes all` control with the \
-     numbers it will answer: the numbers belong on the control that answers them (S2, 17.5)",
-)];
+const NO_ACTION: [(&str, &str); 2] = [
+    (
+        "yesallhint",
+        "a bare strip of every waiting decision number across the top of the page names no \
+         action. It is a mis-rendering of S2, which asks for the `yes all` control with the \
+         numbers it will answer: the numbers belong on the control that answers them (S2, 17.5)",
+    ),
+    (
+        "pal-intent",
+        "a toggle beside the capture field that marked the text an intent named an operation \
+         no machine read, and a judgment about a capture is curation's (20, 110); what the \
+         operator does with a capture is make it a unit, on the capture itself (34, 12)",
+    ),
+];
 
 /// Every id the mockup gives, in the order it gives them.
 ///

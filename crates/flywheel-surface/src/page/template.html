@@ -860,8 +860,9 @@ a.btn.pri{color:var(--accent-ink)}
   <a class="tab" role="tab" id="tab-board" href="#board">Board<span class="bd" id="bd-board">{{OBJECTS}}</span></a>
 </nav>
 <!-- The capture box, which is the mockup's palette: one typed input, captured
-     whole, with the intent toggle beside the field as a control and never a
-     word read out of the text (19, 194). -->
+     whole and never a word read out of the text (19, 194). Nothing beside the
+     field is a judgment about the text: a capture becomes work by the `unit`
+     control on the capture itself (34, 12). -->
 <div class="pal-scrim" id="pal-scrim">
   <div class="pal" id="pal" role="dialog" aria-modal="true" aria-label="capture">
     <form class="capture" id="capture-box" method="post" action="/api/tools/capture">
@@ -869,7 +870,6 @@ a.btn.pri{color:var(--accent-ink)}
       <div class="pal-f">
         <label class="sr-only" for="pal-q">Capture</label>
         <input type="text" id="pal-q" name="text" autocomplete="off" placeholder="what happened, in your own words">
-        <label id="pal-intent"><input type="checkbox" id="mark-intent" name="intent" value="yes"> mark as intent</label>
         <a class="x" id="pal-close" href="#decisions" aria-label="close">×</a>
       </div>
       <div class="pal-will">the text is captured whole and unparsed; one signal of kind <b>ask</b> is written with it (19, 113)</div>

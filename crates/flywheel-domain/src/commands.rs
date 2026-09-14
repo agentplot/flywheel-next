@@ -293,7 +293,7 @@ fn noted(kind: &str, object: &str, text: impl Into<String>) -> Noted {
 /// because it is the record's own rule.
 pub const DICTATION_TOOLS: &[&str] = &[
     "capture",
-    "mark-intent",
+    "propose-unit",
     "open-session",
     "drop",
     "later",

@@ -8,7 +8,7 @@ identically by the page, the chat and the machinery.
 
 ### Requirement: Every operator operation is a tool, and no caller has one the others lack
 
-Every operation the operator may invoke — capture, mark as intent, answer a
+Every operation the operator may invoke — capture, propose a unit, answer a
 decision, open-session, drop, later, hold, release, rename, finish, end, close,
 retire, takeover, revive, take, and the rest of what clause 4 grants — SHALL be
 exposed by the state store as a tool with a schema naming its arguments by

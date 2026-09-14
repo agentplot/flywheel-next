@@ -16,6 +16,7 @@ pub mod order;
 pub mod profile;
 pub mod set;
 pub mod signals;
+pub mod stages;
 pub mod sinks;
 pub mod status;
 pub mod tour;

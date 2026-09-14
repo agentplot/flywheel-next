@@ -68,17 +68,7 @@ impl<S: Records> OperatorSessions<S> {
 /// answered. There is nowhere out of `blocked` but a response, so the session
 /// never exited and the elaboration above it never finished.
 pub fn exit_of<S: Records>(store: &S, session: &str) -> Option<String> {
-    let thread = store.thread(session).ok()?;
-    let last = |kind: &str| thread.iter().rposition(|e| e.kind == kind);
-    let exit = last("exit")?;
-    if last("answer").is_some_and(|answered| answered > exit) {
-        return None;
-    }
-    thread[exit]
-        .fields
-        .get("exit")
-        .and_then(|v| v.as_str())
-        .map(String::from)
+    flywheel_domain::stages::exit_of(store, session)
 }
 
 /// Whether the answer the operator gave has reached the session: an `answer`

@@ -54,10 +54,13 @@ pub const CATALOGUE: &[Tool] = &[
         doc: "a capture with one signal of kind ask (19)",
     },
     Tool {
-        name: "mark-intent",
-        args: &["capture"],
-        doc: "the operator's judgment that a capture is an intent: an intent in \
-              open with its first elaboration in approved (12, 19)",
+        name: "propose-unit",
+        args: &["bolt", "text", "type", "capture"],
+        doc: "a unit in approved on the bolt, with the call as its approval (34, \
+              12); a bolt the name gives that does not exist is made first, on \
+              the repository the instance tracks; the type defaults to chore; \
+              the capture it came from is the unit's document and its text the \
+              job (19)",
     },
     Tool {
         name: "open-session",
@@ -335,6 +338,7 @@ pub fn call<S: StateStore, W: World + ?Sized>(
         "capture" => capture(store, world, defs, call),
         "later" => later(store, defs, call),
         "open-session" => open_session(store, defs, call),
+        "propose-unit" => propose_unit(store, world, defs, call),
         "curate" => curate(store, world, defs, call),
         // Every other tool takes the transition its decision would, on the
         // object its first argument names (4, 12).
@@ -618,6 +622,155 @@ fn open_session<S: StateStore>(store: &mut S, defs: &Definitions, call: &Call) -
         .journal
         .push(noted("open-session", &id, format!("opened by {}", call.by)));
     Ok(record)
+}
+
+/// A unit in `approved` on a bolt, the call as its approval — the operator's
+/// dictation naming a bolt, applied directly (34, 12, `surfaces.yaml`
+/// propose-unit, model.md §5). No decision is raised: the operator gave one.
+///
+/// The bolt is `bolt/<repository>/<name>`, given whole or as a bare name on the
+/// repository the call names or the one the instance tracks; a bolt that does
+/// not exist yet is made here, which is 34's "dictation naming a bolt" and
+/// `bolt.yaml`'s "or by dictation". The bolt and the items are made in this
+/// call rather than left to the machine's `proposed → approved` transition,
+/// because that transition is a decision's and this is not one; their proofs
+/// (`unit.bolt_exists`, `unit.items_exist`) hold at once, so the tick has
+/// nothing to repeat (73, 127). The type defaults to `chore`, the one stage,
+/// one session type (60); the capture the call came from is the unit's
+/// `document`, and its text is the job the session is handed (19, 89).
+fn propose_unit<S: StateStore, W: World + ?Sized>(
+    store: &mut S,
+    world: &mut W,
+    defs: &Definitions,
+    call: &Call,
+) -> Result<Outcome> {
+    let at = commands::now(store)?;
+    let Some(named) = call.text("bolt").map(|b| b.trim().to_string()).filter(|b| !b.is_empty()) else {
+        bail!("`propose-unit` takes the bolt's name, and the call names none");
+    };
+    let (repository, name) = match named.strip_prefix("bolt/").and_then(|rest| rest.split_once('/')) {
+        Some((repository, name)) => (repository.to_string(), slug(name)),
+        None => {
+            let repository = match call.text("repository").filter(|r| !r.trim().is_empty()) {
+                Some(repository) => repository.trim().to_string(),
+                None => {
+                    let tracked: Vec<String> = world.repositories()?.into_iter().map(|r| r.name).collect();
+                    match tracked.as_slice() {
+                        [one] => one.clone(),
+                        [] => bail!(
+                            "`propose-unit`: the instance tracks no repository for a bolt to land on (205, 206)"
+                        ),
+                        many => bail!(
+                            "`propose-unit`: the instance tracks {} repositories, so the call names one: {}",
+                            many.len(),
+                            many.join(", ")
+                        ),
+                    }
+                }
+            };
+            (repository, slug(&named))
+        }
+    };
+    if name.is_empty() {
+        bail!("`propose-unit`: `{named}` leaves no name for the bolt");
+    }
+    let kind = call
+        .text("type")
+        .map(|t| t.trim().to_string())
+        .filter(|t| !t.is_empty())
+        .unwrap_or_else(|| "chore".to_string());
+    let Some(machine) = defs.get(&kind).filter(|m| m.regions.contains_key("stages")) else {
+        bail!("`propose-unit`: `{kind}` is no unit type this set carries (37, 57)");
+    };
+    let unit = format!("unit/{repository}/{name}");
+    if store.get(&unit)?.is_some() {
+        bail!("`{unit}` already exists; a name is given once (I1)");
+    }
+    let capture = call.text("capture").map(|c| c.trim().to_string()).filter(|c| !c.is_empty());
+    let subject = call
+        .text("text")
+        .map(|t| t.trim().to_string())
+        .filter(|t| !t.is_empty())
+        .or_else(|| capture.as_deref().and_then(|c| capture_text(store, c)));
+    let mut record: BTreeMap<String, Value> = BTreeMap::new();
+    record.insert("repository".into(), json!(repository));
+    record.insert("type".into(), json!(kind));
+    record.insert("type_version".into(), json!(machine.version));
+    record.insert("target".into(), json!({"new_name": name}));
+    record.insert("items".into(), json!(1));
+    record.insert("proposed_by".into(), json!(call.by));
+    if let Some(capture) = &capture {
+        record.insert("document".into(), json!(capture));
+    }
+    if let Some(subject) = &subject {
+        record.insert("subject".into(), json!(subject));
+    }
+    commands::put_new(store, defs, &unit, "unit", None, record, at)?;
+    let mut record = commands::record_call(
+        store,
+        defs,
+        &CallRecord {
+            tool: "propose-unit",
+            decision: None,
+            object: Some(&unit),
+            answer: subject.as_deref().unwrap_or(""),
+            args: Some(Value::Object(call.args.clone().into_iter().collect())),
+            by: &call.by,
+            delivery: &call.delivery,
+            delivery_id: call.delivery_id.as_deref(),
+            proposed_by: call.proposed_by.as_deref(),
+        },
+    )?;
+    // Approved, by this call: the record names the response that approved it,
+    // which is what I1 asks of every unit (unit.yaml record.approval).
+    let approval = record.id.clone();
+    let mut held = store.get(&unit)?.expect("the unit was just written");
+    let base = held.seq;
+    held.record.insert("approval".into(), json!(approval));
+    held.config.insert("life".into(), "approved".into());
+    held.entered_at.insert("life".into(), at);
+    store.put(&unit, &held, base)?;
+    let bolt = flywheel_domain::effects::create_bolt(store, defs, &unit, &name, &repository, at)?
+        .unwrap_or_else(|| format!("bolt/{repository}/{name}"));
+    let items = flywheel_domain::effects::create_items(store, defs, &unit, at)?;
+    record.journal.push(noted(
+        "propose-unit",
+        &unit,
+        format!("approved on {bolt} by {}, {items} item(s)", call.by),
+    ));
+    Ok(record)
+}
+
+/// A name as an id segment: lower-case words joined by hyphens.
+fn slug(name: &str) -> String {
+    let mut out = String::new();
+    for c in name.trim().chars() {
+        match c {
+            c if c.is_ascii_alphanumeric() => out.push(c.to_ascii_lowercase()),
+            '-' | '_' | '.' | ' ' | '/' => {
+                if !out.ends_with('-') && !out.is_empty() {
+                    out.push('-');
+                }
+            }
+            _ => {}
+        }
+    }
+    out.trim_end_matches('-').to_string()
+}
+
+/// What a capture said, from the one ask signal the page's box wrote with it
+/// (19): the signal's assertion or excerpt, as the quote on the board shows it.
+fn capture_text<S: StateStore>(store: &S, capture: &str) -> Option<String> {
+    let key = capture.strip_prefix("capture/")?;
+    let signal = signals::signal_object(key, 1);
+    let held = store.get(&signal).ok().flatten()?;
+    held.record
+        .get("assertion")
+        .or_else(|| held.record.get("excerpt"))
+        .and_then(|v| v.as_str())
+        .map(str::trim)
+        .filter(|s| !s.is_empty())
+        .map(String::from)
 }
 
 /// The next ordinal under a prefix. The objects are the count, so it comes from

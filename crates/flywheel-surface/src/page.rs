@@ -43,6 +43,10 @@ pub struct Read {
     pub address: String,
     /// The identity every response records as given by (153, 236a, 253a).
     pub operator: String,
+    /// The built repositories the instance tracks, which is where a unit
+    /// lands: one, and the `unit` control on a capture never asks; several,
+    /// and it does (34, 205, 206).
+    pub repositories: Vec<String>,
     /// The objects held by a host past its stale window: a link to one says the
     /// host is away and since when, rather than failing silently (308, 150a).
     pub away: BTreeMap<String, sinks::Away>,
@@ -379,12 +383,19 @@ pub fn read<S: StateStore, W: World + ?Sized>(
         .filter(|o| o.machine == "intent")
         .map(|o| o.id.clone())
         .collect();
+    let repositories: Vec<String> = world
+        .repositories()
+        .unwrap_or_default()
+        .into_iter()
+        .map(|r| r.name)
+        .collect();
     Ok(Read {
         decisions,
         status,
         objects,
         address: address.to_string(),
         operator: operator.to_string(),
+        repositories,
         away,
         weight,
         answered,
@@ -1403,13 +1414,46 @@ fn quote(read: &Read, row: &status::Row) -> String {
     if !held.is_empty() {
         let _ = write!(&mut under, " · {}", escape(&held));
     }
+    // A capture is where work may start: the `unit` control on it is the
+    // operator's dictation naming a bolt, applied directly (34, 12).
+    let acts = match row.machine.as_str() {
+        "capture" => unit_form(read, &row.object),
+        _ => String::new(),
+    };
     format!(
         "<div class=\"quote\"{attributes}>\
          <q><a href=\"#dock-{object}\">{said}</a></q>\
-         <span class=\"qm\">{under}</span></div>\n",
+         <span class=\"qm\">{under}</span>{acts}</div>\n",
         attributes = board_attributes(row),
         object = escape(&row.object),
         said = escape(&said),
+    )
+}
+
+/// The `unit` control on a capture: a bolt's name, and the unit is approved on
+/// it through `propose-unit` (34, 12, 19). The repository is the one the
+/// instance tracks; only an instance tracking several is asked which. An
+/// instance tracking none has nowhere for a unit to land, so there is no
+/// control.
+fn unit_form(read: &Read, capture: &str) -> String {
+    let repository = match read.repositories.as_slice() {
+        [] => return String::new(),
+        [one] => format!("<input type=\"hidden\" name=\"repository\" value=\"{}\">", escape(one)),
+        many => {
+            let options: String = many
+                .iter()
+                .map(|r| format!("<option>{}</option>", escape(r)))
+                .collect();
+            format!("<select name=\"repository\" aria-label=\"repository\">{options}</select>")
+        }
+    };
+    format!(
+        "<form class=\"acts unit\" method=\"post\" action=\"/api/tools/propose-unit\">\
+         <input type=\"hidden\" name=\"capture\" value=\"{capture}\">\
+         <input type=\"hidden\" name=\"type\" value=\"chore\">\
+         <input type=\"text\" name=\"bolt\" placeholder=\"bolt name\" aria-label=\"bolt name\" required>\
+         {repository}<button class=\"btn\" type=\"submit\">unit</button></form>\n",
+        capture = escape(capture),
     )
 }
 
@@ -1750,6 +1794,15 @@ fn dock_body(read: &Read, object: &Object, row: Option<&status::Row>) -> String 
         "why it is being asked",
         &why.join(""),
     ));
+
+    // A capture is where work may start (34, 12, 19).
+    if object.machine == "capture" {
+        out.push_str(&sec(
+            "make it work",
+            "a unit on a bolt of this repository, approved by you",
+            &unit_form(read, &object.id),
+        ));
+    }
 
     // What the sessions on it left behind. A session that finishes leaves real
     // files at real paths, and until the page linked them the operator could

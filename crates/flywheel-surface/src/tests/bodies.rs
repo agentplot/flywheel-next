@@ -27,7 +27,7 @@ fn spec_list() -> BTreeSet<String> {
         .map(|item| item.split_whitespace().collect::<Vec<_>>().join(" "))
         .filter(|item| !item.starts_with("and the rest"))
         .map(|item| match item.as_str() {
-            "mark as intent" => "mark-intent".to_string(),
+            "propose a unit" => "propose-unit".to_string(),
             "answer a decision" => "answer".to_string(),
             other => other.to_string(),
         })
@@ -136,6 +136,9 @@ fn argument_for(name: &str) -> serde_json::Value {
         "answer" => json!("yes"),
         "source" => json!("page"),
         "name" => json!("atlas"),
+        // `propose-unit`: a bolt given whole, and the one-stage type (34, 60).
+        "bolt" => json!("bolt/atlas/one"),
+        "type" => json!("chore"),
         other => json!(format!("{other}/one")),
     }
 }
@@ -227,4 +230,71 @@ fn call_recorded_once() {
         1,
         "the store holds the delivery twice"
     );
+}
+
+/// `propose-unit` is the operator's dictation naming a bolt, applied directly
+/// (34, 12): the unit stands in `approved` with the call as its approval, the
+/// bolt it names is made when it does not exist, its one item is made, and the
+/// capture it came from is its document with the capture's own words as the
+/// job (19, I1, `surfaces.yaml` propose-unit).
+#[test]
+fn propose_unit_approves_a_unit_on_a_new_bolt_with_its_item() {
+    let mut store = flywheel_atoms::testing::FakeStore::default();
+    let mut world = world::Files::new();
+    let defs = flywheel_domain::set::load().expect("the embedded definitions");
+
+    // The capture's one ask signal, as the page's box writes it (19).
+    let signal = flywheel_domain::signals::signal_object("page/2026-09-14/tidy", 1);
+    let at = flywheel_domain::commands::now(&store).expect("a point");
+    flywheel_domain::commands::put_new(
+        &mut store,
+        &defs,
+        &signal,
+        "signal",
+        Some("capture/page/2026-09-14/tidy"),
+        [("assertion".to_string(), json!("the rows lose their numbers on the second page"))]
+            .into_iter()
+            .collect(),
+        at,
+    )
+    .expect("the signal");
+
+    let call = Call::new("propose-unit", "chuck", "page")
+        .arg("bolt", json!("bolt/atlas/Plan Rows"))
+        .arg("capture", json!("capture/page/2026-09-14/tidy"));
+    let outcome = catalogue::call(&mut store, &mut world, &defs, &call).expect("the dictation is applied");
+
+    let unit = store.get("unit/atlas/plan-rows").expect("a read").expect("the unit exists");
+    assert_eq!(unit.config.get("life").map(String::as_str), Some("approved"), "approved by the call (12)");
+    assert_eq!(unit.record.get("approval").and_then(|v| v.as_str()), Some(outcome.id.as_str()), "the approval is the response (I1)");
+    assert_eq!(unit.record.get("type").and_then(|v| v.as_str()), Some("chore"));
+    assert_eq!(unit.record.get("type_version").and_then(|v| v.as_u64()), Some(2));
+    assert_eq!(unit.parent.as_deref(), Some("bolt/atlas/plan-rows"), "the unit is the bolt's");
+    assert_eq!(unit.record.get("document").and_then(|v| v.as_str()), Some("capture/page/2026-09-14/tidy"));
+    assert_eq!(
+        unit.record.get("subject").and_then(|v| v.as_str()),
+        Some("the rows lose their numbers on the second page"),
+        "the capture's words are the job"
+    );
+
+    let bolt = store.get("bolt/atlas/plan-rows").expect("a read").expect("the bolt was made (34)");
+    assert_eq!(bolt.config.get("life").map(String::as_str), Some("open"));
+    let items: Vec<_> = store
+        .list_records(&flywheel_atoms::Scope::All)
+        .expect("a listing")
+        .into_iter()
+        .filter(|o| o.machine == "work-item" && o.parent.as_deref() == Some("unit/atlas/plan-rows"))
+        .collect();
+    assert_eq!(items.len(), 1, "one item, of the unit's type");
+    assert_eq!(items[0].record.get("type").and_then(|v| v.as_str()), Some("chore"));
+
+    // Given twice, a name is given once (I1).
+    let again = catalogue::call(&mut store, &mut world, &defs, &call);
+    assert!(again.is_err(), "the same unit is not made twice");
+
+    // A type that is no unit type is refused, and so is a name for nothing.
+    let wrong = Call::new("propose-unit", "chuck", "page")
+        .arg("bolt", json!("bolt/atlas/other"))
+        .arg("type", json!("standing"));
+    assert!(catalogue::call(&mut store, &mut world, &defs, &wrong).is_err(), "an elaboration type is no unit type");
 }

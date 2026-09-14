@@ -135,6 +135,10 @@ pub struct HostStore {
     /// machine's guards are answered on a running host and not only under
     /// `flywheel init` (204, 207, 221; `host.yaml` instance evidence).
     pub instance: BTreeMap<String, Value>,
+    /// The definitions the host runs, for the evidence that reads a type's
+    /// own parameters — a stage's agents and bound (56, `host.yaml`
+    /// stage.agents). None until a host is over the store.
+    pub defs: Option<Definitions>,
 }
 
 impl HostStore {
@@ -148,6 +152,7 @@ impl HostStore {
             trace: RefCell::new(vec![]),
             marked: RefCell::new(vec![]),
             instance: BTreeMap::new(),
+            defs: None,
         }
     }
 
@@ -319,6 +324,14 @@ impl EvidenceSource for HostStore {
     /// bindings this release carries (`record-derived.yaml`, B.3, D8).
     fn evidence(&self, object: &str, region: &str, name: &str) -> Option<Value> {
         flywheel_domain::derived::evidence(&self.git, &self.reading, object, name)
+            // The stage's own reads — its agents from the type, its join and
+            // verdict from the sessions' threads — and the item's retry bound
+            // and archive (56, 41, `record-derived.yaml` stage.*).
+            .or_else(|| {
+                self.defs
+                    .as_ref()
+                    .and_then(|defs| flywheel_domain::stages::evidence(&self.git, defs, object, region, name))
+            })
             // The signal material, read from the blueprints under the
             // machinery's prefix (111, 107, `blueprints.yaml` evidence).
             .or_else(|| {
@@ -614,6 +627,7 @@ impl Host {
     ) -> Host {
         let mut store = HostStore::new(git, name, now);
         store.reading.declarations = vec![declaration.clone()];
+        store.defs = Some(defs.clone());
         Host {
             store,
             name: name.to_string(),
@@ -1979,6 +1993,31 @@ fn performing(
         // The status projection is the rail's own effect (D12); the tick writes
         // it after every pass, so nothing to do here.
         "render_status" => {}
+        // The OpenSpec archive at the item's merge (`host.yaml` archive_change):
+        // nothing to do, and the proof holds at once, for a type that needs no
+        // change directory (chore). A type that does needs a place to run
+        // `openspec archive` in, which the workspace binding with real places
+        // is what provides; until then the act is refused with that reason.
+        "archive_change" => {
+            let kind = kind.clone().or_else(|| {
+                store
+                    .get(object)
+                    .ok()
+                    .flatten()
+                    .and_then(|o| o.parent)
+                    .and_then(|unit| store.get(&unit).ok().flatten())
+                    .and_then(|u| u.record.get("type").and_then(|v| v.as_str()).map(String::from))
+            });
+            match kind {
+                Some(kind) if !flywheel_domain::stages::needs_change_directory(defs, &kind) => {}
+                Some(kind) => {
+                    return Ok(Performed::Refused(format!(
+                        "`archive_change` runs `openspec archive` in the item's place, and the `{kind}` type needs one; this release has no place to run it in"
+                    )))
+                }
+                None => return Ok(Performed::Refused("`archive_change`: the item names no unit type".into())),
+            }
+        }
         // No binding covers it. It did not happen, whatever the machines
         // expected of it (81, 127).
         other => {
