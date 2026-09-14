@@ -28,3 +28,71 @@ pub fn attach<S: Records>(
     objects.insert(RAIL.to_string(), rail);
     Ok(())
 }
+
+/// Every standing decision, as a reader must see it: the engine's derivation,
+/// with a child folded onto its parent's card where the model says it rides
+/// there rather than standing on its own.
+///
+/// The engine derives a decision from every live state that carries one, which
+/// is right and is not the whole rule: requirement 10's first decision kind is
+/// "a proposed intent, **with its proposed elaborations**". Deriving is pure
+/// and knows no object names, so the fold belongs here, where the domain's do.
+/// Every reader of the rail goes through this — the page, the chat, the status
+/// projection, the numbering — so a decision that rides on another's card is
+/// never numbered, never counted, and never asked of the operator twice.
+pub fn standing(
+    defs: &Definitions,
+    objects: &BTreeMap<String, Object>,
+    register: &flywheel_engine::runtime::Register,
+) -> Vec<flywheel_engine::DecisionInstance> {
+    let mut derived = flywheel_engine::rail::derive(defs, objects, register);
+    fold_onto_the_parents_card(objects, &mut derived);
+    derived
+}
+
+/// An elaboration proposed against an intent that is itself still proposed is
+/// part of that intent's decision (10, `intent.yaml` proposed, `elaboration.yaml`
+/// proposed, `atoms.yaml` elaboration.shown_with_parent).
+///
+/// The machines and the evidence both said so already — the elaboration's own
+/// `proposed` state carries the transition whose note reads "no decision of its
+/// own; the intent's response carries it" — and the rail numbered it anyway. A
+/// curation that proposes an intent and the elaboration to understand it put
+/// two cards on the rail where the operator has one thing to decide, and the
+/// second was not theirs to answer: until the intent is a subject at all,
+/// there is nothing to say about how to understand it.
+///
+/// The response path is unaffected. A number fans out over a fold only among
+/// objects whose own state carries a decision of the *same* kind
+/// (`eval.rs`, 11), and these are two kinds, so a yes to the intent still does
+/// not answer the elaboration. Once the intent opens, `shown_with_parent` goes
+/// false, the elaboration's card stands on its own and is numbered then — which
+/// is the moment the operator has something to decide.
+fn fold_onto_the_parents_card(
+    objects: &BTreeMap<String, Object>,
+    derived: &mut Vec<flywheel_engine::DecisionInstance>,
+) {
+    let rides_along = |id: &str| -> Option<String> {
+        let held = objects.get(id)?;
+        if held.machine != "elaboration" || held.top_state()? != "proposed" {
+            return None;
+        }
+        let parent = objects.get(held.parent.as_deref()?)?;
+        (parent.machine == "intent" && parent.top_state()? == "proposed")
+            .then(|| parent.id.clone())
+    };
+    let carried: Vec<(String, String)> = derived
+        .iter()
+        .filter_map(|d| rides_along(&d.object).map(|parent| (d.object.clone(), parent)))
+        .collect();
+    for (child, parent) in carried {
+        derived.retain(|d| d.object != child);
+        // Named on the card it rides on, so the operator reads the intent and
+        // the elaboration proposed with it as the one thing they are.
+        if let Some(card) = derived.iter_mut().find(|d| d.object == parent) {
+            if !card.folds.iter().any(|held| *held == child) {
+                card.folds.push(child);
+            }
+        }
+    }
+}

@@ -468,11 +468,31 @@ pub fn evidence<S: Records>(
             .and_then(|v| v.as_str())
             .is_some_and(|n| !n.is_empty())),
         // "get(id).type equals the response's argument".
-        "elaboration.type_set" => json!(held
-            .as_ref()
-            .and_then(|o| o.record.get("type"))
-            .and_then(|v| v.as_str())
-            .is_some_and(|t| !t.is_empty())),
+        //
+        // Against the argument and not merely against emptiness. `set_type` is
+        // the response *correcting* the type the machinery proposed (27, 37),
+        // so the object it acts on nearly always has one already — a finding's
+        // elaboration is made with `self-closing` on it — and a proof reading
+        // "a type is set" was true before the effect ran. The engine skips an
+        // effect whose proof already holds (73, 127), so `type standing` was
+        // consumed, recorded as applied, and changed nothing: the operator
+        // could not retype anything the machinery had typed.
+        "elaboration.type_set" => {
+            let kind = held
+                .as_ref()
+                .and_then(|o| o.record.get("type"))
+                .and_then(|v| v.as_str())
+                .unwrap_or_default()
+                .to_string();
+            match asked_for(store, held.as_ref(), object, "type") {
+                // A response is being applied and named a type: the effect is
+                // done when the record carries that one.
+                Some(asked) => json!(kind == asked),
+                // None in flight: the effect was owed for some other reason,
+                // and a type on the record is what shows it ran.
+                None => json!(!kind.is_empty()),
+            }
+        }
         // "signals moved attach to the intent, or finding records on it, that
         // no elaboration record in state proposed or later cites".
         "intent.material_pending" => json!(!crate::effects::pending_material(store, object)
@@ -815,4 +835,29 @@ fn leases_of<S: Records>(store: &S, host: &str) -> Vec<String> {
         })
         .map(|o| o.id.clone())
         .collect()
+}
+
+/// What a response now being applied to this object asked for, where it named
+/// a `<head> <argument>` answer.
+///
+/// An effect whose argument comes from the response — `set_type`, and every
+/// other `args: {x: $response}` — has a proof that has to be read against that
+/// argument, or the engine skips the effect wherever the field already holds
+/// something (73, 127). The response is the one on the object that the object
+/// has not applied yet, which is the one the transition is firing on.
+fn asked_for<S: Records>(
+    store: &S,
+    held: Option<&flywheel_engine::Object>,
+    object: &str,
+    head: &str,
+) -> Option<String> {
+    let applied = held.map(|o| o.applied_responses.clone()).unwrap_or_default();
+    store
+        .responses(object)
+        .ok()?
+        .into_iter()
+        .filter(|r| !applied.iter().any(|id| *id == r.id))
+        .filter_map(|r| flywheel_engine::eval::match_answer(&format!("{head} <name>"), &r.answer))
+        .filter(|asked| !asked.is_empty())
+        .next_back()
 }

@@ -53,7 +53,8 @@ impl Instance {
             app_key: Some("the operator placed this".into()),
             address: "http://laptop.example".into(),
             manifest: dir.join("flywheel.yaml"),
-            curation: None,
+            repositories: vec![],
+        curation: None,
             at: chrono::Utc::now(),
         };
         flywheel::init::run(ask).expect("the instance bootstraps");

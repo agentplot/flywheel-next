@@ -161,3 +161,243 @@ fn idle_offers_nothing() {
     sessions.end_session(session).unwrap();
     assert_eq!(sessions.presence(session).unwrap(), SessionPresence::Absent);
 }
+
+/// An offer is pending while no record points at it, and not one moment
+/// longer (62, `atoms.yaml` session.offers_pending).
+///
+/// Read as "the thread carries an offer" it is true for ever, and the session
+/// machine's `working` region prefers `record_offers` to every transition
+/// beneath it — so a session that offered anything fired the effect on every
+/// pass and never reached `exited`, and the elaboration, unit or curation
+/// above it stood in `working` with a finished session inside it. Nothing in
+/// the acceptance set could see it: the stand-in store answers this atom
+/// correctly, so only a real host over the real binding was ever wrong.
+#[test]
+fn an_offer_is_pending_only_until_a_record_points_at_it() {
+    let now = Utc.with_ymd_and_hms(2026, 1, 1, 9, 0, 0).unwrap();
+    let store = Arc::new(Mutex::new(FakeStore::new("mac-mini")));
+    let session = "session/elaboration/atlas/research-1/main";
+    OperatorSessions::new(store.clone(), "mac-mini", now)
+        .start_session(&order(session))
+        .unwrap();
+
+    // The objects the session runs under, because a finding is recorded on the
+    // intent above it and there has to be one.
+    let defs = flywheel_domain::set::load().unwrap();
+    {
+        let mut held = store.lock().unwrap();
+        for (id, machine, parent) in [
+            ("intent/atlas", "intent", None),
+            (
+                "elaboration/atlas/research-1",
+                "elaboration",
+                Some("intent/atlas"),
+            ),
+        ] {
+            flywheel_domain::commands::put_new(
+                &mut *held,
+                &defs,
+                id,
+                machine,
+                parent,
+                Default::default(),
+                now,
+            )
+            .unwrap();
+        }
+    }
+
+    // Nothing offered: nothing pending.
+    {
+        let held = store.lock().unwrap();
+        assert_eq!(
+            evidence(&*held, session, "session.offers_pending"),
+            Some(json!(false))
+        );
+    }
+
+    // The session offers a finding through the reporting command's own path,
+    // and exits done in the same breath, which is what a real one does.
+    let document = "openspec/changes/atlas/findings/backoff.md";
+    {
+        let mut held = store.lock().unwrap();
+        flywheel_domain::report::write_report(
+            &mut *held,
+            session,
+            "operator",
+            now,
+            &flywheel_domain::report::Report::Offer {
+                kind: "finding".into(),
+                document: document.into(),
+            },
+        )
+        .unwrap();
+    }
+    {
+        let held = store.lock().unwrap();
+        assert_eq!(
+            evidence(&*held, session, "session.offers_pending"),
+            Some(json!(true)),
+            "an offer no record points at is pending"
+        );
+        assert_eq!(
+            evidence(&*held, session, "session.offers_recorded"),
+            Some(json!(false))
+        );
+    }
+
+    // `record_offers` makes the record, and the offer stops being pending. The
+    // two atoms are complements and must never both say yes.
+    {
+        let mut held = store.lock().unwrap();
+        flywheel_domain::offers::record(
+            &mut *held,
+            &defs,
+            session,
+            "elaboration/atlas/research-1",
+            now,
+        )
+        .unwrap();
+    }
+    let held = store.lock().unwrap();
+    assert_eq!(
+        evidence(&*held, session, "session.offers_pending"),
+        Some(json!(false)),
+        "the offer is recorded; a session that keeps offering it never exits"
+    );
+    assert_eq!(
+        evidence(&*held, session, "session.offers_recorded"),
+        Some(json!(true))
+    );
+
+    // And the entry is still on the thread: what changed is that a record now
+    // cites it, never that the thread was rewritten (67, 79).
+    assert_eq!(
+        held.thread(session)
+            .unwrap()
+            .iter()
+            .filter(|e| e.kind == "offer")
+            .count(),
+        1
+    );
+}
+
+/// An answer clears the block, and the answer is delivered exactly once
+/// (68, 70, `session.yaml` alive.blocked).
+///
+/// A blocked session stopped only itself; the operator's response sends it back
+/// to working and the machinery delivers the answer. Two reads made that
+/// impossible over the real binding. `session.answer_delivered` was `true`
+/// whatever the thread held, so the engine skipped `deliver_answer` (73, 127)
+/// and no answer was ever written; and `session.exit` went on reading the
+/// `blocked` entry after the answer, so the next pass read the session as
+/// blocked again — `blocks` climbing, the same question standing, and no way
+/// out of `blocked` but another response.
+#[test]
+fn an_answer_clears_the_block_and_is_delivered_once() {
+    let start = Utc.with_ymd_and_hms(2026, 1, 1, 9, 0, 0).unwrap();
+    let store = Arc::new(Mutex::new(FakeStore::new("mac-mini")));
+    let session = "session/elaboration/atlas/research-1/main";
+    OperatorSessions::new(store.clone(), "mac-mini", start)
+        .start_session(&order(session))
+        .unwrap();
+
+    // Nothing is owed while nothing has been reported.
+    {
+        let held = store.lock().unwrap();
+        assert_eq!(
+            evidence(&*held, session, "session.exit"),
+            Some(json!("none"))
+        );
+        assert_eq!(
+            evidence(&*held, session, "session.answer_delivered"),
+            Some(json!(true))
+        );
+    }
+
+    // The session reports blocked with its question.
+    let blocked = start + Duration::minutes(5);
+    {
+        let mut held = store.lock().unwrap();
+        flywheel_domain::report::write_report(
+            &mut *held,
+            session,
+            "operator",
+            blocked,
+            &flywheel_domain::report::Report::Exit {
+                kind: "blocked".into(),
+                deliverables: vec![],
+                question: Some("which sandbox account?".into()),
+                text: None,
+            },
+        )
+        .unwrap();
+    }
+    {
+        let held = store.lock().unwrap();
+        assert_eq!(
+            evidence(&*held, session, "session.exit"),
+            Some(json!("blocked"))
+        );
+        assert_eq!(
+            evidence(&*held, session, "session.answer_delivered"),
+            Some(json!(false)),
+            "the answer is owed, so `deliver_answer` must run"
+        );
+    }
+
+    // The machinery delivers the operator's answer.
+    let answered_at = blocked + Duration::minutes(2);
+    let sessions = OperatorSessions::new(store.clone(), "mac-mini", answered_at);
+    sessions.deliver_answer(session, "the sandbox under payments-sandbox").unwrap();
+    {
+        let held = store.lock().unwrap();
+        assert_eq!(
+            evidence(&*held, session, "session.answer_delivered"),
+            Some(json!(true)),
+            "delivered once; a second delivery would be a second answer"
+        );
+        // The block is over: the session is working again, not blocked.
+        assert_eq!(
+            evidence(&*held, session, "session.exit"),
+            Some(json!("none"))
+        );
+        assert_eq!(
+            evidence(&*held, session, "session.activity"),
+            Some(json!("working"))
+        );
+        assert_eq!(
+            evidence(&*held, session, "session.pane"),
+            Some(json!("present"))
+        );
+    }
+
+    // It carries on and exits for real; that exit is the one the owner reads.
+    let done = answered_at + Duration::minutes(9);
+    {
+        let mut held = store.lock().unwrap();
+        flywheel_domain::report::write_report(
+            &mut *held,
+            session,
+            "operator",
+            done,
+            &flywheel_domain::report::Report::Exit {
+                kind: "done".into(),
+                deliverables: vec!["prototype/retry-report.html".into()],
+                question: None,
+                text: None,
+            },
+        )
+        .unwrap();
+    }
+    let held = store.lock().unwrap();
+    assert_eq!(
+        evidence(&*held, session, "session.exit"),
+        Some(json!("done"))
+    );
+    assert_eq!(
+        evidence(&*held, session, "session.answer_delivered"),
+        Some(json!(false)),
+        "an exit newer than the answer is one the answer did not answer"
+    );
+}

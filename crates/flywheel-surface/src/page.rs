@@ -77,6 +77,16 @@ pub struct Read {
     /// resolved against the object, and how long it has stood. Keyed by the
     /// decision's id (15, 11, 18).
     pub why: BTreeMap<String, Vec<String>>,
+    /// The scenario this instance stands part-way through, where it stands in
+    /// one (`design/flywheel-next/scenarios/storefront.md`).
+    ///
+    /// A scenario applied into an instance leaves a fact behind, and that fact
+    /// is the whole of what puts the tour's overlay on the page: an instance
+    /// with actions left onboards whoever is looking at it, and one with none
+    /// — every instance an operator made for themselves among them — has no
+    /// overlay at all. It is read from the store like everything else here, so
+    /// there is no flag and no second page.
+    pub tour: Option<flywheel_domain::tour::Tour>,
     /// What the last control the operator used was refused for, where it was
     /// refused. The page's controls are plain forms with no script behind them,
     /// so a refusal comes back as the page itself with the reason on it and
@@ -384,6 +394,7 @@ pub fn read<S: StateStore, W: World + ?Sized>(
         why,
         delivered,
         reading: None,
+        tour: flywheel_domain::tour::read(store, instance_of(address)),
         refused: None,
         opened: None,
     })
@@ -508,8 +519,14 @@ const LANE_HEADS: [(&str, &str); 4] = [
 ];
 
 /// Render the whole page. One document, one request, nothing stored.
+/// The instance this page is of: the last segment of the host's own address,
+/// which is where every link the machinery writes puts it (205a, 308).
+fn instance_of(address: &str) -> &str {
+    address.trim_end_matches('/').rsplit('/').next().unwrap_or_default()
+}
+
 pub fn render(read: &Read) -> String {
-    let instance = read.address.rsplit('/').next().unwrap_or_default();
+    let instance = instance_of(&read.address);
     // Attention stands outside the count: it is what the machinery could not do,
     // reported and never dropped, and not a choice the operator is being asked
     // to make (S3, S8, 6).
@@ -533,7 +550,9 @@ pub fn render(read: &Read) -> String {
         .replace("{{BOARDH}}", &board_header(read))
         .replace("{{DOCK}}", &dock(read))
         .replace("{{SENTLIST}}", &sent_list(read))
-        .replace("{{LOG}}", &log(read));
+        .replace("{{LOG}}", &log(read))
+        .replace("{{TOUR}}", &tour(read))
+        .replace("{{TOURHEAD}}", &tour_head(read));
     for ((slot, machines), (title, sub)) in LANES.iter().zip(LANE_HEADS.iter()) {
         out = out.replace(slot, &lane(read, title, sub, machines));
     }
@@ -1980,4 +1999,87 @@ pub fn escape(text: &str) -> String {
         .replace('<', "&lt;")
         .replace('>', "&gt;")
         .replace('"', "&quot;")
+}
+
+// ------------------------------------------------------------------ the tour
+
+/// The overlay of an instance standing part-way through a scenario
+/// (`design/flywheel-next/scenarios/storefront.md`).
+///
+/// It is part of the product and not a mode: what puts it here is a fact in
+/// the state store, so an instance a scenario was applied into onboards
+/// whoever is looking at it and every other instance has no overlay at all.
+/// Nothing turns it on and nothing turns it off — when the last action is
+/// played there is nothing left to say and the strip is gone.
+///
+/// One click is one action. The control writes that the next action is owed
+/// and the host's loop plays it, so the request the operator is waiting on
+/// never runs a cascade of its own (D11).
+fn tour(read: &Read) -> String {
+    let Some(tour) = &read.tour else {
+        return String::new();
+    };
+    if !tour.standing() {
+        return String::new();
+    }
+    let working = tour.working();
+    let step = match working {
+        true => tour.played + 1,
+        false => tour.played,
+    };
+    // What the operator is being told: while the machinery is working, the
+    // action in flight; otherwise what the board in front of them is showing,
+    // and the first time round, nothing has happened yet.
+    let said = match (working, &tour.next, &tour.said) {
+        (true, Some(next), _) => next.clone(),
+        (true, None, _) => "the agent is working".to_string(),
+        (false, _, Some(said)) => said.clone(),
+        (false, _, None) => tour.title.clone(),
+    };
+    let control = match working {
+        // The beat: the machinery has stalled where a session would be
+        // working, and this is the viewer seeing that before the artifact
+        // appears. The document asks for itself again when it is over, so
+        // nothing here is client state a reload loses (310).
+        true => "<span class=\"work\"><i></i><i></i><i></i> the agent is working</span>"
+            .to_string(),
+        false => format!(
+            "<form method=\"post\" action=\"/tour/next\">\
+               <button class=\"btn pri\" type=\"submit\">{}</button>\
+             </form>",
+            match tour.played {
+                0 => "start",
+                _ => "next",
+            }
+        ),
+    };
+    format!(
+        "<div class=\"tour{}\" id=\"tour\" aria-live=\"polite\">\
+           <span class=\"n\">step <b>{step}</b> of <b>{}</b></span>\
+           <span class=\"said\">{}</span>{control}\
+         </div>",
+        match working {
+            true => " working",
+            false => "",
+        },
+        tour.actions,
+        escape(&said),
+    )
+}
+
+/// What the document asks of itself while the beat runs: itself again, once
+/// the machinery has had its two seconds. A page with no script says this in
+/// the one place a document can (310).
+fn tour_head(read: &Read) -> String {
+    let Some(tour) = &read.tour else {
+        return String::new();
+    };
+    if !tour.standing() || !tour.working() {
+        return String::new();
+    }
+    // Every second while the machinery owes the action, which is at most one
+    // ask more than the beat needs. A refresh that arrives before the loop has
+    // played it simply asks again, so nothing here has to know how long is
+    // left and no clock is read on the page.
+    "<meta http-equiv=\"refresh\" content=\"1\">".to_string()
 }

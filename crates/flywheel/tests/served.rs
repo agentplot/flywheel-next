@@ -125,6 +125,13 @@ fn served_host_answers_from_its_state_repository() {
         page.contains(&format!("data-number=\"{number}\"")),
         "the decision the host raised is not on the served rail: {page}"
     );
+    // And nothing else: an instance no scenario was applied into has no tour,
+    // so the page carries no overlay and asks for itself no again. The overlay
+    // is the product's own onboarding and is turned on by a fact in the store,
+    // never by a flag, so an ordinary instance has never had one
+    // (`design/flywheel-next/scenarios/storefront.md`).
+    assert!(!page.contains("class=\"tour"), "an instance with no scenario has no overlay");
+    assert!(!page.contains("http-equiv=\"refresh\""), "and nothing refreshes it");
 
     // The answer, through the same tool the reply grammar calls (193). A client
     // sends it as JSON and reads the record it made; the page's own control is
@@ -374,22 +381,50 @@ fn a_seeded_host_serves_the_scenarios_rail() {
         .iter()
         .map(|d| (d.number.expect("every standing decision is numbered"), d.kind.clone(), d.object.clone()))
         .collect();
-    // The nine the description raises, in the order the register numbered
+    // The eight the description raises, in the order the register numbered
     // them, which is the order the chat prints (15).
+    //
+    // The mockup drew the intent's two proposed elaborations as cards beside
+    // it, and that is the one thing here that is the mockup's rather than the
+    // model's: requirement 10's first decision kind is "a proposed intent,
+    // with its proposed elaborations", so while the intent is itself proposed
+    // they ride on its card and take no number. Until the intent is a subject
+    // at all there is nothing to decide about how to understand it, and two
+    // cards the operator could not answer are two the rail should not have
+    // held.
     assert_eq!(
         standing,
         vec![
             (412, "intent-proposed".into(), "intent/atlas-provider-limits".into()),
-            (413, "elaboration-proposed".into(), "elaboration/atlas-provider-limits/research".into()),
-            (414, "elaboration-proposed".into(), "elaboration/atlas-provider-limits/prototype".into()),
-            (415, "claim-moved".into(), "bolt/atlas/plan-rows".into()),
-            (416, "unit-proposed".into(), "unit/atlas/status-writer".into()),
-            (417, "question".into(), "unit/atlas/rail-tail/wi-1".into()),
-            (418, "unit-proposed".into(), "unit/atlas/retry-jitter".into()),
-            (419, "unit-proposed".into(), "unit/atlas/chores-1".into()),
-            (420, "unit-proposed".into(), "unit/new-repo/baseline-1".into()),
+            (413, "claim-moved".into(), "bolt/atlas/plan-rows".into()),
+            (414, "unit-proposed".into(), "unit/atlas/status-writer".into()),
+            (415, "question".into(), "unit/atlas/rail-tail/wi-1".into()),
+            (416, "unit-proposed".into(), "unit/atlas/retry-jitter".into()),
+            (417, "unit-proposed".into(), "unit/atlas/chores-1".into()),
+            (418, "unit-proposed".into(), "unit/new-repo/baseline-1".into()),
+            // An elaboration proposed on an intent already open is a decision
+            // of the operator's own, and is numbered like any other (21, 27).
+            (419, "elaboration-proposed".into(), "elaboration/loop-granularity/e5".into()),
         ],
         "the seeded host raises what the scenario runner raises in process, and numbers it the same"
+    );
+    // And the intent's one card names what rides on it, so the operator reads
+    // the subject and the work proposed to understand it as the one thing they
+    // are being asked about (10).
+    let intent = rail
+        .iter()
+        .find(|d| d.object == "intent/atlas-provider-limits")
+        .expect("the proposed intent stands");
+    let mut carried = intent.folds.clone();
+    carried.sort();
+    assert_eq!(
+        carried,
+        vec![
+            "elaboration/atlas-provider-limits/prototype".to_string(),
+            "elaboration/atlas-provider-limits/research".to_string(),
+            "intent/atlas-provider-limits".to_string(),
+        ],
+        "the card does not name the elaborations proposed with it"
     );
 
     // And the page serves them: the rail the operator opens is that rail.
@@ -577,8 +612,8 @@ fn a_tap_on_the_seeded_rail_answers_and_the_next_render_shows_it() {
     // is a path this router answers (205a, 308).
     let on_the_object = post_form(
         address,
-        &form_on(&page, 419, "yes").0,
-        &form_on(&page, 419, "yes").1,
+        &form_on(&page, 417, "yes").0,
+        &form_on(&page, 417, "yes").1,
         "/willdan/unit/atlas/chores-1",
     );
     assert!(on_the_object.lines().next().unwrap_or_default().starts_with("HTTP/1.1 303"));

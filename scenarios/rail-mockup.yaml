@@ -172,6 +172,16 @@ given:
       parent: intent/loop-granularity
       state: {life: done}
       record: {type: standing}
+    # New material on an intent already open, and the elaboration the
+    # machinery proposes to understand it: the ordinary case, and the one that
+    # is a decision of the operator's own (21, 27). An elaboration under an
+    # intent that is itself still proposed is not — it rides on that intent's
+    # card and takes no number (10) — so this is where the rail's
+    # `elaboration-proposed` card comes from.
+    - id: elaboration/loop-granularity/e5
+      machine: elaboration
+      parent: intent/loop-granularity
+      record: {type: self-closing, document: openspec/changes/intent-loop-granularity/tail-granularity.md}
 
     - id: intent/rail-derivation
       machine: intent

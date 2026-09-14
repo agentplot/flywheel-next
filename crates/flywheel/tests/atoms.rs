@@ -128,6 +128,7 @@ fn hosted(name: &str) -> Host {
         app_key: Some("the operator placed this".into()),
         address: "http://laptop.example".into(),
         manifest: dir.join("flywheel.yaml"),
+        repositories: vec![],
         curation: None,
         at: chrono::Utc.with_ymd_and_hms(2026, 1, 1, 9, 0, 0).unwrap(),
     })

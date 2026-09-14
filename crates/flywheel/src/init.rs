@@ -34,6 +34,16 @@ pub struct Init {
     /// written at it (191, 205a, D10a).
     pub address: String,
     pub manifest: PathBuf,
+    /// The built repositories this instance tracks (199, 205, 206).
+    ///
+    /// An instance that tracks none is an instance no unit, bolt or planning
+    /// can belong to: the first host's `covers:` is empty, which means "what
+    /// the instance tracks", and what it tracks is nothing — so every object
+    /// carrying a `repository` is uncovered by every declaration, waits under
+    /// attention rather than being worked, and `flywheel host seed` refuses it
+    /// (149, 205, 206). Naming them here is what makes the empty `covers:`
+    /// true rather than vacuous, and it stays true as more are added.
+    pub repositories: Vec<String>,
     /// What curation is charged on, where the caller says. The shipped
     /// threshold and cadence otherwise (110, 118, `curation.yaml`).
     pub curation: Option<flywheel_world_host::manifest::Curation>,
@@ -241,6 +251,29 @@ pub fn run(ask: Init) -> Result<Report> {
         .get(&id)?
         .and_then(|o| o.top_state().map(String::from))
         .unwrap_or_default();
+
+    // The built repositories the operator named, created on the git host and
+    // tracked by the instance (199, 205, 206). Last, because the git host is
+    // the blueprints' and the state's by then and a repository is created the
+    // same way; and idempotent, so a second run with the same names writes
+    // nothing.
+    for repository in &ask.repositories {
+        if manifest.repositories.contains_key(repository) {
+            continue;
+        }
+        let made = bootstrap
+            .create_repository(&ask.instance, repository)
+            .with_context(|| format!("creating the `{repository}` repository"))?;
+        manifest.repositories.insert(repository.clone(), made);
+        // The App covers what the instance tracks. A repository the
+        // installation does not cover is a decision under attention the
+        // machinery can do nothing about (207), and on a git host that is a
+        // directory on this computer there is no installation to extend.
+        if !manifest.app.installation_covers.contains(repository) {
+            manifest.app.installation_covers.push(repository.clone());
+        }
+        report.lines.push(format!("repository {repository}: made"));
+    }
 
     manifest
         .template_version

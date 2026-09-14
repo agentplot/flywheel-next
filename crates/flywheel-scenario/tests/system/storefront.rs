@@ -39,8 +39,12 @@ fn flywheel_binary_beside_the_test() -> PathBuf {
 ///
 /// It is the proof that the mechanism carries a real arc: four capture sources
 /// arrive, a reader delivers what it found, twelve unmoved signals charge a
-/// curation, and the first numbered decision stands — every step of it the
-/// machinery's own, with nothing set (19, 110, 111, 112, 115, 116, 118, 215).
+/// curation, the operator opens the intent it proposed, and the work is
+/// understood before anything is planned — research that closes itself and
+/// delivers a document, the finding it offers, a prototype that comes back
+/// with a question and carries on when the question is answered. Every step of
+/// it the machinery's own, with nothing set (19, 21, 24, 25, 58, 68, 70, 110,
+/// 111, 112, 115, 116, 118, 187, 215).
 #[test]
 fn storefront_runs_through_its_authored_actions() {
     // A scenario whose session reports through the command needs the binary,
@@ -86,8 +90,18 @@ fn storefront_runs_through_its_authored_actions() {
     // And it carries the three optional parts a demo adds, all of them read
     // from the one file: the actions, the tour copy, and the bundle beside it.
     let actions = scenario.actions().expect("the actions parse");
-    assert_eq!(actions.len(), 6, "stage 1 and stage 2 of the arc");
+    assert_eq!(actions.len(), 15, "stages 1 to 3 of the arc");
     assert_eq!(scenario.tour.len(), actions.len(), "a line of copy per action");
     let bundle = flywheel_atoms::conformance::bundle_of(&path).expect("a bundle beside it");
     assert!(bundle.join("meeting/2026-09-02-storefront-weekly.vtt").is_file());
+    // And the artifacts stage 3's sessions deliver are hand-authored files in
+    // it, not text the runner invents: a document read inline and a page
+    // opened at its own address (`scenarios/storefront.md`, the bundle).
+    for artifact in [
+        "research/declines.md",
+        "research/retry-schedule.md",
+        "prototype/retry-report.html",
+    ] {
+        assert!(bundle.join(artifact).is_file(), "the bundle holds {artifact}");
+    }
 }

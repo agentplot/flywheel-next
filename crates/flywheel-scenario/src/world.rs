@@ -168,6 +168,16 @@ pub fn perform(defs: &Definitions, store: &mut Store, object: &str, region: &str
             let ty = e.args.get("type").and_then(|v| v.as_str()).unwrap_or("").to_string();
             amend(store, object, |u| { u.record.insert("type".into(), json!(ty)); });
         }
+        // The intent's one proposed elaboration, made or grown (21). The
+        // shared implementation, as the host performs it: an unbound effect
+        // here is logged and counted as done, so with no arm an intent the
+        // operator opened proposed nothing and no scenario run in this process
+        // could reach an elaboration at all.
+        "propose_elaboration" => {
+            let kind = e.args.get("type").and_then(|v| v.as_str()).unwrap_or("").to_string();
+            let now = store.now;
+            let _ = flywheel_domain::effects::propose_elaboration(store, defs, object, &kind, now);
+        }
         "archive_intent" | "archive_change" => { store.world.archived.insert(object.to_string(), true); }
         "declare_services" => {
             let Some(bolt) = store.objects.get(object).cloned() else { return true };

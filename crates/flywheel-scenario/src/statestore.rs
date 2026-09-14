@@ -115,7 +115,7 @@ impl Store {
         let now = self.now;
         let _ = flywheel_domain::leases::attach(self, &mut objects, now);
         let _ = flywheel_domain::rail::attach(self, &defs, &mut objects, now);
-        flywheel_engine::rail::derive(&defs, &objects, &self.register)
+        flywheel_domain::rail::standing(&defs, &objects, &self.register)
     }
 
     /// Give every standing decision without an entry the next number, in one

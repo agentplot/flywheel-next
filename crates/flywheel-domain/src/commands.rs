@@ -18,7 +18,7 @@ use flywheel_atoms::{Received, Records, Scope, StateStore};
 use flywheel_engine::runtime::{
     DecisionInstance, EvidenceSource, Object, Register, Response, ResponseKind, Snapshot,
 };
-use flywheel_engine::{rail, tick, Definitions, PlannedEffect};
+use flywheel_engine::{tick, Definitions, PlannedEffect};
 use serde_json::{json, Value};
 use std::collections::BTreeMap;
 
@@ -219,12 +219,12 @@ pub fn rail<S: StateStore>(store: &mut S, defs: &Definitions) -> Result<Vec<Deci
     // decision is gone is retracted, and both go back in one write of the rail
     // record — which is what the rail machine's numbering does on a tick and
     // what a host command holding the rail's lease does here (9, 15, I3).
-    let standing = rail::derive(defs, &objects, &register);
+    let standing = crate::rail::standing(defs, &objects, &register);
     register.number_all(&standing);
     let ids: Vec<String> = standing.iter().map(|d| d.id.clone()).collect();
     register.retract_gone(&ids, at);
     set_register(store, &register, &ids)?;
-    Ok(rail::derive(defs, &objects, &register))
+    Ok(crate::rail::standing(defs, &objects, &register))
 }
 
 /// The standing decisions as they stand, read and not written.
@@ -244,7 +244,7 @@ pub fn rail_read<S: StateStore>(store: &S, defs: &Definitions) -> Result<Vec<Dec
     let at = now(store)?;
     crate::rail::attach(store, defs, &mut objects, at)?;
     let register = register(store)?;
-    Ok(rail::derive(defs, &objects, &register))
+    Ok(crate::rail::standing(defs, &objects, &register))
 }
 
 // -------------------------------------------------------------- the responses
