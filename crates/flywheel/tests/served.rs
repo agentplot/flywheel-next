@@ -253,12 +253,29 @@ fn a_link_the_machinery_wrote_is_fetched() {
     );
     let body = answered.split_once("\r\n\r\n").map(|(_, b)| b).unwrap_or(&answered);
     assert!(
-        body.contains("id=\"dock-bolt/atlas/plan-rows\" data-kind=\"bolt\" data-answerable=\"false\" data-opened=\"true\""),
+        body.contains("id=\"dock-bolt/atlas/plan-rows\" data-kind=\"bolt\" data-answerable=\"true\" data-opened=\"true\""),
         "the object's own surface is not the one the link opened: {body}"
     );
     assert!(
         body.contains("data-opened=\"false\""),
         "every other surface stays shut: {body}"
+    );
+    // And it opened with the answer controls in reach, which is what the link
+    // is for: the surface's own footer carries the bolt's answers, so the
+    // operator the notification reached answers where they landed and is not
+    // sent back to the rail to hunt for the card (308, S27).
+    let surface = body
+        .split("id=\"dock-bolt/atlas/plan-rows\"")
+        .nth(1)
+        .and_then(|rest| rest.split("</article>").next())
+        .expect("the object's surface");
+    assert!(
+        surface.contains("class=\"dk-f\"") && surface.contains("data-answerable=\"true\""),
+        "the surface the link opened carries no answers at its foot (308, S27): {surface}"
+    );
+    assert!(
+        surface.contains(&format!("action=\"/api/tools/{}\"", flywheel_surface::catalogue::ANSWER)),
+        "the answers on the surface do not post to the catalogue (193): {surface}"
     );
 
     // And the page at the address itself, which every chat rendering carries.

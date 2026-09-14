@@ -577,6 +577,13 @@ const NO_ACTION: [(&str, &str); 1] = [(
 )];
 
 /// Every id the mockup gives, in the order it gives them.
+///
+/// The whole file is read and not its static markup alone: the mockup renders
+/// the palette, the dock's header and the rail's own controls from its script,
+/// so `pal-q`, `dk-title`, `dk-x` and `pal-open-rail` are ids the design gives
+/// and appear nowhere but there. What a naive scan gets wrong is the other
+/// direction — `id="${u.id}"` inside that script is an interpolation and not an
+/// id — and that is what is skipped (17.6, D16).
 fn ids_of(html: &str) -> Vec<String> {
     let mut out: Vec<String> = Vec::new();
     for at in html.match_indices("id=\"") {
@@ -646,17 +653,56 @@ fn page_carries_the_mockups_regions() {
         missing.join(", ")
     );
 
-    // The regions themselves, in the mockup's own silhouettes: the rail's
-    // cards, the board's lanes, the dock's surfaces and the palette (D16).
-    for present in [
-        "class=\"rail\"",
-        "class=\"card decision",
-        "class=\"lanes\"",
-        "class=\"lane inception\"",
-        "class=\"pal\"",
-        "class=\"dk-b\"",
+    // The regions themselves, in the mockup's own silhouettes, and each one
+    // with something in it.
+    //
+    // This assertion used to be `html.contains(id)` and it passed over a board
+    // reading "nothing" in every column for a day, because an id is present on
+    // an empty region and a structural test cannot tell the difference. What is
+    // asserted now is the region's own content: the words a person would read
+    // off it, with the markup taken out (17.4, D16).
+    for (region, least) in [
+        ("rail", 200),
+        ("lane-inception", 120),
+        ("lane-construction", 120),
+        ("dk-b", 200),
+        ("pal", 40),
     ] {
-        assert!(html.contains(present), "the mockup's `{present}` is not on the page");
+        let read = words_in(&html, region);
+        assert!(
+            read.chars().count() >= least,
+            "`{region}` is on the page and there is nothing in it — {} characters, and a \
+             region asserted present must carry its content (17.4): {read:?}",
+            read.chars().count()
+        );
+    }
+
+    // And in the mockup's own silhouettes: a decision is the only answerable
+    // card, an intent is a thread with its elaborations as beads, a bolt is a
+    // ledger with its units in a chain, and every one of them carries the
+    // mockup's inner elements rather than one body under a different class
+    // (209, S13, S15, D16).
+    for (form, inner) in [
+        ("card decision", &["class=\"ch\"", "class=\"title\"", "class=\"answers\""][..]),
+        ("thread", &["class=\"th-head\"", "class=\"th-k\"", "class=\"th-line\""][..]),
+        ("ledger", &["class=\"lg-head\"", "class=\"lg-chain\""][..]),
+        ("dk-h ", &["<h2>", "class=\"kind\""][..]),
+    ] {
+        assert!(
+            html.contains(&format!("class=\"{form}")),
+            "the mockup's `{form}` is not on the page"
+        );
+        let drawn = html
+            .split(&format!("class=\"{form}"))
+            .nth(1)
+            .expect("the silhouette is on the page");
+        for element in inner {
+            assert!(
+                drawn.contains(element),
+                "a `{form}` on the page carries no `{element}`; a form that differs only by \
+                 the word on its class is one card with variants, which is what 209 refuses"
+            );
+        }
     }
 
     // The answer controls the mockup draws on a card, as controls: one tap
@@ -704,4 +750,34 @@ fn page_carries_the_mockups_regions() {
     // else: the design is carried, its JavaScript is not (310).
     assert_eq!(html.matches("<style>").count(), 1);
     assert!(!html.contains("<script"));
+}
+
+/// The words a region of the rendered page carries, with its markup taken out.
+///
+/// A region is found by its id where it has one and by its class otherwise,
+/// and read to the end of the document — which is enough to tell a region with
+/// something in it from one with nothing, and is what `contains(id)` could not.
+fn words_in(html: &str, region: &str) -> String {
+    let at = html
+        .find(&format!("id=\"{region}\""))
+        .or_else(|| html.find(&format!("class=\"{region}\"")))
+        .or_else(|| html.find(&format!("class=\"{region} ")))
+        .unwrap_or_else(|| panic!("the page carries no region `{region}`"));
+    let rest = &html[at..];
+    // Every element of the region, to a depth that covers a lane and its
+    // objects; what is read is the text between the tags.
+    let mut read = String::new();
+    let mut inside = false;
+    for byte in rest.chars() {
+        match byte {
+            '<' => inside = true,
+            '>' => inside = false,
+            _ if !inside => read.push(byte),
+            _ => {}
+        }
+        if read.chars().count() > 4000 {
+            break;
+        }
+    }
+    read.split_whitespace().collect::<Vec<_>>().join(" ")
 }

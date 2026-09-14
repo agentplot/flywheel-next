@@ -1,0 +1,22 @@
+scenario: T-delivering
+title: a session delivers a document and a prototype, and the page opens both
+profiles: [all]
+satisfies: [111, 190, 213]
+given: {}
+when: [{tick: {}}]
+then:
+  transitions:
+    - {object: capture/meeting-2026-09-02-storefront-weekly, from: captured, to: reading}
+    - {object: capture/meeting-2026-09-02-storefront-weekly, from: reading, to: read}
+  states: {capture/meeting-2026-09-02-storefront-weekly: {reading: read}}
+actions:
+  - capture: {adapter: "flywheel capture meeting 2026-09-02-storefront-weekly.vtt", by: dana}
+  - session:
+      object: capture/meeting-2026-09-02-storefront-weekly
+      exit: done
+      deliver:
+        research/note.md: flywheel-blueprints/openspec/changes/declines/research/note.md
+        prototype/report.html: flywheel-blueprints/openspec/changes/declines/prototype/report.html
+tour:
+  - A transcript lands from the meeting the team already had.
+  - The reader comes back with a document and a prototype, both files at paths.

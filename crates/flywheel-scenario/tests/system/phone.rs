@@ -7,7 +7,14 @@
 use super::{driver, phase};
 
 use flywheel_scenario::conformance::{drive, Suite};
+use flywheel_surface::catalogue::ANSWER;
 use std::path::PathBuf;
+
+/// What the tab is showing, for an assertion about the markup rather than
+/// about where the browser went.
+fn html_of(tab: &headless_chrome::Tab) -> String {
+    tab.get_content().expect("the page")
+}
 
 fn root() -> PathBuf {
     PathBuf::from(concat!(env!("CARGO_MANIFEST_DIR"), "/../.."))
@@ -82,20 +89,28 @@ fn driver_taps_at_390px() {
          (311): {measured:?}"
     );
 
-    let holding = tab.get_url();
+    // The control posts to the tool catalogue, which is the one write path
+    // (193); the page it lands on is the page it was on, rendering the answer
+    // just given, because a page with no script must land on a page and never
+    // on a body the operator has to go back from (310, 311).
+    assert!(
+        html_of(tab).contains(&format!("action=\"/api/tools/{}\"", ANSWER)),
+        "the control posts to the tool catalogue (193)"
+    );
     tab.wait_for_element(&answer)
         .expect("the answer control is on the page")
         .click()
         .expect("the control takes a tap");
-    let landed = driver::wait_for_url(tab, &holding).expect("the tap is posted");
+    let recorded = driver::wait_for_content(tab, "class=\"answered\"")
+        .expect("the tap is posted and the page it lands on shows the answer");
     assert!(
-        landed.ends_with("/api/tools/answer"),
-        "the tap posts to the tool catalogue, which is the one write path (193): {landed}"
+        recorded.contains("data-given-by=\"chuck\"") && recorded.contains("data-given-at=\""),
+        "the response is recorded once with who gave it and when (153, 154): {recorded}"
     );
-    let recorded = tab.get_content().expect("what the tool answered");
     assert!(
-        recorded.contains("recorded"),
-        "the call was recorded once, as the reply grammar's would be (153, 193): {recorded}"
+        !tab.get_url().contains("/api/"),
+        "the operator is left on a page, not on the tool's body (310, 311): {}",
+        tab.get_url()
     );
 
     // And a reload is the page again, rendered from the same read: the bundle
@@ -269,19 +284,25 @@ fn pass(path: &std::path::Path, viewport: (u32, u32)) -> Result<(), String> {
         .or_else(|| decision.answers.first())
         .ok_or_else(|| "the decision offers no answer".to_string())?;
     let selector = format!("{card} button[data-answer=\"{}\"]", escape(taken));
-    let holding = tab.get_url();
+    let posts_to = format!("action=\"/api/tools/{}\"", flywheel_surface::catalogue::ANSWER);
+    if !tab.get_content().map_err(|e| e.to_string())?.contains(&posts_to) {
+        return Err(format!("no control on the page posts to {posts_to} (193)"));
+    }
     tab.wait_for_element(&selector)
         .map_err(|e| format!("the control: {e:#}"))?
         .click()
         .map_err(|e| format!("the tap: {e:#}"))?;
-    let landed = driver::wait_for_url(tab, &holding).map_err(|e| e.to_string())?;
-    let expected = format!("/api/tools/{}", flywheel_surface::catalogue::ANSWER);
-    if !landed.ends_with(&expected) {
-        return Err(format!("the tap posted to {landed}, not to {expected} (193)"));
+    // The control sends the operator back to the page they were on, which
+    // renders the answer they just gave (310, 311).
+    let answered = driver::wait_for_content(tab, "class=\"answered\"").map_err(|e| e.to_string())?;
+    if !answered.contains("data-given-by=\"chuck\"") {
+        return Err(format!("the response was not recorded with who gave it (153): {answered}"));
     }
-    let answered = tab.get_content().map_err(|e| e.to_string())?;
-    if !answered.contains("recorded") {
-        return Err(format!("the call was not recorded: {answered}"));
+    if tab.get_url().contains("/api/") {
+        return Err(format!(
+            "the tap left the operator on the tool's body at {} rather than on a page (310, 311)",
+            tab.get_url()
+        ));
     }
 
     // And a reload shows it recorded, with who gave it and when (153, 154, 310).

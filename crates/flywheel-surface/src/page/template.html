@@ -595,7 +595,119 @@ body:has(.dock .surface:target) .dock .surface[data-opened="true"]:not(:target){
 .card .away{font:11.5px var(--mono);color:var(--warn);margin-top:4px}
 .surface .away{font:11.5px var(--mono);color:var(--warn)}
 .capture textarea{width:100%}
+#dk-b{padding:0}
+#dk-b .dk-h{border-bottom:1px solid var(--line)}
+#dk-b .dk-b{flex:none;overflow:visible}
+.dk-h .nav .back,.dk-h .nav .x{color:var(--ink3);text-decoration:none}
+.dk-h .nav .back:hover,.dk-h .nav .x:hover{color:var(--ink)}
+.dk-h .nav .lk{font:10.5px var(--mono);color:var(--ink3);overflow:hidden;text-overflow:ellipsis;max-width:22ch;white-space:nowrap;text-decoration:none;border-bottom:1px dotted var(--ink3)}
+.dk-h .n{border:1px solid var(--accent);border-radius:3px;padding:0 4px}
+.sec h3{display:flex;align-items:baseline;gap:8px;font-size:11px;letter-spacing:.08em;text-transform:uppercase;color:var(--ink3);font-weight:700;margin-bottom:5px}
+.sec h3 .r{letter-spacing:0;text-transform:none;font-weight:500;font-size:11.5px;color:var(--ink3)}
+.sec .row{display:flex;align-items:baseline;gap:8px;font-size:12.5px;color:var(--ink2);padding:2px 0}
+.sec .dtext{font-size:13px;color:var(--ink);line-height:1.45}
+.sec .elaborations{list-style:none;margin:0;padding:0}
+.sec .elaborations li{display:flex;align-items:baseline;gap:8px;padding:2px 0;font-size:12.5px}
+.sec .elaborations li .r{color:var(--ink3);font:11px var(--mono);min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.sec .elaborations a{color:var(--accent);text-decoration:none;font-weight:600}
+.sec .cited{list-style:none;margin:4px 0 0;padding:0}
+.sec .cited .signal{font:11.5px var(--mono);color:var(--ink2);padding:1px 0}
+.sec .weight{font-size:12.5px;color:var(--ink2);margin:0}
+.dk-f .dk-answers{border-top:0;margin-top:0;padding-top:0}
+/* The files a session left behind, on the object's surface: a list of names a
+   person reads, not a list of paths (190, 213). */
+.sec .delivered{list-style:none;margin:0;padding:0}
+.sec .delivered li{display:flex;align-items:baseline;gap:8px;padding:3px 0;font-size:12.5px}
+.sec .delivered .deliverable{color:var(--accent);font-weight:600;text-decoration:none}
+.sec .delivered .deliverable:hover{text-decoration:underline}
+.sec .delivered .r{color:var(--ink3);font:11px var(--mono)}
+/* A markdown deliverable, rendered into the page beside the object whose
+   session delivered it. Its own type, because it is a document a person reads
+   end to end and not a field of an object; an HTML deliverable never gets here,
+   it is served at its own address (310). */
+.doc{font-size:13.5px;line-height:1.55;color:var(--ink);max-width:64ch}
+.doc h1{font-size:18px;font-weight:800;letter-spacing:-.01em;margin:0 0 10px}
+.doc h2{font-size:14.5px;font-weight:700;margin:18px 0 6px}
+.doc h3,.doc h4,.doc h5,.doc h6{font-size:13px;font-weight:700;color:var(--ink2);margin:14px 0 4px}
+.doc p{margin:0 0 10px}
+.doc ul,.doc ol{margin:0 0 10px;padding-left:20px}
+.doc li{margin:0 0 5px}
+.doc strong{font-weight:700}
+.doc em{font-style:italic}
+.doc code{font:12px var(--mono);background:var(--surface2);border:1px solid var(--line2);border-radius:3px;padding:0 3px}
+.doc pre.code{background:var(--surface2);border:1px solid var(--line2);border-radius:5px;padding:8px 10px;overflow-x:auto;margin:0 0 10px}
+.doc pre.code code{border:0;background:none;padding:0;font-size:11.5px;line-height:1.5}
+.doc blockquote{margin:0 0 10px;padding:2px 0 2px 12px;border-left:2px solid var(--line);color:var(--ink2)}
+.doc hr{border:0;border-top:1px solid var(--line2);margin:16px 0}
+.doc table{border-collapse:collapse;width:100%;font-size:12.5px;margin:0 0 12px}
+.doc th,.doc td{border-bottom:1px solid var(--line2);padding:4px 6px;text-align:left}
+.doc thead th{font:600 10.5px var(--mono);letter-spacing:.06em;text-transform:uppercase;color:var(--ink3)}
+.doc a{color:var(--accent)}
+/* A record or a plain file is what it says, as it says it. */
+.doc .plain,pre.plain{font:11.5px var(--mono);color:var(--ink2);white-space:pre-wrap;word-break:break-word;margin:0}
 .status-groups h2{font-size:11px;letter-spacing:.08em;text-transform:uppercase;color:var(--ink3);font-weight:700;margin:12px 2px 6px}
+/* The mockup's controls are all divs and buttons with click handlers behind
+   them. The page runs no script, so a control that navigates has to be a link —
+   and a link left to the browser's own blue underline reads as prose, not as
+   the control the design draws. Every link the page uses as a control takes the
+   type of the control it is (310, D16). */
+a.btn{color:var(--ink);text-decoration:none;cursor:pointer}
+a.btn.pri{color:var(--accent-ink)}
+.top a,.board-h a,.rail-h a,.dk-h a,.tabs a{text-decoration:none}
+.top .count a,.top a.sent{color:var(--ink2)}
+.top .count a:hover,.top a.sent:hover{color:var(--ink)}
+/* The mockup opens an object by listening for a click on a div. The page runs
+   no script, so the same affordance has to be a link — and a link that took the
+   browser's own blue underline would redraw every silhouette the design just
+   fixed. These give the board's links back the type of the element they stand
+   in: the thread's name reads as the thread's name, the ledger's as the
+   ledger's (310, D16, 209). */
+.thread .th-name,.thread .bead .en,.ledger .lg-name,.ledger .lg-unit,
+.sheet .sh-title a,.slip .sl-n,.sessrow .on,.quote q a,.card .title .object{
+  color:inherit;text-decoration:none;font:inherit;letter-spacing:inherit}
+.thread .th-name:hover,.thread .bead .en:hover,.ledger .lg-name:hover,
+.sheet .sh-title a:hover,.slip .sl-n:hover,.sessrow .on:hover,.quote q a:hover,
+.card .title .object:hover{text-decoration:underline;text-decoration-color:var(--ink3)}
+.ledger .lg-unit{display:inline-block;text-decoration:none}
+.ledger .lg-unit.building{display:block}
+/* A head states the object and its own life and does not wrap by design; what
+   else it is doing goes under it, so the lane holds the line rather than
+   pushing it off the right edge (141). */
+/* The mockup's slip hangs off the sheet above it and draws the elbow that says
+   so. The page draws a slip only where a unit hangs off no ledger — the elbow
+   would point at nothing — so it keeps the slip's left rule and drops the arm
+   (209, S14). */
+.slip::before{display:none} .slip{margin-left:8px}
+/* What else a bolt is doing wraps at the foot rather than being cut off: the
+   lane has the room under the chain and does not have it beside the head. */
+.ledger .lg-foot{flex-wrap:wrap;overflow:visible}
+.ledger .lg-foot span{white-space:normal;overflow:visible;text-overflow:clip}
+/* An answer that takes an argument is a control first. Its field stands as a
+   stub beside the control and opens to the width of a phrase when it is
+   reached, so a card reads as the row of answers the design draws rather than
+   a column of empty boxes — and the answer is still one tap away with the
+   platform's own keyboard for the words (S6, 311, D16). */
+/* An answer that is nothing but the words the operator writes — a question's
+   one answer — is a sentence, and gets the room for one rather than the stub a
+   name takes (311). */
+.card .answers form.takes-text.in-words{flex-basis:100%}
+.card .answers form.takes-text.in-words input[type=text]{flex:1;min-width:0}
+.dk-answers .answers form.takes-text.in-words{flex-basis:100%}
+.dk-answers .answers form.takes-text.in-words input[type=text]{flex:1;width:auto;min-width:0}
+@media (min-width:761px){
+  .card .answers form.takes-text:not(.in-words) input[type=text]{width:2.2ch;padding-left:4px;padding-right:4px;transition:width .12s}
+  .card .answers form.takes-text:not(.in-words) input[type=text]::placeholder{color:transparent}
+  .card .answers form.takes-text:not(.in-words):focus-within input[type=text]{width:12ch;padding-left:8px;padding-right:8px}
+  .card .answers form.takes-text:not(.in-words):focus-within input[type=text]::placeholder{color:var(--ink3)}
+}
+.thread .th-head{min-width:0} .thread .th-name{overflow:hidden;text-overflow:ellipsis}
+.ledger .lg-head{min-width:0} .ledger .lg-head .lg-run{overflow:hidden;text-overflow:ellipsis;min-width:0}
+.sessrow .oh{min-width:0} .sessrow .on{overflow:hidden;text-overflow:ellipsis;min-width:0}
+.sheet .sh-title{overflow-wrap:anywhere}
+/* The card's title is the object, and the object is what the operator reads
+   the decision against — the name the board draws it under, not the path that
+   addresses it. The whole id is one tap away in the dock. */
+.card .title .object{overflow-wrap:anywhere}
 
 @media (max-width: 760px) {
   :root{--hosts:38px}
@@ -699,6 +811,9 @@ body:has(.dock .surface:target) .dock .surface[data-opened="true"]:not(:target){
         <div class="row"><span class="kind" id="dk-title">the object in hand</span>
           <span class="nav"><a class="back" id="dock-back" href="#board">Back</a><a class="x" id="dk-x" href="#board" aria-label="close">×</a></span></div>
       </div>
+      <!-- The surfaces themselves. Each carries its own header in the form of
+           the object, its body and its footer of answers (S27, S28); this is
+           the scroll container they sit in and brings no padding of its own. -->
       <div class="dk-b" id="dk-b">{{DOCK}}</div>
       <div class="dk-f" id="dk-f"><div class="fl">the same number, the same answer<span class="r">a decision carries one number wherever it is shown, and answering it here is answering it on the rail (15, 311)</span></div></div>
     </aside>

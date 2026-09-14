@@ -798,3 +798,123 @@ fn the_curators_surface_goes_when_the_curation_does() {
         "the curator's surface outlived the curation it belonged to"
     );
 }
+
+// ---- 17.4 the board draws each kind in its own form
+
+/// Every kind on the board has one form of its own, and no two share one (209).
+///
+/// The board used to write one body for every kind — a heading, a state line, a
+/// holder line and an "open" link — under an article whose class was the
+/// silhouette's name. That is one card with variants wearing six names, which is
+/// the one thing 209 refuses, and it is why the board read as a list of strings
+/// where the design draws threads and ledgers. What is asserted here is the
+/// mockup's own inner elements per form.
+#[test]
+fn each_kind_on_the_board_is_drawn_in_its_own_form() {
+    let (mut store, world, defs) = a_page();
+    rail_mockup(&mut store, &defs);
+    let html = rendered(&mut store, &world, &defs);
+
+    // An intent is a thread with its elaborations as beads, in order (S13).
+    let thread = html
+        .split("<article class=\"thread\"")
+        .find(|block| block.contains("data-machine=\"intent\""))
+        .expect("an intent is on the board");
+    let thread = thread.split("</article>").next().unwrap_or_default();
+    for element in ["class=\"th-head\"", "class=\"th-k\"", "class=\"th-name\"", "class=\"th-line\""] {
+        assert!(thread.contains(element), "an intent's thread carries no `{element}`: {thread}");
+    }
+    assert!(
+        thread.contains("class=\"bead") && thread.contains("data-machine=\"elaboration\""),
+        "an intent's elaborations are not beads on its thread (209, S13): {thread}"
+    );
+
+    // A bolt is a ledger with its units as a left-to-right chain (S15).
+    let ledger = html
+        .split("<article class=\"ledger\"")
+        .nth(1)
+        .expect("a bolt is on the board")
+        .split("</article>")
+        .next()
+        .unwrap_or_default();
+    for element in ["class=\"lg-head\"", "class=\"lg-chain\"", "class=\"lg-unit"] {
+        assert!(ledger.contains(element), "a bolt's ledger carries no `{element}`: {ledger}");
+    }
+    assert!(
+        ledger.contains("class=\"lg-unit merged\"") || ledger.contains("class=\"lg-unit building\""),
+        "the chain does not say which units are merged, building or queued (S15): {ledger}"
+    );
+
+    // And no form is the generic body the board used to write for every kind.
+    assert!(
+        !html.contains("<p class=\"state\">") && !html.contains("<p class=\"holder\">"),
+        "the board still writes one generic state and holder line for every kind (209)"
+    );
+}
+
+/// A child is drawn inside its parent and is not also a row of its own: the
+/// board would otherwise say the same thing twice, and the thread would be a
+/// name with nothing hanging off it (209, S13, S15).
+#[test]
+fn a_child_is_drawn_inside_its_parent_and_not_beside_it() {
+    let (mut store, world, defs) = a_page();
+    rail_mockup(&mut store, &defs);
+    let html = rendered(&mut store, &world, &defs);
+
+    // The elaborations of an intent that is on the board are beads on it and
+    // appear nowhere else on the board.
+    let board = html.split("class=\"lanes\"").nth(1).expect("the board");
+    let board = board.split("class=\"dock\"").next().unwrap_or(board);
+    for elaboration in ["elaboration/atlas-provider-limits/research", "elaboration/atlas-provider-limits/prototype"] {
+        assert_eq!(
+            board.matches(&format!("id=\"{elaboration}\"")).count(),
+            1,
+            "`{elaboration}` is drawn twice on the board"
+        );
+        let at = board.find(&format!("id=\"{elaboration}\"")).expect("the bead");
+        let before = &board[..at];
+        let opened = before.rfind("<article class=\"thread\"").expect("inside a thread");
+        assert!(
+            !before[opened..].contains("</article>"),
+            "`{elaboration}` is not inside its intent's thread (209, S13)"
+        );
+    }
+    // And a unit of a bolt is a link in that bolt's chain.
+    let ledger = board
+        .split("<article class=\"ledger\"")
+        .find(|block| block.contains("id=\"bolt/atlas/plan-rows\""))
+        .expect("the bolt");
+    let ledger = ledger.split("</article>").next().unwrap_or_default();
+    assert!(
+        ledger.contains("id=\"unit/atlas/status-writer\""),
+        "a unit is not on its bolt's chain (209, S15): {ledger}"
+    );
+}
+
+/// The helpers the board reads an object by, each on its own: what a thing is
+/// called, which repository it belongs to, and what it is doing split into the
+/// one word a head has room for and the rest.
+#[test]
+fn the_board_reads_an_object_by_its_name_its_repository_and_its_state() {
+    use crate::page::{name_of, repository_of, state_and_rest};
+    assert_eq!(name_of("intent/atlas-provider-limits"), "atlas-provider-limits");
+    assert_eq!(name_of("bolt/atlas/plan-rows"), "plan-rows");
+    assert_eq!(name_of("unit/atlas/rail-tail/wi-1"), "wi-1");
+    assert_eq!(name_of("willdan"), "willdan");
+
+    // A repository is the middle segment where the id has one, and nothing
+    // where it does not: `intent/atlas-provider-limits` names no repository.
+    assert_eq!(repository_of("bolt/atlas/plan-rows"), Some("atlas"));
+    assert_eq!(repository_of("unit/atlas/rail-tail/wi-1"), Some("atlas"));
+    assert_eq!(repository_of("intent/atlas-provider-limits"), None);
+    assert_eq!(repository_of("willdan"), None);
+
+    // The head takes the object's own life; the rest goes under it, where it
+    // wraps. A head is `nowrap` by design and the whole string ran off the lane.
+    assert_eq!(
+        state_and_rest("open · citations moved · line current"),
+        ("open", "citations moved · line current")
+    );
+    assert_eq!(state_and_rest("proposed"), ("proposed", ""));
+    assert_eq!(state_and_rest(""), ("", ""));
+}

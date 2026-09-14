@@ -318,3 +318,116 @@ fn an_apply_ends_at_the_present_and_ages_what_came_before() {
         applied.at.to_rfc3339()
     );
 }
+
+// ---- what a session left behind, opened from the page
+
+/// A session that finishes leaves real files at real paths, and the page opens
+/// them (190, 213, 111).
+///
+/// Until it did, the operator could see that an elaboration was done and could
+/// not read what it produced, which empties out the whole stage. The ruling is
+/// that a deliverable is a file at a path, so the page links to it: markdown
+/// rendered into the page beside the object whose session delivered it, HTML
+/// served at its own address because it is its own document.
+///
+/// This runs over a real instance — a real checkout, a real state repository,
+/// the exit reported through the path a real session reports through — and
+/// fetches the links over a socket, so what is asserted is what a browser gets.
+#[test]
+fn the_page_opens_what_a_session_delivered() {
+    use std::io::{Read as _, Write as _};
+
+    let under = Under::new("delivering");
+    let applied = apply_through(&fixture("delivering"), &under.0, 2);
+    let host = flywheel::host::Host::open(&applied.manifest, "local", None, applied.at)
+        .expect("the host opens over the instance the apply left");
+    let instance = host.instance.clone();
+
+    // Both files are on disk, where the session's place would have put them.
+    let checkout = under
+        .0
+        .canonicalize()
+        .expect("the directory resolves")
+        .join("root/t-delivering/flywheel-blueprints");
+    for path in ["openspec/changes/declines/research/note.md", "openspec/changes/declines/prototype/report.html"] {
+        assert!(checkout.join(path).is_file(), "the session delivered {path} and it is not there");
+    }
+
+    // The name this host answers at. The page is served unsigned-in on the
+    // operator's own network and refuses a request at any other address, so a
+    // request has to name the host's own (205a, 253a).
+    let answers_at = flywheel_surface::http::private_host(&host.sinks.address)
+        .unwrap_or_else(|| "127.0.0.1".to_string());
+    let host = std::sync::Arc::new(std::sync::Mutex::new(host));
+    let runtime = tokio::runtime::Builder::new_multi_thread().enable_all().build().unwrap();
+    let served = flywheel::serve::page_of(&host, 4242, &["chuck".to_string()]);
+    let address = runtime.block_on(async {
+        let listener = tokio::net::TcpListener::bind("127.0.0.1:0").await.unwrap();
+        let address = listener.local_addr().unwrap();
+        let served = served.clone();
+        tokio::spawn(async move {
+            let _ = flywheel_surface::http::serve_on(served, listener).await;
+        });
+        address
+    });
+    let fetch = |path: &str| -> String {
+        let mut socket = std::net::TcpStream::connect(address).expect("the page answers");
+        let request =
+            format!("GET {path} HTTP/1.1\r\nHost: {answers_at}\r\nConnection: close\r\n\r\n");
+        socket.write_all(request.as_bytes()).expect("the request is sent");
+        let mut text = String::new();
+        socket.read_to_string(&mut text).expect("the page replies");
+        text
+    };
+
+    // The page links both, at the route that opens them.
+    let page = fetch("/");
+    assert!(page.starts_with("HTTP/1.1 200"), "{}", page.lines().next().unwrap_or_default());
+    let document = format!("/{instance}/deliverable/flywheel-blueprints/openspec/changes/declines/research/note.md");
+    let prototype = format!("/{instance}/deliverable/flywheel-blueprints/openspec/changes/declines/prototype/report.html");
+    for link in [&document, &prototype] {
+        assert!(
+            page.contains(&format!("href=\"{link}\"")),
+            "the page does not link `{link}`; a session left it and nothing opens it (190, 213)"
+        );
+    }
+
+    // Markdown is read on the page: rendered, in the dock, beside the object.
+    let read = fetch(&document);
+    assert!(read.starts_with("HTTP/1.1 200"), "{}", read.lines().next().unwrap_or_default());
+    assert!(read.contains("class=\"doc\""), "the document is not rendered into the page: {read}");
+    assert!(read.contains("<h1>What the reader found</h1>"), "{read}");
+    assert!(read.contains("<strong>One brand is 9 per cent"), "{read}");
+    assert!(read.contains("<code>declined</code>"), "{read}");
+    // And it is the page, with the rail and the board still on it, not a
+    // viewer of its own: the operator reads it where the work is (S27).
+    assert!(read.contains("class=\"rail\"") && read.contains("class=\"lanes\""), "{read}");
+
+    // The prototype is its own document at its own address, with its own
+    // styles and nothing of the page around it (310).
+    let opened = fetch(&prototype);
+    assert!(opened.starts_with("HTTP/1.1 200"), "{}", opened.lines().next().unwrap_or_default());
+    let body = opened.split_once("\r\n\r\n").map(|(_, b)| b).unwrap_or(&opened);
+    assert!(body.trim_start().starts_with("<!doctype html>"), "{body}");
+    assert!(body.contains("<h1>Retry schedule</h1>"), "{body}");
+    assert!(
+        !body.contains("class=\"rail\"") && !body.contains("class=\"lanes\""),
+        "the prototype came back wrapped in the page: {body}"
+    );
+
+    // And what may be read is what the record says was delivered. A path no
+    // session reported is refused whatever it spells, which is what closes the
+    // traversal question: the check is against the record, not the path.
+    for asked in [
+        format!("/{instance}/deliverable/flywheel-blueprints/openspec/changes/declines/research/secret.md"),
+        format!("/{instance}/deliverable/flywheel-blueprints/../../../etc/passwd"),
+        format!("/{instance}/deliverable/flywheel-state/objects/instance/{instance}/object.rec"),
+    ] {
+        let refused = fetch(&asked);
+        assert!(
+            refused.starts_with("HTTP/1.1 404"),
+            "`{asked}` was served and no session delivered it: {}",
+            refused.lines().next().unwrap_or_default()
+        );
+    }
+}

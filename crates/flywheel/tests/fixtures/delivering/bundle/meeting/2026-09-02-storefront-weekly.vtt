@@ -1,0 +1,49 @@
+WEBVTT
+
+NOTE willdan weekly, 2026-09-02. Four speakers, thirty-one minutes; the
+NOTE cues below are the part the flywheel's meeting adapter reads.
+
+1
+00:04:12.000 --> 00:04:29.400
+<v Chuck>The provider client is still the thing that bites us. Two hosts
+came up on Sunday and both wrote to the same provider inside a minute.
+
+2
+00:04:29.400 --> 00:04:41.900
+<v Dana>That is the one-writer claim, isn't it. We wrote it down and then
+never built the lease on that path.
+
+3
+00:04:41.900 --> 00:05:03.100
+<v Chuck>We wrote it down for the atlas side. Switchboard has its own
+client and nothing says only one of them writes.
+
+4
+00:05:03.100 --> 00:05:20.600
+<v Priya>Then the claim is scoped wrong rather than missing. It attaches
+to the atlas element and it should attach to the contract between them.
+
+5
+00:05:20.600 --> 00:05:38.000
+<v Dana>Rescoping it makes switchboard's ledger cell unjudged, which is
+what we want. Planning picks it up on the next run.
+
+6
+00:11:47.200 --> 00:12:04.800
+<v Marcus>Separate thing: the status rows lose their numbers after a
+merge lands. It is cosmetic but it makes the morning read useless.
+
+7
+00:12:04.800 --> 00:12:19.300
+<v Chuck>That is a chore, not an intent. File it against atlas and let it
+ride with whatever bolt is open.
+
+8
+00:26:31.500 --> 00:26:52.700
+<v Priya>Last one. The retry bound on build is three and we hit it twice
+this week on the same item, both times for a flaky fixture.
+
+9
+00:26:52.700 --> 00:27:09.000
+<v Chuck>Flaky fixture is its own finding. Do not raise the bound to hide
+it.

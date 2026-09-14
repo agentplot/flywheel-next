@@ -534,6 +534,122 @@ async fn page_of_object<S: StateStore + Send + 'static>(
     rendered(&served, &headers, Some(object), asked.refused).await
 }
 
+/// `GET /<instance>/deliverable/<repository>/<path>` — a file a session left.
+///
+/// A session that finishes leaves real files at real paths, and the page links
+/// to them, because an operator who can see that an elaboration is done and
+/// cannot read what it produced has been shown nothing (190, 213).
+///
+/// Two kinds, and the difference is a safety property rather than a
+/// preference. A markdown document is rendered into the page, escaped before a
+/// tag is written, beside the object whose session delivered it. An HTML
+/// deliverable is served **at its own address, as its own document** — it is
+/// markup with its own head and its own styles, and putting it inside the page
+/// would be letting a file write the page that shows it (310).
+///
+/// What may be read is what the state says was delivered, and nothing else.
+/// The path is matched against the deliverables recorded on the objects, so a
+/// request naming a file no session reported gets a 404 whatever it spells —
+/// which closes the traversal question by construction rather than by
+/// inspecting the path.
+async fn deliverable<S: StateStore + Send + 'static>(
+    State(served): State<Served<S>>,
+    Path((instance, named)): Path<(String, String)>,
+    headers: axum::http::HeaderMap,
+) -> Response {
+    if instance != served.instance() {
+        return wrong_instance(&served, &instance).into_response();
+    }
+    if let Err(refused) = served.admits(host_of(&headers)) {
+        return (
+            StatusCode::FORBIDDEN,
+            Html(format!("<p class=\"refused\">{refused}</p>")),
+        )
+            .into_response();
+    }
+    let named = named.trim_matches('/').to_string();
+    let mut store = served.store.lock().await;
+    let world = served.world.lock().await;
+    let mut read = match page::read(
+        &mut *store,
+        &**world,
+        &served.defs,
+        &served.address,
+        served.operator(),
+    ) {
+        Ok(read) => read,
+        Err(refused) => {
+            return (
+                StatusCode::INTERNAL_SERVER_ERROR,
+                Html(format!("<p class=\"refused\">{refused}</p>")),
+            )
+                .into_response()
+        }
+    };
+    // The one this names, among the ones a session actually reported.
+    let found = read
+        .delivered
+        .iter()
+        .find_map(|(object, held)| {
+            held.iter().find(|file| file.named() == named).map(|file| (object.clone(), file.clone()))
+        });
+    let Some((object, file)) = found else {
+        return (
+            StatusCode::NOT_FOUND,
+            Html(format!(
+                "<p class=\"refused\">no session delivered `{}`; the page opens what the \
+                 record says was delivered and nothing else (190, 213)</p>",
+                page::escape(&named)
+            )),
+        )
+            .into_response();
+    };
+    let body = match world.read_file(&file.repository, &file.path) {
+        Ok(Some(body)) => body,
+        Ok(None) => {
+            return (
+                StatusCode::NOT_FOUND,
+                Html(format!(
+                    "<p class=\"refused\">`{}` was delivered and is not in this host's \
+                     checkout of `{}`; the session recorded it and the file is not there \
+                     (190)</p>",
+                    page::escape(&file.path),
+                    page::escape(&file.repository)
+                )),
+            )
+                .into_response()
+        }
+        Err(refused) => {
+            return (
+                StatusCode::INTERNAL_SERVER_ERROR,
+                Html(format!("<p class=\"refused\">{refused}</p>")),
+            )
+                .into_response()
+        }
+    };
+    let text = String::from_utf8_lossy(&body).to_string();
+    // Its own document, at its own address, with nothing of ours around it.
+    if file.is_its_own_document() {
+        return (
+            StatusCode::OK,
+            [(axum::http::header::CONTENT_TYPE, "text/html; charset=utf-8")],
+            text,
+        )
+            .into_response();
+    }
+    // Everything else is read on the page, beside the object it belongs to.
+    read.reading = Some(page::Reading {
+        object,
+        named: named.clone(),
+        body: match file.path.to_ascii_lowercase().ends_with(".md") {
+            true => crate::markdown::render(&text),
+            // A record or a plain file is what it says, as it says it.
+            false => format!("<pre class=\"plain\">{}</pre>", page::escape(&text)),
+        },
+    });
+    (StatusCode::OK, Html(page::render(&read))).into_response()
+}
+
 /// What a link naming another instance gets: this host serves one (205a).
 fn wrong_instance<S: StateStore + Send + 'static>(
     served: &Served<S>,
@@ -595,6 +711,10 @@ pub fn router<S: StateStore + Send + 'static>(served: Served<S>) -> Router {
         // instance in its path, so the link it wrote is a path this router
         // serves (205a, 308).
         .route("/:instance", get(page_of_instance::<S>))
+        // A file a session left behind, which the object's surface links to
+        // (190, 213). It comes before the catch-all because `deliverable` is a
+        // segment of the path and not the head of an object's id.
+        .route("/:instance/deliverable/*named", get(deliverable::<S>))
         .route("/:instance/*object", get(page_of_object::<S>))
         .with_state(served)
 }

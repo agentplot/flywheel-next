@@ -210,17 +210,29 @@ pub fn tappable(tab: &Tab, selector: &str) -> Result<bool> {
     Ok(measure(tab, selector)?.is_some_and(|m| m.tappable()))
 }
 
-/// Wait until the tab is somewhere else. A tap on an answer posts a form, and
-/// the page it lands on is what says whether the tool recorded the call; the
-/// navigation is the browser's own and is waited for rather than assumed.
-pub fn wait_for_url(tab: &Tab, holding: &str) -> Result<String> {
+/// Wait until the page the tab is on says something. A tap on an answer posts
+/// a form and the control sends the operator back to the page they were on,
+/// which renders the answer they just gave — so the tab's address is the
+/// address it already had, and what says the tap went through is the page's own
+/// content (310, 311).
+///
+/// This used to wait for the address to change, which it did while a form post
+/// left the operator on the tool's JSON body. It no longer does, and a page
+/// with no script must land on a page rather than on a body the operator has to
+/// go back from; so what is waited for is the page saying it.
+pub fn wait_for_content(tab: &Tab, said: &str) -> Result<String> {
     let until = std::time::Instant::now() + std::time::Duration::from_secs(10);
+    let mut last = String::new();
     while std::time::Instant::now() < until {
-        let now = tab.get_url();
-        if now != holding {
-            return Ok(now);
+        last = tab.get_content().unwrap_or_default();
+        if last.contains(said) {
+            return Ok(last);
         }
         std::thread::sleep(std::time::Duration::from_millis(50));
     }
-    anyhow::bail!("the tab stayed at {holding} after the tap")
+    anyhow::bail!(
+        "the page never said `{said}` after the tap; it is at {} and reads {} characters",
+        tab.get_url(),
+        last.chars().count()
+    )
 }

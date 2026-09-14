@@ -15,6 +15,7 @@ pub mod catalogue;
 pub mod chat;
 pub mod http;
 pub mod links;
+pub mod markdown;
 pub mod page;
 
 pub use catalogue::{catalogue, enumerate, tool, Tool, CATALOGUE};
