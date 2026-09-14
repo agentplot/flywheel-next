@@ -667,12 +667,16 @@ fn a_link_opens_its_object_in_the_dock_with_no_fragment() {
 /// An answer that takes an argument takes it on the card, and what is recorded
 /// is the string the machine's pattern matches (S6, 311, 193).
 ///
-/// The card rendered the pattern as the button's value, so tapping `redo:
-/// <notes>` posted `redo: <notes>` literally — the operator could not say what
-/// to redo, what bolt to route to or what type to set. On a unit's card that is
-/// six of nine controls and every way of sending work back.
+/// An answer that takes an argument — `redo: <notes>`, `bolt <name>`, `type
+/// <name>` — is one tap on the card, opening the object in the dock, where
+/// the field for it is (311, S6, D16). On a unit's card that is six of nine
+/// controls: with a text field for each the card read as a form and not as a
+/// decision, and the mockup keeps the card to its words. Rendered as the
+/// button's value the pattern posted `redo: <notes>` literally, so the field
+/// is where the operator says what to redo, what bolt to route to or what
+/// type to set.
 #[test]
-fn an_answer_that_takes_an_argument_takes_it_on_the_card() {
+fn an_answer_that_takes_an_argument_takes_it_in_the_dock() {
     let (mut store, world, defs) = a_page();
     rail_mockup(&mut store, &defs);
     let read = crate::page::read(&mut store, &world, &defs, ADDRESS, "chuck").expect("a read");
@@ -689,6 +693,11 @@ fn an_answer_that_takes_an_argument_takes_it_on_the_card() {
         .find(|block| block.contains(&format!("data-number=\"{number}\"")))
         .expect("its card");
     let card = &card[..card.find("</article>").expect("the card closes")];
+    let dock = html
+        .split("<article ")
+        .find(|block| block.starts_with(&format!("class=\"surface form-unit\" id=\"dock-{}\"", unit.object)))
+        .expect("the unit's dock surface");
+    let dock = &dock[..dock.find("</article>").expect("the surface closes")];
 
     let taking: Vec<&String> = unit.answers.iter().filter(|a| a.contains('<')).collect();
     assert!(
@@ -697,32 +706,34 @@ fn an_answer_that_takes_an_argument_takes_it_on_the_card() {
         unit.answers
     );
     for answer in &taking {
-        let form = card
-            .split("<form ")
-            .find(|block| block.contains(&format!("data-answer=\"{}\"", crate::page::escape(answer))))
+        let escaped = crate::page::escape(answer);
+        // On the card: one tap to the dock, and no field (311).
+        let tap = card
+            .split("<a ")
+            .find(|block| block.contains(&format!("data-answer=\"{escaped}\"")))
             .unwrap_or_else(|| panic!("no control for `{answer}` on the card"));
+        let tap = &tap[..tap.find("</a>").expect("the link closes")];
+        assert!(
+            tap.contains(&format!("href=\"#dock-{}\"", unit.object)),
+            "`{answer}` on the card opens somewhere other than its object: {tap}"
+        );
+        let label = tap.rsplit_once('>').map(|(_, said)| said).unwrap_or_default();
+        assert!(!label.contains("&lt;"), "`{answer}` wears its own placeholder as its label: {label}");
+        assert!(!card.contains(&format!("<input type=\"hidden\" name=\"answer\" value=\"{escaped}\"")), "the card carries a field for `{answer}`");
+
+        // In the dock: the form with somewhere to type, and nothing sent empty.
+        let form = dock
+            .split("<form ")
+            .find(|block| block.contains(&format!("data-answer=\"{escaped}\"")))
+            .unwrap_or_else(|| panic!("no control for `{answer}` in the dock"));
         let form = &form[..form.find("</form>").expect("the control closes")];
         assert!(
             form.contains("name=\"text\"") && form.contains("type=\"text\""),
             "`{answer}` is a control with nowhere to type its argument: {form}"
         );
-        assert!(
-            form.contains("required"),
-            "`{answer}` would send an empty argument as an answer: {form}"
-        );
-        // The control says what it does without the placeholder in its words:
-        // a button reading `redo: <notes>` tells the operator nothing.
-        let label = form
-            .rsplit_once('>')
-            .and_then(|(head, _)| head.rsplit_once('>'))
-            .map(|(_, said)| said.to_string())
-            .unwrap_or_default();
-        assert!(
-            !label.contains("&lt;"),
-            "`{answer}` wears its own placeholder as its label: {label}"
-        );
+        assert!(form.contains("required"), "`{answer}` would send an empty argument as an answer: {form}");
     }
-    // And a bare answer stays one tap, with nothing to fill in (311).
+    // And a bare answer stays one tap on the card, with nothing to fill in (311).
     let bare = card
         .split("<form ")
         .find(|block| block.contains("data-answer=\"yes\""))

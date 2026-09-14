@@ -15,9 +15,11 @@
    (214), the load panel, the artifact views (213) and the account item are the
    parts phase 1 does not have, and their rules are not here.
 
-   Nothing below this point reaches outside the document: the mockup's font
-   links are dropped and its stacks fall back to the system's, because the
-   bundle fetches nothing from anywhere else (310). */
+   Nothing below this point reaches outside the document: the mockup's two
+   faces, Manrope and JetBrains Mono, are embedded here as data rather than
+   linked, because the bundle fetches nothing from anywhere else (310;
+   `page/fonts/NOTICE`). */
+{{FONTS}}
 :root{
   --bg:#EEF1F4; --surface:#FFFFFF; --surface2:#F6F8FA; --ink:#16202A; --ink2:#4A5763; --ink3:#7A8794;
   --line:#D5DBE1; --line2:#E4E8EC; --accent:#0B6E79; --accent-ink:#FFFFFF; --accent-soft:#D9EEF0; --accent-hatch:rgba(11,110,121,.10);
@@ -43,6 +45,16 @@ input,textarea,select{font:inherit;color:var(--ink);background:var(--surface);bo
 input:focus,textarea:focus,select:focus,button:focus-visible,[tabindex]:focus-visible{outline:2px solid var(--accent);outline-offset:1px}
 h1,h2,h3,h4{margin:0;font-weight:700;text-wrap:balance}
 .mono{font-family:var(--mono)}
+/* The `unit` control on a capture (34, 12), and a card's link to the answer
+   fields the dock carries: two forms the mockup drew with script. */
+.acts.unit{display:flex;gap:5px;margin-top:6px;align-items:center;flex-wrap:wrap}
+.acts.unit input[type=text]{flex:1;min-width:120px;font:12.5px var(--sans);padding:4px 7px;border:1px solid var(--line);border-radius:5px;background:var(--surface);color:var(--ink)}
+.acts.unit select{font:12px var(--mono);padding:4px 6px;border:1px solid var(--line);border-radius:5px;background:var(--surface);color:var(--ink2)}
+.card .answers .to-dock{text-decoration:none;color:var(--ink2);border-style:dashed}
+.marks a.mark{text-decoration:none;cursor:pointer}
+.record .rc-name a{color:inherit;text-decoration:none}
+.lane .quiet{color:var(--ink3);font-size:12.5px;padding:10px 2px}
+.sec-h-group.empty h2{opacity:.45}
 .tn{font-variant-numeric:tabular-nums}
 kbd{font:11px var(--mono);border:1px solid var(--line);border-bottom-width:2px;border-radius:4px;padding:0 5px;color:var(--ink2);background:var(--surface2)}
 .eyebrow{font-size:11px;letter-spacing:.08em;text-transform:uppercase;color:var(--ink3);font-weight:700}

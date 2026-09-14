@@ -539,6 +539,25 @@ fn instance_of(address: &str) -> &str {
     address.trim_end_matches('/').rsplit('/').next().unwrap_or_default()
 }
 
+/// The two faces the mockup names, as `@font-face` rules over data: the
+/// latin variable-weight files, embedded so the bundle fetches nothing from
+/// anywhere else (310, D16; `page/fonts/NOTICE`). Encoded once per process.
+fn fonts_css() -> &'static str {
+    static CSS: std::sync::OnceLock<String> = std::sync::OnceLock::new();
+    CSS.get_or_init(|| {
+        use base64::Engine;
+        let face = |family: &str, weights: &str, bytes: &[u8]| {
+            format!(
+                "@font-face{{font-family:\"{family}\";font-style:normal;font-weight:{weights};\
+                 font-display:swap;src:url(data:font/woff2;base64,{}) format(\"woff2\")}}\n",
+                base64::engine::general_purpose::STANDARD.encode(bytes)
+            )
+        };
+        face("Manrope", "200 800", include_bytes!("page/fonts/manrope-latin.woff2"))
+            + &face("JetBrains Mono", "100 800", include_bytes!("page/fonts/jetbrains-mono-latin.woff2"))
+    })
+}
+
 pub fn render(read: &Read) -> String {
     let instance = instance_of(&read.address);
     // Attention stands outside the count: it is what the machinery could not do,
@@ -552,6 +571,7 @@ pub fn render(read: &Read) -> String {
     let sent: usize = read.answered.values().map(Vec::len).sum();
     let mut out = TEMPLATE
         .replace("{{VERSION}}", VERSION)
+        .replace("{{FONTS}}", fonts_css())
         .replace("{{INSTANCE}}", &escape(instance))
         .replace("{{OPERATOR}}", &escape(&read.operator))
         .replace("{{CLOCK}}", &escape(&short(&read.status.at.to_rfc3339())))
@@ -807,7 +827,7 @@ fn card(read: &Read, decision: &DecisionInstance) -> String {
     }
     out.push_str("<div class=\"answers\">\n");
     for answer in &decision.answers {
-        out.push_str(&control(&number, answer));
+        out.push_str(&card_control(&number, answer, &decision.object));
     }
     out.push_str("</div>\n");
     // What has already been answered, with who gave it and when: the response
@@ -816,6 +836,25 @@ fn card(read: &Read, decision: &DecisionInstance) -> String {
     out.push_str(&answered(read, decision.number));
     out.push_str("</article>\n");
     out
+}
+
+/// An answer on the rail's card. A bare answer is the one-tap control; an
+/// answer that takes an argument — `redo: <notes>`, `bolt <name>`, `type
+/// <name>` — is one tap too, opening the object in the dock where the field
+/// for it is (311, S6, D16). A card with six text fields on it read as a form
+/// and not as a decision; the mockup keeps the card to its words and takes
+/// the argument in a box the tap opens.
+fn card_control(number: &str, answer: &str, object: &str) -> String {
+    if takes_an_argument(answer).is_none() {
+        return control(number, answer);
+    }
+    format!(
+        "<a class=\"btn sm to-dock\" href=\"#dock-{object}\" data-answer=\"{whole}\" \
+         data-decision=\"{number}\">{said}…</a>\n",
+        object = escape(object),
+        whole = escape(answer),
+        said = escape(&said(answer)),
+    )
 }
 
 /// One answer, as a control the operator uses (311, 193, S6).
@@ -981,23 +1020,32 @@ fn lane(read: &Read, title: &str, sub: &str, machines: &[&str]) -> String {
         out.push_str(&unmoved(read));
     }
     out.push_str("<div class=\"status-groups\">\n");
+    let mut drawn = 0;
     for group in status::GROUPS {
         let rows: Vec<&&status::Row> = mine
             .iter()
             .filter(|row| row.group == group && !nested_in_its_parent(read, row, &mine))
             .collect();
+        // A group with nothing in it keeps its heading and says nothing
+        // under it: four "nothing"s down a lane read as the machine talking to
+        // itself, and the grouping is what 141 asks for (141, D16).
+        drawn += rows.len();
         let _ = write!(
             out,
-            "<section class=\"sec-h-group\" data-group=\"{}\">\n<h2>{group}</h2>\n",
-            group.replace(' ', "-")
+            "<section class=\"sec-h-group{empty}\" data-group=\"{}\">\n<h2>{group}</h2>\n",
+            group.replace(' ', "-"),
+            empty = match rows.is_empty() {
+                true => " empty",
+                false => "",
+            },
         );
-        if rows.is_empty() {
-            out.push_str("<div class=\"empty\">nothing</div>\n");
-        }
         for row in rows {
             out.push_str(&object_on_the_board(read, row, &mine));
         }
         out.push_str("</section>\n");
+    }
+    if drawn == 0 {
+        out.push_str("<div class=\"quiet empty\">nothing here yet</div>\n");
     }
     out.push_str("</div>\n");
     out
@@ -1143,7 +1191,107 @@ fn discussion(row: &status::Row) -> String {
 /// with its elaborations in order, a bolt a ledger with its units in order, a
 /// signal a quote. A form that differs only by the word on its class is one
 /// card with variants, which is what 209 refuses.
+/// The standing decisions on an object, as marks on its board form: the
+/// mockup's rule that every object carries a mark per decision that waits on
+/// it, so the board says where the rail's numbers belong (D16, 15, 18). Each
+/// is one tap to the dock, where the answer is.
+fn marks(read: &Read, object: &str) -> String {
+    let standing: Vec<&DecisionInstance> = read
+        .decisions
+        .iter()
+        .filter(|d| d.object == object && d.number.is_some())
+        .collect();
+    if standing.is_empty() {
+        return String::new();
+    }
+    let mut out = String::from("<div class=\"marks\">");
+    for decision in standing {
+        let sign = match decision.group.as_str() {
+            "approve" => "✓",
+            "decide" => "?",
+            "attention" => "!",
+            _ => "✎",
+        };
+        let _ = write!(
+            out,
+            "<a class=\"mark {group}\" href=\"#dock-{object}\" data-mark=\"{number}\" title=\"{kind}\">\
+             {sign} {number} <span>{kind}</span></a>",
+            group = escape(&decision.group),
+            object = escape(object),
+            number = decision.number.unwrap_or_default(),
+            kind = escape(&decision.kind),
+        );
+    }
+    out.push_str("</div>\n");
+    out
+}
+
+/// A form with its marks inside it, before its closing tag.
+fn with_marks(html: String, marks: String) -> String {
+    if marks.is_empty() {
+        return html;
+    }
+    let close = html.trim_end();
+    let at = close
+        .rfind("</article>")
+        .or_else(|| close.rfind("</div>"))
+        .unwrap_or(close.len());
+    format!("{}{}{}\n", &close[..at], marks, &close[at..])
+}
+
+/// A landed bolt: the mockup's record — the name stamped landed, what it
+/// carried, and what is left of it — a form of its own and not a ledger with
+/// nothing building (209, S15).
+fn record(read: &Read, row: &status::Row, lane: &[&status::Row]) -> String {
+    let (state, rest) = state_and_rest(&row.said);
+    let units = children_of(read, row, lane);
+    let mut out = String::new();
+    let _ = write!(out, "<article class=\"record\"{}>\n", board_attributes(row));
+    let _ = write!(
+        out,
+        "<div class=\"rc-head\"><span class=\"rc-name\"><a href=\"#dock-{object}\">{repo}{name}</a></span>\
+         <span class=\"rc-at\">{state}</span></div>\n",
+        object = escape(&row.object),
+        repo = repository_of(&row.object).map(|r| format!("{}/", escape(r))).unwrap_or_default(),
+        name = escape(name_of(&row.object)),
+        state = escape(state),
+    );
+    let _ = write!(
+        out,
+        "<span class=\"rc-stamp\">{state} · {how_many} {units}</span>\n",
+        state = escape(state),
+        how_many = units.len(),
+        units = counted("units", units.len()),
+    );
+    if !units.is_empty() {
+        out.push_str("<div class=\"rc-env\">");
+        for unit in &units {
+            let _ = write!(
+                out,
+                "<a href=\"#dock-{object}\">{name}</a>",
+                object = escape(&unit.object),
+                name = escape(name_of(&unit.object)),
+            );
+        }
+        out.push_str("</div>\n");
+    }
+    out.push_str(&discussion(row));
+    if !rest.is_empty() {
+        let _ = write!(out, "<div class=\"leave\">{}</div>\n", escape(rest));
+    }
+    out.push_str("</article>\n");
+    out
+}
+
 fn object_on_the_board(read: &Read, row: &status::Row, lane: &[&status::Row]) -> String {
+    let drawn = draw_on_the_board(read, row, lane);
+    with_marks(drawn, marks(read, &row.object))
+}
+
+fn draw_on_the_board(read: &Read, row: &status::Row, lane: &[&status::Row]) -> String {
+    if row.machine == "bolt" && row.group == "done" {
+        return record(read, row, lane);
+    }
     match silhouette(&row.machine) {
         // An elaboration whose intent is not on this lane is a bead with no
         // thread to hang on, and is drawn as the bead alone: drawing it as a
@@ -1418,9 +1566,14 @@ fn quote(read: &Read, row: &status::Row) -> String {
         let _ = write!(&mut under, " · {}", escape(&held));
     }
     // A capture is where work may start: the `unit` control on it is the
-    // operator's dictation naming a bolt, applied directly (34, 12).
-    let acts = match row.machine.as_str() {
-        "capture" => unit_form(read, &row.object),
+    // operator's dictation naming a bolt, applied directly (34, 12). On the
+    // board it is one tap to the dock, where the name is typed; a form under
+    // every quote read as a lane of forms.
+    let acts = match (row.machine.as_str(), read.repositories.is_empty()) {
+        ("capture", false) => format!(
+            "<div class=\"acts\"><a class=\"btn sm to-dock\" href=\"#dock-{}\" data-tool=\"propose-unit\">unit…</a></div>",
+            escape(&row.object)
+        ),
         _ => String::new(),
     };
     format!(

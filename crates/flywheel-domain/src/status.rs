@@ -96,6 +96,13 @@ pub fn said(object: &Object) -> String {
         if region.ends_with(".presence") && state == "unknown" {
             continue;
         }
+        // A nested region standing where it stands when nothing is happening
+        // — a close not offered, material settled, a line current, services
+        // declared — is the quiet a sentence leaves out; the object's own
+        // state and what is moving are what it says (141, D16).
+        if region.contains('.') && matches!(state.as_str(), "not-offered" | "settled" | "current" | "declared" | "none") {
+            continue;
+        }
         out.push(match noun(region) {
             Some(noun) => format!("{noun} {state}"),
             None => state.clone(),
