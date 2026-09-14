@@ -1,0 +1,131 @@
+<!doctype html>
+<meta charset="utf-8">
+<title>Retry schedule — replay against the sandbox</title>
+<style>
+  :root{ color-scheme: light dark;
+    --bg:#fbfbfa; --ink:#1a1a1a; --ink2:#585858; --line:#dcdcd8; --surface:#fff;
+    --ok:#2e6f4e; --warn:#8a5a12; --crit:#98342a; --accent:#0b6e79; }
+  @media (prefers-color-scheme:dark){ :root{
+    --bg:#151719; --ink:#e8e8e6; --ink2:#a2a2a0; --line:#31343a; --surface:#1d2024;
+    --ok:#66b98c; --warn:#d5a24d; --crit:#e07a6d; --accent:#54b6c2; } }
+  body{margin:0;background:var(--bg);color:var(--ink);
+       font:15px/1.55 ui-sans-serif,system-ui,-apple-system,"Segoe UI",sans-serif}
+  main{max-width:52rem;margin:0 auto;padding:2.5rem 1.5rem 5rem}
+  h1{font-size:1.6rem;line-height:1.2;margin:0 0 .3rem}
+  .sub{color:var(--ink2);margin:0 0 2rem}
+  h2{font-size:1.1rem;margin:2.4rem 0 .6rem}
+  table{border-collapse:collapse;width:100%;font-variant-numeric:tabular-nums;margin:.8rem 0}
+  th,td{border-bottom:1px solid var(--line);padding:.42rem .6rem;text-align:right}
+  th:first-child,td:first-child{text-align:left}
+  thead th{font-size:.78rem;letter-spacing:.06em;text-transform:uppercase;color:var(--ink2);
+           border-bottom-width:2px}
+  tbody tr.pick{background:color-mix(in oklab,var(--accent) 12%,transparent)}
+  .fig{display:flex;gap:1.6rem;flex-wrap:wrap;margin:1.2rem 0 0}
+  .stat{background:var(--surface);border:1px solid var(--line);border-radius:8px;
+        padding:.7rem 1rem;min-width:9rem}
+  .stat b{display:block;font-size:1.5rem;line-height:1.1}
+  .stat span{font-size:.8rem;color:var(--ink2)}
+  .bars{margin:1rem 0}
+  .bar{display:grid;grid-template-columns:7rem 1fr 4rem;align-items:center;gap:.6rem;margin:.28rem 0}
+  .bar i{display:block;height:.7rem;border-radius:2px;background:var(--accent)}
+  .bar span{font-size:.82rem;color:var(--ink2)}
+  .bar em{font-style:normal;font-variant-numeric:tabular-nums;text-align:right;font-size:.85rem}
+  code{font:13px ui-monospace,Menlo,Consolas,monospace;background:var(--surface);
+       border:1px solid var(--line);border-radius:4px;padding:0 .25em}
+  .note{border-left:3px solid var(--warn);padding:.1rem 0 .1rem .9rem;color:var(--ink2);margin:1.2rem 0}
+  footer{margin-top:3rem;padding-top:1rem;border-top:1px solid var(--line);
+         color:var(--ink2);font-size:.85rem}
+</style>
+<main>
+<h1>Retry schedule: what a delayed retry would have recovered</h1>
+<p class="sub">Fourteen days of recorded checkout attempts, replayed against the
+processor's sandbox, which returns decline codes. Throwaway prototype for
+<code>intent/storefront-declines</code>.</p>
+
+<h2>What was run</h2>
+<p>41,900 recorded authorization attempts were replayed against the sandbox
+account, which answers with the same two-character decline codes production
+returns and which production discards. Each declined attempt was then re-offered
+on eight candidate schedules. The sandbox's issuer simulator was seeded from the
+recorded card brands and amounts, so the soft/hard split below is the
+simulator's, not ours.</p>
+
+<div class="fig">
+  <div class="stat"><b>1,180</b><span>declines replayed</span></div>
+  <div class="stat"><b>63%</b><span>soft (retryable)</span></div>
+  <div class="stat"><b>37%</b><span>hard (do not retry)</span></div>
+  <div class="stat"><b>81%</b><span>of soft are amex</span></div>
+</div>
+
+<p>The split answers the question the research note could not: two thirds of the
+rise is an issuer saying "not now", not "no".</p>
+
+<h2>Schedules</h2>
+<p>Recovery is the share of the 1,180 declines that ended in an approval.
+Fee cost is the processor's per-attempt charge on the extra attempts, over the
+fourteen days. Late charges are approvals landing more than an hour after the
+shopper left the checkout — the ones that generate a "what is this?" email.</p>
+
+<table>
+  <thead><tr><th>Schedule</th><th>Attempts</th><th>Recovered</th><th>Rate</th><th>Fee cost</th><th>Late</th></tr></thead>
+  <tbody>
+    <tr><td>none (today)</td><td>0</td><td>0</td><td>0.0%</td><td>0</td><td>0</td></tr>
+    <tr><td>immediate (today's "retry")</td><td>1,180</td><td>41</td><td>3.5%</td><td>£11.80</td><td>0</td></tr>
+    <tr><td>+15 min</td><td>744</td><td>171</td><td>14.5%</td><td>£7.44</td><td>12</td></tr>
+    <tr><td>+1 h</td><td>744</td><td>329</td><td>27.9%</td><td>£7.44</td><td>329</td></tr>
+    <tr class="pick"><td>+1 h, +24 h</td><td>1,159</td><td>428</td><td>36.3%</td><td>£11.59</td><td>428</td></tr>
+    <tr><td>+1 h, +24 h, +72 h</td><td>1,462</td><td>441</td><td>37.4%</td><td>£14.62</td><td>441</td></tr>
+    <tr><td>+4 h, +24 h, +72 h</td><td>1,455</td><td>418</td><td>35.4%</td><td>£14.55</td><td>418</td></tr>
+    <tr><td>+1 h, +24 h (all declines)</td><td>1,842</td><td>431</td><td>36.5%</td><td>£18.42</td><td>431</td></tr>
+  </tbody>
+</table>
+
+<div class="bars">
+  <div class="bar"><span>immediate</span><i style="width:9%"></i><em>3.5%</em></div>
+  <div class="bar"><span>+15 min</span><i style="width:39%"></i><em>14.5%</em></div>
+  <div class="bar"><span>+1 h</span><i style="width:75%"></i><em>27.9%</em></div>
+  <div class="bar"><span>+1 h, +24 h</span><i style="width:97%"></i><em>36.3%</em></div>
+  <div class="bar"><span>+ 72 h as well</span><i style="width:100%"></i><em>37.4%</em></div>
+</div>
+
+<h2>What the numbers say</h2>
+<ul>
+  <li><b>Delay is the whole of it.</b> The same request an hour later recovers
+    eight times what the same request 340 milliseconds later recovers. Nothing
+    about the request changes; only when it is asked.</li>
+  <li><b>Two attempts is the knee.</b> A third attempt at 72 hours adds 1.1
+    points of recovery for 26 per cent more attempts. It is not worth the
+    ledger noise.</li>
+  <li><b>Sorting by decline code pays for itself.</b> Retrying every decline
+    rather than the soft ones costs 59 per cent more attempts and recovers
+    three fewer. Hard declines never turn into approvals, and the fee is
+    charged either way.</li>
+  <li><b>428 recovered over fourteen days</b> is 36 per cent of the declines,
+    which against the eight-day rise takes the effective decline rate from 4.2
+    per cent back to about 2.7 per cent. It does not undo the rise. It is worth
+    doing anyway, and it would have been worth doing before the rise.</li>
+</ul>
+
+<div class="note">
+  Every approval on this schedule lands after the shopper has left. A charge
+  arriving an hour later with no message is a support ticket and possibly a
+  chargeback. The schedule is not shippable without the shopper being told —
+  at checkout that a retry may happen, and by email when one succeeds. That is
+  a second piece of work and it is not optional.
+</div>
+
+<h2>What this prototype is not</h2>
+<p>The sandbox's issuer simulator is not the issuers. The soft/hard split is
+credible because it matches the shape of the recorded traffic; the recovery
+rates are the simulator's model of issuer behaviour and should be read as an
+order of magnitude, not a forecast. The only way to know is to ship the
+schedule behind a flag and measure.</p>
+<p>None of the code here is meant to be kept. What is meant to be kept is the
+schedule — <b>+1 h then +24 h, soft declines only</b> — and the finding that we
+cannot implement it until the decline code is persisted.</p>
+
+<footer>
+Replay harness and raw output in the place; not landed.
+Prototype for <code>elaboration/storefront-declines/finding-1</code>.
+</footer>
+</main>

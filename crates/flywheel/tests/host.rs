@@ -1231,6 +1231,7 @@ fn hosted(name: &str) -> Host {
         app_key: Some("the operator placed this".into()),
         address: "http://laptop.example".into(),
         manifest: dir.join("flywheel.yaml"),
+        repositories: vec![],
         curation: None,
         at: at(0),
     })

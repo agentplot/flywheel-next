@@ -563,7 +563,14 @@ impl Store {
             .unwrap_or_default()
             .is_empty()),
             "session.operator_present" | "session.refusals_pending" => json!(false),
-            "session.exit_recorded" | "session.host_alive" | "session.answer_delivered" | "session.message_delivered" => json!(true),
+            "session.exit_recorded" | "session.host_alive" | "session.message_delivered" => json!(true),
+            // `deliver_answer`'s proof: no block is waiting on an answer. Read
+            // as `true` outright, the engine skipped the effect (73, 127), so
+            // the answer never reached the session and its blocked exit stood
+            // — the same shape the operator binding had.
+            "session.answer_delivered" => {
+                json!(!matches!(sess.and_then(|s| s.exit.as_deref()), Some("blocked")))
+            }
             "session.question" => json!(sess.and_then(|s| s.question.clone())),
             "session.expected" | "session.delivered" => json!(sess.map(|s| s.deliverables.clone()).unwrap_or_default()),
             // ---- stage
@@ -582,7 +589,32 @@ impl Store {
             "unit.claim_moved" | "bolt.citations_moved" | "bolt.chores_outstanding" | "bolt.hold_since_last_merge" => json!(false),
             "unit.items_exist" => json!(self.objects.values().any(|o| o.parent.as_deref() == Some(object) && o.machine == "work-item")),
             // ---- design side
-            "intent.material_pending" => json!(false),
+            // The signals moved to the intent that no elaboration of it cites
+            // (21, `record-derived.yaml` intent.material_pending). Read
+            // through the shared function, as `session.offers_pending` above
+            // is: this is a record-derived name, so the stand-in and the git
+            // profile must answer it alike. Stubbed `false` here, an intent
+            // the operator opened never proposed the elaboration that
+            // understands it — so no scenario run in this process could reach
+            // an elaboration at all, however far a real host got.
+            "intent.material_pending" => json!(!flywheel_domain::effects::pending_material(
+                self, object
+            )
+            .unwrap_or_default()
+            .is_empty()),
+            // `propose_elaboration`'s proof: one proposed elaboration and no
+            // pending material left (21). Unanswered, the effect had no proof
+            // and ran once per pass of every tick.
+            "intent.material_held" => {
+                let proposed = flywheel_domain::effects::children(self, object, "elaboration")
+                    .unwrap_or_default()
+                    .into_iter()
+                    .filter(|e| e.top_state().is_some_and(|s| s == "proposed"))
+                    .count();
+                let pending = flywheel_domain::effects::pending_material(self, object)
+                    .unwrap_or_default();
+                json!(proposed == 1 && pending.is_empty())
+            }
             "intent.covered_by" => json!("none"),
             "elaboration.covers_set" | "elaboration.records_fanned_out" | "curation.gatherings_proposed" => json!(true),
             "intent.close_declined_since_last_final" => json!(obj.map(|o| o.record.get("close_declined_at").map(|v| !v.is_null()).unwrap_or(false)).unwrap_or(false)),

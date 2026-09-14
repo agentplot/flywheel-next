@@ -42,6 +42,7 @@ impl Sandbox {
             app_key: self.placed.clone(),
             address: "http://laptop.example".into(),
             manifest: self.dir.join("flywheel.yaml"),
+            repositories: vec![],
             curation: None,
             at: chrono::Utc::now(),
         }
@@ -465,5 +466,98 @@ fn a_bootstrap_stamps_no_moment_ahead_of_its_own() {
     assert!(
         ahead.is_empty(),
         "the bootstrap stamped moments the clock has not reached: {ahead:?}"
+    );
+}
+
+/// The repositories the operator names are tracked, and the first host's
+/// declaration covers them (149, 199, 205, 206).
+///
+/// `covers: []` on a host means "everything the instance tracks", which is
+/// right — and vacuous where the instance tracks nothing. `init` created the
+/// blueprints and the state and no built repository, and offered no way to
+/// name one, so a fresh instance declared coverage of nothing: every unit,
+/// bolt and planning object waited under attention instead of being worked,
+/// and `flywheel host seed` refused them. `covers: [all]` written in by hand
+/// was the only way through, which puts a host's declaration in the operator's
+/// text editor rather than in the manifest the machinery writes.
+#[test]
+fn the_repositories_an_instance_tracks_are_covered() {
+    let mut sandbox = Sandbox::new("covers");
+    sandbox.place_the_key();
+
+    // With none named, the instance tracks none and the host covers none.
+    // That is honest rather than broken: there is nothing to cover.
+    let report = init::run(sandbox.ask()).expect("init runs");
+    assert_eq!(report.state, "hosted", "{report:?}");
+    let bare = flywheel_world_host::Manifest::read(&sandbox.dir.join("flywheel.yaml"))
+        .expect("the manifest");
+    assert!(bare.repositories.is_empty());
+    assert!(
+        bare.host("mac-mini").expect("the first host").covers.is_empty(),
+        "an empty `covers:` is what the manifest writes; it means what the instance tracks"
+    );
+
+    // Named, they are created on the git host, tracked by the instance, and
+    // covered by the App's installation — and the host that opens over that
+    // manifest declares them without a word of hand-written YAML.
+    let mut ask = sandbox.ask();
+    ask.repositories = vec!["storefront".into(), "payments".into()];
+    let report = init::run(ask).expect("init runs again with the repositories named");
+    assert_eq!(report.state, "hosted", "{report:?}");
+    let read = flywheel_world_host::Manifest::read(&sandbox.dir.join("flywheel.yaml"))
+        .expect("the manifest");
+    for named in ["storefront", "payments"] {
+        assert!(read.repositories.contains_key(named), "{named} is tracked");
+        assert!(
+            read.app.installation_covers.iter().any(|r| r == named),
+            "{named} is covered by the installation (207)"
+        );
+    }
+    assert!(
+        read.host("mac-mini").expect("the first host").covers.is_empty(),
+        "still empty: the declaration follows what the instance tracks, and is not a copy of it"
+    );
+
+    // What the host declares when it opens: the repositories the instance
+    // tracks, so an object naming one is covered and worked (149).
+    let mut world = flywheel_world_host::HostWorld::open(read, "mac-mini").expect("the world");
+    flywheel_world_host::join::join(&mut world).expect("the host joins");
+    let host = flywheel::host::Host::open(
+        &sandbox.dir.join("flywheel.yaml"),
+        "mac-mini",
+        None,
+        chrono::Utc::now(),
+    )
+    .expect("the host opens");
+    let mut declared = host.declaration.repositories.clone();
+    declared.sort();
+    assert_eq!(declared, vec!["payments".to_string(), "storefront".to_string()]);
+
+    // And a unit in one of them is covered, which is the whole point: before
+    // this it was a decision under attention that no answer could clear.
+    let unit = flywheel_engine::Object {
+        id: "unit/storefront/log-decline-code".into(),
+        machine: "unit".into(),
+        parent: None,
+        config: Default::default(),
+        entered_at: Default::default(),
+        record: [("repository".to_string(), serde_json::json!("storefront"))]
+            .into_iter()
+            .collect(),
+        counters: Default::default(),
+        applied_responses: vec![],
+        seq: 0,
+        created: 0,
+    };
+    assert!(host.declaration.covers(&unit), "{:?}", host.declaration);
+
+    // Running it a third time with the same names changes nothing (204).
+    let mut ask = sandbox.ask();
+    ask.repositories = vec!["storefront".into(), "payments".into()];
+    let again = init::run(ask).expect("a third run");
+    assert!(
+        !again.lines.iter().any(|l| l.contains("repository")),
+        "a repository already tracked is made again: {:?}",
+        again.lines
     );
 }

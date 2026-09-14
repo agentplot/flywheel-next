@@ -59,16 +59,43 @@ impl<S: Records> OperatorSessions<S> {
 
 /// Whether the operator has reported on this session: the newest exit entry on
 /// its thread, which `flywheel exit` wrote (67, `sessions.yaml session.exit`).
+///
+/// An answer delivered after it clears it. A blocked session stopped only
+/// itself and goes back to working when the operator answers (68, 70), and the
+/// exit it reported is what it stopped on — so an exit that outlived its answer
+/// sent the session straight back to `blocked` on the next pass, bumping
+/// `blocks` for ever and leaving a question standing that had already been
+/// answered. There is nowhere out of `blocked` but a response, so the session
+/// never exited and the elaboration above it never finished.
 pub fn exit_of<S: Records>(store: &S, session: &str) -> Option<String> {
-    store
-        .thread(session)
-        .ok()?
-        .iter()
-        .filter(|e| e.kind == "exit")
-        .next_back()
-        .and_then(|e| e.fields.get("exit"))
+    let thread = store.thread(session).ok()?;
+    let last = |kind: &str| thread.iter().rposition(|e| e.kind == kind);
+    let exit = last("exit")?;
+    if last("answer").is_some_and(|answered| answered > exit) {
+        return None;
+    }
+    thread[exit]
+        .fields
+        .get("exit")
         .and_then(|v| v.as_str())
         .map(String::from)
+}
+
+/// Whether the answer the operator gave has reached the session: an `answer`
+/// entry on its thread newer than the exit it is answering.
+///
+/// This is `deliver_answer`'s proof, and it was answered `true` unconditionally
+/// — so the engine skipped the effect (73, 127) and the answer never reached
+/// the session at all.
+fn answered<S: Records>(store: &S, session: &str) -> bool {
+    let thread = store.thread(session).unwrap_or_default();
+    let last = |kind: &str| thread.iter().rposition(|e| e.kind == kind);
+    match (last("answer"), last("exit")) {
+        (Some(answered), Some(exit)) => answered > exit,
+        // Nothing to answer: nothing is owed.
+        (_, None) => true,
+        (None, Some(_)) => false,
+    }
 }
 
 /// The `session.*` evidence an operator-bound session answers. A host binds
@@ -92,14 +119,23 @@ pub fn evidence<S: Records>(store: &S, session: &str, name: &str) -> Option<Valu
             .filter(|e| e.kind == kind)
             .collect()
     };
+    // Present while the record stands and the operator has not reported an
+    // exit that ends the session. `blocked` does not: a blocked session stopped
+    // only itself and waits for its answer, so it is still running (68, 70,
+    // I5) — the same rule the stand-in keeps in `running_sessions`. Read as
+    // "any exit at all", the pane went absent the moment a session blocked;
+    // `presence` is final once it is `gone`, so the answer that cleared the
+    // exit took the session's own `alive` region straight to `lost`, and a
+    // session that had answered its question and delivered its work was read
+    // as a process that had vanished.
+    let running = started && !ended && !matches!(exit.as_deref(), Some("done" | "stalled" | "invalid"));
     Some(match name {
-        // Present while the record stands and the operator has not reported.
-        "session.pane" => json!(match started && !ended && exit.is_none() {
+        "session.pane" => json!(match running {
             true => "present",
             false => "absent",
         }),
-        "session.pane_absent" => json!(!(started && !ended && exit.is_none())),
-        "session.activity" => json!(match started && !ended && exit.is_none() {
+        "session.pane_absent" => json!(!running),
+        "session.activity" => json!(match running {
             true => "working",
             false => "none",
         }),
@@ -116,7 +152,16 @@ pub fn evidence<S: Records>(store: &S, session: &str, name: &str) -> Option<Valu
             .and_then(|e| e.fields.get("deliverables").cloned())
             .unwrap_or_else(|| json!([])),
         "session.expected" => field("deliverables").unwrap_or_else(|| json!([])),
-        "session.offers_pending" => json!(!entries("offer").is_empty()),
+        // An offer no record points at yet, and never merely an offer entry on
+        // the thread (62, `atoms.yaml` session.offers_pending). Read as "the
+        // thread carries an offer", a session that offered anything could
+        // never leave `working`: `record_offers` won its region on every pass
+        // and the exit beneath it was never reached, so the elaboration, unit
+        // or curation above it stood in `working` for ever. It is the exact
+        // complement of `session.offers_recorded` below.
+        "session.offers_pending" => json!(!flywheel_domain::offers::pending(store, session)
+            .unwrap_or_default()
+            .is_empty()),
         // Every offer entry on the thread is cited by a unit, elaboration or
         // signal record — which is what `record_offers` made, and what makes it
         // not run again (`record-derived.yaml` session.offers_recorded, 58, 62).
@@ -138,11 +183,15 @@ pub fn evidence<S: Records>(store: &S, session: &str, name: &str) -> Option<Valu
                 })
             }))
         }
-        "session.refusals_pending" => json!(!entries("refusal").is_empty()),
-        "session.answer_delivered" => json!(entries("answer")
-            .last()
-            .map(|_| true)
-            .unwrap_or(true)),
+        // Not answered here, and deliberately: a refusal is pending until the
+        // run record carries it (`sessions.yaml`), and the run record is the
+        // host's, not this store's. Read as "the thread carries a refusal" it
+        // would be the same deadlock `session.offers_pending` was — true for
+        // ever, so `record_refusals` won the region on every pass and the
+        // session never exited. The host answers it beside its complement
+        // `session.refusals_recorded`, which is where the run record is.
+        "session.refusals_pending" => return None,
+        "session.answer_delivered" => json!(answered(store, session)),
         "session.message_delivered" => json!(true),
         "session.host_alive" => json!(true),
         // The one the rail and the status view read: whose session is it to run.
@@ -194,9 +243,15 @@ fn field<S: Records>(store: &S, session: &str, name: &str) -> Option<Value> {
 }
 
 fn present<S: Records>(store: &S, session: &str) -> bool {
+    // The same rule `session.pane` reads by: a session that reported `blocked`
+    // stopped only itself and is still running, so it still holds its slot
+    // (68, 70, I5, `record-derived.yaml` host.running).
     field(store, session, "started_at").is_some_and(|v| !v.is_null())
         && !field(store, session, "ended_at").is_some_and(|v| !v.is_null())
-        && exit_of(store, session).is_none()
+        && !matches!(
+            exit_of(store, session).as_deref(),
+            Some("done" | "stalled" | "invalid")
+        )
 }
 
 /// Say something to the operator on the session's thread. There is no pane to

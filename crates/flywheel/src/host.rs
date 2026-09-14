@@ -348,10 +348,15 @@ impl EvidenceSource for HostStore {
                     name,
                 )
             })
-            // The proof of `record_refusals`: every refusal on the session's
-            // thread is in the run record (43, 79).
+            // `record_refusals` and its proof, read from one comparison: every
+            // refusal on the session's thread is in the run record (43, 79).
+            // Pending is the complement of recorded and is answered here
+            // rather than in the sessions binding, because the run record is
+            // the host's. Answered as the thread alone it would be true for
+            // ever, and a session that was refused once would keep firing
+            // `record_refusals` and never reach its exit.
             .or_else(|| {
-                (name == "session.refusals_recorded").then(|| {
+                matches!(name, "session.refusals_recorded" | "session.refusals_pending").then(|| {
                     let stem = session_stem(object, region, self.kind_of(object).as_deref());
                     let session = flywheel_sessions_operator::current(&self.git, &stem);
                     let refused = self
@@ -368,7 +373,10 @@ impl EvidenceSource for HostStore {
                         .iter()
                         .filter(|e| e.kind == "refusal" && e.object == session)
                         .count();
-                    json!(recorded >= refused)
+                    json!(match name {
+                        "session.refusals_pending" => recorded < refused,
+                        _ => recorded >= refused,
+                    })
                 })
             })
             // The one adapter this release ships is the meeting transcript: a
@@ -946,6 +954,13 @@ impl Host {
         // A self-transition re-enters the state it is in, so a pass that only
         // re-entered has settled (model.md the tick).
         let moved = std::cell::Cell::new(false);
+        // What the store had written when this pass began. A self-transition
+        // that performs an effect changes the world without changing a state —
+        // `merging` re-enters itself to run `merge_place` — and read as "no
+        // state moved" the cascade stopped there with the merge owed and the
+        // sibling region never told. Since a tick that moves nothing writes
+        // nothing (78), the converse is the rule: a pass that wrote has moved.
+        let written_before = self.store.git.writes_attempted;
         let sinks = &mut self.sinks;
         let ticked = console::tick_as(
             &mut self.store,
@@ -1033,7 +1048,9 @@ impl Host {
                 let _ = tail;
             },
         )?;
-        self.moved = moved.get();
+        // Sampled before the run record and the projection are written, which
+        // are this pass's account of itself rather than part of it.
+        self.moved = moved.get() || self.store.git.writes_attempted > written_before;
         // A pass of `once` has progressed if any tick under it moved something
         // that was not a re-entry; a sweep settles and leaves `moved` false, so
         // the record is kept here where every tick passes (78).

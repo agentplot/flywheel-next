@@ -97,6 +97,14 @@ enum Cmd {
         /// Where the manifest is written.
         #[arg(long, default_value = "flywheel.yaml")]
         manifest: PathBuf,
+        /// A built repository this instance tracks; give it once per
+        /// repository (199, 205, 206). An instance that tracks none is one no
+        /// unit or bolt can belong to: the first host's `covers:` is empty,
+        /// which means everything the instance tracks, and that is nothing —
+        /// so every object naming a repository would stand uncovered under
+        /// attention and a seed of one would be refused (149).
+        #[arg(long = "repository")]
+        repositories: Vec<String>,
     },
     /// Load the machine definitions and report what was read.
     Defs,
@@ -339,6 +347,7 @@ async fn main() -> Result<()> {
             app_key_from,
             address,
             manifest,
+            repositories,
         } => {
             let report = init::run(init::Init {
                 at: chrono::Utc::now(),
@@ -353,6 +362,7 @@ async fn main() -> Result<()> {
                 app_key: None,
                 address: address.clone(),
                 manifest: manifest.clone(),
+                repositories: repositories.clone(),
                 // What curation is charged on is the manifest's; a first run
                 // takes the shipped default (110, 118).
                 curation: None,

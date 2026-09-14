@@ -131,6 +131,14 @@ pub fn make_instance(
         app_key: Some("the operator placed this".into()),
         address: format!("http://{host}.local"),
         manifest: instance.manifest.clone(),
+        // The repositories the scenario names, tracked by the instance before
+        // anything is seeded into it. A seed that put an object naming a
+        // repository the instance does not track left that object uncovered by
+        // every host's declaration — correctly reported as a decision under
+        // attention, but a decision about the seed rather than about the work
+        // (149, 205, 206). `init` is the one place a repository comes into
+        // existence, here as for an operator at the command line.
+        repositories: repositories.to_vec(),
         curation: None,
         at,
     })
@@ -145,37 +153,6 @@ pub fn make_instance(
                 .unwrap_or_default()
         );
     }
-    // The repositories the scenario names, tracked by the instance before
-    // anything is seeded into it. A seed that put an object naming a
-    // repository the instance does not track left that object uncovered by
-    // every host's declaration — correctly reported as a decision under
-    // attention, but a decision about the seed rather than about the work
-    // (149, 205, 206). So the instance is made to cover what is about to be
-    // seeded into it, which is the same act `flywheel init` does for the
-    // blueprints and the state.
-    if !repositories.is_empty() {
-        let mut read = flywheel_world_host::Manifest::read(&instance.manifest)?;
-        let bootstrap = flywheel_world_host::bootstrap::Bootstrap::new(
-            under.join("git-host"),
-            instance.root.join(".scratch"),
-        );
-        for repository in repositories {
-            if read.repositories.contains_key(repository) {
-                continue;
-            }
-            let made = bootstrap
-                .create_repository(name, repository)
-                .with_context(|| format!("creating the `{repository}` repository the scenario names"))?;
-            read.repositories.insert(repository.clone(), made);
-            // The App covers what the instance tracks: a demo's git host is a
-            // directory on this computer, so there is no installation to
-            // extend and an untracked repository would be the one thing under
-            // attention that the operator could do nothing about (207).
-            read.app.installation_covers.push(repository.clone());
-        }
-        read.write(&instance.manifest)?;
-    }
-
     // The host clones what the manifest names and checks the layout, which is
     // how a host comes to hold a checkout at all: by one command and never by
     // hand (205, 222).
@@ -336,6 +313,17 @@ fn settle(host: &mut Host) -> Result<()> {
     // defect, and reporting it beats hanging.
     const PASSES: usize = 64;
     for pass in 0..PASSES {
+        // Every pass reads everything. `once` only ticks what the notice named
+        // unless the sweep is due, which is the loop's own economy against a
+        // clock that is running (D6, D7); here the clock stands still between
+        // actions, so after the first pass the sweep is never due again and a
+        // cascade that needed a third pass stopped where it was. An action
+        // left the elaboration mid-finish, with its place merged and the
+        // object still `finishing`, and the moment the operator stepped to was
+        // a moment the machinery had not arrived at. A sweep that moves
+        // nothing writes nothing (78), so reading everything costs the reads
+        // and no more.
+        host.last_sweep = None;
         host.once()?;
         if !host.progressed() {
             return Ok(());
