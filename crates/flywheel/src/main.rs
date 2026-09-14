@@ -105,6 +105,11 @@ enum Cmd {
         /// attention and a seed of one would be refused (149).
         #[arg(long = "repository")]
         repositories: Vec<String>,
+        /// Which line-and-place binding the first host runs: `host` makes
+        /// real branches and worktrees under its root, `recorded` keeps the
+        /// facts alone (93a, D8).
+        #[arg(long, default_value = "host")]
+        workspace: String,
     },
     /// Load the machine definitions and report what was read.
     Defs,
@@ -348,6 +353,7 @@ async fn main() -> Result<()> {
             address,
             manifest,
             repositories,
+            workspace,
         } => {
             let report = init::run(init::Init {
                 at: chrono::Utc::now(),
@@ -370,6 +376,7 @@ async fn main() -> Result<()> {
             for line in &report.lines {
                 println!("{line}");
             }
+            flywheel::apply::bind_workspace(&manifest, &host, &workspace)?;
         }
         Cmd::Version { definitions } => {
             println!("flywheel {}", env!("CARGO_PKG_VERSION"));

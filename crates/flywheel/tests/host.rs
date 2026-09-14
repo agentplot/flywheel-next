@@ -353,7 +353,7 @@ fn a_binding_this_release_lacks_is_refused() {
         "local".into(),
         flywheel_world_host::manifest::Host {
             root: "/tmp/flywheel".into(),
-            workspace: "host".into(),
+            workspace: "tracker".into(),
             sessions: "operator".into(),
             covers: vec![],
             ..Default::default()
@@ -361,7 +361,13 @@ fn a_binding_this_release_lacks_is_refused() {
     );
     let refused = Bindings::read(&manifest, "local").unwrap_err().to_string();
     assert!(refused.contains("workspace"), "{refused}");
-    assert!(refused.contains("phase 2"), "{refused}");
+    assert!(refused.contains("`tracker`"), "{refused}");
+
+    // The two this release binds are both admitted (93a, D8).
+    for bound in ["recorded", "host"] {
+        manifest.hosts.get_mut("local").unwrap().workspace = bound.into();
+        assert_eq!(Bindings::read(&manifest, "local").unwrap().workspace, bound);
+    }
 }
 
 // ----------------------------------------------------------- 6.11-6.14 the run record

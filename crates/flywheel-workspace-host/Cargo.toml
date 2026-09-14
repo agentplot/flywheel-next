@@ -1,0 +1,21 @@
+[package]
+name = "flywheel-workspace-host"
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+
+[dependencies]
+flywheel-atoms = { path = "../flywheel-atoms" }
+flywheel-workspace-recorded = { path = "../flywheel-workspace-recorded" }
+flywheel-world-host = { path = "../flywheel-world-host" }
+anyhow.workspace = true
+serde_json.workspace = true
+
+[dev-dependencies]
+flywheel-atoms = { path = "../flywheel-atoms", features = ["testing"] }
+flywheel-engine = { path = "../flywheel-engine" }
+
+# No doctests: `cargo test` would otherwise pay a rustdoc compile per crate
+# for zero tests (AGENTS.md, Gates).
+[lib]
+doctest = false

@@ -83,10 +83,11 @@ impl Bindings {
             workspace: entry.workspace.clone(),
             sessions: entry.sessions.clone(),
         };
-        if bindings.workspace != "recorded" {
+        if !matches!(bindings.workspace.as_str(), "recorded" | "host") {
             bail!(
                 "flywheel.yaml hosts.{host}.workspace: `{}` — this release binds `recorded` \
-                 alone; the workspace over `wt` and git is phase 2 (93a, D8)",
+                 (the facts alone) or `host` (branches and worktrees under the host's root) \
+                 (93a, D8)",
                 bindings.workspace
             );
         }
@@ -139,6 +140,13 @@ pub struct HostStore {
     /// own parameters — a stage's agents and bound (56, `host.yaml`
     /// stage.agents). None until a host is over the store.
     pub defs: Option<Definitions>,
+    /// Which line-and-place binding performs the effects of 42: `recorded`
+    /// writes the facts alone, `host` makes real branches and worktrees under
+    /// `root` and writes the same facts (93a, D8).
+    pub workspace: String,
+    /// `<root>/<instance>/`, where this host's clones and worktrees live;
+    /// none for a host over a store with no world on disk.
+    pub root: Option<std::path::PathBuf>,
 }
 
 impl HostStore {
@@ -153,6 +161,8 @@ impl HostStore {
             marked: RefCell::new(vec![]),
             instance: BTreeMap::new(),
             defs: None,
+            workspace: "recorded".into(),
+            root: None,
         }
     }
 
@@ -587,6 +597,8 @@ impl Host {
             types: vec![],
             kinds: vec!["all".into()],
         };
+        let workspace = bindings.workspace.clone();
+        let root = world.root.clone();
         let mut host = Host::over(
             name,
             &read.instance,
@@ -596,6 +608,8 @@ impl Host {
             declaration,
             now,
         );
+        host.store.workspace = workspace;
+        host.store.root = Some(root);
         // What the host is, as the manifest says: how many sessions it runs at
         // once, and whether it is a laptop (31, 150a, 183).
         host.bound = entry.bound;
@@ -1694,6 +1708,26 @@ fn arg(effect: &PlannedEffect, name: &str) -> String {
 
 /// Perform one effect through the bindings this release carries.
 ///
+/// The workspace binding in force, for one act of 42: the recorded facts
+/// alone, or real branches and worktrees under the host's root that write the
+/// same facts (93a, D8). One body, so an arm cannot pick the wrong one.
+fn with_workspace<T>(
+    store: &mut HostStore,
+    act: impl FnOnce(&mut dyn Workspace) -> Result<T>,
+) -> Result<T> {
+    match (store.workspace.as_str(), store.root.clone()) {
+        ("host", Some(root)) => {
+            let mut workspace = flywheel_workspace_host::HostWorkspace::new(&mut store.git, root);
+            act(&mut workspace)
+        }
+        ("host", None) => bail!("workspace `host` is bound and this host has no root on disk (205)"),
+        _ => {
+            let mut workspace = RecordedWorkspace::new(&mut store.git);
+            act(&mut workspace)
+        }
+    }
+}
+
 /// An effect no binding covers is refused with its reason, and one whose
 /// binding fails says so: either way the act did not happen, its proof stays
 /// absent, it is still owed on the next tick, and the run record carries the
@@ -1748,32 +1782,32 @@ fn performing(
                 .flatten()
                 .and_then(|o| o.parent)
                 .unwrap_or_default();
-            RecordedWorkspace::new(&mut store.git).create_line(object, &parent)?;
+            with_workspace(store, |ws| ws.create_line(object, &parent))?;
         }
         "take_parent" => {
-            RecordedWorkspace::new(&mut store.git).take_parent(object)?;
+            with_workspace(store, |ws| ws.take_parent(object))?;
         }
         "remove_line" => {
-            RecordedWorkspace::new(&mut store.git).remove_line(object)?;
+            with_workspace(store, |ws| ws.remove_line(object))?;
         }
         "land_line" => {
-            RecordedWorkspace::new(&mut store.git).land_line(object, LandingPolicy::Direct)?;
+            with_workspace(store, |ws| ws.land_line(object, LandingPolicy::Direct))?;
         }
         "write_acceptance" => {
-            RecordedWorkspace::new(&mut store.git).write_acceptance(object, "")?;
+            with_workspace(store, |ws| ws.write_acceptance(object, ""))?;
         }
         "prepare_place" => {
             let order = work_order(defs, store, &session, &place, object);
-            RecordedWorkspace::new(&mut store.git).prepare_place(&place, object, &order.body)?;
+            with_workspace(store, |ws| ws.prepare_place(&place, object, &order.body))?;
         }
         "rebase_place" => {
-            RecordedWorkspace::new(&mut store.git).rebase_place(&place)?;
+            with_workspace(store, |ws| ws.rebase_place(&place))?;
         }
         "merge_place" => {
-            RecordedWorkspace::new(&mut store.git).merge_place(&place)?;
+            with_workspace(store, |ws| ws.merge_place(&place))?;
         }
         "remove_place" => {
-            RecordedWorkspace::new(&mut store.git).remove_place(&place)?;
+            with_workspace(store, |ws| ws.remove_place(&place))?;
         }
         // ---- the sessions, with the operator as the session (93b)
         "start_session" => {

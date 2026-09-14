@@ -80,7 +80,7 @@ impl<'a, S: Records> RecordedWorkspace<'a, S> {
     /// Write one fact, leaving every other field of the record alone. The
     /// record carries no state, so it is never ticked and never conflicts with
     /// an object of the same name.
-    fn set(&mut self, id: &str, fields: &[(&str, Value)]) -> Result<()> {
+    pub fn set(&mut self, id: &str, fields: &[(&str, Value)]) -> Result<()> {
         let held = self.store.get(id)?;
         let seq = held.as_ref().map(|o| o.seq).unwrap_or(0);
         let mut record: BTreeMap<String, Value> =

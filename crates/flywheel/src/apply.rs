@@ -172,6 +172,10 @@ pub fn make_instance(
                 .unwrap_or_default()
         );
     }
+    // A scenario's lines and places are real: branches and worktrees under
+    // the host's root, so a session's delivery is a commit in a place and a
+    // landing moves the repository's shared line (42, 93a).
+    bind_workspace(&instance.manifest, host, "host")?;
     // The host clones what the manifest names and checks the layout, which is
     // how a host comes to hold a checkout at all: by one command and never by
     // hand (205, 222).
@@ -209,6 +213,22 @@ pub struct Applied {
 
 /// The instance a scenario is applied into is named for the scenario: lower
 /// case, and one word, because it is a directory name and a repository prefix.
+/// Bind a host's workspace in its manifest: `host` for real branches and
+/// worktrees, `recorded` for the facts alone (93a, D8). A repeat writes what
+/// is already there.
+pub fn bind_workspace(manifest: &std::path::Path, host: &str, workspace: &str) -> Result<()> {
+    let mut read = flywheel_world_host::Manifest::read(manifest)?;
+    let entry = read
+        .hosts
+        .get_mut(host)
+        .ok_or_else(|| anyhow::anyhow!("the manifest names no host `{host}`"))?;
+    if entry.workspace != workspace {
+        entry.workspace = workspace.to_string();
+        read.write(manifest)?;
+    }
+    Ok(())
+}
+
 fn instance_name(scenario: &str) -> String {
     let name: String = scenario
         .to_lowercase()
