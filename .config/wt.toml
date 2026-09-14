@@ -1,14 +1,18 @@
 # Project configuration for worktrunk.
 #
 # The test tiers, run at the moment each is worth paying for (D17, AGENTS.md
-# **Gates**). Nothing here runs the unit tier: that is what a person runs
-# continuously while building, and a hook repeating it buys nothing.
+# **Gates**). Every command runs inside `devenv shell`, so a hook builds with
+# the same native toolchain a session does.
 
-# Before a commit: the integration tier — several crates together over a real
-# state repository, in process.
-pre-commit = "cargo test --workspace"
+# Before a commit: the unit tier — one crate's own code, seconds. A session
+# has been running this continuously; the hook is the floor, not the gate.
+pre-commit = "devenv shell -- unit"
 
-# Before a branch lands: the system tier — the real binary, hosts that are
-# processes of their own, a headless browser. It costs what it costs, and a
-# merge is where it is worth costing it.
-pre-merge = "cargo test --workspace --features system-tests"
+# Before a branch lands: the integration tier — several crates together over a
+# real state repository, in process, about two minutes. A merge is where it is
+# worth costing that; nobody waits on it while working.
+pre-merge = "devenv shell -- integration"
+
+# The system tier — the real binary, hosts that are processes of their own, a
+# headless browser — is `devenv shell -- system`, run when the brief says so
+# (AGENTS.md, Gates), never by a hook.

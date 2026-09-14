@@ -15,3 +15,8 @@ serde_json.workspace = true
 [dev-dependencies]
 flywheel-domain = { path = "../flywheel-domain" }
 flywheel-atoms = { path = "../flywheel-atoms", features = ["testing"] }
+
+# No doctests: `cargo test` would otherwise pay a rustdoc compile per crate
+# for zero tests (AGENTS.md, Gates).
+[lib]
+doctest = false

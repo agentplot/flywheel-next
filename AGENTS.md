@@ -95,18 +95,29 @@ tick against them spends at most one process, so they live in
 everyday run saves their compile time as well as their wall time. Nothing is
 marked `#[ignore]` to hide cost.
 
+**The toolchain is devenv's.** `devenv.nix` beside this file pins a native
+rustc and cargo for this computer, and every cargo command here, in README.md
+and in `.config/wt.toml` runs inside `devenv shell`: `devenv shell -- unit`,
+`devenv shell -- integration`, `devenv shell -- system` are the three tiers by
+name. A toolchain the machine happens to have is not used, because one that
+was the wrong architecture once made the two-minute tier take half an hour,
+and nothing in the suite could show why.
+
 **Worktrunk runs the tiers at the right moment.** `wt hook pre-commit` runs the
-integration tier and `wt hook pre-merge` runs the system tier, so a branch
-cannot land without the slow tests and nobody waits on them while working.
+unit tier and `wt hook pre-merge` runs the integration tier, so a branch cannot
+land without the seams proven and nobody waits on them while working. The
+system tier is run by a person, when the brief says so.
 
 **What you run, and where a new test goes.** While building, the one crate you
-touched: `cargo test --lib -p <crate>` continuously and `cargo test -p <crate>`
-before calling a task done. Before reporting a group, `cargo test --workspace`
-once. The system tier is not yours to run except at 12.4 or when the brief says
-so. A new behaviour arrives with unit tests for the logic; an integration test
-is added only where the seam between crates is itself the thing under test, and
-then only on the happy path, because every one of them is paid for on every
-commit.
+touched: `cargo test --lib -p <crate>` continuously. Before a commit,
+`devenv shell -- unit` — the whole first tier, seconds. That is all a session
+runs on its own: the integration tier is the pre-merge hook's and the system
+tier is not yours except when the brief says so. A new behaviour arrives with
+unit tests for the logic beside the code, over `flywheel_atoms::testing`'s fake
+store where a store is needed; an integration test is added only where the
+seam between crates is itself the thing under test, and then only on the happy
+path, because every one of them is paid for on every merge. What proves a page
+is a screenshot read by a person, not a test that finds an id.
 
 Every test that touches a store runs over a real state repository: a bare
 repository on this computer and a checkout of it, which is the only store this

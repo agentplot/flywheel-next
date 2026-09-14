@@ -17,3 +17,8 @@ chrono.workspace = true
 # "libgit2 through the `gix` crate for reads". A tick that reads N signals
 # spawns nothing (audit 9).
 gix = { version = "0.87", default-features = false, features = ["max-performance-safe", "sha1", "basic", "revision"] }
+
+# No doctests: `cargo test` would otherwise pay a rustdoc compile per crate
+# for zero tests (AGENTS.md, Gates).
+[lib]
+doctest = false

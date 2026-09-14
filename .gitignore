@@ -1,2 +1,5 @@
 target/
 /state
+.devenv/
+.devenv.flake.nix
+devenv.local.nix

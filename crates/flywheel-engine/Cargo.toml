@@ -11,3 +11,8 @@ serde_yaml.workspace = true
 anyhow.workspace = true
 thiserror.workspace = true
 chrono.workspace = true
+
+# No doctests: `cargo test` would otherwise pay a rustdoc compile per crate
+# for zero tests (AGENTS.md, Gates).
+[lib]
+doctest = false

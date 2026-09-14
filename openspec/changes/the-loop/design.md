@@ -640,20 +640,29 @@ and hold to its bar.
 everyday run saves their compile time as well as their wall time. Nothing is
 marked `#[ignore]` to hide cost.
 
+**The toolchain is devenv's.** `devenv.nix` pins a native rustc and cargo
+for the computer the repository is on, and every cargo command in AGENTS.md,
+README.md and the worktrunk hooks runs inside `devenv shell`, with the three
+tiers as named scripts: `unit`, `integration`, `system`. The model already
+names `devenv shell` as how a place's environment is activated before a
+session starts (`host.yaml`, environments); this is the same tool one level
+up, for the repository's own build.
+
 **Worktrunk runs the tiers at the right moment.** The repository configures
-`wt hook pre-commit` to run the integration tier and `wt hook pre-merge` to run
-the system tier, so a branch cannot land without the slow tests and nobody
-waits on them while working. Worktrunk is already the model's binding for
-places (`host.yaml` Tools); this is the same tool one level up.
+`wt hook pre-commit` to run the unit tier and `wt hook pre-merge` to run the
+integration tier, so a branch cannot land without the seams proven and nobody
+waits on them while working. The system tier is run by a person when the brief
+says so. Worktrunk is already the model's binding for places (`host.yaml`
+Tools); this is the same tool one level up.
 
 **What an agent runs, and where it puts a new test.** While building, the one
-crate it touched: `cargo test --lib -p <crate>` continuously and
-`cargo test -p <crate>` before calling a task done. Before reporting a group,
-`cargo test --workspace` once. The system tier is not an agent's to run except
-at 12.4 or when the brief says so. A new behaviour arrives with unit tests for
-the logic; an integration test is added only where the seam between crates is
-itself the thing under test, and then only on the happy path, because every one
-of them is paid for on every commit.
+crate it touched: `cargo test --lib -p <crate>` continuously; before a commit,
+`devenv shell -- unit`. That is all an agent runs on its own. A new behaviour
+arrives with unit tests for the logic beside the code, over the fake store
+where a store is needed; an integration test is added only where the seam
+between crates is itself the thing under test, and then only on the happy
+path, because every one of them is paid for on every merge. What proves a page
+is a screenshot read by a person, not a test that finds an id.
 
 ### D16. The page is built from the ratified mockup, and the chat has a wire
 

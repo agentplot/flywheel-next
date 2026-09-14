@@ -16,3 +16,8 @@ chrono.workspace = true
 # them. The `git` binary stays for exactly two things: the fetch from a remote
 # and the push with the expected-old guard.
 gix = { version = "0.87", default-features = false, features = ["max-performance-safe", "sha1", "basic", "revision", "blocking-network-client"] }
+
+# No doctests: `cargo test` would otherwise pay a rustdoc compile per crate
+# for zero tests (AGENTS.md, Gates).
+[lib]
+doctest = false

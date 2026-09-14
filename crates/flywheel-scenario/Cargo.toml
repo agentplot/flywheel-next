@@ -37,3 +37,8 @@ system-tests = []
 name = "system"
 path = "tests/system/main.rs"
 required-features = ["system-tests"]
+
+# No doctests: `cargo test` would otherwise pay a rustdoc compile per crate
+# for zero tests (AGENTS.md, Gates).
+[lib]
+doctest = false
