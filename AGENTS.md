@@ -148,14 +148,14 @@ X2, X4, X7, X10); they failed before group 20 and are not its regressions.
 
 | binary | tests | time |
 |---|---|---|
-| `tests/cascade.rs` | 5 | 34 s |
-| `tests/apply.rs` | 6 | 29 s |
-| `tests/host.rs` | 26 | 22 s |
-| `tests/conformance_runner.rs` | 13 | 14 s |
-| `tests/effects.rs` | 5 | 12 s |
-| `tests/served.rs` | 6 | 12 s |
-| `tests/init.rs` | 12 | 11 s |
-| `tests/curate.rs` | 1 | 9 s |
+| `flywheel-scenario/tests/cascade.rs` | 5 | 34 s |
+| `flywheel/tests/apply.rs` | 6 | 29 s |
+| `flywheel/tests/host.rs` | 26 | 22 s |
+| `flywheel-scenario/tests/conformance_runner.rs` | 13 | 14 s |
+| `flywheel/tests/effects.rs` | 5 | 12 s |
+| `flywheel/tests/served.rs` | 6 | 12 s |
+| `flywheel/tests/init.rs` | 12 | 11 s |
+| `flywheel/tests/curate.rs` | 1 | 9 s |
 | `tests/atoms.rs` | 1 | 5 s |
 | `tests/catalogue.rs` | 1 | 5 s |
 | everything else | | under 5 s each |
