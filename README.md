@@ -16,29 +16,33 @@ the run record — is real.
 ## Run the loop on your laptop
 
 No GitHub, no App key, no network: the git host is a directory of bare
-repositories on this computer, and every command below is copy-pasteable from
-the repository root.
+repositories on this computer, a session is Claude Code in a pane of the Herdr
+this shell runs in, and every command below is copy-pasteable from the
+repository root.
 
 ```sh
-# Where the instance lives: a directory the repositories go in, and a manifest
-# of your own.
+# Where the instance lives: a git host, the mirror of this repository the
+# instance tracks, and a manifest of your own. The mirror is named
+# <instance>-<repository>; a repository already there is adopted, never remade
+# (204, 205).
 mkdir -p ~/flywheel/git-host
+git clone --bare . ~/flywheel/git-host/agentplot-flywheel-next.git
 
 # The connection. The App is how the machinery reaches a git host it does not
 # own (207); a directory on this computer needs no credential, and what init
-# waits for is that you have placed one, never that an agent made it true
-# (207a). Placing it is this line.
+# waits for is that you have placed one (207a). Placing it is this line.
 export FLYWHEEL_APP_KEY=local
 
-# The instance and its first host. `--address` is what this computer is called
-# on your own network: a host has one address and it is never a localhost port,
+# The instance, the repository it tracks, and its first host. A place is a
+# worktree of that repository (`--workspace host`) and a session is an agent in
+# a pane of Herdr (`--sessions herdr`). The host's address is this computer's
+# own name unless `--address` says otherwise, and never a localhost port,
 # because every link a delivery carries is written at it (205a, D10a). Every
-# step proves itself, so running this again changes nothing and a half-finished
-# bootstrap finishes here (204).
+# step proves itself, so running this again changes nothing (204).
 cargo run -q -- init \
-  --instance willdan --host laptop \
+  --instance agentplot --host laptop \
   --root ~/flywheel/hosts/laptop --git-host ~/flywheel/git-host \
-  --address http://your-laptop.local \
+  --repository flywheel-next --workspace host --sessions herdr \
   --manifest ~/flywheel/flywheel.yaml
 
 # What this host clones under its root, and whether the layout is what the
@@ -54,90 +58,81 @@ cargo run -q -- host --name laptop --manifest ~/flywheel/flywheel.yaml \
 The host says what it bound:
 
 ```
-host laptop · instance willdan · world host · workspace recorded · sessions operator
+host laptop · instance agentplot · world host · workspace host · sessions herdr
 page at http://127.0.0.1:4242/
 ```
 
 **At this machine.** Open <http://localhost:4242/>. The page is one bundle,
-rendered from the state on every request: the decisions, the capture box, the
-board and the status view (307, D11).
+rendered from the state on every request: the rail of decisions, the capture
+box, the four lanes of the board and the dock (307, D11).
 
 **On your phone, on the same network.** The host binds its private-network name
-and the localhost port, and nothing else (46, 155, 245). Where the name you
-gave `--address` is one this computer answers at, the host binds it too and the
-page is at `http://your-laptop.local:4242/` from the phone; where it is not, the
-host says so and serves the localhost port alone. A request to any other
-address is refused and says why (253a).
+and the localhost port, and nothing else (46, 155, 245). Where the name is one
+this computer answers at, the page is at `http://<your-computer>.local:4242/`
+from the phone; where it is not, the host says so and serves the localhost port
+alone (253a).
 
-**One turn of the loop.** In the box at the top of the page, type what you
-noticed and submit it. Nothing in the text is parsed — no `intent:` or
-`bolt <name>:` prefix means anything — and the submission is recorded once as a
-capture with one signal of kind ask (19, 111, 193, 194). The status view shows
-it straight away:
+**A capture.** In the box at the top of the page, type what you noticed —
+`README's crates table lacks a row for flywheel-workspace-host`, say — and
+submit it. Nothing in the text is parsed; the submission is recorded once as a
+capture with one signal of kind ask, and it stands in the Inception lane,
+quoted, with one control beside it: `unit…` (19, 111, 193, 194).
 
-```
-unmoved signals   12 from page, oldest 0d
-```
+**A unit.** Tap `unit…`. The dock opens on the capture with a field for the
+bolt's name; give it one — `readme-crates-table` — and submit. That is a
+dictation, applied at once: the unit stands approved on a bolt of that name,
+made if it was not there; the bolt's line is a branch of `flywheel-next` on the
+git host; the unit's one work item has a place, a worktree of that line under
+the host's root; and the Construction lane shows the bolt with its unit and
+the session under it (34, 42, 44, 12).
 
-**Curate, on the page.** Curation reads the signals with no move, and the tick
-charges it when the cadence says so or when twelve are waiting (110). The
-shipped threshold is twelve, so capture a dozen things — or wait for the
-cadence, which is weekday mornings. When curation is charged, the status view
-shows what it raised under **run by the operator** — the operator is the session
-in this phase (93b):
-
-```
-curation/willdan   run: running   held by laptop (alive)   run by the operator
-```
-
-and the board's Inception lane gains the curator's surface: every unmoved
-signal, quoted, with the standing moves beside it as controls — attach, join,
-route, challenge, drop — and a field for what each one names (107, 116, 194).
-Nothing there reads a word of the signal for meaning; the move is a control and
-the target is picked.
-
-Give two of them `join` and name the same intent — `intent/rows-lose-numbers`,
-say; it need not exist yet — and submit. That one submit is the curation
-session's whole delivery and its exit: it writes one move record per signal and
-reports `done` with `move` as what it delivered, which is the record
-`flywheel exit done --deliverable move` writes from a place (67, 93b). The same
-report from a terminal is:
+**The session.** On the next tick the item enters its `fix` stage and the host
+starts the session: a Herdr workspace named for the bolt, a tab named for the
+unit, and Claude Code in the tab's pane at the place, told to read
+`.flywheel/work-order.md` there. The order carries the capture's words as the
+job, what to deliver, the rules, the chore-fixer's skill, and the exact line to
+report with (67, 89, 196). Watch it work in the pane. When it is done it
+reports with that line, which from the place is:
 
 ```sh
-FLYWHEEL_SESSION=curation/willdan/main/1 \
-FLYWHEEL_STATE=~/flywheel/hosts/laptop/willdan/flywheel-state \
-  cargo run -q -- exit done --deliverable move --host laptop
+FLYWHEEL_SESSION=work-item/flywheel-next/readme-crates-table/wi-1/fix/1 \
+FLYWHEEL_STATE=~/flywheel/hosts/laptop/agentplot/flywheel-state \
+  cargo run -q -- exit done --deliverable commits --deliverable verdict --host laptop
 ```
 
-**The decision, and the answer.** On the next tick the machinery applies what
-the session delivered: each judged signal gets its one standing move, and the
-joins become a proposed intent citing them, which is its weight (107, 109, 110,
-116). A proposed intent is one decision on the rail, with a number the register
-gave it:
+With `--sessions operator` instead, no pane opens and that line is yours to
+run: the operator is the session (93b).
+
+**The merge, the close, the landing.** The stage passes on `done`; the item's
+place merges into the bolt's line and is removed; and the bolt's close is the
+one decision on the rail, with the number the register gave it (37, 39, 15):
 
 ```
 approve
-  3   intent/rows-lose-numbers        2 signals from page
+  1   bolt/flywheel-next/readme-crates-table     1 unit
       [ yes ]  [ no ]  [ later ]
 ```
 
-Tap `yes` — on the laptop or on the phone, the same control either way. It posts
-to the same tool a numbered chat reply calls, the answer is recorded at once with
-who gave it and when, and a reload shows it there before the next tick applies
-it (15, 153, 154, 193, 311).
+Tap `yes` — on the laptop or on the phone, the same control either way. It
+posts to the same tool a numbered chat reply calls, the answer is recorded at
+once with who gave it and when, and on the next tick the line lands on `main`,
+is pushed to the git host, and the Construction lane shows the landed record
+(49, 153, 154, 193, 311).
 
 **Read it all back.** Every write is a commit, and the record is readable with
 nothing running (160, 167):
 
 ```sh
-git -C ~/flywheel/git-host/willdan-state.git log --oneline
-git -C ~/flywheel/git-host/willdan-state.git show --stat HEAD
+git -C ~/flywheel/git-host/agentplot-flywheel-next.git log --oneline main -3
+git -C ~/flywheel/git-host/agentplot-state.git log --oneline
 ```
 
-The captures, the signals, the moves you made on the page, the proposed intent
-they produced, the answer you gave it and the status projection are each a
-commit, with the reason and the evidence the guard read in the message (79,
-127). Nothing in that record was written by hand.
+The first shows the chore's commit and the acceptance the landing wrote above
+it; `git pull ~/flywheel/git-host/agentplot-flywheel-next.git main` brings them
+into this checkout. The second is the capture, the unit, the work item, the
+session, the answer and the status projection, each a commit with the reason
+and the evidence the guard read in the message (79, 127). Nothing in either was
+written by hand.
 
 ## The conformance suite
 
@@ -152,7 +147,8 @@ D15).
 
 ## What a session reports
 
-The operator is the session in this phase (93b). A work order names the session
+An agent in a Herdr pane is the session, or the operator is (`--sessions
+operator`, 93b); either reports the same way. A work order names the session
 and this host's checkout of the state repository, and a report is one command
 from the place it runs in (65, 67, 89):
 
