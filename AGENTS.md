@@ -135,22 +135,29 @@ tick interval alone (D15). Where a test must drive the running loop it sets
 are the backstop for what nothing notified, and a test is the thing doing the
 notifying (D6, D7, 130, 231).
 
-Where the time goes, so a change that costs something is noticed:
+Where the time goes, measured on the native toolchain on 2026-09-14 with the
+build warm, so a change that costs something is noticed. The system tier carries
+ten conformance rows that fail on phase-2 subjects (S8, S9, S10, S12, S25, S31,
+X2, X4, X7, X10); they failed before group 20 and are not its regressions.
 
-| tier | tests | test time |
+| tier | tests | wall time |
 |---|---|---|
-| `cargo test --workspace --lib` | 133 | 4 s |
-| `cargo test --workspace` | 207 | 111 s |
-| `cargo test --workspace --features system-tests` | 225 | 324 s |
+| `devenv shell -- unit` | 195 | 13 s |
+| `devenv shell -- integration` | 294 | 178 s |
+| `devenv shell -- system` | 202 | 434 s |
 
 | binary | tests | time |
 |---|---|---|
-| `flywheel-scenario/tests/cascade.rs` | 5 | 42 s |
-| `flywheel/tests/host.rs` | 18 | 12 s |
-| `flywheel/tests/effects.rs` | 5 | 12 s |
-| `flywheel-scenario/tests/conformance_runner.rs` | 11 | 11 s |
-| `flywheel/tests/curate.rs` | 1 | 9 s |
-| `flywheel/tests/init.rs` | 9 | 8 s |
+| `tests/cascade.rs` | 5 | 34 s |
+| `tests/apply.rs` | 6 | 29 s |
+| `tests/host.rs` | 26 | 22 s |
+| `tests/conformance_runner.rs` | 13 | 14 s |
+| `tests/effects.rs` | 5 | 12 s |
+| `tests/served.rs` | 6 | 12 s |
+| `tests/init.rs` | 12 | 11 s |
+| `tests/curate.rs` | 1 | 9 s |
+| `tests/atoms.rs` | 1 | 5 s |
+| `tests/catalogue.rs` | 1 | 5 s |
 | everything else | | under 5 s each |
 
 Almost all of it is `git push`: the push is the compare-and-swap the whole

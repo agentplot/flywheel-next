@@ -123,7 +123,14 @@ pub fn evidence<S: Records>(
                 "stage.join_met" | "stage.verdict" => {
                     let stem = regions::session_stem(object, region, Some(&kind));
                     let session = regions::session_id(&stem, regions::attempt_of_object(&held));
-                    let entry = exit_entry(store, &session);
+                    // A session that has not reported is nothing on the
+                    // record, and the record says nothing of it: the guards
+                    // read `is: true` and `is: pass`, so an unanswered read
+                    // holds the stage exactly as `false` would, and a world a
+                    // scenario described can still say what the session did
+                    // (B.3, D8, 125).
+                    let entry = exit_entry(store, &session)?;
+                    let entry = Some(entry);
                     let exit = entry
                         .as_ref()
                         .and_then(|e| e.fields.get("exit"))
@@ -238,10 +245,10 @@ mod tests {
     }
 
     #[test]
-    fn nothing_reported_is_no_join_and_no_verdict() {
+    fn nothing_reported_is_nothing_said_of_the_join_or_the_verdict() {
         let (store, defs) = a_chore_item();
-        assert_eq!(read(&store, &defs, "stage.join_met"), json!(false));
-        assert_eq!(read(&store, &defs, "stage.verdict"), json!("none"));
+        assert_eq!(evidence(&store, &defs, "work-item/atlas/tidy/1", REGION, "stage.join_met"), None);
+        assert_eq!(evidence(&store, &defs, "work-item/atlas/tidy/1", REGION, "stage.verdict"), None);
     }
 
     #[test]
@@ -284,7 +291,7 @@ mod tests {
         item.counters.insert("attempt".into(), 1);
         let seq = item.seq;
         store.put("work-item/atlas/tidy/1", &item, seq).unwrap();
-        assert_eq!(read(&store, &defs, "stage.join_met"), json!(false), "attempt two has not reported");
+        assert_eq!(evidence(&store, &defs, "work-item/atlas/tidy/1", REGION, "stage.join_met"), None, "attempt two has not reported");
     }
 
     #[test]

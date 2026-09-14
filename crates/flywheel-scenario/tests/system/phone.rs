@@ -79,7 +79,7 @@ fn driver_taps_at_390px() {
 
     // The decision is found by the number the register gave it (15).
     let card = format!("article.decision[data-number=\"{number}\"]");
-    let answer = format!("{card} button[data-answer=\"yes\"]");
+    let answer = format!("{card} [data-answer=\"yes\"]");
     let measured = driver::measure(tab, &answer)
         .expect("the control is measured")
         .expect("the answer control is on the page");
@@ -263,7 +263,7 @@ fn pass(path: &std::path::Path, viewport: (u32, u32)) -> Result<(), String> {
         return Err(format!("no decision numbered {number} on the page"));
     }
     for answer in &decision.answers {
-        let selector = format!("{card} button[data-answer=\"{}\"]", escape(answer));
+        let selector = format!("{card} [data-answer=\"{}\"]", escape(answer));
         let measured = driver::measure(tab, &selector)
             .map_err(|e| e.to_string())?
             .ok_or_else(|| format!("no control for answer `{answer}`"))?;
@@ -283,7 +283,7 @@ fn pass(path: &std::path::Path, viewport: (u32, u32)) -> Result<(), String> {
         .find(|a| *a == &step.answer)
         .or_else(|| decision.answers.first())
         .ok_or_else(|| "the decision offers no answer".to_string())?;
-    let selector = format!("{card} button[data-answer=\"{}\"]", escape(taken));
+    let selector = format!("{card} [data-answer=\"{}\"]", escape(taken));
     let posts_to = format!("action=\"/api/tools/{}\"", flywheel_surface::catalogue::ANSWER);
     if !tab.get_content().map_err(|e| e.to_string())?.contains(&posts_to) {
         return Err(format!("no control on the page posts to {posts_to} (193)"));

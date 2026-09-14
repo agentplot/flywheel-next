@@ -637,7 +637,7 @@ body:has(.dock .surface:target) .dock .surface[data-opened="true"]:not(:target){
 /* A label a screen reader reads and the layout does not carry. `vh` is the
    mockup's verdict holder and is a different thing. */
 .sr-only{position:absolute;width:1px;height:1px;overflow:hidden;clip:rect(0 0 0 0);white-space:nowrap}
-.answers button{min-height:44px;min-width:44px;padding:5px 12px;border:1px solid var(--accent);border-radius:6px;background:var(--surface);color:var(--accent);font-weight:600}
+.answers button,.answers .to-dock{min-height:44px;min-width:44px;padding:5px 12px;border:1px solid var(--accent);border-radius:6px;background:var(--surface);color:var(--accent);font-weight:600}
 .card .number{font:700 13px var(--mono);color:var(--ink)}
 .card .answered{font:11.5px var(--mono);color:var(--ink2);margin-top:6px}
 .card .away{font:11.5px var(--mono);color:var(--warn);margin-top:4px}

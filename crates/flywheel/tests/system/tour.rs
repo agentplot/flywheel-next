@@ -115,7 +115,7 @@ fn the_page_steps_the_scenario_it_stands_in() {
 
     // Before anything: the overlay is there, because an action is left.
     let strip = overlay(&get(address)).expect("an instance with actions left carries the overlay");
-    assert!(strip.contains("of <b>15</b>"), "{strip}");
+    assert!(strip.contains(&format!("of <b>{actions}</b>")), "{strip}");
     assert!(
         strip.contains("action=\"/tour/next\""),
         "the control is a form the page carries, with no script behind it (310, 311): {strip}"
@@ -197,8 +197,8 @@ fn the_page_steps_the_scenario_it_stands_in() {
         !page.contains("http-equiv=\"refresh\""),
         "and nothing is asking for itself again"
     );
-    // It is the same instance a whole apply reaches: the operator's fifteen
-    // clicks and `--through 15` stand at the same moment.
+    // It is the same instance a whole apply reaches: the operator's clicks, one
+    // per action, and `--through` at the last stand at the same moment.
     assert!(
         page.contains("elaboration/storefront-declines/finding-1"),
         "the prototype the tour built is on the board"
