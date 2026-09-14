@@ -91,10 +91,11 @@ impl Bindings {
                 bindings.workspace
             );
         }
-        if bindings.sessions != "operator" {
+        if !matches!(bindings.sessions.as_str(), "operator" | "herdr") {
             bail!(
-                "flywheel.yaml hosts.{host}.sessions: `{}` — this release binds `operator` \
-                 alone; the runner and the multiplexer are phase 2 (93b, D8)",
+                "flywheel.yaml hosts.{host}.sessions: `{}` — this release binds `operator` (the \
+                 session is the operator's to run) or `herdr` (the agent in a pane of the \
+                 multiplexer) (93b, 217c, D8)",
                 bindings.sessions
             );
         }
@@ -147,6 +148,9 @@ pub struct HostStore {
     /// `<root>/<instance>/`, where this host's clones and worktrees live;
     /// none for a host over a store with no world on disk.
     pub root: Option<std::path::PathBuf>,
+    /// What starts a session: `operator` records it for the operator to run,
+    /// `herdr` starts the agent in a pane of the multiplexer (93b, 217c, D8).
+    pub sessions: String,
 }
 
 impl HostStore {
@@ -163,6 +167,7 @@ impl HostStore {
             defs: None,
             workspace: "recorded".into(),
             root: None,
+            sessions: "operator".into(),
         }
     }
 
@@ -436,14 +441,19 @@ impl EvidenceSource for HostStore {
             })
             .or_else(|| flywheel_workspace_recorded::evidence(&self.git, object, name))
             .or_else(|| {
-                flywheel_sessions_operator::evidence(
+                let session = flywheel_sessions_operator::current(
                     &self.git,
-                    &flywheel_sessions_operator::current(
+                    &session_stem(object, region, self.kind_of(object).as_deref()),
+                );
+                match self.sessions.as_str() {
+                    "herdr" => flywheel_sessions_herdr::evidence(
                         &self.git,
-                        &session_stem(object, region, self.kind_of(object).as_deref()),
+                        &flywheel_sessions_herdr::Herdr::default(),
+                        &session,
+                        name,
                     ),
-                    name,
-                )
+                    _ => flywheel_sessions_operator::evidence(&self.git, &session, name),
+                }
             })
             // What the world reports and this profile inherits, last: a
             // binding that answers a name is the answer, and what the world
@@ -598,6 +608,7 @@ impl Host {
             kinds: vec!["all".into()],
         };
         let workspace = bindings.workspace.clone();
+        let sessions = bindings.sessions.clone();
         let root = world.root.clone();
         let mut host = Host::over(
             name,
@@ -609,6 +620,7 @@ impl Host {
             now,
         );
         host.store.workspace = workspace;
+        host.store.sessions = sessions;
         host.store.root = Some(root);
         // What the host is, as the manifest says: how many sessions it runs at
         // once, and whether it is a laptop (31, 150a, 183).
@@ -1813,11 +1825,36 @@ fn performing(
         "start_session" => {
             let fresh = flywheel_sessions_operator::next_attempt(&store.git, &stem);
             let order = work_order(defs, store, &fresh, &place, object);
-            flywheel_sessions_operator::start(&mut store.git, host, now, &order)?;
+            // The order in the place, named for this session: `prepare_place`
+            // wrote one before the stage's session had a name, and the one the
+            // agent reads must say which session to report as (67, 89).
+            if let Some(dir) = place_dir_of(store, &place) {
+                let file = dir.join(".flywheel").join("work-order.md");
+                if let Some(parent) = file.parent() {
+                    let _ = std::fs::create_dir_all(parent);
+                }
+                std::fs::write(&file, &order.body)
+                    .with_context(|| format!("writing the work order at {}", file.display()))?;
+            }
+            match store.sessions.as_str() {
+                "herdr" => {
+                    let placement = placement_of(store, object, &place)?;
+                    flywheel_sessions_herdr::start(
+                        &mut store.git,
+                        &flywheel_sessions_herdr::Herdr::default(),
+                        host,
+                        now,
+                        &order,
+                        &placement,
+                    )?;
+                }
+                _ => flywheel_sessions_operator::start(&mut store.git, host, now, &order)?,
+            }
         }
-        "end_session" => {
-            flywheel_sessions_operator::end(&mut store.git, &session, now)?;
-        }
+        "end_session" => match store.sessions.as_str() {
+            "herdr" => flywheel_sessions_herdr::end(&mut store.git, &flywheel_sessions_herdr::Herdr::default(), &session, now)?,
+            _ => flywheel_sessions_operator::end(&mut store.git, &session, now)?,
+        },
         "deliver_answer" => {
             let text = effect
                 .args
@@ -1825,11 +1862,15 @@ fn performing(
                 .and_then(|v| v.as_str())
                 .unwrap_or("")
                 .to_string();
-            flywheel_sessions_operator::answer(&mut store.git, &session, host, now, &text)?;
+            match store.sessions.as_str() {
+                "herdr" => flywheel_sessions_herdr::answer(&mut store.git, &flywheel_sessions_herdr::Herdr::default(), &session, host, now, &text)?,
+                _ => flywheel_sessions_operator::answer(&mut store.git, &session, host, now, &text)?,
+            }
         }
-        "tell_moved" => {
-            flywheel_sessions_operator::moved(&mut store.git, &session, host, now)?;
-        }
+        "tell_moved" => match store.sessions.as_str() {
+            "herdr" => flywheel_sessions_herdr::moved(&mut store.git, &flywheel_sessions_herdr::Herdr::default(), &session, host, now)?,
+            _ => flywheel_sessions_operator::moved(&mut store.git, &session, host, now)?,
+        },
         // One record per uncited offer on the session's thread, pointing at its
         // document; the record never holds the text and the session is not
         // interrupted (58, 62, `atoms.yaml` record_offers).
@@ -2093,33 +2134,156 @@ fn deliver(
 
 /// The work order a session is given: the closed set of inputs, rendered, and
 /// the name it reports under (88, 89).
+/// The worktree of a place, where the workspace binding made one (93a). A
+/// session's region names the object, and the place the session works in is
+/// the object's own — `<object>#own`, the key its `place` region is under
+/// (`regions::place_key`) — so both are tried.
+fn place_dir_of(store: &HostStore, place: &str) -> Option<std::path::PathBuf> {
+    let own = format!("{}#own", place.trim_end_matches("#own"));
+    [place.to_string(), own].iter().find_map(|key| {
+        store
+            .get(&flywheel_workspace_recorded::place_fact(key))
+            .ok()
+            .flatten()
+            .and_then(|f| f.record.get("dir").and_then(|v| v.as_str()).map(std::path::PathBuf::from))
+            .filter(|d| d.join(".git").exists())
+    })
+}
+
+/// Where a session's pane goes and what runs in it: the workspace for the
+/// bolt or the intent above the object, the tab for the unit or the
+/// elaboration, the place's own directory, and the agent kind the manifest's
+/// role gives (174, 196, 173; `sessions.yaml` layout). Everything is read
+/// from the records; nothing is remembered.
+fn placement_of(store: &HostStore, object: &str, place: &str) -> Result<flywheel_sessions_herdr::Placement> {
+    let Some(cwd) = place_dir_of(store, place) else {
+        bail!(
+            "`{place}` has no worktree on disk to start a session in; a pane runs in a real place, \
+             which the `host` workspace binding makes (93a, 196)"
+        );
+    };
+    // The chain above the object: the nearest bolt or intent names the
+    // workspace; the object's parent, or itself, names the tab.
+    let mut chain = vec![object.to_string()];
+    let mut at = object.to_string();
+    while let Some(parent) = store.get(&at).ok().flatten().and_then(|o| o.parent) {
+        chain.push(parent.clone());
+        at = parent;
+        if chain.len() > 8 {
+            break;
+        }
+    }
+    let workspace_label = chain
+        .iter()
+        .find(|id| id.starts_with("bolt/") || id.starts_with("intent/"))
+        .cloned()
+        .unwrap_or_else(|| chain.last().cloned().unwrap_or_default());
+    let tab_label = chain.get(1).cloned().filter(|p| p != &workspace_label).unwrap_or_else(|| object.to_string());
+    Ok(flywheel_sessions_herdr::Placement {
+        workspace_label,
+        tab_label,
+        cwd,
+        kind: "claude".into(),
+    })
+}
+
+/// The closed set of inputs a session is handed (88, 89), rendered as the
+/// file `prepare_place` writes into the place: the job in the operator's own
+/// words, what to deliver, the exact command to report with, the rules a
+/// session never crosses, and the agent's definition and skill from the
+/// shipped instruction set (119, 190). Nothing here is state; it is what the
+/// session reads (67).
 fn work_order(
-    _defs: &Definitions,
+    defs: &Definitions,
     store: &HostStore,
     session: &str,
     place: &str,
     object: &str,
 ) -> WorkOrder {
     let state = store.git.repo.dir.display().to_string();
+    let host = store.reading.me.clone();
     let held = store.get(object).ok().flatten();
     let kind = held
         .as_ref()
         .map(|o| o.machine.clone())
         .unwrap_or_else(|| "work".into());
+    let field = |name: &str| -> Option<String> {
+        held.as_ref()
+            .and_then(|o| o.record.get(name))
+            .and_then(|v| v.as_str().map(String::from))
+    };
+    // The unit above a work item carries the job; the item carries its type.
+    let unit = held
+        .as_ref()
+        .filter(|o| o.machine == "work-item")
+        .and_then(|o| o.parent.clone())
+        .and_then(|p| store.get(&p).ok().flatten());
+    let unit_field = |name: &str| -> Option<String> {
+        unit.as_ref()
+            .and_then(|u| u.record.get(name))
+            .and_then(|v| v.as_str().map(String::from))
+    };
+    let job = field("subject")
+        .or_else(|| unit_field("subject"))
+        .or_else(|| field("title"))
+        .unwrap_or_default();
+    let stage = session_stage(session);
+    let agent = kind_of_agent(defs, store, object, held.as_ref(), stage.as_deref());
+    let deliverables = stage_deliverables(defs, store, held.as_ref(), stage.as_deref());
+
     let mut body = String::new();
-    body.push_str(&format!("# {object}\n\n"));
-    body.push_str(&format!("place: {place}\nsession: {session}\n"));
+    body.push_str(&format!("# work order · {session}\n\n"));
+    body.push_str("## the job\n\n");
+    if !job.is_empty() {
+        body.push_str(&format!("{job}\n\n"));
+    }
+    body.push_str(&format!("object: {object}\nplace: {place}\nsession: {session}\n"));
+    if let Some(stage) = &stage {
+        body.push_str(&format!("stage: {stage}\n"));
+    }
+    if let Some(object) = &held {
+        for (name, value) in &object.record {
+            if !matches!(name.as_str(), "subject" | "title") {
+                body.push_str(&format!("{name}: {value}\n"));
+            }
+        }
+    }
+    body.push_str("\n## what to deliver\n\n");
+    match deliverables.is_empty() {
+        true => body.push_str("what the job asks for, committed in this place\n"),
+        false => {
+            for d in &deliverables {
+                body.push_str(&format!("- {d}\n"));
+            }
+        }
+    }
+    let named: Vec<String> = match deliverables.is_empty() {
+        true => vec!["commits".into()],
+        false => deliverables.clone(),
+    };
     // The exact command, with the two things it reads from the environment: the
     // session it reports on and this host's checkout of the state repository
     // (67, 89, 92).
+    body.push_str("\n## how to report\n\n");
+    body.push_str("When the work is done, from this directory:\n\n");
     body.push_str(&format!(
-        "report with: FLYWHEEL_SESSION={session} FLYWHEEL_STATE={state} \
-         flywheel exit done --deliverable <what it delivered>\n"
+        "    FLYWHEEL_SESSION={session} FLYWHEEL_STATE={state} flywheel exit done{} --host {host}\n\n",
+        named.iter().map(|d| format!(" --deliverable {d}")).collect::<String>()
     ));
-    if let Some(object) = &held {
-        for (name, value) in &object.record {
-            body.push_str(&format!("{name}: {value}\n"));
-        }
+    body.push_str("When you cannot go on without the operator's answer:\n\n");
+    body.push_str(&format!(
+        "    FLYWHEEL_SESSION={session} FLYWHEEL_STATE={state} flywheel exit blocked --question \"<the question>\" --host {host}\n\n"
+    ));
+    body.push_str("The machinery reads the report and nothing else you leave here; what you leave here is your work (66, 67).\n");
+    body.push_str("\n## rules\n\n");
+    body.push_str(
+        "Commit in this place, on the branch you are on. Never create, merge, rebase, push or land a \
+         branch, never touch another place or the state repository, and never message another \
+         session: those are the machinery's (43, 197, I12).\n",
+    );
+    if let Some((definition, skill)) = agent.as_deref().and_then(agent_text) {
+        body.push_str(&format!("\n## the agent · {}\n\n{definition}\n", agent.as_deref().unwrap_or_default()));
+        body.push_str(&format!("\n## the skill\n\n{skill}\n"));
     }
     WorkOrder {
         session: session.to_string(),
@@ -2127,6 +2291,72 @@ fn work_order(
         place: place.to_string(),
         body,
     }
+}
+
+/// The stage a session id names, where it names one: `<item>/<stage>/<n>`.
+fn session_stage(session: &str) -> Option<String> {
+    let stem = flywheel_domain::regions::stem_of(session);
+    stem.rsplit('/').next().map(String::from).filter(|s| !s.is_empty())
+}
+
+/// The agent the stage names for a work item's session, from the type's
+/// definition (`stage.yaml` params.agents); for anything else, the last
+/// segment of the session's stem, which is the type or the agent
+/// (`session.yaml` id).
+fn kind_of_agent(
+    defs: &Definitions,
+    store: &HostStore,
+    _object: &str,
+    held: Option<&Object>,
+    stage: Option<&str>,
+) -> Option<String> {
+    let held = held?;
+    if held.machine == "work-item" {
+        let kind = flywheel_domain::stages::type_of(&store.git, held)?;
+        let state = flywheel_domain::stages::stage_state(defs, &kind, stage?)?;
+        return state
+            .params
+            .as_ref()
+            .and_then(|p| p.get("agents"))
+            .and_then(|a| a.as_array())
+            .and_then(|a| a.first())
+            .and_then(|a| a.as_str().map(String::from).or_else(|| a.get("name").and_then(|n| n.as_str()).map(String::from)));
+    }
+    stage.map(String::from)
+}
+
+/// What the stage asks for, by name (`stage.yaml` params.deliverables).
+fn stage_deliverables(defs: &Definitions, store: &HostStore, held: Option<&Object>, stage: Option<&str>) -> Vec<String> {
+    let Some(held) = held.filter(|o| o.machine == "work-item") else {
+        return vec![];
+    };
+    let Some(kind) = flywheel_domain::stages::type_of(&store.git, held) else {
+        return vec![];
+    };
+    let Some(state) = stage.and_then(|s| flywheel_domain::stages::stage_state(defs, &kind, s)) else {
+        return vec![];
+    };
+    state
+        .params
+        .as_ref()
+        .and_then(|p| p.get("deliverables"))
+        .and_then(|d| d.as_array())
+        .map(|d| d.iter().filter_map(|x| x.get("name").and_then(|n| n.as_str()).map(String::from)).collect())
+        .unwrap_or_default()
+}
+
+/// The agent's definition and skill from the shipped instruction set (119,
+/// 190; `instructions/set.yaml` resolution). None where the set has no such
+/// agent.
+fn agent_text(agent: &str) -> Option<(String, String)> {
+    static SET: std::sync::OnceLock<Option<flywheel_domain::instructions::Instructions>> = std::sync::OnceLock::new();
+    let set = SET.get_or_init(|| flywheel_domain::instructions::Instructions::shipped().ok()).as_ref()?;
+    let skill = set.at(&format!("flywheel/skills/{agent}/SKILL.md"))?.body.clone();
+    let definition = set
+        .at(&format!("flywheel/agents/{agent}.md"))
+        .map(|f| f.body.clone())
+        .unwrap_or_default();
+    Some((definition, skill))
 }
 
 /// Whether a session is one this host is running, for the bound (31, 32).

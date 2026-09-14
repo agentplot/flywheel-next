@@ -323,4 +323,24 @@ from the machinery fails as a test.
 
 - [ ] 19.11 An offer nothing can record is an offer that stops the session for ever. `offers::record` makes a record for a finding only where an intent or a bolt stands above the session, and for a chore only where a bolt does; its own doc says the rest become "a signal citing the path" (62) and nothing does. Since `session.offers_pending` is now read as the model states it — offer entries no record cites — an offer the machinery cannot record stays pending on every pass, `record_offers` wins the `working` region every time, and the session never reaches its exit: a curation session or a capture reader that offers a finding deadlocks, and the object above it stands in `working` with a finished session inside it. Making the signal needs the blueprints, so `record_offers` takes a `World` as `ensure_signal` does, which widens the effect's signature through `host.rs` and the runner's `world.rs`. Verify `cargo test -p flywheel-domain an_offer_no_object_is_above_becomes_a_signal` over a session under neither an intent nor a bolt, and `cargo test -p flywheel-sessions-operator an_offer_is_pending_only_until_a_record_points_at_it` still green (58, 62, 113)
 
-Group 12, the phase gate, runs after 14, 15, 16, 17, 18 and 19.
+## 20. The slice: a capture becomes a landed bolt
+
+The one objective that makes the loop usable on its own repositories: a capture
+typed on the page becomes a chore unit on a bolt by the operator's dictation,
+a session works it in a real place, and the bolt lands. `scenarios/storefront`
+plays the whole arc, stepped from the page, and is the acceptance: every
+action screenshotted at 1440×900 and 390×844 and read by a person
+(`scripts/tour-walk.sh`). The tests are the unit tier while building and the
+integration tier at merge (AGENTS.md, Gates); nothing new is added to the
+slower tiers for this group.
+
+- [x] 20.0 A native toolchain devenv owns, the hooks at the tiers a session can afford, doctests off: the workspace tier took 28 minutes under Rosetta for 152 seconds of tests (D17)
+- [x] 20.1 A work item reaches its session on a real host: `stage.agents`, `stage.join_met`, `stage.verdict`, `item.send_backs`, `item.retry_max` and `item.change_archived` answered from the type's definition and the sessions' threads (`flywheel-domain` stages.rs); `archive_change` holds at once for a type needing no change directory and is refused with its reason otherwise; the six come off the parity gate's deferred set (56, 41, D8)
+- [x] 20.2 `propose-unit` is the operator's dictation naming a bolt, applied directly: a unit in approved with the call as its approval, the bolt made when the name is no bolt yet, its item made, the capture as its document and the capture's words as the job; the page carries it as the `unit` control on every capture; the mark-as-intent toggle goes (34, 12, 19, I1)
+- [x] 20.3 A place is a worktree and a landing moves the shared line: `flywheel-workspace-host` binds the effects of 42 to git on the clones a host keeps, writing the recorded binding's facts at the same moments so every `place.*` and `line.*` read is unchanged; `workspace: host` in the manifest, the default of `flywheel init` and what `scenario apply` binds (42, 49, 93a)
+- [x] 20.4 The storefront runs through a landed bolt: four more actions — the capture, the dictation (a response step carrying `args` for a tool with a body), the chore session delivering its commit into its place, the yes on the close — in both runners; `host.running` no longer counts a session that exited, and a scenario declares its laptop so the runner's bound is not nought (31, 34, 38, 39)
+- [x] 20.5 The page reads like the mockup: its two faces embedded, a card of one-tap controls with the argument fields in the dock, marks on every board form, the landed record, quiet empty groups, sentences without the resting regions; `scripts/page-shot.sh` and `scripts/tour-walk.sh` are the check (D16, 311, 209)
+- [ ] 20.6 Sessions run in Herdr: `flywheel-sessions-herdr` implements `Sessions` per `profiles/sessions.yaml` over the installed CLI — a workspace per bolt, a tab per unit, `herdr agent start` in the tab's pane, the work order handed as the first prompt, presence and activity from `herdr agent get`; the work order rendered by `flywheel-domain` order.rs with the report line filled in; a host whose Herdr is not there reports it and runs on (171, 173, 174, 196, 67)
+- [ ] 20.7 README's walkthrough is the slice on flywheel-next itself: init tracking `flywheel-next` with `sessions: herdr`, join, serve from a Herdr pane, capture, unit, watch Claude Code start, `exit done`, merge, land, `git log`
+
+Group 12, the phase gate, runs after 14, 15, 16, 17, 18, 19 and 20.

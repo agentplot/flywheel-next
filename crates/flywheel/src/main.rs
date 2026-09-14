@@ -110,6 +110,11 @@ enum Cmd {
         /// facts alone (93a, D8).
         #[arg(long, default_value = "host")]
         workspace: String,
+        /// What starts a session on the first host: `operator` records it for
+        /// you to run, `herdr` starts the agent in a pane of the multiplexer
+        /// (93b, 217c, D8).
+        #[arg(long, default_value = "operator")]
+        sessions: String,
     },
     /// Load the machine definitions and report what was read.
     Defs,
@@ -354,6 +359,7 @@ async fn main() -> Result<()> {
             manifest,
             repositories,
             workspace,
+            sessions,
         } => {
             let report = init::run(init::Init {
                 at: chrono::Utc::now(),
@@ -376,7 +382,7 @@ async fn main() -> Result<()> {
             for line in &report.lines {
                 println!("{line}");
             }
-            flywheel::apply::bind_workspace(&manifest, &host, &workspace)?;
+            flywheel::apply::bind(&manifest, &host, &workspace, &sessions)?;
         }
         Cmd::Version { definitions } => {
             println!("flywheel {}", env!("CARGO_PKG_VERSION"));

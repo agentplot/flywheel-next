@@ -746,6 +746,7 @@ dependencies = [
  "flywheel-domain",
  "flywheel-engine",
  "flywheel-scenario",
+ "flywheel-sessions-herdr",
  "flywheel-sessions-operator",
  "flywheel-store-git",
  "flywheel-surface",
@@ -814,6 +815,18 @@ dependencies = [
  "serde_json",
  "serde_yaml",
  "tokio",
+]
+
+[[package]]
+name = "flywheel-sessions-herdr"
+version = "0.1.0"
+dependencies = [
+ "anyhow",
+ "chrono",
+ "flywheel-atoms",
+ "flywheel-domain",
+ "flywheel-sessions-operator",
+ "serde_json",
 ]
 
 [[package]]

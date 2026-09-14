@@ -9,6 +9,7 @@ members = [
   "crates/flywheel-workspace-recorded",
   "crates/flywheel-workspace-host",
   "crates/flywheel-sessions-operator",
+  "crates/flywheel-sessions-herdr",
   "crates/flywheel-scenario",
   "crates/flywheel-surface",
   "crates/flywheel",

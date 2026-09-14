@@ -217,13 +217,21 @@ pub struct Applied {
 /// worktrees, `recorded` for the facts alone (93a, D8). A repeat writes what
 /// is already there.
 pub fn bind_workspace(manifest: &std::path::Path, host: &str, workspace: &str) -> Result<()> {
+    let sessions = flywheel_world_host::Manifest::read(manifest)?.host(host)?.sessions.clone();
+    bind(manifest, host, workspace, &sessions)
+}
+
+/// Bind a host's workspace and sessions in its manifest (93a, 93b, D8). A
+/// repeat writes what is already there.
+pub fn bind(manifest: &std::path::Path, host: &str, workspace: &str, sessions: &str) -> Result<()> {
     let mut read = flywheel_world_host::Manifest::read(manifest)?;
     let entry = read
         .hosts
         .get_mut(host)
         .ok_or_else(|| anyhow::anyhow!("the manifest names no host `{host}`"))?;
-    if entry.workspace != workspace {
+    if entry.workspace != workspace || entry.sessions != sessions {
         entry.workspace = workspace.to_string();
+        entry.sessions = sessions.to_string();
         read.write(manifest)?;
     }
     Ok(())
