@@ -557,7 +557,40 @@ async fn main() -> Result<()> {
                         {
                             let mut held = host.lock().expect("the running host is poisoned");
                             held.set_now(chrono::Utc::now());
-                            poll_for = held.poll_interval();
+                            // An action the operator asked for, played the
+                            // moment it is due. A scenario stepped from the
+                            // page is played by the loop and by nothing else:
+                            // the click writes that the action is owed and
+                            // this performs it, so there is one code path and
+                            // the page's request never waits on a cascade
+                            // (D11, the design's "How an action runs").
+                            let now = held.now();
+                            match flywheel::tour::play_due(&mut held, now) {
+                                Ok(true) => println!("tour: an action was played"),
+                                Ok(false) => {}
+                                Err(e) => {
+                                    let name = held.name.clone();
+                                    held.report_problem(&format!("host/{name}"), &format!("{e:#}"));
+                                    eprintln!("the tour could not play its next action: {e:#}");
+                                }
+                            }
+                            // The poll is the floor, and a beat the operator is
+                            // watching is shorter than it: a host with an
+                            // action owed looks again when it comes due, the
+                            // way it would for any other moment of its own
+                            // (D6, D7, 231).
+                            poll_for = match flywheel::tour::due_at(&held) {
+                                // Never nothing: an action that could not be
+                                // played leaves its moment behind it, and a
+                                // zero poll would spin on it.
+                                Some(due) => held.poll_interval().min(
+                                    (due - held.now())
+                                        .to_std()
+                                        .unwrap_or_default()
+                                        .max(std::time::Duration::from_millis(200)),
+                                ),
+                                None => held.poll_interval(),
+                            };
                             match held.once() {
                                 Ok(fired) => {
                                     // Progress, not the count: a machine

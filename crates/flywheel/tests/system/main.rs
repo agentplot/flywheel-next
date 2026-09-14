@@ -6,4 +6,5 @@
 //! wall time and nothing is marked ignored to hide a cost.
 
 mod definitions;
+mod tour;
 mod walkthrough;

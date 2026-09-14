@@ -18,6 +18,7 @@ pub mod set;
 pub mod signals;
 pub mod sinks;
 pub mod status;
+pub mod tour;
 pub mod derived;
 pub mod effects;
 pub mod leases;

@@ -583,10 +583,57 @@ async fn rendered<S: StateStore + Send + 'static>(
     }
 }
 
+/// `POST /tour/next` — the operator asked for the scenario's next action
+/// (`design/flywheel-next/scenarios/storefront.md`).
+///
+/// The control writes that the action is owed and nothing else. The host's own
+/// loop plays it, the way it performs any other act that has come due, so the
+/// request the operator is waiting on never runs a cascade and there is one
+/// code path for an action however it was asked for (D11, 125).
+///
+/// Where the next action is a session's delivery the fact says it is owed two
+/// seconds from now, and the page shows the agent working until then: the
+/// machinery has already stalled where a real session would be, and the beat
+/// is the viewer seeing that before the artifact appears.
+async fn tour_next<S: StateStore + Send + 'static>(
+    State(served): State<Served<S>>,
+    headers: axum::http::HeaderMap,
+) -> Response {
+    let back = came_from(&headers);
+    if let Err(refused) = served.admits(host_of(&headers)) {
+        return (
+            StatusCode::FORBIDDEN,
+            Html(format!("<p class=\"refused\">{refused}</p>")),
+        )
+            .into_response();
+    }
+    let mut store = served.store.lock().await;
+    // The moment the operator clicked, which is now — and not the point the
+    // state was last read as of. A served host sets its clock at the top of a
+    // pass, so between passes the as-of is up to a poll behind the wall, and a
+    // beat stamped from it was over before it started.
+    let at = chrono::Utc::now();
+    let instance = served.instance();
+    match flywheel_domain::tour::ask(&mut *store, &instance, at) {
+        // No scenario here: there is nothing to step and no overlay to have
+        // asked. A control that is not there cannot be pressed, so this is a
+        // stale page rather than a refusal.
+        Ok(None) => to_the_page(&back),
+        Ok(Some(_)) => {
+            // The loop is waiting on its poll; an action the operator asked
+            // for is a local cause like any other (130, D6).
+            served.woken.notify_waiters();
+            to_the_page(&back)
+        }
+        Err(e) => back_with(&back, &e.to_string()),
+    }
+}
+
 /// The router the page and the chat are served by.
 pub fn router<S: StateStore + Send + 'static>(served: Served<S>) -> Router {
     Router::new()
         .route("/", get(page::<S>))
+        .route("/tour/next", post(tour_next::<S>))
         .route("/api/tools", get(tools::<S>))
         .route("/api/tools/:name", post(invoke::<S>))
         .route("/api/answer-all", post(answer_all::<S>))

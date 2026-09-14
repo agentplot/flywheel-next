@@ -4,6 +4,7 @@
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
 <meta name="flywheel-version" content="{{VERSION}}">
+{{TOURHEAD}}
 <title>flywheel</title>
 <style>
 /* The ratified page design is the blueprints' mockup,
@@ -537,6 +538,41 @@ ul.sigs li{margin:0}
 .phone-only{display:none}
 
 
+/* ---------- the tour's overlay ----------
+   An instance standing part-way through a scenario says so, in the operator's
+   way but never over the work: a strip along the foot of the page with what
+   just happened, and the control that plays the next action. It is the
+   product's own onboarding and not a mode, so it looks like the page and not
+   like a tool laid on top of it. Nothing here runs: the held beat is a CSS
+   animation and a refresh the document asks for. */
+.tour{position:fixed;left:50%;transform:translateX(-50%);bottom:14px;z-index:60;
+  display:flex;align-items:center;gap:14px;max-width:min(980px,calc(100vw - 28px));
+  padding:9px 10px 9px 14px;border:1px solid var(--line);border-radius:10px;
+  background:var(--surface);box-shadow:var(--shadow)}
+.tour .n{flex:none;font:600 11px var(--mono);letter-spacing:.06em;text-transform:uppercase;
+  color:var(--ink3);white-space:nowrap}
+.tour .n b{font:700 13px var(--mono);color:var(--ink)}
+.tour .said{flex:1;min-width:0;font-size:13px;line-height:1.4;color:var(--ink2)}
+.tour .said b{color:var(--ink);font-weight:600}
+.tour form{margin:0;flex:none}
+.tour .done{flex:none;font-size:12.5px;color:var(--ink3);padding-right:4px}
+/* The held beat: the machinery has stalled where a session would be working,
+   and this is the viewer seeing that before the artifact appears. Deliberate
+   theatre, and it should look like it rather than like a progress bar
+   pretending to be work. */
+.tour.working{border-color:var(--accent)}
+.tour .work{flex:none;display:inline-flex;align-items:center;gap:5px;
+  font-size:12.5px;font-weight:600;color:var(--accent);white-space:nowrap}
+.tour .work i{width:6px;height:6px;border-radius:50%;background:var(--accent);
+  animation:tour-beat 1.05s ease-in-out infinite}
+.tour .work i:nth-child(2){animation-delay:.15s}
+.tour .work i:nth-child(3){animation-delay:.3s}
+@keyframes tour-beat{0%,80%,100%{opacity:.22;transform:translateY(0)}
+  40%{opacity:1;transform:translateY(-2px)}}
+@media (prefers-reduced-motion:reduce){.tour .work i{animation:none;opacity:.7}}
+@media (max-width:760px){.tour{left:8px;right:8px;transform:none;max-width:none}
+  .tour .said{display:none}}
+
 /* ---------- what a page with no script needs (310, 311) ----------
    The mockup opens the dock, the palette, the log and the tabs from
    JavaScript. This page runs no script and holds no client state a reload
@@ -734,5 +770,10 @@ body:has(.dock .surface:target) .dock .surface[data-opened="true"]:not(:target){
      (153, 154). -->
 <aside class="log" id="log"><h3>Responses sent <span>each one on its own, the moment it was given</span></h3><ol id="loglist">{{LOG}}</ol></aside>
 <div class="toasts" id="toasts" aria-live="polite"></div>
+<!-- The tour: an instance standing part-way through a scenario onboards
+     whoever is looking at it, one action at a time. There is nothing here when
+     the instance carries no scenario, or when its actions are played out
+     (`design/flywheel-next/scenarios/storefront.md`). -->
+{{TOUR}}
 </body>
 </html>

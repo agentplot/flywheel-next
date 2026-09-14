@@ -49,6 +49,25 @@ impl Instance {
         Host::open(&self.manifest, &self.host, None, at)
     }
 
+    /// The instance a running host stands in, from the manifest it was opened
+    /// on. A step from the page reaches the same directories an apply reached,
+    /// and reads them from the manifest rather than remembering them (205).
+    pub fn of(manifest: &Path, host: &str) -> Result<Instance> {
+        let read = flywheel_world_host::Manifest::read(manifest)?;
+        let under = manifest
+            .parent()
+            .ok_or_else(|| anyhow!("`{}` names no directory", manifest.display()))?
+            .to_path_buf();
+        let root = read.host(host)?.root.clone();
+        Ok(Instance {
+            name: read.instance.clone(),
+            host: host.to_string(),
+            under,
+            manifest: manifest.to_path_buf(),
+            root,
+        })
+    }
+
     /// Put a file on a repository's shared line through this host's checkout.
     ///
     /// What a session delivers is committed where a real session's landing
@@ -293,6 +312,13 @@ pub fn apply(
         lines.push(line);
     }
 
+    // What the instance now knows about itself: which scenario it stands
+    // part-way through, and how far. That fact is the whole of what makes the
+    // page's overlay appear when this instance is served, and the whole of
+    // what makes it absent when the scenario is played out (the design, "The
+    // tour is an overlay and part of the product").
+    crate::tour::record(&mut host, scenario, through)?;
+
     Ok(Applied {
         state: instance.checkout("flywheel-state"),
         manifest: instance.manifest.clone(),
@@ -308,7 +334,7 @@ pub fn apply(
 /// does; this is the caller waiting it out rather than the loop's poll, so a
 /// demo advances on its actions and a test pays for nothing it did not need
 /// (D6, D7, 78).
-fn settle(host: &mut Host) -> Result<()> {
+pub fn settle(host: &mut Host) -> Result<()> {
     // A bound rather than a hope: a machine that keeps moving forever is a
     // defect, and reporting it beats hanging.
     const PASSES: usize = 64;
@@ -340,7 +366,7 @@ fn settle(host: &mut Host) -> Result<()> {
 
 /// Play one action. Each is one thing a real actor does, and each runs the
 /// machinery's own path for it.
-fn play(
+pub fn play(
     host: &mut Host,
     instance: &Instance,
     action: &Action,

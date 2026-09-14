@@ -33,7 +33,7 @@ use flywheel_world_host::{HostWorld, Manifest};
 use serde_json::{json, Value};
 use std::cell::RefCell;
 use std::collections::BTreeMap;
-use std::path::Path;
+use std::path::{Path, PathBuf};
 
 /// How often the sweep runs, whatever else happens (D7, 130). The default the
 /// model states; `flywheel.yaml`'s `intervals.sweep` is what a host actually
@@ -514,6 +514,11 @@ pub struct Host {
     /// What the manifest says curation is charged on, where this host read one
     /// (110, 118). Written onto the curation record as the host declares.
     pub curation: Option<flywheel_world_host::manifest::Curation>,
+    /// The manifest this host was opened on, where it was opened on one. A
+    /// host stepping a scenario reaches the instance's directories through it
+    /// rather than remembering them (205); a host built in a test over a store
+    /// alone has none.
+    pub manifest: Option<PathBuf>,
     /// How often this host looks, in seconds: the poll it falls back on when
     /// nothing told it anything, and the sweep that fires an `older:` guard
     /// whatever the poll says (D6, D7, 130, 231). The model's own intervals
@@ -586,6 +591,9 @@ impl Host {
         host.poll = read.intervals.poll;
         host.sweep_every = read.intervals.sweep;
         host.curation = Some(read.curation.clone());
+        // The manifest this host was opened on: what a step of a scenario
+        // reaches the instance's own directories through (205).
+        host.manifest = Some(manifest.to_path_buf());
         // The host's one address, from the router the manifest names: every
         // link a delivery carries is written at it (191, 205a, D10a).
         host.sinks.address = world.address_of(name)?;
@@ -628,6 +636,7 @@ impl Host {
             moved: false,
             progressed: false,
             curation: None,
+            manifest: None,
             poll: POLL,
             sweep_every: SWEEP,
             // The host's own name on the operator's private network, with the

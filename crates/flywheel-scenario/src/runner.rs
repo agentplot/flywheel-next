@@ -9,7 +9,7 @@ use flywheel_atoms::{
     EffectWrite, LeaseOp, LeaseOutcome, PutOutcome, Records, Scope, StateStore,
 };
 use flywheel_engine::runtime::{DecisionInstance, EvidenceSource, Response, ResponseKind, Snapshot};
-use flywheel_engine::{rail, tick, Definitions, PlannedEffect};
+use flywheel_engine::{tick, Definitions, PlannedEffect};
 use serde_json::{json, Value};
 use std::collections::BTreeMap;
 
@@ -197,7 +197,7 @@ impl Runtime {
         let defs = self.defs.clone();
         let _ = flywheel_domain::rail::attach(&self.store, &defs, &mut objects, now);
         if !self.store.register_aliases.is_empty() {
-            let standing = rail::derive(&self.defs, &objects, &self.store.register);
+            let standing = flywheel_domain::rail::standing(&self.defs, &objects, &self.store.register);
             for d in &standing {
                 if let Some(n) = self.store.register_aliases.get(&Runtime::decision_name(&d.object, &d.kind)) {
                     // A scenario that states a decision's number states it as
@@ -216,7 +216,7 @@ impl Runtime {
                 }
             }
         }
-        let mut d = rail::derive(&self.defs, &objects, &self.store.register);
+        let mut d = flywheel_domain::rail::standing(&self.defs, &objects, &self.store.register);
         d.extend(self.handed_back());
         self.store.standing = d.iter().map(|x| x.id.clone()).collect();
         for x in &d {
