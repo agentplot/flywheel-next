@@ -74,17 +74,17 @@ alone (253a).
 
 **A capture.** In the box at the top of the page, type what you noticed —
 `README's crates table lacks a row for flywheel-workspace-host`, say — and
-submit it. Nothing in the text is parsed; the submission is recorded once as a
-capture with one signal of kind ask, and it stands in the Inception lane,
-quoted, with one control beside it: `unit…` (19, 111, 193, 194).
+press return. Nothing in the text is parsed; the submission is recorded once
+as a capture with one signal of kind ask, and the signal stands on the rail
+as decision 1, in your own words, with three answers: build, intent, drop
+(19, 19a, 111, 193, 194).
 
-**A unit.** Tap `unit…`. The dock opens on the capture with a field for the
-bolt's name; give it one — `readme-crates-table` — and submit. That is a
-dictation, applied at once: the unit stands approved on a bolt of that name,
-made if it was not there; the bolt's line is a branch of `flywheel-next` on the
-git host; the unit's one work item has a place, a worktree of that line under
-the host's root; and the Construction lane shows the bolt with its unit and
-the session under it (34, 42, 44, 12).
+**Build.** Tap `build`, or press `b` with the card in hand. That one answer
+makes a chore unit on a bolt named from the capture's first words — no name
+to type — and approves it: the bolt's line is a branch of `flywheel-next` on
+the git host, the unit's one work item has a place, a worktree of that line
+under the host's root, and the Construction lane shows the bolt with its unit
+and the session under it (19a, 34, 42, 44, 12).
 
 **The session.** On the next tick the item enters its `fix` stage and the host
 starts the session: a Herdr workspace named for the bolt, a tab named for the
@@ -95,7 +95,7 @@ report with (67, 89, 196). Watch it work in the pane. When it is done it
 reports with that line, which from the place is:
 
 ```sh
-FLYWHEEL_SESSION=work-item/flywheel-next/readme-crates-table/wi-1/fix/1 \
+FLYWHEEL_SESSION=work-item/flywheel-next/readme-crates-table-lacks/wi-1/fix/1 \
 FLYWHEEL_STATE=~/flywheel/hosts/laptop/agentplot/flywheel-state \
   cargo run -q -- exit done --deliverable commits --deliverable verdict --host laptop
 ```
@@ -109,7 +109,7 @@ one decision on the rail, with the number the register gave it (37, 39, 15):
 
 ```
 approve
-  1   bolt/flywheel-next/readme-crates-table     1 unit
+  2   bolt/flywheel-next/readme-crates-table-lacks     1 unit
       [ yes ]  [ no ]  [ later ]
 ```
 

@@ -466,9 +466,9 @@ fn counted(label: &str, how_many: usize) -> String {
 /// kept where the end is what tells it apart — a path's file, a claim's version.
 fn clipped(said: &str) -> String {
     let said = said.trim();
-    match said.chars().count() > 60 {
+    match said.chars().count() > 120 {
         false => said.to_string(),
-        true => format!("…{}", said.chars().skip(said.chars().count() - 59).collect::<String>()),
+        true => format!("{}…", said.chars().take(119).collect::<String>().trim_end()),
     }
 }
 
@@ -537,14 +537,14 @@ const LANE_HEADS: [(&str, &str); 4] = [
 const LANE_EMPTY: [(&str, &str); 4] = [
     ("Inception", "Nothing captured yet. Type what you noticed in the box above."),
     ("Bolt plan", "No proposals yet."),
-    ("Construction", "No bolts yet. A unit on a capture starts one."),
+    ("Construction", "No bolts yet. Build a capture to start one."),
     ("Operation", "Nothing running."),
 ];
 
 /// The machinery's own objects, which the hosts strip and the header carry
 /// and the lanes do not: an instance and a curation are not work a person
 /// follows on the board (141, D16).
-const OFF_THE_BOARD: [&str; 4] = ["instance", "curation", "host", "rail"];
+const OFF_THE_BOARD: [&str; 5] = ["instance", "curation", "host", "rail", "signal"];
 
 /// Render the whole page. One document, one request, nothing stored.
 /// The instance this page is of: the last segment of the host's own address,
@@ -836,23 +836,46 @@ fn card(read: &Read, decision: &DecisionInstance) -> String {
         "<div class=\"ch\"><span class=\"n number\">{number}</span>\
          <span class=\"kind\">{kind}</span>\
          <span class=\"ph\" data-phase=\"{phase}\">{phase}</span></div>\n",
-        kind = escape(machine),
+        kind = escape(match machine {
+            "signal" => "capture",
+            other => other,
+        }),
         phase = escape(&phase_of(machine).to_lowercase()),
     );
     // The object it concerns, as the board draws it: the repository it is in,
     // greyed, and the name. The whole id is what the link carries and what the
     // dock says; a card is read for which thing this is, and an id repeated
     // down the rail is the same four words over and over (209, 308).
-    let _ = write!(
-        out,
-        "<div class=\"title\"><a class=\"object\" href=\"{link}\" data-object=\"{object}\">{pre}{name}</a></div>\n",
-        link = escape(&link),
-        object = escape(&decision.object),
-        pre = repository_of(&decision.object)
-            .map(|r| format!("<span class=\"pre\">{} · </span>", escape(r)))
-            .unwrap_or_default(),
-        name = escape(name_of(&decision.object)),
-    );
+    // A signal's card says what was captured, in the operator's own words
+    // from the start; every other card names its object (19a, 209).
+    let captured = read
+        .objects
+        .iter()
+        .find(|o| o.id == decision.object && o.machine == "signal")
+        .and_then(flywheel_domain::signals::text_of);
+    match captured {
+        Some(said) => {
+            let _ = write!(
+                out,
+                "<div class=\"title\"><a class=\"object said\" href=\"{link}\" data-object=\"{object}\">“{said}”</a></div>\n",
+                link = escape(&link),
+                object = escape(&decision.object),
+                said = escape(&clipped(&said)),
+            );
+        }
+        None => {
+            let _ = write!(
+                out,
+                "<div class=\"title\"><a class=\"object\" href=\"{link}\" data-object=\"{object}\">{pre}{name}</a></div>\n",
+                link = escape(&link),
+                object = escape(&decision.object),
+                pre = repository_of(&decision.object)
+                    .map(|r| format!("<span class=\"pre\">{} · </span>", escape(r)))
+                    .unwrap_or_default(),
+                name = escape(name_of(&decision.object)),
+            );
+        }
+    }
     // Why it is being asked: what the machine's own `shows:` names for this
     // decision kind, and how long it has stood (15, 11, 18).
     if let Some(said) = read.why.get(&decision.id).filter(|said| !said.is_empty()) {
@@ -1199,17 +1222,11 @@ fn board_attributes(row: &status::Row) -> String {
 /// Who is holding an object and who is running it, in one line: the two things
 /// 141 asks for per object, said rather than printed as fields.
 fn held_by(row: &status::Row) -> String {
-    let mut said = Vec::new();
-    if let Some(holder) = &row.holder {
-        said.push(match &row.liveness {
-            Some(liveness) => format!("held by {holder} ({liveness})"),
-            None => format!("held by {holder}"),
-        });
-    }
-    if let Some(runner) = &row.runner {
-        said.push(format!("run by the {runner}"));
-    }
-    said.join(" · ")
+    // Who holds an object is the hosts strip's to say, as a chip; a board that
+    // says "held by" under every line reads as the machine talking to itself
+    // (141, D16). A host that is not alive is raised there too.
+    let _ = row;
+    String::new()
 }
 
 /// What an object is doing, split into the one word a head has room for and
@@ -1616,61 +1633,29 @@ fn quote(read: &Read, row: &status::Row) -> String {
         .and_then(|r| r.get("asserted_by"))
         .and_then(|value| value.as_str())
         .filter(|by| !by.trim().is_empty());
-    let mut under = format!("<b>{}</b>", escape(&row.said));
+    // Where it came from and who said it; what to do with it is the rail's
+    // (19a, 141).
+    let source = record
+        .and_then(|r| r.get("source"))
+        .and_then(|value| value.as_str())
+        .filter(|s| !s.trim().is_empty());
+    let mut under = match source {
+        Some(source) => format!("from {}", escape(source)),
+        None => escape(&row.said),
+    };
     if let Some(by) = by {
         let _ = write!(&mut under, " · {}", escape(by));
     }
-    let held = held_by(row);
-    if !held.is_empty() {
-        let _ = write!(&mut under, " · {}", escape(&held));
-    }
-    // A capture is where work may start: the `unit` control on it is the
-    // operator's dictation naming a bolt, applied directly (34, 12). On the
-    // board it is one tap to the dock, where the name is typed; a form under
-    // every quote read as a lane of forms.
-    let acts = match (row.machine.as_str(), read.repositories.is_empty()) {
-        ("capture", false) => format!(
-            "<div class=\"acts\"><a class=\"btn sm to-dock\" href=\"#dock-{}\" data-tool=\"propose-unit\">unit…</a></div>",
-            escape(&row.object)
-        ),
-        _ => String::new(),
-    };
     format!(
         "<div class=\"quote\"{attributes}>\
          <q><a href=\"#dock-{object}\">{said}</a></q>\
-         <span class=\"qm\">{under}</span>{acts}</div>\n",
+         <span class=\"qm\">{under}</span></div>\n",
         attributes = board_attributes(row),
         object = escape(&row.object),
         said = escape(&said),
     )
 }
 
-/// The `unit` control on a capture: a bolt's name, and the unit is approved on
-/// it through `propose-unit` (34, 12, 19). The repository is the one the
-/// instance tracks; only an instance tracking several is asked which. An
-/// instance tracking none has nowhere for a unit to land, so there is no
-/// control.
-fn unit_form(read: &Read, capture: &str) -> String {
-    let repository = match read.repositories.as_slice() {
-        [] => return String::new(),
-        [one] => format!("<input type=\"hidden\" name=\"repository\" value=\"{}\">", escape(one)),
-        many => {
-            let options: String = many
-                .iter()
-                .map(|r| format!("<option>{}</option>", escape(r)))
-                .collect();
-            format!("<select name=\"repository\" aria-label=\"repository\">{options}</select>")
-        }
-    };
-    format!(
-        "<form class=\"acts unit\" method=\"post\" action=\"/api/tools/propose-unit\">\
-         <input type=\"hidden\" name=\"capture\" value=\"{capture}\">\
-         <input type=\"hidden\" name=\"type\" value=\"chore\">\
-         <input type=\"text\" name=\"bolt\" placeholder=\"bolt name\" aria-label=\"bolt name\" required>\
-         {repository}<button class=\"btn\" type=\"submit\">unit</button></form>\n",
-        capture = escape(capture),
-    )
-}
 
 /// Everything with a session under it — a session, a host, the instance, a
 /// sink, curation — as a row: what it is, what it is called, how it stands, and
@@ -1715,9 +1700,10 @@ fn silhouette(machine: &str) -> &'static str {
 /// The signals with no move, by source and by age. Nothing here is discarded: a
 /// signal nobody has judged is one the operator has not seen yet (118).
 fn unmoved(read: &Read) -> String {
-    // Nothing waiting and no curation charged: the lane's own empty state
-    // says it, and no section stands here to be read past.
-    if read.status.unmoved.is_empty() && read.curation.is_none() {
+    // What waits is on the rail, one card each (19a); this section is the
+    // curator's surface, and stands only while a curation session is charged
+    // (110, 116). Nothing here explains when one is.
+    if read.curation.is_none() {
         return String::new();
     }
     let mut out = String::from(
@@ -2012,15 +1998,6 @@ fn dock_body(read: &Read, object: &Object, row: Option<&status::Row>) -> String 
         "why it is being asked",
         &why.join(""),
     ));
-
-    // A capture is where work may start (34, 12, 19).
-    if object.machine == "capture" {
-        out.push_str(&sec(
-            "make it work",
-            "a unit on a bolt of this repository, approved by you",
-            &unit_form(read, &object.id),
-        ));
-    }
 
     // What the sessions on it left behind. A session that finishes leaves real
     // files at real paths, and until the page linked them the operator could

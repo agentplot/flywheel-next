@@ -181,18 +181,21 @@ fn readme_walkthrough_runs() {
         "text=README's crates table lacks a row for flywheel-workspace-host&source=page",
     );
     used(&answered);
-    // It stands with its one control, and the dock's form names the capture.
-    let page = wait_for("data-tool=\"propose-unit\"");
-    let capture = value_of(&page, "name=\"capture\" value=\"")
-        .unwrap_or_else(|| panic!("the unit form names no capture: {page}"));
+    // It stands on the rail as a decision in the operator's own words, with
+    // build among its answers (19a).
+    let page = wait_for("data-answer=\"build\"");
+    let signal = page
+        .split("<article class=\"card decision")
+        .find(|card| card.contains("data-answer=\"build\""))
+        .and_then(|card| value_of(card, "data-object=\""))
+        .unwrap_or_else(|| panic!("no card carries build: {page}"));
+    let number = number_of(&page, &signal).unwrap_or_else(|| panic!("the capture's card carries no number: {page}"));
 
-    // The unit, with the bolt's name the section gives (34, 42, 44, 12).
-    let bolt = "readme-crates-table";
-    let proposed = post(
-        "/api/tools/propose-unit",
-        &format!("capture={capture}&type=chore&bolt={bolt}&repository=flywheel-next"),
-    );
-    used(&proposed);
+    // Build: the one answer that makes the unit, on a bolt named from the
+    // capture's first words (19a, 34, 42, 44, 12).
+    let built = post("/api/tools/answer", &format!("decision={number}&answer=build"));
+    used(&built);
+    let bolt = "readme-crates-table-lacks";
 
     // The session is started on the next tick, with its work order in the
     // place: with the operator as the session, the place is where the work is

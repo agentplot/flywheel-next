@@ -24,8 +24,18 @@ regions:
     initial: unmoved
     states:
       unmoved:
-        doc: counted and aged by source on the status view; never discarded (118)
+        doc: counted and aged by source on the status view; never discarded (118). It stands on the rail as the operator's own decision — what to make of it — until curation or the operator moves it (19a, 107)
+        decision: {kind: signal-unmoved, group: decide, answers: [build, intent, drop], satisfies: [19, 107, 116, 311]}
         transitions:
+          - when: {response: build}
+            to: unmoved
+            effects: [{do: build_from_signal, note: "a chore unit on a bolt named from the capture's own words, approved by this response; the move is route, naming the unit (19a, 12, 34)"}]
+          - when: {response: intent}
+            to: unmoved
+            effects: [{do: move_signal, args: {move: join}, note: "the join proposes an intent named from the capture's words, citing this signal, as curation's join does (19a, 109, 116)"}]
+          - when: {response: drop}
+            to: unmoved
+            effects: [{do: move_signal, args: {move: drop}}]
           - {when: {ev: signal.move, is: attach}, to: attached}
           - {when: {ev: signal.move, is: challenge}, to: challenging}
           - {when: {ev: signal.move, is: join}, to: joined}

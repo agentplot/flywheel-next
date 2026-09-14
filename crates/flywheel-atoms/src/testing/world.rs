@@ -16,6 +16,8 @@ use std::collections::BTreeMap;
 #[derive(Debug, Default)]
 pub struct FakeWorld {
     pub files: BTreeMap<String, String>,
+    /// The built repositories the instance tracks (205, 206).
+    pub repositories: Vec<RepositoryRef>,
     /// Every write that changed something, in order. A test that asserts
     /// reading a record wrote nothing back reads this rather than counting
     /// commits (78, 114).
@@ -25,6 +27,16 @@ pub struct FakeWorld {
 impl FakeWorld {
     pub fn new() -> FakeWorld {
         FakeWorld::default()
+    }
+
+    /// The same world, tracking one more built repository.
+    pub fn tracking(mut self, name: &str) -> FakeWorld {
+        self.repositories.push(RepositoryRef {
+            name: name.to_string(),
+            remote: format!("/git-host/{name}.git"),
+            shared_line: "main".into(),
+        });
+        self
     }
 
     /// How many writes changed the file at this path. Reading a record and
@@ -49,7 +61,7 @@ impl World for FakeWorld {
     }
 
     fn repositories(&self) -> Result<Vec<RepositoryRef>> {
-        Ok(vec![])
+        Ok(self.repositories.clone())
     }
 
     fn clone_repositories(&mut self) -> Result<()> {

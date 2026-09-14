@@ -188,21 +188,23 @@ impl Herdr {
     /// pane shows, and the prompt waits until the agent is at its prompt line
     /// (72, 196, 197). What Herdr shows is evidence, so a pane showing nothing
     /// of the kind is left alone.
-    pub fn clear_the_way(&self, name: &str) -> Result<()> {
+    pub fn clear_the_way(&self, name: &str) -> Result<bool> {
+        let mut answered = false;
         for _ in 0..30 {
             match self.status(name)?.as_str() {
-                "idle" | "done" => return Ok(()),
+                "idle" | "done" => return Ok(answered),
                 "blocked" => {
                     let shown = self.read_visible(name)?;
                     if shown.contains("trust") && shown.contains("folder") {
                         self.send_keys(name, &["down", "enter"])?;
+                        answered = true;
                     }
                 }
                 _ => {}
             }
             std::thread::sleep(std::time::Duration::from_millis(1000));
         }
-        Ok(())
+        Ok(answered)
     }
 }
 
@@ -243,6 +245,7 @@ pub fn start<S: Records>(
     let name = agent_name(&order.session);
     let mut pane = None;
     let mut workspace = None;
+    let mut fresh = false;
     if herdr.agent(&name)?.is_none() {
         let (ws, tab, pane_id) = match herdr.workspace_by_label(&placement.workspace_label)? {
             Some(ws) => {
@@ -255,13 +258,26 @@ pub fn start<S: Records>(
                 (ws, tab, pane)
             }
         };
-        herdr
-            .start_agent(&name, &placement.kind, &pane_id)
-            .with_context(|| format!("starting `{name}` ({}) in pane {pane_id}", placement.kind))?;
-        herdr.clear_the_way(&name)?;
-        herdr.prompt(&name, &first_prompt())?;
+        // An agent stopped at its own first-run question is "blocked during
+        // startup" to Herdr and not a failure here: the question is answered
+        // below and the agent is then ready (72, 196).
+        match herdr.start_agent(&name, &placement.kind, &pane_id) {
+            Ok(()) => {}
+            Err(e) if e.to_string().contains("blocked during startup") => {}
+            Err(e) => {
+                return Err(e).with_context(|| format!("starting `{name}` ({}) in pane {pane_id}", placement.kind));
+            }
+        }
+        fresh = true;
         pane = Some(pane_id);
         workspace = Some((ws, tab));
+    }
+    // A fresh agent is told where the order is; one found standing at its
+    // first-run question is told once the question is answered; one found
+    // already at work is left to it (197).
+    let answered = herdr.clear_the_way(&name)?;
+    if fresh || answered {
+        herdr.prompt(&name, &first_prompt())?;
     }
     operator::start(store, host, now, order)?;
     let mut fields: Vec<(&str, Value)> = vec![("runner", json!("herdr")), ("herdr_agent", json!(name))];

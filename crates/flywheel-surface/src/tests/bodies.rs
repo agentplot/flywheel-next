@@ -298,3 +298,105 @@ fn propose_unit_approves_a_unit_on_a_new_bolt_with_its_item() {
         .arg("type", json!("standing"));
     assert!(catalogue::call(&mut store, &mut world, &defs, &wrong).is_err(), "an elaboration type is no unit type");
 }
+
+/// `build_from_signal` is the operator's build on a signal's rail card (19a):
+/// a chore unit in approved on a bolt named from the capture's own words, on
+/// the one tracked repository, the capture as its document, the response that
+/// said build as its approval; and the signal's one move is route, naming the
+/// unit (12, 34, 107, 116). The operator types no name.
+#[test]
+fn build_from_signal_makes_the_unit_and_routes_the_signal() {
+    let mut store = flywheel_atoms::testing::FakeStore::default();
+    let mut world = world::Files::new().tracking("atlas");
+    let defs = flywheel_domain::set::load().expect("the embedded definitions");
+    let signal = flywheel_domain::signals::signal_object("page-7", 1);
+    let at = flywheel_domain::commands::now(&store).expect("a point");
+    flywheel_domain::commands::put_new(
+        &mut store,
+        &defs,
+        &signal,
+        "signal",
+        Some("capture/page-7"),
+        [("assertion".to_string(), json!("The README's crates table lacks a row for the Herdr binding, I think."))]
+            .into_iter()
+            .collect(),
+        at,
+    )
+    .expect("the signal");
+    // The response that said build, as the answer tool records it.
+    let call = Call::new("answer", "chuck", "page")
+        .arg("decision", json!(1))
+        .arg("answer", json!("build"));
+    let _ = call;
+    flywheel_domain::commands::put_new(
+        &mut store,
+        &defs,
+        "response/page-9",
+        "response",
+        None,
+        [
+            ("object".to_string(), json!(signal)),
+            ("answer".to_string(), json!("build")),
+            ("given_by".to_string(), json!("chuck")),
+        ]
+        .into_iter()
+        .collect(),
+        at,
+    )
+    .expect("the response");
+
+    let unit = catalogue::build_from_signal(&mut store, &mut world, &defs, &signal, at).expect("built");
+    assert_eq!(unit, "unit/atlas/readme-crates-table-lacks", "named from its first meaningful words, and typed by nobody");
+    let held = store.get(&unit).expect("a read").expect("the unit");
+    assert_eq!(held.config.get("life").map(String::as_str), Some("approved"));
+    assert_eq!(held.record.get("approval").and_then(|v| v.as_str()), Some("response/page-9"), "the response is the approval (I1)");
+    assert_eq!(held.record.get("document").and_then(|v| v.as_str()), Some("capture/page-7"));
+    assert_eq!(held.record.get("proposed_by").and_then(|v| v.as_str()), Some("chuck"));
+    assert!(store.get("bolt/atlas/readme-crates-table-lacks").expect("a read").is_some(), "the bolt was made (34)");
+    let moved = flywheel_domain::signals::moves(&flywheel_domain::signals::Blueprints(&world));
+    assert_eq!(moved.len(), 1, "the signal's one move");
+    assert_eq!(moved[0].target, format!("route {unit}"), "route, naming the unit (116)");
+
+    // The same words again take the next name; a name is given once (I1).
+    let again = catalogue::build_from_signal(&mut store, &mut world, &defs, &signal, at).expect("built again");
+    assert_eq!(again, "unit/atlas/readme-crates-table-lacks-2");
+}
+
+/// The operator's own move on a signal, from the rail (19a): join proposes an
+/// intent named from the capture's words and citing the signal; drop drops it
+/// with the response as the reason (107, 109, 116).
+#[test]
+fn the_operators_move_on_a_signal_joins_or_drops_it() {
+    let mut store = flywheel_atoms::testing::FakeStore::default();
+    let mut world = world::Files::new();
+    let defs = flywheel_domain::set::load().expect("the embedded definitions");
+    let at = flywheel_domain::commands::now(&store).expect("a point");
+    for (n, said) in [(1, "checkout drops the cart on refresh"), (2, "the footer overlaps the cookie bar")] {
+        flywheel_domain::commands::put_new(
+            &mut store,
+            &defs,
+            &flywheel_domain::signals::signal_object(&format!("page-{n}"), 1),
+            "signal",
+            Some(&format!("capture/page-{n}")),
+            [("assertion".to_string(), json!(said))].into_iter().collect(),
+            at,
+        )
+        .expect("the signal");
+    }
+    let one = flywheel_domain::signals::signal_object("page-1", 1);
+    let two = flywheel_domain::signals::signal_object("page-2", 1);
+
+    let joined = flywheel_domain::signals::move_by_operator(&mut store, &mut world, &defs, &one, "join", "the rail", at)
+        .expect("joined");
+    assert_eq!(joined.target, "join intent/checkout-drops-cart-refresh");
+    let intent = store.get("intent/checkout-drops-cart-refresh").expect("a read").expect("the intent is proposed (109)");
+    assert_eq!(intent.config.get("life").map(String::as_str), Some("proposed"));
+    assert_eq!(intent.record.get("signals"), Some(&json!([one.clone()])), "citing the signal, which is its weight");
+
+    let dropped = flywheel_domain::signals::move_by_operator(&mut store, &mut world, &defs, &two, "drop", "the rail", at)
+        .expect("dropped");
+    assert_eq!(dropped.target, "drop");
+    let moved = flywheel_domain::signals::moves(&flywheel_domain::signals::Blueprints(&world));
+    assert_eq!(moved.len(), 2);
+    assert!(flywheel_domain::signals::move_by_operator(&mut store, &mut world, &defs, &two, "attach", "the rail", at).is_err(), "attach is curation's, not the rail's");
+}

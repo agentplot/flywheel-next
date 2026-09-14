@@ -70,7 +70,17 @@ fn ids_within(html: &str, opening: &str, closing: &str) -> Vec<String> {
 ///
 /// This is the list the requirements justify, not the list the mockup draws.
 /// What the mockup draws and this does not is named below, with the reason.
-const HEADER: [(&str, &str); 9] = [
+const HEADER: [(&str, &str); 11] = [
+    (
+        "capture-text",
+        "the capture box's field: typed into and sent with return, reached with / or ⌘K \
+         (19, 194, 311)",
+    ),
+    (
+        "pal-drop",
+        "the same box opened under itself while it has the cursor: what was sent lately, \
+         and the two keys (19, 311)",
+    ),
     (
         "orgname",
         "where the operator is: the instance this host serves, which is in the path of \

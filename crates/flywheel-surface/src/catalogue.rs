@@ -654,7 +654,7 @@ fn propose_unit<S: StateStore, W: World + ?Sized>(
             let repository = match call.text("repository").filter(|r| !r.trim().is_empty()) {
                 Some(repository) => repository.trim().to_string(),
                 None => {
-                    let tracked: Vec<String> = world.repositories()?.into_iter().map(|r| r.name).collect();
+                    let tracked = built_repositories(world)?;
                     match tracked.as_slice() {
                         [one] => one.clone(),
                         [] => bail!(
@@ -723,22 +723,131 @@ fn propose_unit<S: StateStore, W: World + ?Sized>(
     )?;
     // Approved, by this call: the record names the response that approved it,
     // which is what I1 asks of every unit (unit.yaml record.approval).
-    let approval = record.id.clone();
-    let mut held = store.get(&unit)?.expect("the unit was just written");
-    let base = held.seq;
-    held.record.insert("approval".into(), json!(approval));
-    held.config.insert("life".into(), "approved".into());
-    held.entered_at.insert("life".into(), at);
-    store.put(&unit, &held, base)?;
-    let bolt = flywheel_domain::effects::create_bolt(store, defs, &unit, &name, &repository, at)?
-        .unwrap_or_else(|| format!("bolt/{repository}/{name}"));
-    let items = flywheel_domain::effects::create_items(store, defs, &unit, at)?;
+    let (bolt, items) = approve_unit(store, defs, &unit, &record.id, &name, &repository, at)?;
     record.journal.push(noted(
         "propose-unit",
         &unit,
         format!("approved on {bolt} by {}, {items} item(s)", call.by),
     ));
     Ok(record)
+}
+
+/// A unit in `proposed` stands `approved` by one response: the bolt it names
+/// is made when absent and its items are made (12, 34, I1).
+fn approve_unit<S: StateStore>(
+    store: &mut S,
+    defs: &Definitions,
+    unit: &str,
+    approval: &str,
+    name: &str,
+    repository: &str,
+    at: chrono::DateTime<chrono::Utc>,
+) -> Result<(String, usize)> {
+    let mut held = store.get(unit)?.expect("the unit was just written");
+    let base = held.seq;
+    held.record.insert("approval".into(), json!(approval));
+    held.config.insert("life".into(), "approved".into());
+    held.entered_at.insert("life".into(), at);
+    store.put(unit, &held, base)?;
+    let bolt = flywheel_domain::effects::create_bolt(store, defs, unit, name, repository, at)?
+        .unwrap_or_else(|| format!("bolt/{repository}/{name}"));
+    let items = flywheel_domain::effects::create_items(store, defs, unit, at)?;
+    Ok((bolt, items))
+}
+
+/// `build_from_signal` (19a): the operator's build on a signal's rail card. A
+/// chore unit in approved on a bolt named from the capture's own words, on the
+/// one repository the instance tracks, with the capture as its document and
+/// the response that said build as its approval; then the signal's one move is
+/// route, naming the unit (12, 34, 107, 116). The operator types no name.
+pub fn build_from_signal<S: StateStore, W: World + ?Sized>(
+    store: &mut S,
+    world: &mut W,
+    defs: &Definitions,
+    signal: &str,
+    at: chrono::DateTime<chrono::Utc>,
+) -> Result<String> {
+    let Some(held) = store.get(signal)? else {
+        bail!("`{signal}` is no signal on record");
+    };
+    let text = signals::text_of(&held).unwrap_or_default();
+    let tracked = built_repositories(world)?;
+    let repository = match tracked.as_slice() {
+        [one] => one.clone(),
+        [] => bail!("the instance tracks no repository for a bolt to land on (205, 206)"),
+        many => bail!(
+            "the instance tracks {} repositories, and a build from the rail names none: {}",
+            many.len(),
+            many.join(", ")
+        ),
+    };
+    let mut name = signals::name_from_words(&text);
+    // A name is given once (I1): a second capture in the same words takes the
+    // next number rather than the same bolt.
+    let stem = name.clone();
+    let mut nth = 1;
+    while store.get(&format!("unit/{repository}/{name}"))?.is_some() {
+        nth += 1;
+        name = format!("{stem}-{nth}");
+    }
+    let kind = "chore";
+    let Some(machine) = defs.get(kind).filter(|m| m.regions.contains_key("stages")) else {
+        bail!("`{kind}` is no unit type this set carries (37, 57)");
+    };
+    // The response that said build, which is the approval (I1); its author is
+    // who proposed the unit.
+    let responses = store.list_records(&Scope::All)?;
+    let response = responses
+        .iter()
+        .filter(|o| o.machine == "response")
+        .filter(|o| o.record.get("object").and_then(|v| v.as_str()) == Some(signal))
+        .filter(|o| o.record.get("answer").and_then(|v| v.as_str()) == Some("build"))
+        .max_by_key(|o| o.seq);
+    let approval = response.map(|o| o.id.clone()).unwrap_or_default();
+    let by = response
+        .and_then(|o| o.record.get("given_by").and_then(|v| v.as_str()))
+        .unwrap_or("operator")
+        .to_string();
+    let unit = format!("unit/{repository}/{name}");
+    let mut record: BTreeMap<String, Value> = BTreeMap::new();
+    record.insert("repository".into(), json!(repository));
+    record.insert("type".into(), json!(kind));
+    record.insert("type_version".into(), json!(machine.version));
+    record.insert("target".into(), json!({"new_name": name}));
+    record.insert("items".into(), json!(1));
+    record.insert("proposed_by".into(), json!(by));
+    if let Some(capture) = &held.parent {
+        record.insert("document".into(), json!(capture));
+    }
+    if !text.is_empty() {
+        record.insert("subject".into(), json!(text));
+    }
+    commands::put_new(store, defs, &unit, "unit", None, record, at)?;
+    approve_unit(store, defs, &unit, &approval, &name, &repository, at)?;
+    signals::apply_move(
+        store,
+        world,
+        &signals::Move {
+            signal: signal.to_string(),
+            target: format!("route {unit}"),
+            reason: "the operator's build on the rail (19a)".into(),
+            at: at.to_rfc3339(),
+        },
+        at,
+    )?;
+    Ok(unit)
+}
+
+/// The built repositories the instance tracks: what a bolt lands on. The
+/// state and the blueprints are the machinery's own and never a bolt's
+/// (205, 206).
+fn built_repositories<W: World + ?Sized>(world: &W) -> Result<Vec<String>> {
+    Ok(world
+        .repositories()?
+        .into_iter()
+        .map(|r| r.name)
+        .filter(|name| name != "flywheel-state" && name != "flywheel-blueprints")
+        .collect())
 }
 
 /// A name as an id segment: lower-case words joined by hyphens.

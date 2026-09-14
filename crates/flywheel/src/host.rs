@@ -2012,6 +2012,24 @@ fn performing(
         // reports the exit, and this reads those records back. Applying a move
         // already applied writes the same bytes and cites the same signal, so a
         // second pass changes nothing (127, 137).
+        // The operator's own move on one signal, from the rail (19a).
+        "move_signal" => {
+            let word = arg(effect, "move");
+            let HostStore { git, world, .. } = store;
+            flywheel_domain::signals::move_by_operator(
+                git,
+                &mut **world,
+                defs,
+                object,
+                &word,
+                "the operator's response on the rail (19a)",
+                now,
+            )?;
+        }
+        "build_from_signal" => {
+            let HostStore { git, world, .. } = store;
+            flywheel_surface::catalogue::build_from_signal(git, &mut **world, defs, object, now)?;
+        }
         "record_moves" => {
             let HostStore { git, world, .. } = store;
             let delivered =

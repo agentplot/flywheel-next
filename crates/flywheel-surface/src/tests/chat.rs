@@ -230,9 +230,12 @@ fn only_a_decision_line_is_answerable() {
         "the intent that closed is not in the tail: {:?}",
         post.tail
     );
+    // A signal with no move is the operator's own decision, on the rail with
+    // the rest (19a).
     assert!(
-        !post.lines.iter().any(|l| l.object == "signal/s1"),
-        "a signal is on the rail"
+        post.lines.iter().any(|l| l.object == "signal/s1" && l.answerable()),
+        "an unmoved signal is not on the rail as a decision (19a): {:?}",
+        post.lines
     );
 }
 
