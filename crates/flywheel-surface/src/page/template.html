@@ -853,16 +853,39 @@ a.btn.pri{color:var(--accent-ink)}
   .pal-row:hover{background:var(--surface2)}
   .doc h4 .an:hover{opacity:1}
 }
+
+/* ---- the rail and the board are one selection: the decision in hand lights the
+   object it stands on, and a board object picked lights its decision (S219). */
+.card.focused{background:var(--lit);border-color:var(--lit-line);border-left-color:var(--accent);outline:0}
+.lg-unit.lit,.bead.lit{background:var(--lit);border-color:var(--lit-line);box-shadow:0 0 0 2px var(--lit-line)}
+.quote{border:1px solid var(--line);border-left:3px solid var(--line2);border-radius:6px;background:var(--surface);padding:8px 10px;margin:0 0 8px;cursor:pointer}
+.quote:hover{border-color:var(--ink3)}
+.quote.lit{background:var(--lit);border-color:var(--lit-line);border-left-color:var(--lit-line)}
+.quote q a{color:inherit;text-decoration:none}
+.quote q a:hover{text-decoration:underline}
+.rail-h .keys{margin-left:auto;display:inline-flex;align-items:center;gap:3px;font-size:11px;color:var(--ink3);white-space:nowrap}
+.rail-h .keys kbd{font-size:10px;padding:0 4px}
+/* ---- a decision reads as a question, and each control says what it does and
+   how it is pressed (S220). */
+.card .asks,.dk-answers .asks{font-size:13px;color:var(--ink);margin:6px 0 0;line-height:1.35}
+.answers button,.answers .to-dock{min-height:36px;min-width:44px;padding:6px 12px;border:1px solid var(--line);border-radius:7px;background:var(--surface);color:var(--ink);font-weight:600;font-size:12.5px;display:inline-flex;align-items:center;gap:7px;cursor:pointer;transition:border-color .1s,background .1s}
+.answers button:hover,.answers .to-dock:hover{border-color:var(--ink3);background:var(--surface2)}
+.answers button.pri{background:var(--accent);border-color:var(--accent);color:var(--accent-ink)}
+.answers button.pri:hover{filter:brightness(1.08)}
+.answers button.drop{color:var(--crit);border-color:color-mix(in srgb,var(--crit) 45%,var(--line))}
+.answers button .k,.answers .to-dock .k{font:600 10px var(--mono);border:1px solid currentColor;border-radius:3px;padding:0 4px;opacity:.7;line-height:1.5}
+.answers button.pri .k{border-color:var(--accent-ink);opacity:.85}
+button#yesall[disabled],form.yesall-form:has(> button[disabled]){display:none}
 </style>
 </head>
-<body>
+<body data-gen="{{GEN}}">
 <!-- The top. Everything on it is read from the one request's read: the
      instance, the point the read is as of, and how many decisions stand. -->
 <header class="top">
   <h1>Flywheel</h1>
   <span class="meta"><b id="orgname">{{INSTANCE}}</b> <span class="mono" id="clock">{{CLOCK}}</span></span>
   <form class="palbtn top-capture" id="pal-open" method="post" action="/api/tools/capture" autocomplete="off">
-    <input type="hidden" name="source" value="page">
+    <input type="hidden" name="source" value="console">
     <label class="sr-only" for="capture-text">Capture</label>
     <input type="text" id="capture-text" name="text" placeholder="Capture what you noticed" autocomplete="off" spellcheck="false">
     <kbd>⌘K</kbd>
@@ -921,7 +944,7 @@ a.btn.pri{color:var(--accent-ink)}
 <div class="pal-scrim" id="pal-scrim">
   <div class="pal" id="pal" role="dialog" aria-modal="true" aria-label="capture">
     <form class="capture" id="capture-box" method="post" action="/api/tools/capture">
-      <input type="hidden" name="source" value="page">
+      <input type="hidden" name="source" value="console">
       <div class="pal-f">
         <label class="sr-only" for="pal-q">Capture</label>
         <input type="text" id="pal-q" name="text" autocomplete="off" spellcheck="false" placeholder="Capture what you noticed">
@@ -962,32 +985,58 @@ a.btn.pri{color:var(--accent-ink)}
   function closeBox(){ if(drop) drop.hidden=true; if(box && document.activeElement===box) box.blur(); if(scrim){ scrim.classList.remove('open'); } if(location.hash==='#pal-scrim') clearHash(); }
   function boxOpen(){ return (drop && !drop.hidden) || (scrim && (scrim.classList.contains('open') || location.hash==='#pal-scrim')); }
   if(box){ box.addEventListener('focus', function(){ if(drop) drop.hidden=false; }); }
-  document.addEventListener('click', function(e){
-    var t=e.target;
-    if(t.closest && t.closest('#pal-open-rail,#pal-open-phone')){ e.preventDefault(); openBox(); return; }
-    if(t===scrim){ closeBox(); return; }
-    if(t.closest && t.closest('#pal-close,#pal-cancel')){ e.preventDefault(); closeBox(); return; }
-    if(drop && !drop.hidden && !(t.closest && t.closest('#pal-open'))){ drop.hidden=true; }
-  });
 
   // ---- the dock: Esc closes it whether a link or the request opened it
   function dockOpen(){ return /^#dock-/.test(location.hash) || !!document.querySelector('.dock .surface[data-opened=true]'); }
   function closeDock(){ document.querySelectorAll('.dock .surface[data-opened=true]').forEach(function(s){ s.setAttribute('data-opened','false'); }); clearHash(); }
 
-  // ---- the rail: j and k walk it, Enter opens, a letter answers (S56, S57)
-  var cards=Array.prototype.slice.call(document.querySelectorAll('.card.decision'));
+  // ---- one selection: the decision in hand on the rail, and the object it
+  // stands on lit on the board (S219). j and k walk the rail; a mark on a
+  // board object takes its decision in hand; a board object with no decision
+  // lights alone.
   var at=-1;
-  function focusCard(i){ if(!cards.length) return; at=Math.max(0, Math.min(cards.length-1, i)); cards.forEach(function(c,k){ c.classList.toggle('focused', k===at); }); cards[at].scrollIntoView({block:'nearest'}); }
-  function focused(){ return at>=0 ? cards[at] : null; }
-  var KEYS={y:['yes'], n:['no','drop'], l:['later'], b:['build'], i:['intent'], d:['drop']};
+  function cards(){ return Array.prototype.slice.call(document.querySelectorAll('#rail .card.decision')); }
+  function focused(){ var c=cards(); return (at>=0 && at<c.length) ? c[at] : null; }
+  function light(object){
+    document.querySelectorAll('#board .lit').forEach(function(el){ el.classList.remove('lit'); });
+    if(!object) return;
+    var el=document.getElementById(object); if(!el || !el.closest('#board')) return;
+    el.classList.add('lit'); el.scrollIntoView({block:'nearest'});
+  }
+  function focusCard(i, quiet){
+    var c=cards(); if(!c.length){ at=-1; light(null); return; }
+    at=Math.max(0, Math.min(c.length-1, i));
+    c.forEach(function(x,k){ x.classList.toggle('focused', k===at); });
+    if(!quiet) c[at].scrollIntoView({block:'nearest'});
+    light(c[at].getAttribute('data-board')||c[at].getAttribute('data-object'));
+  }
+  function focusNumber(n){ var c=cards(); for(var i=0;i<c.length;i++){ if(c[i].getAttribute('data-number')===String(n)){ focusCard(i); return true; } } return false; }
+  function focusObject(object){
+    var c=cards(); for(var i=0;i<c.length;i++){ if(c[i].getAttribute('data-object')===object || c[i].getAttribute('data-board')===object){ focusCard(i); return true; } }
+    c.forEach(function(x){ x.classList.remove('focused'); }); at=-1; light(object); return false;
+  }
   function answer(key){
-    var card=focused(); if(!card){ toast('no card in hand · j and k walk the rail'); return; }
-    var want=KEYS[key]||[]; var control=null;
-    want.some(function(a){ control=card.querySelector('[data-answer="'+a+'"]'); return !!control; });
-    if(!control){ var offered=Array.prototype.map.call(card.querySelectorAll('[data-answer]'), function(b){ return b.getAttribute('data-answer'); });
-      toast((card.getAttribute('data-number')||'')+' · no "'+key+'" answer on this card · '+offered.join(' · ')); return; }
+    var card=focused(); if(!card){ toast('nothing in hand · j and k walk the decisions'); return; }
+    var control=card.querySelector('[data-key="'+key+'"]');
+    if(!control){
+      var offered=Array.prototype.map.call(card.querySelectorAll('[data-key]'), function(b){ return b.getAttribute('data-key')+' '+b.firstChild.textContent.trim(); });
+      toast((card.getAttribute('data-number')||'')+' · "'+key+'" answers nothing here · '+(offered.join(' · ')||'answer it in the drawer')); return;
+    }
     control.click();
   }
+  function openFocused(){ var c=focused(); if(!c) return; var a=c.querySelector('a.object'); if(a) location.hash='#dock-'+a.getAttribute('data-object'); }
+
+  document.addEventListener('click', function(e){
+    var t=e.target; if(!t.closest) return;
+    if(t.closest('#pal-open-rail,#pal-open-phone')){ e.preventDefault(); openBox(); return; }
+    if(t===scrim){ closeBox(); return; }
+    if(t.closest('#pal-close,#pal-cancel')){ e.preventDefault(); closeBox(); return; }
+    if(drop && !drop.hidden && !t.closest('#pal-open')){ drop.hidden=true; }
+    var mark=t.closest('#board .marks .mark'); if(mark){ e.preventDefault(); focusNumber(mark.getAttribute('data-mark')); return; }
+    var card=t.closest('#rail .card.decision'); if(card && !t.closest('a,button,input,label')){ focusCard(cards().indexOf(card)); return; }
+    var obj=t.closest('#board [data-machine]'); if(obj && obj.id && !t.closest('a,button,input,label,form,.dock')){ focusObject(obj.id); return; }
+  });
+
   document.addEventListener('keydown', function(e){
     var t=e.target;
     if((e.metaKey||e.ctrlKey)&&(e.key==='k'||e.key==='K')){ e.preventDefault(); boxOpen()?closeBox():openBox(); return; }
@@ -1003,19 +1052,56 @@ a.btn.pri{color:var(--accent-ink)}
     if(k==='/'){ e.preventDefault(); openBox(); return; }
     if(k==='j'||k==='ArrowDown'){ e.preventDefault(); focusCard(at+1); return; }
     if(k==='k'||k==='ArrowUp'){ e.preventDefault(); focusCard(at-1); return; }
-    if(k==='Enter'||k==='o'){ var c=focused(); if(c){ e.preventDefault(); var a=c.querySelector('a.object'); if(a) location.hash='#dock-'+a.getAttribute('data-object'); } return; }
-    if(KEYS[k]){ e.preventDefault(); answer(k); }
+    if(k==='Enter'||k==='o'){ e.preventDefault(); openFocused(); return; }
+    if(/^[a-z]$/.test(k)){ e.preventDefault(); answer(k); }
   });
 
   // ---- feedback: a control used goes busy at once and takes no second press
+  var busy=false;
   document.addEventListener('submit', function(e){
     var form=e.target; if(!form || form.tagName!=='FORM') return;
     if(form.classList.contains('busy')){ e.preventDefault(); return; }
-    form.classList.add('busy');
+    form.classList.add('busy'); busy=true;
     if(progress) progress.hidden=false;
     setTimeout(function(){ form.querySelectorAll('button,input[type=submit]').forEach(function(b){ b.disabled=true; }); }, 0);
   });
-  addEventListener('pageshow', function(){ if(progress) progress.hidden=true; document.querySelectorAll('form.busy').forEach(function(f){ f.classList.remove('busy'); f.querySelectorAll('button,input[type=submit]').forEach(function(b){ b.disabled=false; }); }); });
+  addEventListener('pageshow', function(){ busy=false; if(progress) progress.hidden=true; document.querySelectorAll('form.busy').forEach(function(f){ f.classList.remove('busy'); f.querySelectorAll('button,input[type=submit]').forEach(function(b){ b.disabled=false; }); }); });
+
+  // ---- the page keeps itself current (S221): the host says when its store
+  // moved, and the page fetches itself and swaps what changed, keeping the
+  // decision in hand, the drawer and where each column was scrolled to.
+  var REGIONS=['hosts','rail','board-h','lanes','dk-b','count','bd-plan','bd-board','sent','loglist','clock','pal-dyn'];
+  var refreshing=false, again=false;
+  function refresh(){
+    if(refreshing){ again=true; return; }
+    if(busy) return;
+    refreshing=true;
+    fetch(location.pathname+location.search, {credentials:'same-origin', headers:{'Accept':'text/html'}})
+      .then(function(r){ return r.ok ? r.text() : Promise.reject(r.status); })
+      .then(function(html){
+        var doc=new DOMParser().parseFromString(html, 'text/html');
+        var keep=focused(); var number=keep ? keep.getAttribute('data-number') : null;
+        var lit=document.querySelector('#board .lit'); var litId=lit ? lit.id : null;
+        var scrolled=[]; document.querySelectorAll('#rail,#board,#lanes,.lane,#dk-b').forEach(function(el){ scrolled.push([el.id||el.className, el.scrollTop]); });
+        REGIONS.forEach(function(id){ var cur=document.getElementById(id); var next=doc.getElementById(id); if(cur && next) cur.innerHTML=next.innerHTML; });
+        var dropBody=document.querySelector('#pal-drop .pal-body'), nextDrop=doc.querySelector('#pal-drop .pal-body'); if(dropBody && nextDrop) dropBody.innerHTML=nextDrop.innerHTML;
+        var ya=document.querySelector('form.yesall-form'), nya=doc.querySelector('form.yesall-form'); if(ya && nya) ya.outerHTML=nya.outerHTML;
+        document.body.setAttribute('data-gen', doc.body.getAttribute('data-gen')||'');
+        document.querySelectorAll('#rail,#board,#lanes,.lane,#dk-b').forEach(function(el,i){ if(scrolled[i]) el.scrollTop=scrolled[i][1]; });
+        if(!(number!==null && focusNumber(number))){ if(litId && document.getElementById(litId)) focusObject(litId); else focusCard(Math.max(0, at), true); }
+      })
+      .catch(function(){})
+      .then(function(){ refreshing=false; if(again){ again=false; refresh(); } });
+  }
+  if(window.EventSource){
+    var es=new EventSource('/events');
+    es.onmessage=function(ev){ if(ev.data && ev.data!==document.body.getAttribute('data-gen')) refresh(); };
+  }
+
+  // ---- at the start: the first decision is in hand, or the one whose object
+  // the link opened (S219).
+  var opened=/^#dock-(.+)$/.exec(location.hash);
+  if(!(opened && focusObject(decodeURIComponent(opened[1])))) focusCard(0, true);
 })();
 </script>
 <!-- The tour: an instance standing part-way through a scenario onboards

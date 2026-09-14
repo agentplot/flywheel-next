@@ -182,6 +182,37 @@ impl Herdr {
             .unwrap_or_else(|| "absent".into()))
     }
 
+    /// Block until the agent's status is something other than `current`, for
+    /// at most `timeout_ms`: `Some(status)` when it changed, `None` when the
+    /// wait ran out with nothing changed, and an error when Herdr no longer
+    /// lists the agent (S221). This is Herdr's own wait, so a host learns of
+    /// an agent going idle the moment Herdr does and not at its next poll.
+    pub fn wait_change(&self, name: &str, current: &str, timeout_ms: u64) -> Result<Option<String>> {
+        let mut args: Vec<String> = vec!["agent".into(), "wait".into(), name.into()];
+        for status in ["working", "idle", "blocked", "done", "unknown"] {
+            if status != current {
+                args.push("--until".into());
+                args.push(status.into());
+            }
+        }
+        args.push("--timeout".into());
+        args.push(timeout_ms.to_string());
+        let borrowed: Vec<&str> = args.iter().map(String::as_str).collect();
+        match self.run(&borrowed) {
+            Ok(v) => {
+                let status = ["/result/agent/agent_status", "/result/agent_status", "/result/status"]
+                    .iter()
+                    .find_map(|at| v.pointer(at).and_then(|s| s.as_str()).map(String::from));
+                match status {
+                    Some(status) => Ok(Some(status)),
+                    None => Ok(Some(self.status(name)?)),
+                }
+            }
+            Err(e) if e.to_string().contains("timed out") || e.to_string().contains("timeout") => Ok(None),
+            Err(e) => Err(e),
+        }
+    }
+
     /// An agent just started may stand at its own first-run question before it
     /// takes a prompt: Claude Code asks whether the folder is trusted, and a
     /// place the machinery made is. The question is answered from what the
@@ -337,6 +368,23 @@ pub fn evidence<S: Records>(store: &S, herdr: &Herdr, session: &str, name: &str)
         "session.operator_present" => json!(false),
         _ => return None,
     })
+}
+
+/// Every session this store says is running with an agent in Herdr: the
+/// session and the agent's name, which is what a host watches (S221).
+pub fn live_agents<S: Records>(store: &S) -> Vec<(String, String)> {
+    let prefix = operator::session_fact("");
+    store
+        .list_records(&flywheel_atoms::Scope::All)
+        .unwrap_or_default()
+        .into_iter()
+        .filter(|o| o.id.starts_with(&prefix))
+        .filter_map(|o| {
+            let session = o.id.strip_prefix(&prefix)?.to_string();
+            let agent = o.record.get("herdr_agent")?.as_str()?.to_string();
+            operator::running(store, &session).then_some((session, agent))
+        })
+        .collect()
 }
 
 /// End the pane and close the record (26, 74, 196).

@@ -226,6 +226,7 @@ fn do_report(cli: &Cli, host: &str, session: &str, report: &Report) -> Result<i3
     let by = std::env::var("USER").unwrap_or_else(|_| "operator".into());
     let at = chrono::Utc::now();
     let outcome = report::write_report(&mut store, session, &by, at, report)?;
+    wake_page();
     Ok(match outcome {
         Reported::Accepted(entry) => {
             println!("{} recorded on {session}", entry.kind);
@@ -237,6 +238,35 @@ fn do_report(cli: &Cli, host: &str, session: &str, report: &Report) -> Result<i3
             1
         }
     })
+}
+
+/// A report is a cause the loop should act on now (130, D6, S221): the order
+/// names where the host's page is, and one request there wakes the loop. A
+/// page that does not answer costs a second and changes nothing; the poll is
+/// the floor.
+fn wake_page() {
+    use std::io::Write;
+    let Ok(page) = std::env::var("FLYWHEEL_PAGE") else {
+        return;
+    };
+    let Some(at) = page.strip_prefix("http://") else {
+        return;
+    };
+    let at = at.trim_end_matches('/').to_string();
+    let Ok(stream) = std::net::TcpStream::connect_timeout(
+        &match at.parse::<std::net::SocketAddr>() {
+            Ok(address) => address,
+            Err(_) => return,
+        },
+        std::time::Duration::from_secs(1),
+    ) else {
+        return;
+    };
+    let mut stream = stream;
+    let _ = stream.set_write_timeout(Some(std::time::Duration::from_secs(1)));
+    let _ = stream.write_all(
+        format!("POST /api/wake HTTP/1.0\r\nHost: {at}\r\nContent-Length: 0\r\n\r\n").as_bytes(),
+    );
 }
 
 /// What a host is asked to do. Group 5 fills these in; the binding rule they
@@ -544,9 +574,25 @@ async fn main() -> Result<()> {
                     // What a local cause wakes, so the loop takes its next pass
                     // at once rather than sleeping out the poll (130, D6).
                     let mut woken: Option<std::sync::Arc<tokio::sync::Notify>> = None;
+                    // What tells every open page the store moved (S221), and
+                    // what waits on Herdr's agents so a change there is a
+                    // cause now and not at the next poll.
+                    let mut changed: Option<std::sync::Arc<tokio::sync::watch::Sender<u64>>> = None;
+                    let mut watchers: Option<flywheel::watch::Watchers> = None;
                     if let Some(port) = serve {
                         let served = flywheel::serve::page_of(&host, *port, operators);
                         woken = Some(served.woken.clone());
+                        changed = Some(served.changed.clone());
+                        // A session's report is written by another process;
+                        // the order tells it where this page is so it can wake
+                        // the loop when it has written (S221).
+                        std::env::set_var("FLYWHEEL_PAGE", format!("http://127.0.0.1:{port}"));
+                        if host.lock().expect("the running host is poisoned").bindings.sessions == "herdr" {
+                            watchers = Some(flywheel::watch::Watchers::new(
+                                served.woken.clone(),
+                                served.changed.clone(),
+                            ));
+                        }
                         for listener in flywheel::serve::listeners(&served, *port).await? {
                             println!("page at http://{}/", listener.local_addr()?);
                             let served = served.clone();
@@ -579,8 +625,12 @@ async fn main() -> Result<()> {
                             // the page's request never waits on a cascade
                             // (D11, the design's "How an action runs").
                             let now = held.now();
+                            let mut moved = false;
                             match flywheel::tour::play_due(&mut held, now) {
-                                Ok(true) => println!("tour: an action was played"),
+                                Ok(true) => {
+                                    println!("tour: an action was played");
+                                    moved = true;
+                                }
                                 Ok(false) => {}
                                 Err(e) => {
                                     let name = held.name.clone();
@@ -621,6 +671,7 @@ async fn main() -> Result<()> {
                                     if fired > 0 && cascading {
                                         println!("{fired} transitions");
                                     }
+                                    moved |= cascading;
                                 }
                                 // A problem with the machinery is reported and
                                 // made no work of; the loop goes on (81).
@@ -628,7 +679,16 @@ async fn main() -> Result<()> {
                                     let name = held.name.clone();
                                     held.report_problem(&format!("host/{name}"), &format!("{e:#}"));
                                     eprintln!("problem: {e:#}");
+                                    moved = true;
                                 }
+                            }
+                            if moved {
+                                if let Some(changed) = &changed {
+                                    changed.send_modify(|generation| *generation += 1);
+                                }
+                            }
+                            if let Some(watchers) = &watchers {
+                                watchers.follow(&held.store.git);
                             }
                         }
                         pass += 1;

@@ -10,6 +10,7 @@ pub mod report;
 pub mod seed;
 pub mod serve;
 pub mod tour;
+pub mod watch;
 
 /// The commands, written against the trait surface. They live in
 /// `flywheel-scenario` so the conformance runner ticks the same code the

@@ -868,6 +868,7 @@ dependencies = [
  "flywheel-engine",
  "flywheel-store-git",
  "flywheel-surface",
+ "futures-util",
  "serde",
  "serde_json",
  "serde_yaml",

@@ -49,6 +49,10 @@ pub struct Served<S: StateStore + Send + 'static> {
     /// the loop serving beside it takes its next pass without sleeping out the
     /// 30 seconds. A caller with no loop beside it simply never listens.
     pub woken: Arc<tokio::sync::Notify>,
+    /// Which rendering of the instance is current: raised by the loop when its
+    /// store moved, and what `/events` tells every open page, so a page fetches
+    /// itself the moment there is something new and not on a timer (S221).
+    pub changed: Arc<tokio::sync::watch::Sender<u64>>,
 }
 
 impl<S: StateStore + Send + 'static> Clone for Served<S> {
@@ -61,6 +65,7 @@ impl<S: StateStore + Send + 'static> Clone for Served<S> {
             address: self.address.clone(),
             localhost_port: self.localhost_port,
             woken: self.woken.clone(),
+            changed: self.changed.clone(),
         }
     }
 }
@@ -82,7 +87,13 @@ impl<S: StateStore + Send + 'static> Served<S> {
             address: address.to_string(),
             localhost_port: 4242,
             woken: Arc::new(tokio::sync::Notify::new()),
+            changed: Arc::new(tokio::sync::watch::Sender::new(1)),
         }
+    }
+
+    /// The store moved: every open page is told, and fetches itself (S221).
+    pub fn moved(&self) {
+        self.changed.send_modify(|generation| *generation += 1);
     }
 
     /// The instance this host serves, as it stands in the path of every link
@@ -690,6 +701,7 @@ async fn rendered<S: StateStore + Send + 'static>(
         Ok(mut read) => {
             read.opened = opened;
             read.refused = refused;
+            read.generation = *served.changed.borrow();
             (StatusCode::OK, Html(page::render(&read)))
         }
         Err(refused) => (
@@ -745,10 +757,40 @@ async fn tour_next<S: StateStore + Send + 'static>(
     }
 }
 
+/// `GET /events` — the host telling every open page when its store moved
+/// (S221). One line per change carrying the generation; the page compares it
+/// with the one it was rendered at and fetches itself when they differ. A
+/// comment every twenty seconds keeps the connection through a proxy, and the
+/// browser reconnects on its own when it drops.
+async fn events<S: StateStore + Send + 'static>(
+    State(served): State<Served<S>>,
+) -> axum::response::sse::Sse<impl futures_util::Stream<Item = Result<axum::response::sse::Event, std::convert::Infallible>>> {
+    use axum::response::sse::{Event, KeepAlive, Sse};
+    let receiver = served.changed.subscribe();
+    let stream = futures_util::stream::unfold((receiver, true), |(mut receiver, first)| async move {
+        if !first && receiver.changed().await.is_err() {
+            return None;
+        }
+        let generation = *receiver.borrow_and_update();
+        Some((Ok(Event::default().data(generation.to_string())), (receiver, false)))
+    });
+    Sse::new(stream).keep_alive(KeepAlive::new().interval(std::time::Duration::from_secs(20)))
+}
+
+/// `POST /api/wake` — a session's report, written to the state repository by
+/// another process on this machine, telling the loop to look now rather than
+/// at its next poll (130, D6, S221). Nothing is read from the request.
+async fn wake<S: StateStore + Send + 'static>(State(served): State<Served<S>>) -> StatusCode {
+    served.woken.notify_waiters();
+    StatusCode::NO_CONTENT
+}
+
 /// The router the page and the chat are served by.
 pub fn router<S: StateStore + Send + 'static>(served: Served<S>) -> Router {
     Router::new()
         .route("/", get(page::<S>))
+        .route("/events", get(events::<S>))
+        .route("/api/wake", post(wake::<S>))
         .route("/tour/next", post(tour_next::<S>))
         .route("/api/tools", get(tools::<S>))
         .route("/api/tools/:name", post(invoke::<S>))

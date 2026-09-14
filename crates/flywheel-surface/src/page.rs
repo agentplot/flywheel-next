@@ -21,6 +21,7 @@
 use crate::links;
 use flywheel_atoms::{CommitRef, StateStore, World};
 
+mod asks;
 mod dock;
 pub use dock::Session;
 use flywheel_domain::signals;
@@ -81,6 +82,9 @@ pub struct Read {
     pub intents: Vec<String>,
     /// The last commits on every bolt's line, by bolt id (185, S28).
     pub commits: BTreeMap<String, Vec<CommitRef>>,
+    /// The bolts whose commits are main's latest, because their branch holds
+    /// nothing main does not — landed, or not yet built on.
+    pub commits_are_mains: std::collections::BTreeSet<String>,
     /// Every session the bindings recorded, by session id, with what its
     /// thread says it did (141, 144, S28).
     pub sessions: BTreeMap<String, Session>,
@@ -104,6 +108,10 @@ pub struct Read {
     /// so a refusal comes back as the page itself with the reason on it and
     /// never as a body the operator is stranded on (310, 311).
     pub refused: Option<String>,
+    /// Which rendering of the instance this is: a count the host raises when
+    /// its store moved, carried on the page so the page can tell whether the
+    /// one it holds is still current (S221).
+    pub generation: u64,
     /// The object a link opened the page at, where the request named one: the
     /// dock's surface for it is the one already open, so a link the machinery
     /// wrote lands on the object it names rather than on the board (308, 205a,
@@ -403,6 +411,7 @@ pub fn read<S: StateStore, W: World + ?Sized>(
     // The commits on each bolt's line, from the world, and every session the
     // bindings recorded, with its exit from its own thread (185, 144, S28).
     let mut commits: BTreeMap<String, Vec<CommitRef>> = BTreeMap::new();
+    let mut commits_are_mains = std::collections::BTreeSet::new();
     for bolt in objects.iter().filter(|o| o.machine == "bolt") {
         let Some(repository) = bolt.record.get("repository").and_then(|v| v.as_str()) else {
             continue;
@@ -410,6 +419,9 @@ pub fn read<S: StateStore, W: World + ?Sized>(
         let mut held = world.line_log(repository, &bolt.id, 12).unwrap_or_default();
         if held.is_empty() && bolt.config.get("life").map(String::as_str) == Some("landed") {
             held = world.line_log(repository, "main", 8).unwrap_or_default();
+            if !held.is_empty() {
+                commits_are_mains.insert(bolt.id.clone());
+            }
         }
         if !held.is_empty() {
             commits.insert(bolt.id.clone(), held);
@@ -452,6 +464,7 @@ pub fn read<S: StateStore, W: World + ?Sized>(
     }
 
     Ok(Read {
+        generation: 0,
         decisions,
         status,
         objects,
@@ -467,6 +480,7 @@ pub fn read<S: StateStore, W: World + ?Sized>(
         why,
         delivered,
         commits,
+        commits_are_mains,
         sessions,
         reading: None,
         tour: flywheel_domain::tour::read(store, instance_of(address)),
@@ -646,6 +660,7 @@ pub fn render(read: &Read) -> String {
     let sent: usize = read.answered.values().map(Vec::len).sum();
     let mut out = TEMPLATE
         .replace("{{VERSION}}", VERSION)
+        .replace("{{GEN}}", &read.generation.to_string())
         .replace("{{FONTS}}", fonts_css())
         .replace("{{INSTANCE}}", &escape(instance))
         .replace("{{OPERATOR}}", &escape(&read.operator))
@@ -830,6 +845,8 @@ fn hosts(read: &Read) -> String {
 fn rail(read: &Read) -> String {
     let mut out = String::from(
         "<div class=\"rail-h\"><h2>Decisions</h2>\
+         <span class=\"keys\" title=\"j and k walk the decisions; the key on a control answers it; Enter opens the one in hand\">\
+         <kbd>j</kbd><kbd>k</kbd> walk <kbd>↵</kbd> open</span>\
          <a class=\"btn sm phone-only\" id=\"pal-open-rail\" href=\"#pal-scrim\">capture…</a></div>\n",
     );
     // A control that was refused says so where the control is, and the page is
@@ -944,10 +961,11 @@ fn card(read: &Read, decision: &DecisionInstance) -> String {
     let _ = write!(
         out,
         "<article class=\"card decision g-{group}\" data-kind=\"decision\" \
-         data-number=\"{number}\" data-object=\"{object}\" data-group=\"{group}\" \
+         data-number=\"{number}\" data-object=\"{object}\" data-board=\"{board}\" data-group=\"{group}\" \
          aria-label=\"decision {number}\">\n",
         group = escape(&decision.group),
-        object = escape(&decision.object)
+        object = escape(&decision.object),
+        board = escape(board_object(read, &decision.object)),
     );
     // What it is, and where it is: the kind is the object's own machine, and
     // the phase is the lane it sits in on the board. The group is the heading
@@ -1020,9 +1038,15 @@ fn card(read: &Read, decision: &DecisionInstance) -> String {
             escape(&away.said())
         );
     }
+    // What is being asked, as a sentence, above the controls that answer it
+    // (S220).
+    if let Some(asked) = question_of(read, decision) {
+        let _ = write!(out, "<p class=\"asks\">{}</p>\n", escape(&asked));
+    }
     out.push_str("<div class=\"answers\">\n");
-    for answer in &decision.answers {
-        out.push_str(&card_control(&number, answer, &decision.object));
+    let keys = asks::keys(&decision.answers);
+    for (answer, key) in decision.answers.iter().zip(keys) {
+        out.push_str(&card_control(&number, answer, &decision.object, &decision.kind, key));
     }
     out.push_str("</div>\n");
     // What has already been answered, with who gave it and when: the response
@@ -1033,22 +1057,41 @@ fn card(read: &Read, decision: &DecisionInstance) -> String {
     out
 }
 
+/// The sentence a decision asks, with what the page knows of its object
+/// (S220): a bolt's close says how many units are merged and asks whether to
+/// land it.
+fn question_of(read: &Read, decision: &DecisionInstance) -> Option<String> {
+    let units_merged = read
+        .objects
+        .iter()
+        .filter(|o| o.machine == "unit" && o.parent.as_deref() == Some(decision.object.as_str()))
+        .filter(|o| o.config.get("life").map(String::as_str) == Some("merged"))
+        .count();
+    asks::question(
+        &decision.kind,
+        name_of(&decision.object),
+        &asks::Facts { units_merged },
+    )
+}
+
 /// An answer on the rail's card. A bare answer is the one-tap control; an
 /// answer that takes an argument — `redo: <notes>`, `bolt <name>`, `type
 /// <name>` — is one tap too, opening the object in the dock where the field
 /// for it is (311, S6, D16). A card with six text fields on it read as a form
 /// and not as a decision; the mockup keeps the card to its words and takes
 /// the argument in a box the tap opens.
-fn card_control(number: &str, answer: &str, object: &str) -> String {
+fn card_control(number: &str, answer: &str, object: &str, kind: &str, key: Option<char>) -> String {
     if takes_an_argument(answer).is_none() {
-        return control(number, answer);
+        return control(number, answer, kind, key);
     }
     format!(
         "<a class=\"btn sm to-dock\" href=\"#dock-{object}\" data-answer=\"{whole}\" \
-         data-decision=\"{number}\">{said}…</a>\n",
+         data-decision=\"{number}\"{key_attr}>{said}…{key_hint}</a>\n",
         object = escape(object),
         whole = escape(answer),
-        said = escape(&said(answer)),
+        said = escape(&asks::label(kind, answer)),
+        key_attr = key.map(|k| format!(" data-key=\"{k}\"")).unwrap_or_default(),
+        key_hint = key.map(|k| format!("<span class=\"k\">{k}</span>")).unwrap_or_default(),
     )
 }
 
@@ -1063,8 +1106,22 @@ fn card_control(number: &str, answer: &str, object: &str) -> String {
 /// controls on a unit's card and every way of sending work back. A long-form
 /// answer is given with the platform's own keyboard, which is what the field is
 /// (311).
-fn control(number: &str, answer: &str) -> String {
+fn control(number: &str, answer: &str, kind: &str, key: Option<char>) -> String {
     let tool = crate::catalogue::ANSWER;
+    // The control says what it does and how it is pressed: the label is the
+    // verb, the key is on it, and the tooltip is the one line of what follows
+    // (S220, S218). The value posted is still the model's own word.
+    let label = escape(&asks::label(kind, answer));
+    let key_attr = key.map(|k| format!(" data-key=\"{k}\"")).unwrap_or_default();
+    let key_hint = key.map(|k| format!("<span class=\"k\">{k}</span>")).unwrap_or_default();
+    let title = asks::does(kind, answer)
+        .map(|does| format!(" title=\"{}\"", escape(does)))
+        .unwrap_or_default();
+    let tone = match (asks::primary(answer), asks::dismisses(answer)) {
+        (true, _) => " pri",
+        (_, true) => " drop",
+        _ => "",
+    };
     let Some(argument) = takes_an_argument(answer) else {
         // One tap, and nothing behind a hover or a keyboard (311). The control
         // posts to the one tool the chat's numbered reply grammar calls, so the
@@ -1073,7 +1130,7 @@ fn control(number: &str, answer: &str) -> String {
             "<form method=\"post\" action=\"/api/tools/{tool}\" class=\"answer\">\n\
              <input type=\"hidden\" name=\"decision\" value=\"{number}\">\n\
              <input type=\"hidden\" name=\"answer\" value=\"{0}\">\n\
-             <button type=\"submit\" class=\"btn sm\" data-answer=\"{0}\">{0}</button>\n</form>\n",
+             <button type=\"submit\" class=\"btn sm{tone}\" data-answer=\"{0}\"{key_attr}{title}>{label}{key_hint}</button>\n</form>\n",
             escape(answer),
         );
     };
@@ -1088,11 +1145,10 @@ fn control(number: &str, answer: &str) -> String {
          <label class=\"sr-only\" for=\"{field}\">{argument} for decision {number}</label>\n\
          <input type=\"text\" id=\"{field}\" name=\"text\" placeholder=\"{argument}\" \
          autocomplete=\"off\" required>\n\
-         <button type=\"submit\" class=\"btn sm\" data-answer=\"{whole}\">{said}</button>\n\
+         <button type=\"submit\" class=\"btn sm{tone}\" data-answer=\"{whole}\"{key_attr}{title}>{label}{key_hint}</button>\n\
          </form>\n",
         argument = escape(&argument),
         whole = escape(answer),
-        said = escape(&said(answer)),
         // A whole-answer field is a sentence and is given the room for one.
         in_words = match is_all_argument(answer) {
             true => " in-words",
@@ -1401,11 +1457,33 @@ fn discussion(row: &status::Row) -> String {
 /// mockup's rule that every object carries a mark per decision that waits on
 /// it, so the board says where the rail's numbers belong (D16, 15, 18). Each
 /// is one tap to the dock, where the answer is.
+/// The board object a decision lights: the object itself where the board
+/// draws it, else the nearest parent it draws — a signal's decision lights its
+/// capture, which is the card the operator typed (S219).
+fn board_object<'a>(read: &'a Read, object: &'a str) -> &'a str {
+    let drawn = |id: &str| {
+        read.status
+            .rows
+            .iter()
+            .any(|r| r.object == id && !OFF_THE_BOARD.contains(&r.machine.as_str()))
+    };
+    let mut at = object;
+    loop {
+        if drawn(at) {
+            return at;
+        }
+        match read.objects.iter().find(|o| o.id == at).and_then(|o| o.parent.as_deref()) {
+            Some(parent) => at = parent,
+            None => return object,
+        }
+    }
+}
+
 fn marks(read: &Read, object: &str) -> String {
     let standing: Vec<&DecisionInstance> = read
         .decisions
         .iter()
-        .filter(|d| d.object == object && d.number.is_some())
+        .filter(|d| d.number.is_some() && board_object(read, &d.object) == object)
         .collect();
     if standing.is_empty() {
         return String::new();
@@ -1425,7 +1503,7 @@ fn marks(read: &Read, object: &str) -> String {
             group = escape(&decision.group),
             object = escape(object),
             number = decision.number.unwrap_or_default(),
-            kind = escape(&decision.kind),
+            kind = escape(asks::short(&decision.kind)),
         );
     }
     out.push_str("</div>\n");
@@ -1770,7 +1848,7 @@ fn quote(read: &Read, row: &status::Row) -> String {
         .and_then(|value| value.as_str())
         .filter(|s| !s.trim().is_empty());
     let mut under = match source {
-        Some(source) => format!("from {}", escape(source)),
+        Some(source) => format!("from {}", escape(source_name(source))),
         None => escape(&row.said),
     };
     if let Some(by) = by {
@@ -1786,6 +1864,16 @@ fn quote(read: &Read, row: &status::Row) -> String {
     )
 }
 
+
+/// Where a capture came from, as a person names it: a capture typed on this
+/// page is from the console, which is what tells it from the dispatch agent
+/// and the chat sinks (S223).
+pub(crate) fn source_name(source: &str) -> &str {
+    match source {
+        "page" | "console" => "the console",
+        other => other,
+    }
+}
 
 /// Everything with a session under it — a session, a host, the instance, a
 /// sink, curation — as a row: what it is, what it is called, how it stands, and
@@ -2131,8 +2219,12 @@ fn dock_answers(read: &Read, object: &str) -> String {
             "<div class=\"answers\" data-number=\"{number}\">\
              <span class=\"n number\">{number}</span>\n"
         );
-        for answer in &decision.answers {
-            out.push_str(&control(&number, answer));
+        if let Some(asked) = question_of(read, decision) {
+            let _ = write!(out, "<p class=\"asks\">{}</p>\n", escape(&asked));
+        }
+        let keys = asks::keys(&decision.answers);
+        for (answer, key) in decision.answers.iter().zip(keys) {
+            out.push_str(&control(&number, answer, &decision.kind, key));
         }
         out.push_str("</div>\n");
         out.push_str(&answered(read, decision.number));

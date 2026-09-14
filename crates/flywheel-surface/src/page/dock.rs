@@ -1,5 +1,5 @@
 //! The dock's pages, one per kind (S28): what a developer wants to know about
-//! the object in hand — its words, its branch, its host, its sessions, its
+//! the object opened — its words, its branch, its host, its sessions, its
 //! commits — and nothing about how the machinery works (S214).
 
 use super::{deliverables, discussion, escape, name_of, sec, Read};
@@ -174,7 +174,7 @@ fn capture_page(read: &Read, object: &Object) -> String {
     }
     let mut from = Vec::new();
     if let Some(source) = capture.and_then(|c| field(c, "source")) {
-        from.push(format!("from {}", escape(source)));
+        from.push(format!("from {}", escape(super::source_name(source))));
     }
     if let Some(by) = capture.and_then(|c| field(c, "captured_by")) {
         from.push(format!("by {}", escape(by)));
@@ -271,6 +271,14 @@ fn commit_rows(commits: &[CommitRef]) -> String {
 }
 
 fn place_rows(read: &Read, object: &str) -> String {
+    place_rows_of(read, object, true)
+}
+
+/// The place an object works in: its directory, and its branch where the
+/// branch is not the object's own — a bolt's place is the checkout of the
+/// bolt's branch, and saying the branch twice under two names confused the
+/// reader (S222).
+fn place_rows_of(read: &Read, object: &str, with_branch: bool) -> String {
     let key = format!("fact/place/{object}#own");
     let Some(fact) = read.objects.iter().find(|o| o.id == key) else {
         return String::new();
@@ -283,10 +291,19 @@ fn place_rows(read: &Read, object: &str) -> String {
         };
         out.push_str(&row("place", &format!("{}{}", mono(dir), standing)));
     }
-    if let Some(branch) = field(fact, "branch") {
+    if let Some(branch) = field(fact, "branch").filter(|_| with_branch) {
         out.push_str(&row("branch", &mono(branch)));
     }
     out
+}
+
+/// What a bolt's commit list is: its branch's own, or main's latest once the
+/// branch has landed and holds nothing main does not.
+fn commits_title(read: &Read, bolt: &str) -> &'static str {
+    match read.commits_are_mains.contains(bolt) {
+        true => "landed · main's latest commits",
+        false => "commits on the branch",
+    }
 }
 
 fn bolt_page(read: &Read, bolt: &Object, row_: Option<&status::Row>) -> String {
@@ -294,12 +311,12 @@ fn bolt_page(read: &Read, bolt: &Object, row_: Option<&status::Row>) -> String {
     let repository = field(bolt, "repository").unwrap_or_default();
     let mut line = String::new();
     line.push_str(&row("repository", &mono(repository)));
-    line.push_str(&row("line", &mono(&bolt.id)));
+    line.push_str(&row("branch", &mono(&bolt.id)));
     if let Some(host) = row_.and_then(|r| r.holder.as_deref()) {
         line.push_str(&row("host", &mono(host)));
     }
-    line.push_str(&place_rows(read, &bolt.id));
-    out.push_str(&sec("the line", "", &line));
+    line.push_str(&place_rows_of(read, &bolt.id, false));
+    out.push_str(&sec("the branch", "", &line));
 
     let units: Vec<&Object> = read
         .objects
@@ -341,7 +358,7 @@ fn bolt_page(read: &Read, bolt: &Object, row_: Option<&status::Row>) -> String {
         out.push_str(&sec("sessions", "", &session_rows(&sessions)));
     }
     if let Some(commits) = read.commits.get(&bolt.id) {
-        out.push_str(&sec("commits on the line", "", &commit_rows(commits)));
+        out.push_str(&sec(commits_title(read, &bolt.id), "", &commit_rows(commits)));
     }
     out
 }
@@ -403,8 +420,8 @@ fn unit_page(read: &Read, unit: &Object, row_: Option<&status::Row>) -> String {
     if !sessions.is_empty() {
         out.push_str(&sec("sessions", "", &session_rows(&sessions)));
     }
-    if let Some(commits) = unit.parent.as_deref().and_then(|b| read.commits.get(b)) {
-        out.push_str(&sec("commits on the line", "", &commit_rows(commits)));
+    if let Some((bolt, commits)) = unit.parent.as_deref().and_then(|b| read.commits.get(b).map(|c| (b, c))) {
+        out.push_str(&sec(commits_title(read, bolt), "", &commit_rows(commits)));
     }
     out
 }
@@ -440,8 +457,8 @@ fn item_page(read: &Read, item: &Object, row_: Option<&status::Row>) -> String {
         .as_deref()
         .and_then(|u| read.objects.iter().find(|o| o.id == u))
         .and_then(|u| u.parent.clone());
-    if let Some(commits) = bolt.as_deref().and_then(|b| read.commits.get(b)) {
-        out.push_str(&sec("commits on the line", "", &commit_rows(commits)));
+    if let Some((bolt, commits)) = bolt.as_deref().and_then(|b| read.commits.get(b).map(|c| (b, c))) {
+        out.push_str(&sec(commits_title(read, bolt), "", &commit_rows(commits)));
     }
     out
 }

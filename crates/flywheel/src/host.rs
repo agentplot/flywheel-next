@@ -2288,15 +2288,20 @@ fn work_order(
         .ok()
         .map(|p| p.display().to_string())
         .unwrap_or_else(|| "flywheel".into());
+    // Where this host's page is, so the report wakes the loop the moment it is
+    // written (S221); a host serving no page leaves it out.
+    let page = std::env::var("FLYWHEEL_PAGE")
+        .map(|page| format!(" FLYWHEEL_PAGE={page}"))
+        .unwrap_or_default();
     body.push_str("\n## how to report\n\n");
     body.push_str("When the work is done, from this directory:\n\n");
     body.push_str(&format!(
-        "    FLYWHEEL_SESSION={session} FLYWHEEL_STATE={state} {flywheel} exit done{} --host {host}\n\n",
+        "    FLYWHEEL_SESSION={session} FLYWHEEL_STATE={state}{page} {flywheel} exit done{} --host {host}\n\n",
         named.iter().map(|d| format!(" --deliverable {d}")).collect::<String>()
     ));
     body.push_str("When you cannot go on without the operator's answer:\n\n");
     body.push_str(&format!(
-        "    FLYWHEEL_SESSION={session} FLYWHEEL_STATE={state} {flywheel} exit blocked --question \"<the question>\" --host {host}\n\n"
+        "    FLYWHEEL_SESSION={session} FLYWHEEL_STATE={state}{page} {flywheel} exit blocked --question \"<the question>\" --host {host}\n\n"
     ));
     body.push_str("The machinery reads the report and nothing else you leave here; what you leave here is your work (66, 67).\n");
     body.push_str("\n## rules\n\n");

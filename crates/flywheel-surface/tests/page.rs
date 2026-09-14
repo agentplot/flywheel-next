@@ -217,7 +217,7 @@ fn one_bundle_version_is_the_binarys() {
 fn bundle_has_no_external_fetch() {
     let (_sandbox, page) = a_page("no-external");
     let html = page.html("/");
-    for reaching_out in ["src=\"http", "href=\"http://cdn", "@import", "fetch(", "XMLHttpRequest"] {
+    for reaching_out in ["src=\"http", "href=\"http://cdn", "@import", "fetch(\"http", "fetch('http", "XMLHttpRequest", "WebSocket("] {
         assert!(
             !html.contains(reaching_out),
             "the bundle fetches from elsewhere: {reaching_out}"
@@ -237,13 +237,15 @@ fn bundle_has_no_external_fetch() {
         );
         assert!(!flywheel_surface::links::is_localhost(link), "{link}");
     }
-    // No client state a reload loses, and nothing fetched: the one script the
-    // page carries is its keys, which reach controls the page already has and
-    // keep nothing (310, 311).
+    // No client state a reload loses, and nothing fetched from elsewhere: the
+    // one script the page carries is its keys and its own refresh, which
+    // fetches this page from this host and keeps nothing (310, 311, S221).
     assert!(!html.contains("<script src"), "the bundle fetches no script");
-    for kept in ["fetch(", "localStorage", "sessionStorage", "XMLHttpRequest", "indexedDB"] {
-        assert!(!html.contains(kept), "the page keeps client state or fetches: `{kept}`");
+    for kept in ["fetch(\"http", "fetch('http", "localStorage", "sessionStorage", "XMLHttpRequest", "indexedDB"] {
+        assert!(!html.contains(kept), "the page keeps client state or fetches from elsewhere: `{kept}`");
     }
+    assert!(html.contains("fetch(location.pathname"), "the page fetches itself when the host says it moved (S221)");
+    assert!(html.contains("new EventSource('/events')"), "the page listens for the host's changes (S221)");
 }
 
 /// The decision is the only answerable form, and every other kind keeps its own
