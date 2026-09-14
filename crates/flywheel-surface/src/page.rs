@@ -2227,8 +2227,7 @@ fn sent_list(read: &Read) -> String {
     all.sort_by(|a, b| b.1.given_at.cmp(&a.1.given_at));
     if all.is_empty() {
         return String::from(
-            "<div class=\"pal-empty\">nothing sent yet · what you type is captured whole \
-             and nothing in it is read as a command (19, 194)</div>",
+            "<div class=\"pal-empty\">nothing sent yet</div>",
         );
     }
     let mut out = String::from("<div class=\"pal-h\">sent</div>");
