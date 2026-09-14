@@ -2078,7 +2078,6 @@ fn dock(read: &Read) -> String {
         );
         out.push_str(&dock_head(read, object, row));
         out.push_str(&dock::body(read, object, row));
-        out.push_str(&dock_answers(read, &dock::answers_object(read, object)));
         out.push_str("</article>\n");
     }
     out
@@ -2135,6 +2134,10 @@ fn dock_head(read: &Read, object: &Object, row: Option<&status::Row>) -> String 
     if !said.is_empty() {
         let _ = write!(out, "<div class=\"tail\">{}</div>\n", escape(&said));
     }
+    // What is asked of this object and the controls that answer it, under the
+    // title where the number already is: one place to read, one place to
+    // press (S220, S27, 308).
+    out.push_str(&dock_answers(read, &dock::answers_object(read, object)));
     out.push_str("</div>\n");
     out
 }
@@ -2202,26 +2205,15 @@ fn dock_answers(read: &Read, object: &str) -> String {
         .filter(|d| d.object == object)
         .collect();
     if standing.is_empty() {
-        return String::from(
-            "<div class=\"dk-f\"><div class=\"dk-answers none\" data-answerable=\"false\"></div></div>\n",
-        );
+        return String::from("<div class=\"dk-answers none\" data-answerable=\"false\"></div>\n");
     }
-    // What the footer says of itself is "one response each" and no more: why
-    // answering here is answering on the rail is said once, at the foot of the
-    // panel, rather than on all twenty-seven surfaces (15, S27).
-    let mut out = String::from(
-        "<div class=\"dk-f\"><div class=\"dk-answers\" data-answerable=\"true\">\n",
-    );
+    let mut out = String::from("<div class=\"dk-answers\" data-answerable=\"true\">\n");
     for decision in standing {
         let number = decision.number.map(|n| n.to_string()).unwrap_or_default();
-        let _ = write!(
-            out,
-            "<div class=\"answers\" data-number=\"{number}\">\
-             <span class=\"n number\">{number}</span>\n"
-        );
         if let Some(asked) = question_of(read, decision) {
             let _ = write!(out, "<p class=\"asks\">{}</p>\n", escape(&asked));
         }
+        let _ = write!(out, "<div class=\"answers\" data-number=\"{number}\">\n");
         let keys = asks::keys(&decision.answers);
         for (answer, key) in decision.answers.iter().zip(keys) {
             out.push_str(&control(&number, answer, &decision.kind, key));
@@ -2229,7 +2221,7 @@ fn dock_answers(read: &Read, object: &str) -> String {
         out.push_str("</div>\n");
         out.push_str(&answered(read, decision.number));
     }
-    out.push_str("</div>\n</div>\n");
+    out.push_str("</div>\n");
     out
 }
 

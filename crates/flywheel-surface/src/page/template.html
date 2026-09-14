@@ -876,6 +876,13 @@ a.btn.pri{color:var(--accent-ink)}
 .answers button .k,.answers .to-dock .k{font:600 10px var(--mono);border:1px solid currentColor;border-radius:3px;padding:0 4px;opacity:.7;line-height:1.5}
 .answers button.pri .k{border-color:var(--accent-ink);opacity:.85}
 button#yesall[disabled],form.yesall-form:has(> button[disabled]){display:none}
+
+/* ---- the drawer asks under its title, where the number already is (S220). */
+.dk-h .dk-answers{border-top:0;margin-top:10px;padding-top:0}
+.dk-h .dk-answers .asks{margin:0 0 8px;font-size:13.5px;color:var(--ink);line-height:1.4}
+.dk-h .dk-answers .answers{margin-bottom:4px}
+.dk-answers.none:empty{display:none}
+.dk-answers .answers button{min-height:36px;border-color:var(--line);color:var(--ink)}
 </style>
 </head>
 <body data-gen="{{GEN}}">
@@ -1056,43 +1063,63 @@ button#yesall[disabled],form.yesall-form:has(> button[disabled]){display:none}
     if(/^[a-z]$/.test(k)){ e.preventDefault(); answer(k); }
   });
 
+  // ---- the page keeps itself current (S221): the host says when its store
+  // moved, and the page fetches itself and swaps the regions that differ,
+  // keeping the decision in hand, the drawer and where each column was
+  // scrolled to. Nothing is navigated; the page is never blank.
+  var REGIONS=['hosts','rail','board-h','lanes','dk-b','count','bd-plan','bd-board','sent','loglist','clock','pal-dyn'];
+  function swap(html){
+    var doc=new DOMParser().parseFromString(html, 'text/html');
+    if(!doc.body || !doc.getElementById('rail')) return false;
+    var keep=focused(); var number=keep ? keep.getAttribute('data-number') : null;
+    var lit=document.querySelector('#board .lit'); var litId=lit ? lit.id : null;
+    var scrolled=[]; document.querySelectorAll('#rail,#board,#lanes,.lane,#dk-b').forEach(function(el){ scrolled.push(el.scrollTop); });
+    REGIONS.forEach(function(id){ var cur=document.getElementById(id); var next=doc.getElementById(id); if(cur && next && cur.innerHTML!==next.innerHTML) cur.innerHTML=next.innerHTML; });
+    var dropBody=document.querySelector('#pal-drop .pal-body'), nextDrop=doc.querySelector('#pal-drop .pal-body'); if(dropBody && nextDrop && dropBody.innerHTML!==nextDrop.innerHTML) dropBody.innerHTML=nextDrop.innerHTML;
+    var ya=document.querySelector('form.yesall-form'), nya=doc.querySelector('form.yesall-form'); if(ya && nya && ya.outerHTML!==nya.outerHTML) ya.outerHTML=nya.outerHTML;
+    document.body.setAttribute('data-gen', doc.body.getAttribute('data-gen')||'');
+    document.querySelectorAll('#rail,#board,#lanes,.lane,#dk-b').forEach(function(el,i){ if(scrolled[i]!==undefined) el.scrollTop=scrolled[i]; });
+    if(!(number!==null && focusNumber(number))){ if(litId && document.getElementById(litId)) focusObject(litId); else focusCard(Math.max(0, at), true); }
+    return true;
+  }
+  var refreshing=false, again=false, busy=false;
+  function refresh(){
+    if(refreshing){ again=true; return; }
+    if(busy){ again=true; return; }
+    refreshing=true;
+    fetch(location.pathname+location.search, {credentials:'same-origin', headers:{'Accept':'text/html'}})
+      .then(function(r){ return r.ok ? r.text() : Promise.reject(r.status); })
+      .then(swap)
+      .catch(function(){})
+      .then(function(){ refreshing=false; if(again){ again=false; refresh(); } });
+  }
+
   // ---- feedback: a control used goes busy at once and takes no second press
-  var busy=false;
+  // (S210). The answer is posted from here and the page swaps in what came
+  // back, so nothing is navigated and the hand stays where it was; a browser
+  // without fetch posts the form as a form.
+  function settle(form){ busy=false; if(progress) progress.hidden=true; form.classList.remove('busy'); form.querySelectorAll('button,input[type=submit]').forEach(function(b){ b.disabled=false; }); }
   document.addEventListener('submit', function(e){
     var form=e.target; if(!form || form.tagName!=='FORM') return;
     if(form.classList.contains('busy')){ e.preventDefault(); return; }
     form.classList.add('busy'); busy=true;
     if(progress) progress.hidden=false;
     setTimeout(function(){ form.querySelectorAll('button,input[type=submit]').forEach(function(b){ b.disabled=true; }); }, 0);
-  });
-  addEventListener('pageshow', function(){ busy=false; if(progress) progress.hidden=true; document.querySelectorAll('form.busy').forEach(function(f){ f.classList.remove('busy'); f.querySelectorAll('button,input[type=submit]').forEach(function(b){ b.disabled=false; }); }); });
-
-  // ---- the page keeps itself current (S221): the host says when its store
-  // moved, and the page fetches itself and swaps what changed, keeping the
-  // decision in hand, the drawer and where each column was scrolled to.
-  var REGIONS=['hosts','rail','board-h','lanes','dk-b','count','bd-plan','bd-board','sent','loglist','clock','pal-dyn'];
-  var refreshing=false, again=false;
-  function refresh(){
-    if(refreshing){ again=true; return; }
-    if(busy) return;
-    refreshing=true;
-    fetch(location.pathname+location.search, {credentials:'same-origin', headers:{'Accept':'text/html'}})
-      .then(function(r){ return r.ok ? r.text() : Promise.reject(r.status); })
+    if(!window.fetch || !window.DOMParser) return;
+    e.preventDefault();
+    var body=new URLSearchParams(new FormData(form));
+    var submitter=e.submitter; if(submitter && submitter.name) body.append(submitter.name, submitter.value);
+    fetch(form.getAttribute('action')||location.pathname, {method:'POST', body:body, credentials:'same-origin', headers:{'Accept':'text/html'}})
+      .then(function(r){ return r.text(); })
       .then(function(html){
-        var doc=new DOMParser().parseFromString(html, 'text/html');
-        var keep=focused(); var number=keep ? keep.getAttribute('data-number') : null;
-        var lit=document.querySelector('#board .lit'); var litId=lit ? lit.id : null;
-        var scrolled=[]; document.querySelectorAll('#rail,#board,#lanes,.lane,#dk-b').forEach(function(el){ scrolled.push([el.id||el.className, el.scrollTop]); });
-        REGIONS.forEach(function(id){ var cur=document.getElementById(id); var next=doc.getElementById(id); if(cur && next) cur.innerHTML=next.innerHTML; });
-        var dropBody=document.querySelector('#pal-drop .pal-body'), nextDrop=doc.querySelector('#pal-drop .pal-body'); if(dropBody && nextDrop) dropBody.innerHTML=nextDrop.innerHTML;
-        var ya=document.querySelector('form.yesall-form'), nya=doc.querySelector('form.yesall-form'); if(ya && nya) ya.outerHTML=nya.outerHTML;
-        document.body.setAttribute('data-gen', doc.body.getAttribute('data-gen')||'');
-        document.querySelectorAll('#rail,#board,#lanes,.lane,#dk-b').forEach(function(el,i){ if(scrolled[i]) el.scrollTop=scrolled[i][1]; });
-        if(!(number!==null && focusNumber(number))){ if(litId && document.getElementById(litId)) focusObject(litId); else focusCard(Math.max(0, at), true); }
+        if(!swap(html)) { location.reload(); return; }
+        if(form.id==='pal-open' || form.id==='capture-box'){ form.reset(); closeBox(); }
+        settle(form);
+        if(again){ again=false; refresh(); }
       })
-      .catch(function(){})
-      .then(function(){ refreshing=false; if(again){ again=false; refresh(); } });
-  }
+      .catch(function(){ settle(form); toast('the host did not answer · try again'); });
+  });
+  addEventListener('pageshow', function(){ busy=false; if(progress) progress.hidden=true; document.querySelectorAll('form.busy').forEach(settle); });
   if(window.EventSource){
     var es=new EventSource('/events');
     es.onmessage=function(ev){ if(ev.data && ev.data!==document.body.getAttribute('data-gen')) refresh(); };
