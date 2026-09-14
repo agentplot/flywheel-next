@@ -70,7 +70,12 @@ fn ids_within(html: &str, opening: &str, closing: &str) -> Vec<String> {
 ///
 /// This is the list the requirements justify, not the list the mockup draws.
 /// What the mockup draws and this does not is named below, with the reason.
-const HEADER: [(&str, &str); 9] = [
+const HEADER: [(&str, &str); 10] = [
+    (
+        "capture-text",
+        "the capture box itself: the one thing a person arrives wanting to do, typed \
+         into and sent with return, reached with / or ⌘K (19, 194, 311)",
+    ),
     (
         "orgname",
         "where the operator is: the instance this host serves, which is in the path of \
@@ -182,15 +187,12 @@ fn the_header_carries_no_element_without_an_action() {
     );
 }
 
-/// A host that is well raises nothing, and one that has gone or stalled is
-/// raised into the operator's way (141, 143, 146, 79, 150a).
-///
-/// Noticing that a host has stopped is a real need, and it is an attention
-/// need: every host is reported under the status view, and only what is wrong
-/// with one is raised here. A permanent pill standing on a healthy instance
-/// answers no question the operator has.
+/// Every host stands in the hosts strip as a chip with a dot for whether it
+/// is heard from, and a host past its stale window says so on the chip: work
+/// it holds is not moving, and that is in the operator's way (141, 143, 146,
+/// 79, 150a).
 #[test]
-fn a_healthy_host_raises_no_pill() {
+fn every_host_is_a_chip_and_a_stale_one_says_so() {
     let (mut store, world, defs) = a_page();
     let at = commands::now(&mut store).expect("a point");
     // A host, holding work, and heard from just now.
@@ -204,31 +206,22 @@ fn a_healthy_host_raises_no_pill() {
     let raised = ids_within(&html, "<div class=\"hosts\"", "</div>");
     assert_eq!(raised, vec!["hosts".to_string()], "{raised:?}");
     let strip = {
-        let start = html.find("id=\"hosts\"").expect("the region a host is raised into");
+        let start = html.find("id=\"hosts\"").expect("the hosts strip");
         let rest = &html[start..];
         rest[..rest.find("</div>").expect("it closes")].to_string()
     };
     assert!(
-        !strip.contains("class=\"host"),
-        "a well host is standing as a pill on a page where nothing is wrong: {strip}"
+        strip.contains("data-host=\"studio\"") && strip.contains("data-liveness=\"alive\""),
+        "a well host stands as a chip, alive: {strip}"
     );
-    // It is reported all the same, under the status view with the rest of the
-    // instance (141, 132).
-    assert!(
-        html.contains("id=\"dock-host/studio\""),
-        "the host is not reported anywhere on the page"
-    );
-    assert!(
-        html.contains(">host/studio<"),
-        "the status view does not name the host"
-    );
+    assert!(!strip.contains("class=\"host gone\""), "and is not raised as wrong: {strip}");
 
     // Six minutes on it is past its stale window, and that the operator does
     // need in their way: work it holds is not moving (150a, 79).
     store.set_now(at + chrono::Duration::minutes(6));
     let html = rendered(&mut store, &world, &defs);
     let strip = {
-        let start = html.find("id=\"hosts\"").expect("the region a host is raised into");
+        let start = html.find("id=\"hosts\"").expect("the hosts strip");
         let rest = &html[start..];
         rest[..rest.find("</div>").expect("it closes")].to_string()
     };

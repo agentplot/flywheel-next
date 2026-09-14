@@ -521,16 +521,30 @@ const LANES: [(&str, &[&str]); 4] = [
         "{{LANE_CONSTRUCTION}}",
         &["bolt", "unit", "work item", "work-item", "session", "rail"],
     ),
-    ("{{LANE_OPERATION}}", &["instance", "host", "sink", "landed"]),
+    ("{{LANE_OPERATION}}", &["sink", "landed"]),
 ];
 
 /// The lane's own title and what it holds, in the mockup's order.
 const LANE_HEADS: [(&str, &str); 4] = [
-    ("Inception", "captures, signals, intents and their elaborations"),
-    ("Bolt plan", "one proposal per repository"),
-    ("Construction", "bolts, their units and the sessions under them"),
-    ("Operation", "the instance, its hosts and its sinks"),
+    ("Inception", ""),
+    ("Bolt plan", ""),
+    ("Construction", ""),
+    ("Operation", ""),
 ];
+
+/// What a lane says when it holds nothing: where the next thing comes from,
+/// in the operator's terms, and no more.
+const LANE_EMPTY: [(&str, &str); 4] = [
+    ("Inception", "Nothing captured yet. Type what you noticed in the box above."),
+    ("Bolt plan", "No proposals yet."),
+    ("Construction", "No bolts yet. A unit on a capture starts one."),
+    ("Operation", "Nothing running."),
+];
+
+/// The machinery's own objects, which the hosts strip and the header carry
+/// and the lanes do not: an instance and a curation are not work a person
+/// follows on the board (141, D16).
+const OFF_THE_BOARD: [&str; 4] = ["instance", "curation", "host", "rail"];
 
 /// Render the whole page. One document, one request, nothing stored.
 /// The instance this page is of: the last segment of the host's own address,
@@ -574,7 +588,7 @@ pub fn render(read: &Read) -> String {
         .replace("{{FONTS}}", fonts_css())
         .replace("{{INSTANCE}}", &escape(instance))
         .replace("{{OPERATOR}}", &escape(&read.operator))
-        .replace("{{CLOCK}}", &escape(&short(&read.status.at.to_rfc3339())))
+        .replace("{{CLOCK}}", &escape(&read.status.at.format("%H:%M").to_string()))
         .replace("{{COUNT}}", &standing.to_string())
         .replace("{{YESALL}}", &yes_all(read))
         .replace("{{SENT}}", &sent.to_string())
@@ -680,39 +694,72 @@ fn runs(numbers: &[u32]) -> String {
 /// the rest of the instance; here it is raised into the operator's way only
 /// when something is wrong with it. A healthy instance raises nothing.
 fn hosts(read: &Read) -> String {
-    // What each host holds, and what is wrong with it where something is.
-    let mut wrong: BTreeMap<&str, (usize, &str)> = BTreeMap::new();
+    // Every host the instance has, as a chip: its name, a dot for whether it
+    // is heard from, and what it is running. A host past its stale window
+    // carries that on the chip (141, 143, 146, 150a).
+    let mut names: Vec<String> = read
+        .objects
+        .iter()
+        .filter(|o| o.machine == "host")
+        .map(|o| o.id.trim_start_matches("host/").to_string())
+        .collect();
     for row in &read.status.rows {
-        let (Some(holder), Some(liveness)) = (row.holder.as_deref(), row.liveness.as_deref())
-        else {
-            continue;
-        };
-        if liveness == "alive" {
-            continue;
+        if let Some(holder) = &row.holder {
+            if !names.contains(holder) {
+                names.push(holder.clone());
+            }
         }
-        let entry = wrong.entry(holder).or_insert((0, liveness));
-        entry.0 += 1;
-        entry.1 = liveness;
     }
-    if wrong.is_empty() {
-        return String::new();
+    names.sort();
+    let mut out = String::new();
+    if !names.is_empty() {
+        out.push_str("<span class=\"lab\">hosts</span>");
     }
-    let mut out = String::from("<span class=\"lab\">attention</span>");
-    for (host, (holds, liveness)) in wrong {
+    for host in &names {
+        let liveness = read
+            .status
+            .rows
+            .iter()
+            .filter(|r| r.holder.as_deref() == Some(host))
+            .find_map(|r| r.liveness.clone())
+            .or_else(|| read.away.values().find(|a| &a.host == host).map(|_| "gone".to_string()))
+            .unwrap_or_else(|| "alive".into());
+        let running = read
+            .status
+            .rows
+            .iter()
+            .filter(|r| r.holder.as_deref() == Some(host) && r.runner.is_some())
+            .count();
         let since = read
             .away
             .values()
-            .find(|away| away.host == host)
+            .find(|away| &away.host == host)
             .map(|away| format!(" since {}", short(&away.since.to_rfc3339())))
             .unwrap_or_default();
+        let said = match (liveness.as_str(), running) {
+            ("alive", 0) => "idle".to_string(),
+            ("alive", 1) => "1 session".to_string(),
+            ("alive", n) => format!("{n} sessions"),
+            (other, _) => format!("{other}{since}"),
+        };
         let _ = write!(
             out,
-            "<span class=\"host gone\" data-host=\"{h}\" data-liveness=\"{l}\">\
-             <b class=\"hn\">{h}</b><span class=\"hm\">{l}{since} · {holds} held</span></span>",
+            "<span class=\"host{gone}\" data-host=\"{h}\" data-liveness=\"{l}\">\
+             <span class=\"dot {l}\"></span><b class=\"hn\">{h}</b><span class=\"hm\">{said}</span></span>",
+            gone = match liveness.as_str() {
+                "alive" => "",
+                _ => " gone",
+            },
             h = escape(host),
-            l = escape(liveness),
-            since = escape(&since),
+            l = escape(&liveness),
+            said = escape(&said),
         );
+    }
+    if !read.repositories.is_empty() {
+        out.push_str("<span class=\"lab\">repos</span>");
+        for repository in &read.repositories {
+            let _ = write!(out, "<span class=\"repo\">{}</span>", escape(repository));
+        }
     }
     out
 }
@@ -722,7 +769,6 @@ fn hosts(read: &Read) -> String {
 fn rail(read: &Read) -> String {
     let mut out = String::from(
         "<div class=\"rail-h\"><h2>Decisions</h2>\
-         <span class=\"sub\">the plan, in the order the chat prints it</span>\
          <a class=\"btn sm phone-only\" id=\"pal-open-rail\" href=\"#pal-scrim\">capture…</a></div>\n",
     );
     // A control that was refused says so where the control is, and the page is
@@ -737,8 +783,7 @@ fn rail(read: &Read) -> String {
     }
     if read.decisions.is_empty() {
         out.push_str(
-            "<div class=\"empty\">Nothing waits on you. The board runs on its own until the \
-             next decision is yours.</div>\n",
+            "<div class=\"empty\">Nothing to decide.</div>\n",
         );
     }
     // The groups in the model's order, each sorted by number: approve, decide,
@@ -1011,14 +1056,16 @@ fn lane(read: &Read, title: &str, sub: &str, machines: &[&str]) -> String {
         .status
         .rows
         .iter()
-        .filter(|row| in_lane(&row.machine, machines))
+        .filter(|row| !OFF_THE_BOARD.contains(&row.machine.as_str()) && in_lane(&row.machine, machines))
         .collect();
     let _ = write!(
         out,
-        "<div class=\"lane-h\"><h2 class=\"lane-title\">{}</h2>\
-         <span class=\"sub\">{}</span><span class=\"n\">{}</span></div>\n",
+        "<div class=\"lane-h\"><h2 class=\"lane-title\">{}</h2>{}<span class=\"n\">{}</span></div>\n",
         escape(title),
-        escape(sub),
+        match sub.is_empty() {
+            true => String::new(),
+            false => format!("<span class=\"sub\">{}</span>", escape(sub)),
+        },
         mine.len()
     );
     // The unmoved signals belong to inception, where curation reads them, and
@@ -1052,7 +1099,12 @@ fn lane(read: &Read, title: &str, sub: &str, machines: &[&str]) -> String {
         out.push_str("</section>\n");
     }
     if drawn == 0 {
-        out.push_str("<div class=\"quiet empty\">nothing here yet</div>\n");
+        let said = LANE_EMPTY
+            .iter()
+            .find(|(t, _)| *t == title)
+            .map(|(_, s)| *s)
+            .unwrap_or("Nothing here.");
+        let _ = write!(out, "<div class=\"quiet empty\">{}</div>\n", escape(said));
     }
     out.push_str("</div>\n");
     out
@@ -1663,6 +1715,11 @@ fn silhouette(machine: &str) -> &'static str {
 /// The signals with no move, by source and by age. Nothing here is discarded: a
 /// signal nobody has judged is one the operator has not seen yet (118).
 fn unmoved(read: &Read) -> String {
+    // Nothing waiting and no curation charged: the lane's own empty state
+    // says it, and no section stands here to be read past.
+    if read.status.unmoved.is_empty() && read.curation.is_none() {
+        return String::new();
+    }
     let mut out = String::from(
         "<section id=\"unmoved-signals\"><div class=\"sec-h\">unmoved signals\
          <span class=\"r\">by source</span></div>\n",

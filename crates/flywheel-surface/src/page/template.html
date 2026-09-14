@@ -85,6 +85,13 @@ kbd{font:11px var(--mono);border:1px solid var(--line);border-bottom-width:2px;b
 .btn .k{font:10px var(--mono);color:inherit;opacity:.65;border:1px solid currentColor;border-radius:3px;padding:0 3px}
 
 
+/* The capture box, in the header: a field a person clicks into or reaches
+   with / or ⌘K, typed into and sent with return (19, 194, 311). */
+.top .top-capture{flex:1 1 auto;max-width:560px;margin:0 auto;display:inline-flex;align-items:center;gap:8px;border:1px solid var(--line);border-radius:999px;padding:3px 6px 3px 12px;background:var(--surface2)}
+.top .top-capture:focus-within{border-color:var(--accent);background:var(--surface)}
+.top .top-capture input{flex:1;min-width:0;border:0;background:transparent;font:13px var(--sans);color:var(--ink);padding:3px 0;outline:none}
+.top .top-capture input::placeholder{color:var(--ink3)}
+.top .top-capture .k{text-decoration:none;display:inline-flex}
 /* ---------- hosts strip ---------- */
 /* Nothing is wrong with any host, so nothing is raised and the band is not
    there to be read past (79, 141). */
@@ -94,6 +101,8 @@ kbd{font:11px var(--mono);border:1px solid var(--line);border-bottom-width:2px;b
 .hosts .lab{font-size:11px;letter-spacing:.08em;text-transform:uppercase;color:var(--ink3);font-weight:700;margin-right:4px;white-space:nowrap}
 .host{display:inline-flex;align-items:center;gap:8px;border:1px solid var(--line);background:var(--surface);border-radius:999px;padding:3px 10px 3px 6px;font-size:12px;white-space:nowrap}
 .host .hn{font:600 12px var(--mono)}
+.host .dot{width:8px;height:8px;border-radius:50%;background:var(--ink3);flex:none}
+.host .dot.alive{background:var(--ok)} .host .dot.stale{background:var(--warn)} .host .dot.gone{background:var(--crit)}
 .host .hm{color:var(--ink3)}
 .host.gone{border-color:var(--warn)}
 .host.gone .hm b{color:var(--warn)}
@@ -775,6 +784,7 @@ a.btn.pri{color:var(--accent-ink)}
      knows — they opened it — and the room it takes is the room the instance
      and the operator's own name need to survive (17.0, 153, 219). */
   .top h1{display:none}
+  .top .top-capture{display:none}
   .top .meta{min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
   .top .theme{display:none}
   .top .keys{display:none}
@@ -825,9 +835,14 @@ a.btn.pri{color:var(--accent-ink)}
 <!-- The top. Everything on it is read from the one request's read: the
      instance, the point the read is as of, and how many decisions stand. -->
 <header class="top">
-  <h1>Rail and Board</h1>
-  <span class="meta"><b id="orgname">{{INSTANCE}}</b> · <span class="mono" id="clock">{{CLOCK}}</span></span>
-  <a class="palbtn" id="pal-open" href="#pal-scrim" title="the capture box: text is captured whole and nothing in it is read as a command (19, 194)"><span class="t">Capture</span></a>
+  <h1>Flywheel</h1>
+  <span class="meta"><b id="orgname">{{INSTANCE}}</b> <span class="mono" id="clock">{{CLOCK}}</span></span>
+  <form class="capture top-capture" method="post" action="/api/tools/capture">
+    <input type="hidden" name="source" value="page">
+    <label class="sr-only" for="capture-text">Capture</label>
+    <input type="text" id="capture-text" name="text" autocomplete="off" placeholder="Capture what you noticed">
+    <a class="k" id="pal-open" href="#pal-scrim" title="the capture box, with what you sent lately"><kbd>⌘K</kbd></a>
+  </form>
   <div class="count"><b id="count">{{COUNT}}</b><span>decisions</span></div>
   <span class="acct-wrap" id="acct-wrap"><span class="given-by">{{OPERATOR}}</span></span>
   <span class="btn quiet theme" id="theme" title="the page follows the system's theme; it holds no client state a reload loses (310)">system</span>
@@ -897,6 +912,29 @@ a.btn.pri{color:var(--accent-ink)}
      (153, 154). -->
 <aside class="log" id="log"><h3>Responses sent <span>each one on its own, the moment it was given</span></h3><ol id="loglist">{{LOG}}</ol></aside>
 <div class="toasts" id="toasts" aria-live="polite"></div>
+<!-- The keys. No state, nothing fetched, nothing a reload loses (310, 311):
+     every key here reaches a control the page already carries. Escape closes
+     what is open — the dock, the capture box, a field; / and ⌘K reach the
+     capture box. -->
+<script>
+(function(){
+  var box=document.getElementById('capture-text');
+  function typing(el){return el&&(el.tagName==='INPUT'||el.tagName==='TEXTAREA'||el.tagName==='SELECT');}
+  function close(){location.replace(location.pathname+location.search+'#');}
+  addEventListener('keydown',function(e){
+    var t=e.target;
+    if(e.key==='Escape'){
+      if(typing(t)){t.blur();if(t===box)box.value='';}
+      else if(location.hash&&location.hash!=='#'){close();}
+      return;
+    }
+    if(typing(t))return;
+    if(e.key==='/'||((e.metaKey||e.ctrlKey)&&(e.key==='k'||e.key==='K'))){
+      if(box){e.preventDefault();if(location.hash==='#pal-scrim')close();box.focus();}
+    }
+  });
+})();
+</script>
 <!-- The tour: an instance standing part-way through a scenario onboards
      whoever is looking at it, one action at a time. There is nothing here when
      the instance carries no scenario, or when its actions are played out

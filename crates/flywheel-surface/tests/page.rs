@@ -237,8 +237,13 @@ fn bundle_has_no_external_fetch() {
         );
         assert!(!flywheel_surface::links::is_localhost(link), "{link}");
     }
-    // No script at all: the page holds no client state a reload loses (310).
-    assert!(!html.contains("<script"), "the bundle runs no script");
+    // No client state a reload loses, and nothing fetched: the one script the
+    // page carries is its keys, which reach controls the page already has and
+    // keep nothing (310, 311).
+    assert!(!html.contains("<script src"), "the bundle fetches no script");
+    for kept in ["fetch(", "localStorage", "sessionStorage", "XMLHttpRequest", "indexedDB"] {
+        assert!(!html.contains(kept), "the page keeps client state or fetches: `{kept}`");
+    }
 }
 
 /// The decision is the only answerable form, and every other kind keeps its own
@@ -754,10 +759,12 @@ fn page_carries_the_mockups_regions() {
         assert!(html.contains(rule), "the page does not carry the mockup's `{rule}`");
     }
 
-    // And still one bundle with no script and nothing fetched from anywhere
-    // else: the design is carried, its JavaScript is not (310).
+    // And still one bundle with nothing fetched from anywhere else: the design
+    // is carried, its JavaScript is not — the page's one script is its keys
+    // (310, 311).
     assert_eq!(html.matches("<style>").count(), 1);
-    assert!(!html.contains("<script"));
+    assert!(!html.contains("<script src"));
+    assert_eq!(html.matches("<script").count(), 1);
 }
 
 /// The words a region of the rendered page carries, with its markup taken out.
