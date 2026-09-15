@@ -377,6 +377,13 @@ and the last message is the delivery (S32).
 A tool that would assert work was done does not exist; a response that arrives
 claiming one is recorded `unapplicable` and reported under attention (4).
 
+`ask` is the dictation naming a repository and words, the operator's or
+curation's: its effect writes `asks/<id>.rec` through the commit path every
+effect takes, holding the repository, the words, who gave it, when, and
+`consumed_by`, which planning's `propose_units` sets. The record holds the words,
+since it is a dictation's record and not a document a session writes (28, 62,
+116, git-only `layout.asks`).
+
 Phase 1 builds no stdio or MCP transport: there is no session client to use it,
 and by the proposal's own foreclosure argument a later transport is a transport,
 not a second write path (291, 293). Phase 2 adds it beside the runner that needs
@@ -420,7 +427,9 @@ Initialization registers the first host at the hostname the operator gives, and
 at localhost when the operator gives none; it guesses no name (204, 205a). A host
 at localhost serves this computer alone, and init says so: answering from the
 phone (306) is met once the operator gives the host its hostname (204). The
-address carries the port the page is served on, so a link written at it opens.
+address carries the port the page is served on, so a link written at it opens;
+a router base naming localhost with no port is the host's address at that port,
+so a manifest an earlier init wrote still writes links that open (245, 308).
 Every link of 308 is written at the host's address with the instance in the path, and
 works whether that address is a localhost port of the operator's computer or a
 name on the operator's private network (308).
@@ -465,10 +474,19 @@ need not resolve on the operator's network: it does not on a tailnet (204).
 - Every decision shows its number and its answers as controls, one tap each;
   nothing is reachable only by hover or keyboard, and a long-form answer uses the
   platform's own keyboard (311, 15). The decision card is the only answerable
-  form; every other kind keeps the form the status view gives it (209), and an
-  elaboration is a surface of its own reached from its intent (210), named by
-  its type and the material it was proposed from, never by its ordinal or its
-  id (27, S226).
+  form; every other kind keeps the form the status view gives it, in the page
+  and in the committed file alike — a capture a note, a session a row, anything
+  without a form of its own a plain entry — with a part drawn inside its whole
+  when both sit in one group (209). An elaboration is a surface of its own
+  reached from its intent (210), named by its type and the material it was
+  proposed from, never by its ordinal or its id (27, S226).
+- The capture box carries the chat's grammar and no second one: plain text is a
+  capture, a leading `/` lists the catalogue's commands and sends the one
+  chosen as its tool call on the object in hand, and a bare number lists that
+  card's answers and presses or fills them in (19, 193, 194, S228). The
+  commands listed are those the palette can seed as one call; the rest keep
+  their own controls, since the palette carries no operation a control lacks
+  (311, S228).
 - Every chat line, notification and rail line carries a link at the host's
   address (D10a) with the instance in the path,
   opening that object in the dock with its answer controls in reach (308, 205a).
@@ -533,7 +551,10 @@ written, since a person writing those records is curation (110, 193, S224).
 The signals tray lists what waits and carries `curate`, which runs curation at
 once beside its threshold and cadence (110, 118, S225). Every signal takes
 exactly one standing move with a stated consequence, and only the operator's
-response replaces one (107, 116).
+response replaces one (107, 116). A route names what curation, being a
+session, offered for a signal that argues with no claim: a chore through
+`flywheel offer`, which `record_offers` makes a proposed chore unit, or an ask
+through the `ask` tool of D9 (116, 58–60, 28).
 
 The pull-request and issue-tracker adapters of 215 read the git host's issues and
 reviews, which C.2 forbids the machinery doing; they belong to the tracker
@@ -635,16 +656,23 @@ instead of the embedded set (D2); `--trace [dir]` renders the run under
     runs, and the scenario fails when it names no standing decision. The id form
     is the readable default; the `number` form stays for the answer-it-again
     assertions (15).
-13. **`decisions: {count: n}` counts the kinds `present:` names,** not the whole
-    standing set, so a clause about one kind says nothing about the others; with
-    no `present:` it is the whole set.
+13. **`decisions: {count: n}` counts the rail's decisions of the kinds
+    `present:` names,** not the whole standing set, so a clause about one kind
+    says nothing about the others. A line under attention is no rail decision,
+    so a clause naming only attention kinds, or none, counts the whole rail
+    (conformance README).
 
 **What the suite is for, in this phase.** The thirteen `contract/` files over
 the toy `lamp` machine are what admit the git-only profile (168); the
 twenty-one scenarios run against it, with S13, S17 and S18 as two real host
 processes and the 390px pass on every scenario carrying a response; and the run
 record's definitions hash is compared with `definitions/`, which is itself
-byte-identical to the model (83, D2).
+byte-identical to the model (83, D2). The phase gate is the rows the acceptance
+table lists: a listed row that fails or that every configuration skips fails
+the gate, and a run over the whole directory plays every scenario and reports
+each, so a scenario a later phase lists that fails or does not validate is
+reported there and gates nothing until its phase opens (roadmap, phase gates;
+conformance README).
 
 ### D17. Three tiers of test, where each lives, and what an agent runs
 

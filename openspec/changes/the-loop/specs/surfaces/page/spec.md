@@ -62,23 +62,38 @@ dependency the phone must fetch from anywhere else (310).
 
 The page SHALL carry the status view, whose contents are stated in the run
 record's spec (141). Every kind of object SHALL have one form of its own and no
-two kinds SHALL share one; the phase an object is in SHALL be shown by where it
-sits and never by its form (209). An elaboration SHALL be a surface of its own,
-reached from its intent, and the intent's surface SHALL list its elaborations in
-order (210).
+two kinds SHALL share one: a decision is the only answerable card, a proposal a
+document with its unit proposals hanging off it, an intent a thread with its
+elaborations in the order they were made, a bolt a ledger with its units in
+order and their work items under them, a landed bolt a record, a capture a note
+with its signals as quotes, a signal a quote, a session a row, and anything
+else a plain entry (209). A part SHALL be drawn inside its whole when both sit
+in one group, and where it sits otherwise; the phase an object is in SHALL be
+shown by where it sits and never by its form (209). An elaboration SHALL be a
+surface of its own, reached from its intent, and the intent's surface SHALL
+list its elaborations in the order they were made, each with its type (210,
+S28).
 
 #### Scenario: A decision is the only answerable form
-- **WHEN** the page renders a decision, a proposal, an intent, a bolt and a
-  signal together
+- **WHEN** the page renders a decision, a proposal, an intent, a bolt, a
+  capture, a signal and a session together
 - **THEN** the decision is the only thing shaped as an answerable card, and each
   other kind keeps its own form wherever it sits (209)
 
+#### Scenario: A part hangs inside its whole
+- **WHEN** a unit and its bolt sit in one group, and another unit of that bolt
+  sits in another
+- **THEN** the first is drawn inside the bolt's ledger, and the second is drawn
+  where it sits (209)
+
 #### Scenario: An elaboration opens from its intent
 - **WHEN** the operator opens an intent
-- **THEN** its elaborations are listed in order, each named by its type and the
-  material it was proposed from (S226), and each opens its own surface,
-  showing its type, its state, its decision when one is pending, and its
-  session's last activity (210)
+- **THEN** its elaborations are listed in the order they were made, each with
+  its type and named by its type and the material it was proposed from (S226),
+  and each opens its own surface, showing its type, where it stands, its intent,
+  its decision when one is pending, its document and host, the intents it
+  gathers when it covers several, and its sessions, or that none starts until it
+  is approved (210, 188, S28)
 
 ### Requirement: A single-operator host on a private network serves the page unsigned-in, and every response names that operator
 
@@ -130,6 +145,42 @@ like any response (19).
   anywhere on it opens it in the dock with its controls (S215, S216, S219,
   S224)
 
+### Requirement: The capture box speaks the chat's grammar
+
+The capture box SHALL carry the grammar the chat carries and no second one:
+plain text a capture, a leading `/` a command of the catalogue, a bare number
+the reply grammar (19, 193, 194). A leading `/` SHALL list the commands the
+caller may invoke, matched as typed, each with what it does and what it acts on,
+under a line saying exactly what will be sent; a command SHALL be the catalogue
+tool of its own name, with what is typed after the name as its argument, and a
+command that acts on an object SHALL take the one in hand — the object the dock
+has open, else the decision the rail holds — or an id typed after the name
+(S228). A command the palette cannot seed as one call SHALL be reached by its
+own control and not listed (S228, 311). A bare number SHALL list that card's
+answers, each with the line its control carries; a number with an answer SHALL
+press the card's own control, a number with words SHALL send the words as the
+answer, an answer that takes words SHALL be filled in for the operator to
+finish, and a number naming nothing on the rail SHALL say so and say that
+`/capture` keeps it as a note (S228, 194). `/` SHALL open the box with the
+commands listed, and ↓ and ↑ SHALL walk the list while the box is open without
+moving the rail (S56, S57).
+
+#### Scenario: A command takes the object in hand
+- **WHEN** the operator opens a unit in the dock, types `/drop` and presses
+  Enter
+- **THEN** the `drop` tool is called on that unit, recorded once like any
+  response (S228, 193, 153)
+
+#### Scenario: A number and its answers
+- **WHEN** the operator types `412` in the box
+- **THEN** the box lists card 412's answers with each control's line; `412 yes`
+  presses the card's own control, `412: <words>` sends the words as the answer,
+  and choosing `redo` fills in `412: redo: ` (S228, 194)
+
+#### Scenario: A number naming nothing
+- **WHEN** the operator types a number no decision on the rail holds
+- **THEN** the box says so and says that `/capture` keeps it as a note (S228)
+
 ### Requirement: The signals tray lists what curation has not read
 
 The curation counter SHALL open the signals tray in the dock: every unmoved
@@ -158,8 +209,11 @@ none was given, and never a name the machinery derived (204, 205a). The manifest
 SHALL name the router per host (191). The host SHALL have one address with the
 instance in the path, and every link SHALL be written at that address and name
 the instance it opens, whether the address is a localhost port of the
-operator's computer or a name on the operator's private network (205a, 308).
-Served on the private network, the page SHALL work on a phone (155). Nothing
+operator's computer or a name on the operator's private network (205a, 308). A
+router base naming localhost with no port SHALL be the host's address at the
+port its page serves on, so a link or a chat rendering is written there and
+refused nowhere (245, 308, `host.yaml` address). Served on the private network,
+the page SHALL work on a phone (155). Nothing
 SHALL be published beyond the operator's private network unless the operator
 says so (46).
 

@@ -74,7 +74,9 @@ be a projection, written from the source and never read as truth (76, 142). The
 status view SHALL be such a projection, never written by hand to look right
 (142). It SHALL be central, one place for the whole instance, reachable
 from a phone however many hosts run (143). It SHALL be derived from list and
-read alone (146).
+read alone (146). A rendering of it on any surface, the committed file among
+them, SHALL keep each kind's form and draw a part inside its whole where both
+sit in one group (209).
 
 #### Scenario: The whole, grouped by state
 - **WHEN** the operator opens the status view

@@ -107,6 +107,29 @@ every scenario that applies to it passes and its binding is found complete (140,
   flywheel, so the profile is tested before any domain definition is loaded
   (92, 140)
 
+### Requirement: The phase gate is the rows its acceptance table lists
+
+A phase's gate SHALL assert each scenario its acceptance table lists, and SHALL
+fail when any of them fails or is skipped by every configuration (roadmap, phase
+gates; 93a, 168). A run over the whole suite SHALL play every scenario and
+report each; a scenario a later phase lists that fails or does not validate
+SHALL be reported and SHALL gate nothing until its phase opens. A `decisions`
+clause's count SHALL count the standing decisions on the rail of the kinds its
+`present:` names; a line under attention is no rail decision, so a clause
+naming only attention kinds, or none, SHALL count the whole rail (94).
+
+#### Scenario: A deferred scenario fails beside a passing gate
+- **WHEN** the whole suite is run, every listed row passes, and a scenario the
+  phase defers fails
+- **THEN** the gate passes, and the run reports the deferred scenario with what
+  it expected and what it got (168)
+
+#### Scenario: A count about one kind
+- **WHEN** a scenario asserts `present: [intent-proposed], count: 2` over a rail
+  that also holds an elaboration's proposal
+- **THEN** the clause counts the two proposed intents and says nothing of the
+  elaboration (94)
+
 ### Requirement: A second host in a scenario is a real process
 
 A scenario that names more than one host SHALL be able to start, lose,

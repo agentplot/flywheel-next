@@ -65,9 +65,13 @@ advance a half-finished bootstrap (204).
 A host SHALL join by one command (205). It SHALL clone the state, the blueprints
 and every tracked built repository as bare repositories under one root the
 manifest names, keep one checkout of each shared line for the machinery's own
-merges (205), and make no worktree while the line-and-place effects are
-recorded (93a). The layout on disk SHALL be the profile's, and a host that finds
-a hand-made layout SHALL refuse to start and SHALL say what differs (205).
+merges at `<root>/<instance>/<repo>/main` (205, `host.yaml` disk), and make no
+worktree while the line-and-place effects are recorded (93a). The layout on disk
+SHALL be the profile's, and a host that finds a hand-made layout SHALL refuse to
+start and SHALL say what differs (205). A checkout an earlier binary made at
+`<root>/<instance>/<repo>` SHALL be taken as the binary's own earlier layout and
+not a hand-made one: opening the world SHALL move it under `main` once (205,
+222, `host.yaml` disk.check).
 
 #### Scenario: Joining clones what the manifest names
 - **WHEN** the join command is run for an instance

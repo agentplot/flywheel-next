@@ -10,8 +10,8 @@ identically by the page, the chat and the machinery.
 
 Every operation the operator may invoke — capture, propose a unit, open an
 intent from a capture, attach or drop a signal, run curation, answer a
-decision, open-session, drop, later, hold, release, rename, finish, end, close,
-retire, takeover, revive, take, and the rest of what clause 4 grants — SHALL be
+decision, ask, open-session, drop, later, hold, release, rename, finish, end,
+close, retire, takeover, revive, take, and the rest of what clause 4 grants — SHALL be
 exposed by the state store as a tool with a schema naming its arguments by
 object id (193). The page's controls, the chat and the machinery SHALL call the
 same tools, and no caller SHALL have an operation the others lack (193).
@@ -62,6 +62,13 @@ be a response that can be pointed to (12, I1).
   a keystroke within the window the profile states, no decision is ever raised
   about it, and it ends by dictation with its place going with it (69, 25, 12)
 
+#### Scenario: An ask is a record for planning that holds its words
+- **WHEN** the operator, or curation routing a signal that argues with no
+  claim, calls `ask` naming a repository and the words
+- **THEN** one ask record exists under `asks/`, written as the dictation's
+  effect, holding the repository, the words, who gave it, when, and no
+  consumer yet (28, 116, git-only `layout.asks`)
+
 #### Scenario: A dropped signal revived — mirrors S24
 - **WHEN** the operator revives a dropped signal by dictation
 - **THEN** the drop move is removed, the signal is unmoved again, no decision is
@@ -71,9 +78,12 @@ be a response that can be pointed to (12, I1).
 
 Free text the operator types on the page or sends in chat SHALL NOT be parsed by
 the machinery (194). The numbered reply grammar SHALL be the deterministic path
-and SHALL itself be the answer tool (194). Text in the page's capture box SHALL
-be a capture with one signal of kind ask, unparsed, and marking a capture as an
-intent SHALL be a control and never a word read out of the text (19, 194).
+and SHALL itself be the answer tool (194). Plain text in the page's capture box
+SHALL be a capture with one signal of kind ask, unparsed, and marking a capture
+as an intent SHALL be a control and never a word read out of the text (19, 194).
+The box's leading `/` SHALL name a command of the catalogue and resolve to that
+one tool call, and its bare number SHALL be the reply grammar, the same grammar
+the chat carries (19, 193, 194, S228).
 
 #### Scenario: A capture is not read for commands
 - **WHEN** the operator types text beginning with a word that looks like a
