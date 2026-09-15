@@ -161,7 +161,8 @@ enum Cmd {
     /// 115, 215). `flywheel capture meeting <file>` is the one this release
     /// ships beside the page's box and the chat forward (D13).
     Capture {
-        /// The adapter: `meeting`.
+        /// The adapter: `meeting`, or `signals` for a folder of captures
+        /// already read (114).
         kind: String,
         /// What it enumerates — for a meeting, the transcript's path in the raw
         /// store, which is cited and never copied in (111).
@@ -914,7 +915,8 @@ async fn main() -> Result<()> {
                 println!("{key}");
             }
             println!(
-                "{} capture(s) written, {} signal(s): an enumerator reads nothing into signals (115)",
+                "{} capture(s) written, {} signal(s): an enumerator reads nothing into signals, and a \
+                 signals folder carries the ones read before (115, 114)",
                 enumerated.captures_written, enumerated.signals_written
             );
         }

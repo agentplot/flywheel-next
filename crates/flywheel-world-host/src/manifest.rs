@@ -68,6 +68,11 @@ pub struct Host {
     /// loads its channel (148, `engine/host.yaml` declares).
     #[serde(default, skip_serializing_if = "Vec::is_empty")]
     pub presents: Vec<String>,
+    /// The capture sources this host runs the enumerators of, each as the
+    /// command names it — `meeting <file>`, `signals <dir>` — run by its own
+    /// tick (215, 231, `host.yaml` adapters).
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    pub sources: Vec<String>,
 }
 
 /// The port a host's page is served on for the operator at the machine when

@@ -3,6 +3,7 @@
 //! and the report a session writes. The first tier (D17).
 
 mod boundaries;
+mod capture;
 mod console;
 mod init;
 mod render_order;

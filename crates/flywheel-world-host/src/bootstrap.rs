@@ -203,6 +203,8 @@ impl Bootstrap {
                 intermittent: true,
                 // No chat until the operator names one (D16).
                 presents: vec![],
+                // No capture source until the operator declares one (215).
+                sources: vec![],
             }
         });
     }

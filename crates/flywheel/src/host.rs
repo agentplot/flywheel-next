@@ -442,14 +442,19 @@ impl EvidenceSource for HostStore {
                     })
                 })
             })
-            // The one adapter this release ships is the meeting transcript: a
-            // source is due while the file it names has no capture yet, and
-            // run once it has (111, 215, D13; `host.yaml` host.adapters_due).
+            // A source is due while what it names holds a source event with no
+            // capture yet — a transcript not captured, a signals folder with a
+            // capture not read in — and run once it has none (111, 114, 215,
+            // D13; `host.yaml` host.adapters_due).
             .or_else(|| {
                 matches!(name, "host.adapters_due" | "host.adapters_run").then(|| {
                     let host = object.strip_prefix("host/").unwrap_or(object);
                     let due = self.sources_declared(host).iter().any(|source| {
-                        let Some(path) = source.split_whitespace().last() else {
+                        let words: Vec<&str> = source.split_whitespace().collect();
+                        if let [.., "signals", dir] = words.as_slice() {
+                            return flywheel_domain::adapters::signals_due(&*self.world, dir);
+                        }
+                        let Some(path) = words.last() else {
                             return false;
                         };
                         let Ok(key) = flywheel_domain::adapters::meeting_key(path) else {
@@ -565,6 +570,9 @@ pub struct Host {
     pub declaration: Declaration,
     pub bound: u32,
     pub intermittent: bool,
+    /// The capture sources this host declares, as the manifest names them
+    /// (215, 231).
+    pub sources: Vec<String>,
     /// The run record this tick is building (79-82).
     pub run: Vec<RunEntry>,
     /// The refusals already in today's run record, by object, effect and
@@ -673,6 +681,7 @@ impl Host {
         // once, and whether it is a laptop (31, 150a, 183).
         host.bound = entry.bound;
         host.intermittent = entry.intermittent;
+        host.sources = entry.sources.clone();
         // How often this host looks, as the manifest says (D6, D7, 130, 231).
         host.poll = read.intervals.poll;
         host.sweep_every = read.intervals.sweep;
@@ -711,6 +720,7 @@ impl Host {
             declaration,
             bound: 4,
             intermittent: true,
+            sources: vec![],
             run: vec![],
             said: Default::default(),
             last_sweep: None,
@@ -790,6 +800,7 @@ impl Host {
         let declared = [
             ("bound".to_string(), json!(self.bound)),
             ("intermittent".to_string(), json!(self.intermittent)),
+            ("sources".to_string(), json!(self.sources)),
             (
                 "declares".to_string(),
                 json!({
