@@ -182,8 +182,9 @@ fn signal_is_never_rewritten() {
         "the signal's record was rewritten in history (113, 167)"
     );
 
-    // And no tool of the catalogue edits one: `revive` clears a move, which is
-    // the move changing and never the signal (107, 113, 193).
+    // And no tool of the catalogue edits one: `attach-signal` and `drop-signal`
+    // write its move and `revive` clears it, which is the move changing and
+    // never the signal (107, 113, 193).
     for tool in catalogue::catalogue() {
         assert!(
             !matches!(tool.name, "edit-signal" | "amend-signal" | "correct-signal"),
@@ -191,11 +192,163 @@ fn signal_is_never_rewritten() {
             tool.name
         );
         if tool.args.contains(&"signal") {
-            assert_eq!(
-                tool.name, "revive",
-                "`{}` takes a signal; only `revive` may, and it clears the move (107)",
+            assert!(
+                matches!(tool.name, "revive" | "attach-signal" | "drop-signal"),
+                "`{}` takes a signal; only a tool that moves it or clears its move may (107)",
                 tool.name
             );
         }
     }
+}
+
+// ------------------------------------------------ the operator's hand on a capture
+
+/// A note typed in the capture box, and its one signal (19).
+fn a_note(
+    store: &mut FakeStore,
+    world: &mut FakeWorld,
+    defs: &flywheel_engine::Definitions,
+    text: &str,
+) -> (String, String) {
+    let call = Call::new("capture", "chuck", "page")
+        .arg("text", json!(text))
+        .arg("source", json!("console"));
+    let outcome = catalogue::call(store, world, defs, &call).expect("the capture is taken");
+    let capture = outcome.journal.iter().find(|n| n.kind == "capture").expect("a capture").object.clone();
+    let signal = signals::of_capture(store, &capture).unwrap().into_iter().next().expect("its signal");
+    (capture, signal)
+}
+
+/// `make an intent`: the intent opens at once, named from the capture's first
+/// words with the call as its approval and no decision of its own; the signal's
+/// move attaches it there, and the intent's material proposes its first
+/// elaboration from it on the next tick (12, 19a, 21).
+#[test]
+fn open_intent_opens_at_once_and_attaches_the_signal() {
+    let (mut store, mut world, defs) = a_store();
+    let (capture, signal) = a_note(&mut store, &mut world, &defs, "keep the row numbers on every page");
+
+    let call = Call::new("open-intent", "chuck", "page").arg("capture", json!(capture));
+    let outcome = catalogue::call(&mut store, &mut world, &defs, &call).expect("the intent opens");
+
+    let intent = "intent/keep-row-numbers-every";
+    let held = store.get(intent).unwrap().expect("the intent is named from the capture's words");
+    assert_eq!(held.config.get("life").map(String::as_str), Some("open"), "the dictation skips proposed (12)");
+    assert_eq!(held.config.get("life.open.material").map(String::as_str), Some("settled"));
+    assert_eq!(held.record.get("approval"), Some(&json!(outcome.id)), "the call is its approval (I1)");
+    assert_eq!(held.record.get("signals"), Some(&json!([signal.clone()])), "the intent cites the signal");
+    let moved = signals::standing_move(&world, &signal).unwrap().expect("the signal moved");
+    assert_eq!(moved.target, format!("attach {intent}"));
+    let response = store.get(&format!("response/{}", outcome.id)).unwrap().expect("the call is recorded");
+    assert_eq!(response.record.get("tool"), Some(&json!("open-intent")));
+    let rail = flywheel_domain::commands::rail(&mut store, &defs).unwrap();
+    assert!(rail.iter().all(|d| d.object != intent), "the intent raised a decision: {rail:?}");
+
+    // The signal is the intent's pending material, which is what its open state
+    // proposes the first elaboration from on the next tick (21,
+    // `record-derived.yaml` intent.material_pending).
+    assert_eq!(
+        flywheel_domain::effects::pending_material(&store, intent).unwrap(),
+        vec![signal.clone()],
+        "the intent holds the signal as material to propose from"
+    );
+    let first = flywheel_domain::effects::propose_elaboration(&mut store, &defs, intent, "from-material", at(1))
+        .expect("the elaboration is proposed");
+    assert_eq!(store.get(&first).unwrap().expect("the elaboration").record.get("signals"), Some(&json!([signal])));
+
+    // Its signal has moved, so the control has nothing left to move (107).
+    assert!(catalogue::call(&mut store, &mut world, &defs, &call).is_err(), "a signal took a second move");
+}
+
+/// `attach to…`: the signal's move attaches it to the open intent picked, which
+/// cites it as material to propose from; an intent that is not open is refused
+/// naming the open ones, and the same delivery twice is one call (19a, 21, 116,
+/// 137).
+#[test]
+fn attach_signal_moves_it_onto_an_open_intent() {
+    let (mut store, mut world, defs) = a_store();
+    let (first, _) = a_note(&mut store, &mut world, &defs, "keep the row numbers on every page");
+    let opened = Call::new("open-intent", "chuck", "page").arg("capture", json!(first));
+    catalogue::call(&mut store, &mut world, &defs, &opened).expect("the intent opens");
+    let intent = "intent/keep-row-numbers-every";
+    let (_, signal) = a_note(&mut store, &mut world, &defs, "page two drops the numbers again");
+
+    let nowhere = Call::new("attach-signal", "chuck", "page")
+        .arg("signal", json!(signal))
+        .arg("intent", json!("intent/nowhere"));
+    let refused = catalogue::call(&mut store, &mut world, &defs, &nowhere).expect_err("no such intent is open");
+    assert!(refused.to_string().contains(intent), "the refusal names the open intents: {refused}");
+    assert!(signals::standing_move(&world, &signal).unwrap().is_none(), "a refused attach moved the signal");
+
+    let call = Call::new("attach-signal", "chuck", "page")
+        .arg("signal", json!(signal))
+        .arg("intent", json!(intent))
+        .delivered("tap-attach");
+    let outcome = catalogue::call(&mut store, &mut world, &defs, &call).expect("the signal attaches");
+    let moved = signals::standing_move(&world, &signal).unwrap().expect("the signal moved");
+    assert_eq!(moved.target, format!("attach {intent}"));
+    assert!(
+        flywheel_domain::effects::pending_material(&store, intent).unwrap().contains(&signal),
+        "the intent holds it as material to propose from (21)"
+    );
+    let response = store.get(&format!("response/{}", outcome.id)).unwrap().expect("the call is recorded");
+    assert_eq!(response.record.get("tool"), Some(&json!("attach-signal")));
+    assert_eq!(response.record.get("object"), Some(&json!(signal)));
+
+    let again = catalogue::call(&mut store, &mut world, &defs, &call).expect("the same delivery is acknowledged");
+    assert!(matches!(again.outcome, flywheel_atoms::Received::AlreadyApplied { .. }), "{:?}", again.outcome);
+}
+
+/// `drop`: the signal's move is drop with the call as its reason, it leaves what
+/// curation reads, and `revive` clears the move so it is unmoved again (19a,
+/// 107, S24).
+#[test]
+fn drop_signal_is_cleared_by_revive() {
+    let (mut store, mut world, defs) = a_store();
+    let (_, signal) = a_note(&mut store, &mut world, &defs, "a note for nobody");
+
+    let dropped = Call::new("drop-signal", "chuck", "page").arg("signal", json!(signal));
+    let outcome = catalogue::call(&mut store, &mut world, &defs, &dropped).expect("the signal drops");
+    let moved = signals::standing_move(&world, &signal).unwrap().expect("the signal moved");
+    assert_eq!(moved.target, "drop");
+    assert!(moved.reason.contains(&outcome.id), "the call is its reason: {}", moved.reason);
+    let unmoved = |world: &FakeWorld| -> Vec<String> {
+        signals::unmoved(&signals::Blueprints(world)).into_iter().map(|s| s.id).collect()
+    };
+    assert!(!unmoved(&world).contains(&signal), "a dropped signal is still what curation reads");
+
+    let revived = Call::new("revive", "chuck", "page").arg("signal", json!(signal));
+    let outcome = catalogue::call(&mut store, &mut world, &defs, &revived).expect("the signal is revived");
+    assert!(signals::standing_move(&world, &signal).unwrap().is_none(), "the move was not cleared");
+    assert!(unmoved(&world).contains(&signal), "a revived signal is unmoved again (107)");
+    assert!(store.get(&signal).unwrap().expect("the signal").record.get("move").is_none());
+    let response = store.get(&format!("response/{}", outcome.id)).unwrap().expect("the call is recorded");
+    assert_eq!(response.record.get("tool"), Some(&json!("revive")));
+
+    // Unmoved again, it can be dropped again.
+    catalogue::call(&mut store, &mut world, &defs, &dropped).expect("the signal drops again");
+}
+
+/// `build now` routes the capture's signal to the unit it made, and a capture
+/// whose signal has moved makes no unit (34, 107, 116, S217).
+#[test]
+fn propose_unit_from_a_capture_routes_its_signal() {
+    let (mut store, mut world, defs) = a_store();
+    let (capture, signal) = a_note(&mut store, &mut world, &defs, "the rows lose their numbers on the second page");
+
+    let call = Call::new("propose-unit", "chuck", "page")
+        .arg("bolt", json!("bolt/atlas/plan-rows"))
+        .arg("capture", json!(capture));
+    catalogue::call(&mut store, &mut world, &defs, &call).expect("the unit is built");
+    let unit = "unit/atlas/plan-rows";
+    assert!(store.get(unit).unwrap().is_some(), "the unit stands");
+    let moved = signals::standing_move(&world, &signal).unwrap().expect("the signal moved");
+    assert_eq!(moved.target, format!("route {unit}"), "the route names the unit (116)");
+    assert_eq!(store.get(&signal).unwrap().expect("the signal").record.get("route"), Some(&json!(unit)));
+
+    let again = Call::new("propose-unit", "chuck", "page")
+        .arg("bolt", json!("bolt/atlas/other-rows"))
+        .arg("capture", json!(capture));
+    assert!(catalogue::call(&mut store, &mut world, &defs, &again).is_err(), "a moved signal was built twice");
+    assert!(store.get("unit/atlas/other-rows").unwrap().is_none(), "a refused build made a unit");
 }

@@ -144,7 +144,27 @@ pub const CATALOGUE: &[Tool] = &[
               12); a bolt the name gives that does not exist is made first, on \
               the repository the instance tracks; the type defaults to chore; \
               the capture it came from is the unit's document and its text the \
-              job (19)",
+              job (19); the capture's signal is routed to the unit (116)",
+    },
+    Tool {
+        name: "open-intent",
+        args: &["capture"],
+        doc: "an intent in open at once, named from the capture's first words, with the \
+              capture's signal attached to it: the call is its approval and the dictation \
+              skips proposed (12, 19a), and the intent's material proposes its first \
+              elaboration from the signal (21)",
+    },
+    Tool {
+        name: "attach-signal",
+        args: &["signal", "intent"],
+        doc: "the signal's move is attach to the open intent named, and the intent proposes \
+              from it (19a, 116)",
+    },
+    Tool {
+        name: "drop-signal",
+        args: &["signal"],
+        doc: "the signal's move is drop, the call as its reason (19a, 116); `revive` clears \
+              it (107)",
     },
     Tool {
         name: "ask",
@@ -432,6 +452,10 @@ pub fn call<S: StateStore, W: World + ?Sized>(
         "later" => later(store, defs, call),
         "open-session" => open_session(store, defs, call),
         "propose-unit" => propose_unit(store, world, defs, call),
+        "open-intent" => open_intent(store, world, defs, call),
+        "attach-signal" => attach_signal(store, world, defs, call),
+        "drop-signal" => drop_signal(store, world, defs, call),
+        "revive" => revive(store, world, defs, call),
         "curate" => curate(store, world, defs, call),
         // Every other tool takes the transition its decision would, on the
         // object its first argument names (4, 12).
@@ -1017,6 +1041,19 @@ fn propose_unit<S: StateStore, W: World + ?Sized>(
         bail!("`{unit}` already exists; a name is given once (I1)");
     }
     let capture = call.text("capture").map(|c| c.trim().to_string()).filter(|c| !c.is_empty());
+    // The capture's signals are routed to the unit, as curation's route would
+    // have: a signal already moved keeps its move, and a capture none of whose
+    // signals is left unmoved is refused before anything is made (107, 116).
+    let routed = match &capture {
+        Some(capture) => {
+            let held = signals_named(store, world, capture)?;
+            match held.is_empty() {
+                true => vec![],
+                false => unmoved_of(capture, held)?,
+            }
+        }
+        None => vec![],
+    };
     let subject = call
         .text("text")
         .map(|t| t.trim().to_string())
@@ -1059,7 +1096,264 @@ fn propose_unit<S: StateStore, W: World + ?Sized>(
         &unit,
         format!("approved on {bolt} by {}, {items} item(s)", call.by),
     ));
+    let reason = format!("{} built {unit} from it on the {} ({})", call.by, call.delivery, record.id);
+    let moved = move_signals(store, world, &routed, &format!("route {unit}"), &reason, at)?;
+    record.journal.extend(moved);
     Ok(record)
+}
+
+// ------------------------------------------------ the operator's hand on a signal
+
+/// The signals a capture's control moves, each with the move standing on it
+/// where one stands: the one signal a signal's id names, or every signal of the
+/// capture a capture's id names, which for a capture no reader has read yet is
+/// none (19a, 107, 115).
+fn signals_named<S: StateStore, W: World + ?Sized>(
+    store: &S,
+    world: &W,
+    named: &str,
+) -> Result<Vec<(String, Option<signals::Move>)>> {
+    let ids = match named.starts_with(signals::PREFIX) {
+        true => match store.get(named)? {
+            Some(_) => vec![named.to_string()],
+            None => bail!("`{named}` is no signal on record"),
+        },
+        false => signals::of_capture(store, named)?,
+    };
+    ids.into_iter()
+        .map(|id| {
+            let standing = signals::standing_move(world, &id)?;
+            Ok((id, standing))
+        })
+        .collect()
+}
+
+/// The signals still unmoved, or a refusal naming the moves that stand: a signal
+/// takes one move, and a control on a capture moves only what nothing has moved
+/// yet (107, 19a).
+fn unmoved_of(named: &str, held: Vec<(String, Option<signals::Move>)>) -> Result<Vec<String>> {
+    if held.is_empty() {
+        bail!("`{named}` holds no signal yet: its reader has not read it (115)");
+    }
+    let unmoved: Vec<String> = held.iter().filter(|(_, moved)| moved.is_none()).map(|(id, _)| id.clone()).collect();
+    if unmoved.is_empty() {
+        let standing: Vec<String> = held
+            .iter()
+            .filter_map(|(id, moved)| moved.as_ref().map(|moved| format!("{id} is {}", moved.target)))
+            .collect();
+        bail!(
+            "`{named}` has no signal left to move — {}; a signal takes one move, and `revive` clears one (107)",
+            standing.join(", ")
+        );
+    }
+    Ok(unmoved)
+}
+
+/// Write one move on each signal, with its stated consequence (107, 116).
+fn move_signals<S: StateStore, W: World + ?Sized>(
+    store: &mut S,
+    world: &mut W,
+    moving: &[String],
+    target: &str,
+    reason: &str,
+    at: chrono::DateTime<chrono::Utc>,
+) -> Result<Vec<commands::Noted>> {
+    let mut journal = Vec::new();
+    for signal in moving {
+        let moved = signals::Move {
+            signal: signal.clone(),
+            target: target.to_string(),
+            reason: reason.to_string(),
+            at: at.to_rfc3339(),
+        };
+        signals::apply_move(store, world, &moved, at)?;
+        journal.push(noted("move", signal, target.to_string()));
+    }
+    Ok(journal)
+}
+
+/// A call whose delivery was recorded before: acknowledged and changing
+/// nothing, rather than refused for what its first delivery did (137).
+fn delivered_before<S: StateStore>(store: &S, call: &Call) -> Result<bool> {
+    Ok(match &call.delivery_id {
+        Some(id) => store.get(&format!("response/{id}"))?.is_some(),
+        None => false,
+    })
+}
+
+/// Record a call of one of the operator's hands on a signal, once (153, 193).
+fn record_hand<S: StateStore>(
+    store: &mut S,
+    defs: &Definitions,
+    call: &Call,
+    object: &str,
+    answer: &str,
+) -> Result<Outcome> {
+    commands::record_call(
+        store,
+        defs,
+        &CallRecord {
+            tool: &call.tool,
+            decision: None,
+            object: Some(object),
+            answer,
+            args: Some(Value::Object(call.args.clone().into_iter().collect())),
+            by: &call.by,
+            delivery: &call.delivery,
+            delivery_id: call.delivery_id.as_deref(),
+            proposed_by: call.proposed_by.as_deref(),
+        },
+    )
+}
+
+/// An argument the call must name.
+fn named_argument(call: &Call, name: &str) -> Result<String> {
+    match call.text(name).map(|v| v.trim().to_string()).filter(|v| !v.is_empty()) {
+        Some(value) => Ok(value),
+        None => bail!("`{}` takes the {name}, and the call names none", call.tool),
+    }
+}
+
+/// `open-intent`: the operator makes an intent of a capture (12, 19a, 21,
+/// `intent.yaml`). The intent is named from the capture's first words and opens
+/// at once, the call as its approval, since the operator's own dictation skips
+/// the proposal curation's joins stand in; the capture's signals are attached to
+/// it, and its material region proposes the first elaboration from them on the
+/// next tick.
+fn open_intent<S: StateStore, W: World + ?Sized>(
+    store: &mut S,
+    world: &mut W,
+    defs: &Definitions,
+    call: &Call,
+) -> Result<Outcome> {
+    let capture = named_argument(call, "capture")?;
+    if delivered_before(store, call)? {
+        return record_hand(store, defs, call, &capture, "");
+    }
+    let attaching = unmoved_of(&capture, signals_named(store, world, &capture)?)?;
+    let words = attaching
+        .iter()
+        .find_map(|signal| store.get(signal).ok().flatten().as_ref().and_then(signals::text_of))
+        .unwrap_or_default();
+    let intent = unused_id(store, &format!("intent/{}", signals::name_from_words(&words)))?;
+    let at = commands::now(store)?;
+    let record: BTreeMap<String, Value> =
+        [("subject".to_string(), json!(words)), ("opened_by".to_string(), json!(call.by))].into_iter().collect();
+    commands::put_new(store, defs, &intent, "intent", None, record, at)?;
+    let mut record = record_hand(store, defs, call, &intent, &words)?;
+    // Open, by this call: the record names the response that opened it (I1).
+    let mut held = store.get(&intent)?.expect("the intent was just written");
+    let base = held.seq;
+    held.record.insert("approval".into(), json!(record.id));
+    held.config.insert("life".into(), "open".into());
+    held.entered_at.insert("life".into(), at);
+    flywheel_engine::initialise(defs, &mut held, at);
+    store.put(&intent, &held, base)?;
+    record
+        .journal
+        .push(noted("open-intent", &intent, format!("opened by {} from {capture}", call.by)));
+    let reason = format!("{} opened {intent} from it on the {} ({})", call.by, call.delivery, record.id);
+    let moved = move_signals(store, world, &attaching, &format!("attach {intent}"), &reason, at)?;
+    record.journal.extend(moved);
+    Ok(record)
+}
+
+/// `attach-signal`: the signal is evidence on an open intent the operator
+/// picked, and the intent proposes from it (19a, 21, 116).
+fn attach_signal<S: StateStore, W: World + ?Sized>(
+    store: &mut S,
+    world: &mut W,
+    defs: &Definitions,
+    call: &Call,
+) -> Result<Outcome> {
+    let signal = named_argument(call, "signal")?;
+    let intent = named_argument(call, "intent")?;
+    if delivered_before(store, call)? {
+        return record_hand(store, defs, call, &signal, "");
+    }
+    let attaching = unmoved_of(&signal, signals_named(store, world, &signal)?)?;
+    let open = store
+        .get(&intent)?
+        .is_some_and(|held| held.machine == "intent" && held.config.get("life").map(String::as_str) == Some("open"));
+    if !open {
+        let open: Vec<String> = store
+            .list_records(&Scope::All)?
+            .into_iter()
+            .filter(|o| o.machine == "intent" && o.config.get("life").map(String::as_str) == Some("open"))
+            .map(|o| o.id)
+            .collect();
+        bail!(
+            "`{intent}` is no open intent; a signal attaches to one that is open: {}",
+            match open.is_empty() {
+                true => "none is".to_string(),
+                false => open.join(", "),
+            }
+        );
+    }
+    let target = format!("attach {intent}");
+    let at = commands::now(store)?;
+    let mut record = record_hand(store, defs, call, &signal, &target)?;
+    let reason = format!("{} attached it on the {} ({})", call.by, call.delivery, record.id);
+    let moved = move_signals(store, world, &attaching, &target, &reason, at)?;
+    record.journal.extend(moved);
+    Ok(record)
+}
+
+/// `drop-signal`: the signal's move is drop, the call its reason; `revive`
+/// clears it (19a, 107, 116).
+fn drop_signal<S: StateStore, W: World + ?Sized>(
+    store: &mut S,
+    world: &mut W,
+    defs: &Definitions,
+    call: &Call,
+) -> Result<Outcome> {
+    let signal = named_argument(call, "signal")?;
+    if delivered_before(store, call)? {
+        return record_hand(store, defs, call, &signal, "");
+    }
+    let dropping = unmoved_of(&signal, signals_named(store, world, &signal)?)?;
+    let at = commands::now(store)?;
+    let mut record = record_hand(store, defs, call, &signal, "drop")?;
+    let reason = format!("{} dropped it on the {} ({})", call.by, call.delivery, record.id);
+    let moved = move_signals(store, world, &dropping, "drop", &reason, at)?;
+    record.journal.extend(moved);
+    Ok(record)
+}
+
+/// `revive`: the signal's move is cleared and it is unmoved again, for the next
+/// curation run to judge; no decision is raised for it (107, 12, S24).
+fn revive<S: StateStore, W: World + ?Sized>(
+    store: &mut S,
+    world: &mut W,
+    defs: &Definitions,
+    call: &Call,
+) -> Result<Outcome> {
+    let signal = named_argument(call, "signal")?;
+    let mut record = record_hand(store, defs, call, &signal, "revive")?;
+    if matches!(record.outcome, Received::AlreadyApplied { .. }) {
+        return Ok(record);
+    }
+    signals::clear_move(world, &signal)?;
+    if let Some(mut held) = store.get(&signal)? {
+        let base = held.seq;
+        if held.record.remove("move").is_some() {
+            store.put(&signal, &held, base)?;
+        }
+    }
+    record.journal.push(noted("dictation", &signal, "revive"));
+    Ok(record)
+}
+
+/// An id no object holds: the one given, or the next numbered after it, since a
+/// name is given once (I1).
+fn unused_id<S: StateStore>(store: &S, stem: &str) -> Result<String> {
+    let mut id = stem.to_string();
+    let mut nth = 1;
+    while store.get(&id)?.is_some() {
+        nth += 1;
+        id = format!("{stem}-{nth}");
+    }
+    Ok(id)
 }
 
 /// A unit in `proposed` stands `approved` by one response: the bolt it names

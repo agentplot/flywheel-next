@@ -87,6 +87,22 @@ fn catalogue_is_identical_across_callers() {
         .find(|tool| tool["name"] == json!("ask"))
         .expect("the catalogue serves `ask`");
     assert_eq!(ask["args"], json!(["repository", "text"]));
+
+    // And the capture's own controls beside `propose-unit`, on every caller
+    // alike (19a, 193).
+    let declared_names = named(declared, "name");
+    for (name, args) in [
+        ("open-intent", json!(["capture"])),
+        ("attach-signal", json!(["signal", "intent"])),
+        ("drop-signal", json!(["signal"])),
+    ] {
+        let served = tools
+            .iter()
+            .find(|tool| tool["name"] == json!(name))
+            .unwrap_or_else(|| panic!("the catalogue serves no `{name}`"));
+        assert_eq!(served["args"], args, "`{name}` names other arguments");
+        assert!(declared_names.contains(&json!(name)), "the protocol declares no `{name}`");
+    }
 }
 
 /// Every argument is named, and no two tools share a name (193).

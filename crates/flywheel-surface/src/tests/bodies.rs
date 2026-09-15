@@ -9,9 +9,10 @@ use crate::catalogue::{self, Call};
 use serde_json::json;
 use std::collections::BTreeSet;
 
-/// The operations `specs/tools/tool-server/spec.md` enumerates, read from the
-/// spec itself so the catalogue cannot drift from it silently.
-fn spec_list() -> BTreeSet<String> {
+/// The operations `specs/tools/tool-server/spec.md` enumerates, as the spec
+/// words them, read from the spec itself so the catalogue cannot drift from it
+/// silently.
+fn spec_phrases() -> Vec<String> {
     let spec = std::fs::read_to_string(
         std::path::Path::new(env!("CARGO_MANIFEST_DIR"))
             .join("../../openspec/changes/the-loop/specs/tools/tool-server/spec.md"),
@@ -21,18 +22,28 @@ fn spec_list() -> BTreeSet<String> {
     let start = spec.find(opening).expect("the spec's enumeration") + opening.len();
     let rest = &spec[start..];
     let end = rest.find(" — ").expect("the enumeration's close");
-    let named: BTreeSet<String> = rest[..end]
+    rest[..end]
         .replace('\n', " ")
         .split(',')
         .map(|item| item.split_whitespace().collect::<Vec<_>>().join(" "))
         .filter(|item| !item.starts_with("and the rest"))
-        .map(|item| match item.as_str() {
-            "propose a unit" => "propose-unit".to_string(),
-            "answer a decision" => "answer".to_string(),
-            other => other.to_string(),
-        })
-        .collect();
-    named
+        .collect()
+}
+
+/// The tools one of the spec's phrases names: most phrases are a tool's own
+/// name, and the rest say in words what one tool, or two, does.
+fn tools_of(phrase: &str) -> Vec<String> {
+    match phrase {
+        "propose a unit" => vec!["propose-unit"],
+        "answer a decision" => vec!["answer"],
+        "open an intent from a capture" => vec!["open-intent"],
+        "attach or drop a signal" => vec!["attach-signal", "drop-signal"],
+        "run curation" => vec!["curate"],
+        other => vec![other],
+    }
+    .into_iter()
+    .map(String::from)
+    .collect()
 }
 
 /// The catalogue and the spec's list agree: every operation the spec names has
@@ -40,8 +51,9 @@ fn spec_list() -> BTreeSet<String> {
 /// beyond them and nothing else (193, 4, 47, D9).
 #[test]
 fn every_named_tool_has_a_body() {
-    let named = spec_list();
-    assert_eq!(named.len(), 16, "the spec names {named:?}");
+    let phrases = spec_phrases();
+    assert_eq!(phrases.len(), 20, "the spec names {phrases:?}");
+    let named: BTreeSet<String> = phrases.iter().flat_map(|phrase| tools_of(phrase)).collect();
 
     let carried: BTreeSet<String> = catalogue::catalogue()
         .iter()
@@ -50,22 +62,50 @@ fn every_named_tool_has_a_body() {
     let missing: Vec<&String> = named.difference(&carried).collect();
     assert!(missing.is_empty(), "the catalogue lacks {missing:?}");
 
-    // Beyond the spec's sixteen the catalogue carries the pair clause 47 grants
-    // past undo-or-defer, the removal D9 puts there from day one, and the
-    // curator's moves — the one write the page made as no tool until audit 6
-    // (93b, 107, 116).
+    // Beyond the spec's list the catalogue carries the pair clause 47 grants
+    // past undo-or-defer and the removal D9 puts there from day one.
     let beyond: BTreeSet<String> = carried.difference(&named).cloned().collect();
-    let expected: BTreeSet<String> = ["start", "stop", "remove-instance", "curate"]
+    let expected: BTreeSet<String> = ["start", "stop", "remove-instance"]
         .iter()
         .map(|s| s.to_string())
         .collect();
     assert_eq!(beyond, expected, "the catalogue carries {beyond:?} besides");
 
     // And each one has a body: invoked, it writes a response record naming the
-    // tool, through the store.
+    // tool, through the store. The world tracks a repository, since an ask
+    // names one the instance tracks (205, `surfaces.yaml` tools.ask).
     let mut store = flywheel_atoms::testing::FakeStore::default();
-    let mut world = world::Files::new();
+    let mut world = world::Files::new().tracking("atlas");
     let defs = flywheel_domain::set::load().expect("the embedded definitions");
+    // The captures the capture's own controls act on, one each, since a signal
+    // takes one move (107).
+    let mut captured = |text: &str| -> String {
+        let call = Call::new("capture", "chuck", "page").arg("text", json!(text));
+        let outcome = catalogue::call(&mut store, &mut world, &defs, &call).expect("a capture");
+        outcome.journal.iter().find(|n| n.kind == "capture").expect("the capture").object.clone()
+    };
+    let built = captured("the rows lose their numbers");
+    let opened = captured("keep the row numbers on every page");
+    let attached = captured("page two drops them again");
+    let dropped = captured("a note for nobody");
+    let signal_of = |capture: &str| capture.replacen("capture/", "signal/", 1);
+    let intent = format!(
+        "intent/{}",
+        flywheel_domain::signals::name_from_words("keep the row numbers on every page")
+    );
+    let given: std::collections::BTreeMap<(&str, &str), serde_json::Value> = [
+        // A row names a chore of a fold, and decision 1 is no fold (S232).
+        (("answer", "row"), json!("")),
+        (("propose-unit", "capture"), json!(built)),
+        (("open-intent", "capture"), json!(opened)),
+        (("attach-signal", "signal"), json!(signal_of(&attached))),
+        (("attach-signal", "intent"), json!(intent)),
+        (("drop-signal", "signal"), json!(signal_of(&dropped))),
+        (("revive", "signal"), json!(signal_of(&dropped))),
+        (("ask", "repository"), json!("atlas")),
+    ]
+    .into_iter()
+    .collect();
     for tool in catalogue::catalogue() {
         if tool.name == "later" {
             // `later` names a decision the register gave; it is exercised on
@@ -79,7 +119,8 @@ fn every_named_tool_has_a_body() {
         }
         let mut call = Call::new(tool.name, "chuck", "page");
         for argument in tool.args {
-            call = call.arg(argument, argument_for(argument));
+            let value = given.get(&(tool.name, argument)).cloned().unwrap_or_else(|| argument_for(argument));
+            call = call.arg(argument, value);
         }
         let outcome = catalogue::call(&mut store, &mut world, &defs, &call)
             .unwrap_or_else(|e| panic!("`{}` has no body: {e}", tool.name));
