@@ -19,17 +19,27 @@ pub fn unmoved(read: &Read, object: &str) -> Vec<String> {
     read.unmoved
         .iter()
         .filter(|signal| signal.id == object || signal.capture == object)
-        // A signal whose machine has left `unmoved` has moved, whether or not
-        // its move record is here to say so (107).
-        .filter(|signal| {
-            read.objects
-                .iter()
-                .find(|o| o.id == signal.id)
-                .and_then(|o| o.config.get("move"))
-                .is_none_or(|state| state == "unmoved")
-        })
+        .filter(|signal| still_unmoved(read, &signal.id))
         .map(|signal| signal.id.clone())
         .collect()
+}
+
+/// Every signal nothing has moved yet, once for the whole read, where a caller
+/// asks after each of thousands (310a).
+pub fn unmoved_ids(read: &Read) -> std::collections::BTreeSet<&str> {
+    read.unmoved
+        .iter()
+        .filter(|signal| still_unmoved(read, &signal.id))
+        .map(|signal| signal.id.as_str())
+        .collect()
+}
+
+/// A signal whose machine has left `unmoved` has moved, whether or not its move
+/// record is here to say so (107).
+fn still_unmoved(read: &Read, signal: &str) -> bool {
+    read.object(signal)
+        .and_then(|o| o.config.get("move"))
+        .is_none_or(|state| state == "unmoved")
 }
 
 /// Who reads a waiting note next, and when, in the operator's words: how many

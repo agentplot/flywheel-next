@@ -20,10 +20,24 @@ pub enum Row {
 /// Rows `from` to `from + PAGE` of a list, and its `more` where rows remain.
 /// `object` is the object whose list it is, or none for the page's own.
 pub fn page(rows: &[String], from: usize, object: Option<&str>, list: &str, row: Row) -> String {
-    let end = (from + PAGE).min(rows.len());
-    let mut out = rows.get(from.min(end)..end).map(|shown| shown.concat()).unwrap_or_default();
-    if end < rows.len() {
-        out.push_str(&more(end, rows.len(), object, list, row));
+    page_with(rows, from, object, list, row, |drawn| drawn.clone())
+}
+
+/// The same over rows drawn as they are shown: a list of thousands draws the
+/// fifty it shows and none of the rest, so what a page costs grows with what is
+/// on screen (310a, S235).
+pub fn page_with<T>(
+    items: &[T],
+    from: usize,
+    object: Option<&str>,
+    list: &str,
+    row: Row,
+    draw: impl Fn(&T) -> String,
+) -> String {
+    let end = (from + PAGE).min(items.len());
+    let mut out: String = items.get(from.min(end)..end).map(|shown| shown.iter().map(&draw).collect()).unwrap_or_default();
+    if end < items.len() {
+        out.push_str(&more(end, items.len(), object, list, row));
     }
     out
 }

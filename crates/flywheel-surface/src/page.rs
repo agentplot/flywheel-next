@@ -244,6 +244,44 @@ pub struct Read {
     /// The objects whose type the definitions in force do not hold, so a card
     /// names no type for them and asks for one instead (85a, S226).
     pub untyped: std::collections::BTreeSet<String>,
+    /// Where each object stands in `objects` and which hang off each, so a row
+    /// looks its object up rather than passing over the whole instance (310a).
+    pub index: Index,
+}
+
+/// Where each object of a read stands, by its id, and which objects hang off
+/// each, built once per read: a lookup a row makes is then no pass over the
+/// whole instance, so what the page costs grows with what is on screen (310a,
+/// S235).
+#[derive(Clone, Default)]
+pub struct Index {
+    at: BTreeMap<String, usize>,
+    children: BTreeMap<String, Vec<usize>>,
+}
+
+impl Index {
+    fn of(objects: &[Object]) -> Index {
+        let mut index = Index::default();
+        for (at, object) in objects.iter().enumerate() {
+            index.at.entry(object.id.clone()).or_insert(at);
+            if let Some(parent) = &object.parent {
+                index.children.entry(parent.clone()).or_default().push(at);
+            }
+        }
+        index
+    }
+}
+
+impl Read {
+    /// An object of the read, by its id.
+    pub(crate) fn object(&self, id: &str) -> Option<&Object> {
+        self.index.at.get(id).map(|&at| &self.objects[at])
+    }
+
+    /// The objects hanging off one, in the order the read holds them.
+    pub(crate) fn children<'a>(&'a self, parent: &str) -> impl Iterator<Item = &'a Object> + 'a {
+        self.index.children.get(parent).into_iter().flatten().map(move |&at| &self.objects[at])
+    }
 }
 
 /// The curation session the operator runs, where one is charged: the newest
@@ -486,6 +524,7 @@ pub fn read<S: StateStore, W: World + ?Sized>(
         &files,
     )?;
     let objects = store.list_records(&flywheel_atoms::Scope::All)?;
+    let index = Index::of(&objects);
     let away = sinks::away_by_object(store, at, chrono::Duration::minutes(5))?;
     // What a proposed intent weighs, from the same material (109, 118).
     let mut weight = BTreeMap::new();
@@ -691,6 +730,7 @@ pub fn read<S: StateStore, W: World + ?Sized>(
         refused: None,
         opened: None,
         untyped,
+        index,
     })
 }
 
@@ -1737,12 +1777,8 @@ fn rail_cards(read: &Read) -> String {
 /// Whether a capture holds more than one signal, on record or in the material:
 /// a transcript read or a folder imported, where a note holds one (19, 114).
 fn several_signals(read: &Read, capture: &str) -> bool {
-    let mut held: std::collections::BTreeSet<&str> = read
-        .objects
-        .iter()
-        .filter(|o| o.machine == "signal" && o.parent.as_deref() == Some(capture))
-        .map(|o| o.id.as_str())
-        .collect();
+    let mut held: std::collections::BTreeSet<&str> =
+        read.children(capture).filter(|o| o.machine == "signal").map(|o| o.id.as_str()).collect();
     for waiting in read.status.waiting.iter().filter(|w| w.capture == capture) {
         held.extend(waiting.signals.iter().map(|s| s.id.as_str()));
     }
@@ -1755,20 +1791,23 @@ fn several_signals(read: &Read, capture: &str) -> bool {
 /// the board is what is moving and the rail is what happened. A capture raises
 /// no decision, so this is where the operator sees it was taken (19a, S9).
 fn since(read: &Read) -> String {
-    let items = since_rows(read);
+    let items = since_items(read);
     if items.is_empty() {
         return String::new();
     }
     format!(
         "<div class=\"grp since\"><span class=\"g\">Recently done</span></div>\n<ul class=\"since\">\n{}</ul>\n",
-        lists::page(&items, 0, None, "since", lists::Row::Li)
+        lists::page_with(&items, 0, None, "since", lists::Row::Li, |item| since_line(read, item))
     )
 }
 
-/// The lines of Recently done, newest first: every entry of today, or the last
-/// twenty when today holds fewer (S9).
-fn since_rows(read: &Read) -> Vec<String> {
-    let mut rows: Vec<(chrono::DateTime<chrono::Utc>, &Object, String)> = Vec::new();
+/// One entry of Recently done: when it finished, what, and its word.
+type Since<'a> = (chrono::DateTime<chrono::Utc>, &'a Object, &'static str);
+
+/// The entries of Recently done, newest first: every entry of today, or the
+/// last twenty when today holds fewer (S9).
+fn since_items(read: &Read) -> Vec<Since<'_>> {
+    let mut rows: Vec<Since<'_>> = Vec::new();
     for object in &read.objects {
         let verb = match object.machine.as_str() {
             // A note taken is listed; a capture of several signals is listed in
@@ -1807,7 +1846,7 @@ fn since_rows(read: &Read) -> Vec<String> {
         let Some(at) = at.copied() else {
             continue;
         };
-        rows.push((at, object, verb.to_string()));
+        rows.push((at, object, verb));
     }
     if rows.is_empty() {
         return Vec::new();
@@ -1819,39 +1858,39 @@ fn since_rows(read: &Read) -> Vec<String> {
         .iter()
         .map(|(at, _, _)| at.with_timezone(&chrono::Local).date_naive())
         .collect();
-    let shown = recently_done(&days, today);
-    let mut out = Vec::new();
-    for (at, object, verb) in rows.iter().take(shown) {
-        // A note is its signal's words, and so is the capture that holds it.
-        let said = match object.machine.as_str() {
-            "signal" => signals::text_of(object),
-            "capture" => read
-                .objects
-                .iter()
-                .find(|o| o.machine == "signal" && o.parent.as_deref() == Some(object.id.as_str()))
-                .and_then(signals::text_of)
-                .or_else(|| object.record.get("raw").and_then(|v| v.as_str()).map(pointed)),
-            _ => None,
-        };
-        // An object named by its id says which repository it is in, greyed, as
-        // a slip does: two chores merged onto two shared lines are both
-        // `chore-1` by name (209, S231).
-        let pre = match said {
-            Some(_) => None,
-            None => repository_of(&object.id),
-        };
-        let name = said.map(|s| clipped_to(&s, 56)).unwrap_or_else(|| name_of(&object.id).to_string());
-        out.push(format!(
-            "<li><span class=\"v {verb}\">{verb}</span><a class=\"grow\" href=\"#dock-{id}\">{pre}{name}</a><span class=\"t\">{when}</span></li>\n",
-            id = escape(&object.id),
-            pre = pre
-                .map(|r| format!("<span class=\"pre\">{} · </span>", escape(r)))
-                .unwrap_or_default(),
-            name = escape(&name),
-            when = escape(&at.format("%H:%M").to_string()),
-        ));
-    }
-    out
+    rows.truncate(recently_done(&days, today));
+    rows
+}
+
+/// One line of Recently done, drawn when it is shown.
+fn since_line(read: &Read, (at, object, verb): &Since<'_>) -> String {
+    // A note is its signal's words, and so is the capture that holds it.
+    let said = match object.machine.as_str() {
+        "signal" => signals::text_of(object),
+        "capture" => read
+            .children(&object.id)
+            .find(|o| o.machine == "signal")
+            .and_then(signals::text_of)
+            .or_else(|| object.record.get("raw").and_then(|v| v.as_str()).map(pointed)),
+        _ => None,
+    };
+    // An object named by its id says which repository it is in, greyed, as a
+    // slip does: two chores merged onto two shared lines are both `chore-1` by
+    // name (209, S231).
+    let pre = match said {
+        Some(_) => None,
+        None => repository_of(&object.id),
+    };
+    let name = said.map(|s| clipped_to(&s, 56)).unwrap_or_else(|| name_of(&object.id).to_string());
+    format!(
+        "<li><span class=\"v {verb}\">{verb}</span><a class=\"grow\" href=\"#dock-{id}\">{pre}{name}</a><span class=\"t\">{when}</span></li>\n",
+        id = escape(&object.id),
+        pre = pre
+            .map(|r| format!("<span class=\"pre\">{} · </span>", escape(r)))
+            .unwrap_or_default(),
+        name = escape(&name),
+        when = escape(&at.format("%H:%M").to_string()),
+    )
 }
 
 /// How many of what finished the Recently done list shows, newest first:
@@ -2269,7 +2308,6 @@ fn lane_head(read: &Read, title: &str, sub: &str, machines: &[&str], mine: &[&st
 /// (141, D16).
 fn lane_group(read: &Read, id: &str, group: &str, mine: &[&status::Row]) -> String {
     let rows = group_rows(read, group, mine);
-    let drawn: Vec<String> = rows.iter().map(|row| object_on_the_board(read, row, mine)).collect();
     let slug = group.replace(' ', "-");
     format!(
         "<section class=\"sec-h-group{empty}\" data-group=\"{slug}\">\n<h2>{group}</h2>\n{rows}</section>\n",
@@ -2277,7 +2315,9 @@ fn lane_group(read: &Read, id: &str, group: &str, mine: &[&status::Row]) -> Stri
             true => " empty",
             false => "",
         },
-        rows = lists::page(&drawn, 0, None, &format!("{id}.{slug}"), lists::Row::Div),
+        rows = lists::page_with(&rows, 0, None, &format!("{id}.{slug}"), lists::Row::Div, |row| {
+            object_on_the_board(read, row, mine)
+        }),
     )
 }
 
@@ -2357,10 +2397,7 @@ fn nests(parent: &str, child: &str) -> bool {
 
 /// The object this one hangs off, as the store records it.
 fn parent_of<'a>(read: &'a Read, object: &str) -> Option<&'a str> {
-    read.objects
-        .iter()
-        .find(|o| o.id == object)
-        .and_then(|o| o.parent.as_deref())
+    read.object(object).and_then(|o| o.parent.as_deref())
 }
 
 /// The rows drawn inside this one, in the order the store holds them, which is
@@ -3183,16 +3220,15 @@ fn dock(read: &Read) -> String {
 pub fn list_part(read: &Read, object: Option<&str>, list: &str, from: usize) -> Option<String> {
     use lists::{page, Row};
     match (object, list) {
-        (None, "since") => Some(page(&since_rows(read), from, None, "since", Row::Li)),
+        (None, "since") => Some(lists::page_with(&since_items(read), from, None, "since", Row::Li, |item| since_line(read, item))),
         (None, "log") => Some(page(&log_rows(read), from, None, "log", Row::Li)),
         (None, named) => {
             let (lane, group) = named.split_once('.')?;
             let (_, machines) = LANES.iter().find(|(slot, _)| lane_id(slot) == lane)?;
             let group = status::GROUPS.iter().find(|g| g.replace(' ', "-") == group)?;
             let mine = lane_rows(read, machines);
-            let rows: Vec<String> =
-                group_rows(read, group, &mine).iter().map(|row| object_on_the_board(read, row, &mine)).collect();
-            Some(page(&rows, from, None, named, Row::Div))
+            let rows = group_rows(read, group, &mine);
+            Some(lists::page_with(&rows, from, None, named, Row::Div, |row| object_on_the_board(read, row, &mine)))
         }
         (Some(tray::ID), "rows") => Some(tray::rows_part(read, from)),
         (Some(tray::ID), "curate") => Some(page(&curator_rows(read), from, Some(tray::ID), "curate", Row::Div)),

@@ -18,11 +18,12 @@ pub const ID: &str = "tray";
 /// What waits, capture by capture, with each capture's signals nothing has
 /// moved.
 fn waiting(read: &Read) -> Vec<(&signals::Waiting, Vec<&signals::Signal>)> {
+    let unmoved = hand::unmoved_ids(read);
     read.status
         .waiting
         .iter()
         .map(|waiting| {
-            let rows = waiting.signals.iter().filter(|s| !hand::unmoved(read, &s.id).is_empty()).collect::<Vec<_>>();
+            let rows = waiting.signals.iter().filter(|s| unmoved.contains(s.id.as_str())).collect::<Vec<_>>();
             (waiting, rows)
         })
         .filter(|(_, rows)| !rows.is_empty())
