@@ -269,26 +269,7 @@ pub fn curation(inputs: &Curation) -> String {
     if inputs.signals.is_empty() {
         out.push_str("None is waiting.\n");
     }
-    for signal in &inputs.signals {
-        let mut head = format!("- `{}` · {}", signal.id, signal.kind);
-        if !signal.asserted_by.is_empty() {
-            head.push_str(&format!(" · {}", signal.asserted_by));
-        }
-        if !signal.subject_tags.is_empty() {
-            head.push_str(&format!(" · subjects: {}", signal.subject_tags.join(", ")));
-        }
-        if !signal.argues_with.is_empty() {
-            head.push_str(&format!(" · argues with: {}", signal.argues_with.join(", ")));
-        }
-        out.push_str(&head);
-        out.push('\n');
-        if !signal.assertion.trim().is_empty() {
-            out.push_str(&format!("  {}\n", signal.assertion.trim()));
-        }
-        for line in signal.excerpt.lines().filter(|l| !l.trim().is_empty()) {
-            out.push_str(&format!("  > {}\n", line.trim()));
-        }
-    }
+    out.push_str(&signal_lines(&inputs.signals));
     out.push_str("\n## the standing claims\n\n");
     if inputs.claims.is_empty() {
         out.push_str("None stands yet.\n");
@@ -322,6 +303,115 @@ pub fn curation(inputs: &Curation) -> String {
         proposal_path = crate::offers::delivery_path("intent-proposal"),
     ));
     out
+}
+
+/// Signals as an order lists them: the id, kind, who said it, the subjects and
+/// the claims it argues with, then what it asserts and its excerpt quoted.
+fn signal_lines(signals: &[crate::signals::Signal]) -> String {
+    let mut out = String::new();
+    for signal in signals {
+        let mut head = format!("- `{}` · {}", signal.id, signal.kind);
+        if !signal.asserted_by.is_empty() {
+            head.push_str(&format!(" · {}", signal.asserted_by));
+        }
+        if !signal.subject_tags.is_empty() {
+            head.push_str(&format!(" · subjects: {}", signal.subject_tags.join(", ")));
+        }
+        if !signal.argues_with.is_empty() {
+            head.push_str(&format!(" · argues with: {}", signal.argues_with.join(", ")));
+        }
+        out.push_str(&head);
+        out.push('\n');
+        if !signal.assertion.trim().is_empty() {
+            out.push_str(&format!("  {}\n", signal.assertion.trim()));
+        }
+        for line in signal.excerpt.lines().filter(|l| !l.trim().is_empty()) {
+            out.push_str(&format!("  > {}\n", line.trim()));
+        }
+    }
+    out
+}
+
+/// What an elaboration's session works from: the intent's question, the
+/// signals it rests on with what each said, the claims they challenge, the
+/// other intents a gathering covers, the standing claims its signals argue
+/// with and where each stands in the book, the change directory on the
+/// intent's line, and what its type delivers (116, 188, 190; context.yaml
+/// sessions.self-closing).
+#[derive(Debug, Clone, Default)]
+pub struct Elaborating {
+    pub intent: String,
+    pub subject: String,
+    pub signals: Vec<crate::signals::Signal>,
+    pub challenges: Vec<String>,
+    /// Each other intent a gathering covers: its id and its subject.
+    pub covers: Vec<(String, String)>,
+    pub claims: Vec<crate::changes::Claim>,
+    pub change_directory: String,
+    pub deliverables: Vec<String>,
+}
+
+/// The part of an elaboration session's work order that is its job.
+pub fn elaboration(inputs: &Elaborating) -> String {
+    let subject = match inputs.subject.trim().is_empty() {
+        true => "The intent states no subject; its signals are the question.",
+        false => inputs.subject.trim(),
+    };
+    let mut out = format!("## the question\n\n{subject} · `{}`\n", inputs.intent);
+    out.push_str("\n## the signals it rests on\n\n");
+    match inputs.signals.is_empty() {
+        true => out.push_str("None is cited.\n"),
+        false => out.push_str(&signal_lines(&inputs.signals)),
+    }
+    if !inputs.challenges.is_empty() {
+        out.push_str("\n## the claims it challenges\n\n");
+        for claim in &inputs.challenges {
+            out.push_str(&format!("- `{claim}`\n"));
+        }
+    }
+    if !inputs.covers.is_empty() {
+        out.push_str("\n## the intents it covers as well\n\n");
+        for (intent, subject) in &inputs.covers {
+            out.push_str(&format!("- `{intent}` · {subject}\n"));
+        }
+    }
+    out.push_str("\n## the chapters to read\n\n");
+    match inputs.claims.is_empty() {
+        true => out.push_str("No standing claim is argued with; the whole book is on disk in this place.\n"),
+        false => {
+            for claim in &inputs.claims {
+                out.push_str(&format!("- `{}` · {} · {}\n", claim.name, claim.title, claim.path));
+            }
+        }
+    }
+    out.push_str(&format!(
+        "\n## the change directory\n\n`{}` on the intent's line: earlier elaborations' records are there, \
+         and this one's go there too.\n",
+        inputs.change_directory
+    ));
+    if !inputs.deliverables.is_empty() {
+        out.push_str(&format!(
+            "\n## what the type delivers\n\n{}, written in this place and committed in one commit.\n",
+            inputs.deliverables.join(", ")
+        ));
+    }
+    out
+}
+
+/// The deliverables an elaboration type's one session asks for, by name, as
+/// its type file's parameters state them (190).
+pub fn type_deliverables(defs: &Definitions, type_name: &str) -> Vec<String> {
+    let Some(machine) = defs.machines.get(type_name) else {
+        return vec![];
+    };
+    machine
+        .regions
+        .values()
+        .flat_map(|region| region.states.values())
+        .find(|state| state.machine.as_deref() == Some("session"))
+        .and_then(|state| asks_from(state.params.clone().unwrap_or_default().get("deliverables")).ok())
+        .map(|asks| asks.into_iter().map(|ask| ask.name).collect())
+        .unwrap_or_default()
 }
 
 /// What a capture-reader session reads a capture against: the capture's

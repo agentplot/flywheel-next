@@ -2519,6 +2519,20 @@ pub(crate) fn work_order(
     let deliverables = match kind.as_str() {
         "curation" => flywheel_domain::offers::CURATION.iter().map(|d| d.to_string()).collect(),
         "capture" => vec!["signal".to_string()],
+        // An elaboration's are its type's, narrowed by the proposal where it
+        // named fewer (190).
+        "elaboration" => {
+            let type_name = held.as_ref().and_then(|o| flywheel_domain::stages::type_of(&store.git, o)).unwrap_or_default();
+            let named: Vec<String> = held
+                .as_ref()
+                .and_then(|o| o.record.get("deliverables"))
+                .and_then(|v| serde_json::from_value(v.clone()).ok())
+                .unwrap_or_default();
+            flywheel_domain::order::type_deliverables(defs, &type_name)
+                .into_iter()
+                .filter(|d| named.is_empty() || named.contains(d))
+                .collect()
+        }
         _ => stage_deliverables(defs, store, held.as_ref(), stage.as_deref()),
     };
 
@@ -2573,6 +2587,61 @@ pub(crate) fn work_order(
         };
         body.push('\n');
         body.push_str(&flywheel_domain::order::curation(&inputs));
+    }
+    // An elaboration's session works the intent's question from the signals it
+    // rests on, reads the chapters its signals argue with, and delivers what
+    // its type asks for (116, 188, 190; context.yaml sessions.self-closing).
+    if kind == "elaboration" {
+        let intent = held.as_ref().and_then(|o| o.parent.clone()).unwrap_or_default();
+        let above = store.get(&intent).ok().flatten();
+        let list = |object: Option<&Object>, name: &str| -> Vec<String> {
+            object
+                .and_then(|o| o.record.get(name))
+                .and_then(|v| serde_json::from_value(v.clone()).ok())
+                .unwrap_or_default()
+        };
+        let mut cited = list(held.as_ref(), "signals");
+        if cited.is_empty() {
+            cited = list(above.as_ref(), "signals");
+        }
+        let material = flywheel_domain::signals::all_signals_from(&*store.material());
+        let signals: Vec<flywheel_domain::signals::Signal> =
+            cited.iter().filter_map(|id| material.iter().find(|s| &s.id == id).cloned()).collect();
+        let argued: std::collections::BTreeSet<String> = signals
+            .iter()
+            .flat_map(|s| s.argues_with.iter().map(|c| flywheel_domain::signals::claim_named(c).0))
+            .collect();
+        let claims = flywheel_domain::changes::standing_claims(&flywheel_domain::signals::Blueprints(&*store.world))
+            .into_iter()
+            .filter(|claim| argued.contains(&claim.name))
+            .collect();
+        let subject_of = |object: Option<&Object>| {
+            object
+                .and_then(|o| o.record.get("subject"))
+                .and_then(|v| v.as_str())
+                .unwrap_or_default()
+                .to_string()
+        };
+        let covers = list(held.as_ref(), "covers")
+            .into_iter()
+            .filter(|covered| covered != &intent)
+            .map(|covered| {
+                let subject = subject_of(store.get(&covered).ok().flatten().as_ref());
+                (covered, subject)
+            })
+            .collect();
+        let inputs = flywheel_domain::order::Elaborating {
+            intent: intent.clone(),
+            subject: subject_of(above.as_ref()),
+            signals,
+            challenges: list(above.as_ref(), "challenges"),
+            covers,
+            claims,
+            change_directory: format!("openspec/changes/{}/", intent.trim_start_matches("intent/")),
+            deliverables: deliverables.clone(),
+        };
+        body.push('\n');
+        body.push_str(&flywheel_domain::order::elaboration(&inputs));
     }
     // A capture reader's job is its capture: the pointer it follows, the claims
     // a signal names when it argues with one, and the tags (113, 115;

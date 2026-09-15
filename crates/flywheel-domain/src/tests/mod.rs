@@ -7,6 +7,7 @@ mod blueprints;
 mod capture_reader;
 mod curation;
 mod curator;
+mod elaboration_order;
 mod elaboration_type;
 mod envelope;
 mod offers;
