@@ -104,11 +104,12 @@ pub fn view_address(view: &str) -> String {
 }
 
 /// What one argument holds, as an input schema says it: a decision is the
-/// number the register gave it, the curator's moves are a list, and every other
-/// argument is an object id or words (15, 193).
+/// number the register gave it, or a fold's number with one row's letter,
+/// `415b`; the curator's moves are a list, and every other argument is an
+/// object id or words (15, 193, S232).
 fn argument(name: &str) -> Value {
     match name {
-        "decision" => json!({"type": "integer"}),
+        "decision" => json!({"type": ["integer", "string"], "pattern": "^[0-9]+[a-z]*$"}),
         "moves" => json!({"type": "array", "items": {"type": "object"}}),
         _ => json!({"type": "string"}),
     }
@@ -127,10 +128,13 @@ pub const ANSWER: &str = "answer";
 pub const CATALOGUE: &[Tool] = &[
     Tool {
         name: ANSWER,
-        args: &["decision", "answer", "text", "row"],
+        args: &["decision", "answer", "text"],
         doc: "answer a numbered decision; the deterministic path, `yes 412` or \
-              `421: <text>` in chat is this tool (194); a row's letter names one \
-              chore of a fold, `drop 415b`, and the answer is that chore's alone (S232)",
+              `421: <text>` in chat is this tool (194). `decision` is what the operator \
+              names: a decision's number, or a fold's number with a row's letter as one \
+              word, `415b`, for one row of a chores fold — the row is that chore's own \
+              decision and the letter says which, so no fourth argument carries it (S232, \
+              11); a letter the fold does not hold is refused naming the rows it has",
     },
     Tool {
         name: "capture",
@@ -634,7 +638,10 @@ fn first_object_argument(call: &Call) -> Option<String> {
 /// Answer a numbered decision: the deterministic path, and the same tool the
 /// chat's numbered reply grammar calls (129, 153, 194).
 fn answer<S: StateStore>(store: &mut S, defs: &Definitions, call: &Call) -> Result<Outcome> {
-    let Some(number) = call.number("decision") else {
+    // A row of a fold of chores is its chore's own decision: `decision` names
+    // the fold's number and the row's letter as one word, `415b`, and the
+    // answer is recorded on that chore and applies to it alone (S232, 11).
+    let Some((number, row)) = call.text("decision").and_then(|said| named_decision(&said)) else {
         bail!("`answer` takes the decision's number, and the call names none");
     };
     // An answer whose pattern takes an argument arrives as two fields, because
@@ -651,10 +658,6 @@ fn answer<S: StateStore>(store: &mut S, defs: &Definitions, call: &Call) -> Resu
         (None, Some(text)) => text,
         (None, None) => String::new(),
     };
-    // A row of a fold of chores is its chore's own decision: named by the
-    // fold's number and the row's letter, the answer is recorded on that chore
-    // and applies to it alone (S232, 11).
-    let row = call.text("row").map(|row| row.trim().to_ascii_lowercase()).filter(|row| !row.is_empty());
     let object = match &row {
         Some(letter) => Some(row_object(store, defs, number as u32, letter)?),
         None => None,
@@ -680,6 +683,22 @@ fn answer<S: StateStore>(store: &mut S, defs: &Definitions, call: &Call) -> Resu
         format!("{number}{} → {answer}", row.as_deref().unwrap_or_default()),
     ));
     Ok(record)
+}
+
+/// A decision as a call names it: its number, `415`, or a fold's number with
+/// one row's letter, `415b` (S232). `None` for anything else.
+fn named_decision(said: &str) -> Option<(u64, Option<String>)> {
+    let said = said.trim();
+    let split = said.find(|c: char| !c.is_ascii_digit()).unwrap_or(said.len());
+    let (digits, letters) = said.split_at(split);
+    let number = digits.parse().ok()?;
+    match letters.is_empty() {
+        true => Some((number, None)),
+        false => letters
+            .chars()
+            .all(|c| c.is_ascii_alphabetic())
+            .then(|| (number, Some(letters.to_ascii_lowercase()))),
+    }
 }
 
 /// The chore a row of a standing fold names, by the fold's number and the

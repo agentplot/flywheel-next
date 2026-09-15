@@ -329,13 +329,16 @@ fn answers_of(objects: &[Object]) -> BTreeMap<u32, Vec<Answered>> {
             continue;
         };
         // An answer on one row of a fold says which, so a drop of one chore
-        // does not read as the fold's (S232).
-        let row = object
-            .record
-            .get("args")
-            .and_then(|args| args.get("row"))
+        // does not read as the fold's: the letter after the number it named,
+        // `415b`, or the `row` a response recorded before the letter rode in
+        // `decision` carries (S232).
+        let args = object.record.get("args");
+        let row = args
+            .and_then(|args| args.get("decision"))
             .and_then(|v| v.as_str())
-            .map(str::trim)
+            .map(|said| said.trim().trim_start_matches(|c: char| c.is_ascii_digit()))
+            .filter(|row| !row.is_empty())
+            .or_else(|| args.and_then(|args| args.get("row")).and_then(|v| v.as_str()).map(str::trim))
             .filter(|row| !row.is_empty());
         out.entry(number as u32).or_default().push(Answered {
             answer: match row {
@@ -701,9 +704,9 @@ fn chore_rows(number: &str, rows: &[ChoreRow<'_>]) -> String {
 }
 
 /// The drop one row of a fold carries: the fold's number and the row's letter
-/// posted to the one answer tool, so the chore is dropped alone and the rest
-/// stand (S232, 193). On the card it is a mark beside the row; in the dock it
-/// says what it does.
+/// posted as one word, `415b`, to the one answer tool, so the chore is dropped
+/// alone and the rest stand (S232, 193). On the card it is a mark beside the
+/// row; in the dock it says what it does.
 pub(crate) fn row_drop(number: &str, letter: &str, label: Option<&str>) -> String {
     let tool = crate::catalogue::ANSWER;
     let (class, said) = match label {
@@ -712,9 +715,8 @@ pub(crate) fn row_drop(number: &str, letter: &str, label: Option<&str>) -> Strin
     };
     format!(
         "<form method=\"post\" action=\"/api/tools/{tool}\" class=\"answer row-drop\">\n\
-         <input type=\"hidden\" name=\"decision\" value=\"{number}\">\n\
+         <input type=\"hidden\" name=\"decision\" value=\"{number}{letter}\">\n\
          <input type=\"hidden\" name=\"answer\" value=\"drop\">\n\
-         <input type=\"hidden\" name=\"row\" value=\"{letter}\">\n\
          <button type=\"submit\" class=\"{class}\" data-row-answer=\"drop\" \
          title=\"{number}{letter} · drop this chore; the others stand\" aria-label=\"drop {number}{letter}\">{said}</button>\n\
          </form>\n",

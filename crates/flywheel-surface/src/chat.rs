@@ -687,13 +687,16 @@ impl<C: Channel> Chat<C> {
         answer: &str,
         delivery: &str,
     ) -> Result<Called> {
-        let mut call = Call::new(catalogue::ANSWER, &message.by, "chat")
+        // A row is named in `decision` by the fold's number and its letter as
+        // one word, `415b`, the way the catalogue's `answer` takes it (S232).
+        let named = match row {
+            Some(row) => json!(format!("{number}{row}")),
+            None => json!(number),
+        };
+        let call = Call::new(catalogue::ANSWER, &message.by, "chat")
             .delivered(delivery)
-            .arg("decision", json!(number))
+            .arg("decision", named)
             .arg("answer", json!(answer));
-        if let Some(row) = row {
-            call = call.arg("row", json!(row));
-        }
         let called = crate::catalogue::call(store, world, defs, &call)?;
         // The operator can tell it was recorded (154), once, when it is: the
         // same delivery read again — after a restart, say — writes nothing and

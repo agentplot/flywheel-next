@@ -1406,7 +1406,10 @@ fn a_chores_fold_carries_a_drop_on_each_row() {
     for (letter, words) in [("a", "agents md"), ("b", "rename ref"), ("c", "citation fix")] {
         assert!(atlas.contains(&format!("data-row=\"{letter}\"")), "no row {letter}: {atlas}");
         assert!(atlas.contains(&format!(">{words}</a>")), "row {letter} is not named by its document: {atlas}");
-        assert!(atlas.contains(&format!("name=\"row\" value=\"{letter}\"")), "row {letter} carries no drop of its own: {atlas}");
+        assert!(
+            atlas.contains(&format!("name=\"decision\" value=\"{}{letter}\"", number_of("atlas"))),
+            "row {letter} carries no drop of its own: {atlas}"
+        );
     }
     assert_eq!(atlas.matches("class=\"answer row-drop\"").count(), 3, "{atlas}");
     assert!(atlas.contains(&format!("aria-label=\"drop {}b\"", number_of("atlas"))), "{atlas}");
@@ -1468,7 +1471,7 @@ fn a_rows_letter_stays_after_another_is_dropped() {
     assert!(held.contains(">atlas · 3 chores<"), "{held}");
     assert!(held.contains("data-row=\"a\"") && held.contains("data-row=\"c\""), "a and c stand: {held}");
     assert!(!held.contains("data-row=\"b\""), "b left the fold: {held}");
-    assert!(held.contains("name=\"row\" value=\"c\""), "c still carries its own drop: {held}");
+    assert!(held.contains(&format!("name=\"decision\" value=\"{number}c\"")), "c still carries its own drop: {held}");
     assert!(
         held.contains("data-row=\"d\" data-object=\"unit/atlas/chore-10\""),
         "the tenth chore made is d, after c: {held}"
