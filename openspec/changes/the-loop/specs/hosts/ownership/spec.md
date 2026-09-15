@@ -104,7 +104,7 @@ the type, and the machinery's own sessions, curation among them, SHALL be the
 operator's under the same rule (93b, 25, 110). A session SHALL be given one job,
 one place and a bounded goal, and its only outputs to the machinery SHALL be the
 fixed exits — done with deliverables, blocked on a question, offering a finding,
-offering a chore, stalled — with anything else refused (65, 66). Every session's
+a chore or a signal, stalled — with anything else refused (65, 66, 58, 62). Every session's
 work order SHALL give, under how to report, the exact command for each of its
 exits and for an offer, with everything the command reads filled in, and the
 ask's command only where the ask is granted (67, 89, 116).

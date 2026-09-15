@@ -630,19 +630,39 @@ one that reached the thread without that check is refused there by
 `record_offers` with `refuses: <entry>`, so it holds no session and nothing is
 made of it (sessions.yaml `commands.offer`, `record-derived.yaml`). Nothing is
 read from `--about`, which says what the chore concerns and not where its fix
-lands. The unit keeps the document's path and the offer's revision, and a
-chore's session is handed the document as its job, read at the yes from the
-offering session's repository at that revision, since a chore has no change
-directory and a session on another repository's line cannot reach the offering
-place; a chore whose offering place was removed without merging before the yes
-is withdrawn (62, 89; chore@2 `params.job`, host.yaml `prepare_place`). On the
-rail any fold of proposed chores, a bolt's or a repository's, is one card headed
-by its name and count and the session that offered them, its chores lettered
-rows. Yes and drop answer what stands, each row carries its own drop when the
-fold holds more than one, and in chat a row is named by the fold's number and
-its letter, `drop 415b`, taking any answer the fold takes: each chore is a unit
-with a decision of its own and the fold is how the rail shows them, so there is
-no `pick` (11, S231, S232). A proposed chore on no ledger is a slip naming its
+lands. The unit keeps the document's path and the offer's revision. A place's
+commits reach the git host only when it merges, a squash rewrites them, and
+hosts share nothing but the git host (43, 232), so `record_offers` pins the
+revision there as `refs/flywheel/offers/<session>/<entry>` in the offering
+repository before any record points at it, pushed from the host's bare clone
+and held as the same reference in the clone; a failed push leaves the offer
+pending. A chore's session, and a finding's fast unit's, is handed the document
+as its job, read from the host's clone at the pin when its place is prepared,
+the pin fetched into a clone that lacks it, since a chore has no change
+directory and a session on another repository's line or another host cannot
+reach the offering place (62, 89; chore@2 `params.job`, host.yaml
+`prepare_place`). The pin outlives the place, its rebases and its squash, and
+the host's reconciliation removes it once the unit, elaboration or signal the
+offer made has ended, or the offer made nothing and is not pending, one
+recorded effect per removal (42, 55; `remove_stale_offer_pins`). Removing the
+offering place withdraws nothing; a proposed or deferred chore of a bolt that
+is dropped retires with the bolt, as every unit of a dropped bolt does (74). On
+the rail any fold of proposed chores, a bolt's or a repository's, is one card
+headed by its name and count and the session that offered them, its chores
+lettered rows: the letter, the document's name in words and what the offer said
+it concerns, lettered over the batch's chores standing or gone since the fold
+was raised, in the order their ids count them, so a letter stays with its chore.
+Yes and drop answer what stands, each row carries its own drop when the fold
+holds more than one, reading `415b: drop` in the dock, and in chat a row is
+named by the fold's number and its letter, `drop 415b`, taking any answer the
+fold takes; the chat's fold line lists its rows and an unknown letter is
+answered with the rows there are. Each chore is a unit with a decision of its
+own and the fold is how the rail shows them, so there is no `pick` (11, S231,
+S232). The fold's number is the fold's and never its first row's: its decision
+id is `<kind>/<batch>/<since>`, and the register's entry of that kind and batch
+without `retracted_at` is the fold on every later tick, so after `drop 415a`
+the card keeps its number and `yes 415` accepts what stands, and a fold emptied
+and refilled is a new decision (15; model 5.1, 5.2). A proposed chore on no ledger is a slip naming its
 repository, and a line under Recently done for an object named by its id names
 its repository the same way (S14, S9).
 

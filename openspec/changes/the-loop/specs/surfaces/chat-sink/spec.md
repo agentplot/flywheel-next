@@ -31,8 +31,10 @@ provides (309, 194). A response SHALL be recorded with the object, the decision,
 who gave it and when, before any work follows from it (153), and the operator
 SHALL be able to tell it was recorded (154). A row of a chores fold SHALL be
 named by the fold's number and its letter, `415b`, and SHALL take any answer the
-fold takes; a reply MAY name several rows, and each SHALL be recorded as its own
-response (11, 60, S232).
+fold takes; a reply MAY name several rows or numbers, and each SHALL be recorded
+as its own response (11, 60, S232). The line for a fold SHALL list its rows by
+letter and offer yes or drop, and a letter the fold does not hold SHALL be
+answered in the channel with the rows it has (18, S232).
 
 #### Scenario: Answering by number from a phone
 - **WHEN** the operator replies with the reply grammar naming a decision number
@@ -45,6 +47,11 @@ response (11, 60, S232).
   three chores numbered 415
 - **THEN** one response drops chore b alone, then two responses accept a and c,
   each recorded and acknowledged (11, 153, S232)
+
+#### Scenario: A letter the fold does not hold
+- **WHEN** the operator replies `drop 415d` to a fold of three chores
+- **THEN** no chore of the fold is dropped, and the channel answers with the
+  rows 415a, 415b and 415c (S232)
 
 #### Scenario: Platform controls and the grammar stand together
 - **WHEN** a decision is delivered to a chat platform that offers answer

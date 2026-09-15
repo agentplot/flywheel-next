@@ -348,11 +348,16 @@ read as its own words (S9, S14, S231).
 Any fold of proposed chores, a bolt's or a repository's shared line's, SHALL be
 one decision of kind chores, headed "<repository or bolt> · N chores", subtitled
 with the session that offered them, its chores listed as lettered rows (11,
-S231). Yes and drop SHALL answer every row still standing, and when the fold
+S231). A row SHALL be its letter, the document's name in words and what the
+offer said it concerns, lettered over the batch's chores standing in the fold or
+gone from it since the fold was raised, in the order their ids count them (S232).
+Yes and drop SHALL answer every row still standing, and when the fold
 holds more than one chore each row SHALL carry its own drop, since each row is
 the chore's own decision; a row dropped first SHALL be out of the fold before
-the yes, a letter SHALL stay with its chore, and no chore SHALL be answered by
-`pick` (11, 60, S232). The
+the yes, a letter SHALL stay with its chore, the fold SHALL keep its number
+whichever row leaves, and no chore SHALL be answered by `pick` (11, 15, 60,
+S232). The dock's page SHALL letter the rows the same way, each row's drop
+reading `415b: drop` (S232). The
 unit's page SHALL list every chore of the fold by its document and SHALL show a
 bolt only when a bolt stands above it (S231, S28). A proposed chore on no ledger
 SHALL be a slip naming its repository before its name, so two shared lines'
@@ -370,9 +375,10 @@ per repository, and never as a bolt (S15, 60).
 
 #### Scenario: Some chores of a fold
 - **WHEN** a storefront fold holds three chores and the operator presses drop on
-  its second row, then yes on the card
-- **THEN** the second chore is dropped, the first and third are accepted, and
-  the remaining rows kept their letters a and c (S232)
+  its first row, then yes on the card
+- **THEN** the first chore is dropped, the second and third are accepted, and
+  until the yes the card kept its number and the rows their letters b and c
+  (15, S232)
 
 #### Scenario: Slips read apart by repository
 - **WHEN** storefront and the blueprints each hold a proposed `chore-1` on no

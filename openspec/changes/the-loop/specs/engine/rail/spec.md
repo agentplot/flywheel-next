@@ -93,7 +93,21 @@ Every decision SHALL carry a short number unique in the instance, given once
 and never reused (15). The page and the chat SHALL show the same number, and a
 response SHALL name it (15, 18). A decision state left and re-entered SHALL be a
 new decision with a new number, so an earlier reply cannot land on a question
-that has changed (15; the register's rule, model.md §5.2).
+that has changed (15; the register's rule, model.md §5.2). A fold SHALL keep its
+number while any decision of its batch stands, whichever of them leaves first:
+its decision id SHALL be `<kind>/<batch>/<since>`, and the register's entry of
+that kind and batch without `retracted_at` SHALL be the fold on every later
+tick; a fold whose every decision has gone and that later gains one SHALL be a
+new decision (15; model.md §5.1, §5.2). A fold's rows, and any order among a
+batch's objects, SHALL follow the ids as they count, `chore-2` before
+`chore-10` (S232).
+
+#### Scenario: A fold keeps its number when its first row leaves
+- **WHEN** a fold of three chores numbered 415 has its first chore dropped, and
+  the operator then answers `yes 415`
+- **THEN** the fold still carries 415 and the other two chores are accepted;
+  had all three gone and a fourth later joined the batch, it would stand under a
+  new number (15)
 
 #### Scenario: The same number on both surfaces
 - **WHEN** a decision is delivered to the page and to the chat sink

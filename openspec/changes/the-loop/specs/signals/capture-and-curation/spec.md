@@ -174,11 +174,20 @@ proposal on its thread (58, 62). Every offer's entry SHALL name the place's
 revision at the offer, and an offer whose document that revision does not hold
 SHALL be refused on the session's thread naming the path, exit 1 and never be
 pending; a unit made of a finding or a chore SHALL keep the document's path and
-that revision (62; sessions.yaml `commands.offer`, `unit.yaml` record). A
-chore's session SHALL be handed the document as its job in its work order, read
-at the yes from the offering session's repository at that revision (62, 89;
-chore@2 `params.job`, host.yaml `prepare_place`). A chore whose offering place
-was removed without merging before the yes SHALL be withdrawn (62).
+that revision (62; sessions.yaml `commands.offer`, `unit.yaml` record). The
+machinery SHALL pin that revision on the git host as
+`refs/flywheel/offers/<session>/<entry>` in the offering repository on the pass
+that records the offer, before any record points at it, and a failed pin SHALL
+leave the offer pending (43, 232; record-derived.yaml `record_offers`). The
+session of a chore, or of a fast unit made from a finding, SHALL be handed the
+document as its job in its work order, read at the pin on whatever host
+prepares its place, a clone lacking the revision fetching the pin first (62,
+89; chore@2 `params.job`, host.yaml `prepare_place`). The pin SHALL outlive the
+place, and the host's reconciliation SHALL remove it once the record the offer
+made has ended, or the offer made nothing and is not pending, recording each
+removal (42, 55; `remove_stale_offer_pins`). Removing the offering place SHALL
+withdraw nothing; a proposed or deferred chore of a bolt that is dropped SHALL
+retire with the bolt (62, 74; `unit.yaml`).
 
 #### Scenario: A curation session's finding reaches its exit
 - **WHEN** a curation session offers a finding and exits done
@@ -216,10 +225,23 @@ was removed without merging before the yes SHALL be withdrawn (62).
   offer's revision, and the session on flywheel-next's shared line needs nothing
   from the curation session's place (62, 89)
 
-#### Scenario: A chore offered from a place removed unmerged is withdrawn
-- **WHEN** the place a chore was offered from is removed without merging before
-  the operator answers the chore
-- **THEN** the chore is withdrawn and its decision leaves the rail (62)
+#### Scenario: A chore taken on another host reads the pinned document
+- **WHEN** a chore offered on one host is taken on a second host whose clone
+  never held the offering place's commits, after that place was removed
+- **THEN** the second host fetches the pin, the order carries the document's
+  text at the revision, and once the chore has merged the pin is removed from
+  the git host and the removal recorded (62, 232, 55)
+
+#### Scenario: A finding's fast unit reads its document in its order
+- **WHEN** the operator says yes to a fast unit a session's finding made under
+  its bolt
+- **THEN** the unit's work order carries the finding's text at the offer's
+  revision (62)
+
+#### Scenario: A chore of a dropped bolt retires with it
+- **WHEN** a bolt holding a proposed and a deferred chore is dropped
+- **THEN** both chores are retired with a tail entry, their decisions leave the
+  rail and nothing is started (62, 74)
 
 #### Scenario: A chore of the blueprints stands under the instance
 - **WHEN** a session under no bolt offers a chore with `--scope blueprints`
