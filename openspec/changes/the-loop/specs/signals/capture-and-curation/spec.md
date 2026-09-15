@@ -101,7 +101,7 @@ re-judge one that has a move; only the operator's response SHALL replace a move
 (107). Every move SHALL have a stated consequence (116). A route move SHALL name
 what curation, being a session, offered for a signal that argues with no claim:
 a chore through `flywheel offer`, which `record_offers` makes a proposed chore
-unit, or an ask filed by running `flywheel ask <repository> <words>` in its
+unit under the repository, on its shared line (60, 62), or an ask filed by running `flywheel ask <repository> <words>` in its
 place, which calls the `ask` tool as the session, writes the ask record and
 prints the id the route names (116, 58–60, 28, 67). An exit SHALL NOT carry an
 ask, and a route that offers neither a chore nor an ask SHALL be refused (116).
@@ -129,6 +129,41 @@ claim's verdicts (101) belongs to the phase that has a ledger.
 - **WHEN** the operator revives a dropped signal
 - **THEN** the drop move is removed, the signal is unmoved again, and the next
   curation run clusters it (107)
+
+### Requirement: Every offer is recorded on the pass that finds it
+
+Every offer on a session's thread SHALL become one record pointing at its
+document on the pass that finds it, so no offer holds a session from its exit
+(62). A finding offered under neither an intent nor a bolt SHALL be a signal:
+the next signal of the capture the session was reading when there is one, and
+otherwise the one signal of a capture of its own — source `offer`, keyed
+`offer/<session>/<entry>`, captured by the session at the moment of the offer,
+the document its raw material — both written into the blueprints' signals as a
+page capture's are (62, 111, 113, S231). That signal SHALL be of kind ask,
+asserted by the session, its assertion the document's path, its excerpt empty
+and its position whole, and SHALL stay unmoved until curation or the operator
+moves it (62, 19a, 107). A chore offered off every bolt SHALL NOT be a signal:
+it SHALL be a proposed chore unit under the repository whose shared line it
+belongs on, folded on the rail with that repository's other proposed shared-line
+chores into one decision answered yes or drop, as a bolt's chores fold by bolt
+(60, 62, 11, S231).
+
+#### Scenario: A curation session's finding reaches its exit
+- **WHEN** a curation session offers a finding and exits done
+- **THEN** a capture of source `offer` holds one signal of kind ask whose
+  assertion is the document's path and whose excerpt is empty, the signal is
+  unmoved, and the session reaches its exit (62, 113, S231)
+
+#### Scenario: A capture reader's finding is its capture's next signal
+- **WHEN** a capture reader offers a finding about the capture it reads
+- **THEN** the finding is that capture's next signal and no other capture is
+  written (62, 113)
+
+#### Scenario: A chore off every bolt is its repository's
+- **WHEN** a session under no bolt offers a chore for a repository
+- **THEN** a proposed chore unit under that repository points at the document,
+  no capture or signal is written, and the rail shows it in one decision with
+  that repository's other proposed shared-line chores (60, 62, S231)
 
 ### Requirement: A capture is a note, and the operator may move its signal by hand
 

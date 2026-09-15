@@ -402,10 +402,11 @@ The operator reaches the same tool as the palette's `/ask <repository> <words>`,
 the repository typed first because nothing in hand names one (S228), and,
 running curation, through the curator's surface (D13).
 
-Phase 1 builds no stdio or MCP transport: there is no session client to use it,
-and by the proposal's own foreclosure argument a later transport is a transport,
-not a second write path (291, 293). Phase 2 adds it beside the runner that needs
-it.
+A session reaches a tool only through its own command (67, 197), so no session
+needs another transport. The caller that does is a member's own client (293a,
+A.40): the catalogue is served at the host's address as a remote server of the
+model context protocol, from the same registry, and a transport is a transport,
+never a second write path (193, 291, 293, 320). Its wire is D18.
 
 Because the instance machine ticks unchanged, its `remove` dictation is in
 the catalogue from day one and phase 1 performs it — sessions ended, places
@@ -413,9 +414,10 @@ removed, state archived, git repositories left on disk, numbers never reused
 (4, 221, 15). Refusing a transition the loaded machine offers would be the
 machinery deciding what the operator may undo.
 
-*Alternative considered:* build the MCP shape now to prove the catalogue is
-transport-neutral. Rejected as untested surface area — the in-process caller
-already proves the catalogue is not HTTP-shaped.
+*Alternative considered:* a standard-input transport for sessions. Rejected: a
+session calls the catalogue only through its command (67, 197), so such a
+transport would have no caller, and the protocol shape arrives with the member's
+client that uses it (D18).
 
 ### D10. Identity in phase 1 is the manifest's operator, and `given_by` is a field from day one
 
@@ -571,14 +573,30 @@ once beside its threshold and cadence (110, 118, S225). Every signal takes
 exactly one standing move with a stated consequence, and only the operator's
 response replaces one (107, 116). A route names what curation, being a
 session, offered for a signal that argues with no claim: a chore through
-`flywheel offer`, which `record_offers` makes a proposed chore unit, or an ask
-filed by `flywheel ask`, the `ask` tool of D9 called as the session, whose
+`flywheel offer`, which `record_offers` makes a proposed chore unit under the
+repository, on its shared line (60, 62), or an ask filed by `flywheel ask`, the `ask` tool of D9 called as the session, whose
 printed `ask/<id>` the route names (116, 58–60, 28, 67). A route that offers
 neither is refused. Where the operator runs curation (93b), the curator's
 surface files a route's ask through the same tool, by the operator, before the
 route names it, and checks every ask before any move is written, so a refused
 one leaves no move and no exit (S229). A signal routed to an ask reads "asked",
 with the repository and the words (S28, S9).
+
+A session's offer is a source event too, when nothing above the session takes
+it. Every offer is recorded on the pass that finds it, so none holds a session
+from its exit (62). A finding offered under neither an intent nor a bolt — a
+curation session's, a capture reader's — is a signal: the next of the capture
+the session was reading, or else the one signal of a capture of its own, source
+`offer`, keyed `offer/<session>/<entry>`, captured by the session at the
+offer's moment, its raw material the document, both written under
+`flywheel/signals/` as a page capture's are. The signal asks, as material
+nothing has judged does: asserted by the session, its assertion the document's
+path, no excerpt, position `whole`, unmoved until curation or the operator moves
+it (62, 111, 113, 19a, S231). In the tray it is a row whose quote is the path
+and whose source reads "offer". A chore offered off every bolt is not a signal
+but a proposed chore unit under the repository whose shared line it belongs on,
+folded on the rail with that repository's other shared-line chores (60, 62,
+S231; `unit.yaml`, `repository.yaml`).
 
 The pull-request and issue-tracker adapters of 215 read the git host's issues and
 reviews, which C.2 forbids the machinery doing; they belong to the tracker
@@ -825,6 +843,40 @@ a delivery already applied writes nothing and gets no second reply (154, model
 the scenarios and taking the mockup up in phase 3 with the book. Rejected: the
 phase gate is a week of real use (roadmap), and a page the operator cannot
 curate or answer on gives the week nothing to measure.
+
+### D18. A member's client gets the page's views through the protocol's user-interface extension
+
+The catalogue is served at the host's address as a remote server of the model
+context protocol (D9, 293). The views a member's client renders are the page's
+own, carried on that server under the protocol's user-interface extension
+(293a, 322, S230, `surfaces.yaml` `member_client.wire`):
+
+- A tool whose result is a view names the view's resource on its declaration in
+  the catalogue, as `_meta.ui.resourceUri`, so a client that renders such
+  resources fetches the view as it calls the tool. The result names no
+  resource.
+- The address is `ui://flywheel/<version>/<view>`, the view one of `rail`,
+  `board`, `status` and `object` (the dock). All four read the one bundle the
+  host serves, with media type `text/html;profile=mcp-app`, under the caller's
+  identity like any call (293, 307; in this phase the one operator of 253a).
+  Which region the bundle draws, and from what, is the tool's result, handed to
+  the view by the client, so a view holds nothing between renders (310).
+- Every result carries the version it was rendered under. A newer binary names
+  newer addresses, which is how a client holding an older copy fetches again;
+  a view whose bundle is of another version than its result shows "this view
+  is out of date · fetch it again" and nothing of the state (326).
+- The bundle declares no external origin and asks no permission of the
+  client's sandbox (307, 310, 204).
+- The four views are listed among the server's resources, so a client can ask
+  for the rail before calling any tool.
+- A tap inside a rendered view is the control the page has, sent as
+  `tools/call` through the client on the same tool and object the page's form
+  would post, checked, recorded once and idempotent as any call (321, 323,
+  137). The bridge that sends it is in the bundle; it holds no state a reload
+  loses and fetches nothing external, which is what 310 asks.
+
+A client that renders none of them still holds every tool, and every decision
+stays answerable as a call (311, 322). It is a caller and never a host (325).
 
 ## Risks / Trade-offs
 

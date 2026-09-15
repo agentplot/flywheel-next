@@ -129,21 +129,67 @@ the chat carries (19, 193, 194, S228).
 - **THEN** nothing is written and the operator is answered with what the sink
   accepts, because the machinery does not parse it (194)
 
-### Requirement: The catalogue is one object, served over HTTP in this phase
+### Requirement: The catalogue is one object, whatever transport reaches it
 
 The tool catalogue SHALL be one object with one definition per tool, and the
 transport SHALL be a transport and never a second write path (193). This phase
-SHALL serve it over HTTP for the page and call it in-process for the
-machinery's own commands; further transports SHALL add clients and not
-operations (193; proposal, What must not be foreclosed).
+SHALL serve it over HTTP for the page, call it in-process for the machinery's
+own commands, and serve it at the host's address as a remote server of the
+model context protocol for a member's client (293, 293a, 320); a further
+transport SHALL add clients and not operations (193; proposal, What must not be
+foreclosed).
 
-#### Scenario: Both callers see one catalogue
-- **WHEN** the in-process caller and the HTTP caller each enumerate the
-  catalogue
-- **THEN** they list the same tools with the same schemas, so a further
-  transport adds a client and not an operation (193; proposal, What must not be
-  foreclosed)
+#### Scenario: Every caller sees one catalogue
+- **WHEN** the in-process caller, the HTTP caller and a caller over the
+  protocol each enumerate the catalogue
+- **THEN** they list the same tools with the same schemas, so a transport adds a
+  client and not an operation (193, 293; proposal, What must not be foreclosed)
 
 #### Scenario: The machinery's own commands go through the catalogue
 - **WHEN** the machinery performs an operation the operator could also invoke
 - **THEN** it calls the same tool function and the same record is written (193)
+
+### Requirement: A member's client renders the page's own views
+
+The views a member's client renders SHALL be the page's own — the rail, the
+board, the status view and one object's detail — carried under the model
+context protocol's user-interface extension (293a, 322, S230). A tool whose
+result is a view SHALL name the view's resource on its declaration
+(`_meta.ui.resourceUri`) and never on its result. The address SHALL be
+`ui://flywheel/<version>/<rail|board|status|object>`, read under the caller's
+identity like any call, and every address SHALL answer the one bundle the host
+serves, with media type `text/html;profile=mcp-app`, drawing the region and the
+state the tool returned (293, 307, 310). Every result SHALL carry the version
+it was rendered under, and a view whose bundle is of another version than its
+result SHALL show that it is out of date and nothing of the state (326). The
+bundle SHALL declare no external origin and ask no permission of the client's
+sandbox (307, 310, 204). The four views SHALL be listed among the server's
+resources. A tap inside a rendered view SHALL be a `tools/call` through the
+client on the tool and object the page's form would post, checked, recorded
+once and idempotent as any call (321, 323, 137). A client that renders none of
+them SHALL still hold every tool, and every decision SHALL stay answerable as a
+call (311, 322).
+
+#### Scenario: A view is named where the tool is declared
+- **WHEN** a client lists the tools and calls one whose result is the rail
+- **THEN** the tool's declaration names `ui://flywheel/<version>/rail`, the
+  result names no resource and carries the version, and reading the address
+  returns the page's bundle with the extension's media type (S230, 307)
+
+#### Scenario: A copy of another version is not rendered as state
+- **WHEN** a client holding the bundle of an earlier binary renders a result a
+  newer binary returned
+- **THEN** the view shows "this view is out of date · fetch it again" and
+  nothing of the state, and the newer binary's declarations name the newer
+  address (326, S230)
+
+#### Scenario: A tap is a call through the client
+- **WHEN** the operator taps yes on a decision inside a rendered rail
+- **THEN** the client sends `tools/call` on the answer tool for that decision,
+  the response is recorded once with who gave it and when, and a second
+  delivery of the same call writes nothing (323, 321, 137, 153)
+
+#### Scenario: A client that renders nothing
+- **WHEN** a client that renders no resource enumerates the catalogue
+- **THEN** every decision on the rail is answerable by a call it holds (311,
+  322)

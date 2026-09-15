@@ -224,7 +224,18 @@ trigger stated in the operator's words (118, 19a, 110, S225). Pressing it SHALL
 be the `curate` dictation (110, 193). While curation runs the tray SHALL show it
 working and the count SHALL fall as moves are written; what curation proposes
 SHALL land on the rail, one decision per proposal, and the tray SHALL ask
-nothing itself (109, 116, S225).
+nothing itself (109, 116, S225). A finding a session offered with no intent or
+bolt above it SHALL be a row like any other: its quote the document's path, its
+source reading "offer", its line naming the session that offered it, with the
+capture's four controls and no decision, and `build now` on it SHALL name its
+chore from the path's words (S231, 62).
+
+#### Scenario: A session's offer waits in the tray
+- **WHEN** a curation session offers a finding and no intent, bolt or capture
+  stands above it
+- **THEN** the tray lists one capture from that session, dated when the offer
+  was made, with one row quoting the document's path under the source "offer",
+  carrying the four controls, and the rail's count is unchanged (S231, 19a)
 
 #### Scenario: Run curation now from the tray
 - **WHEN** the operator opens the tray and presses run curation now
