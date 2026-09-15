@@ -725,7 +725,7 @@ fn plain_page(read: &Read, object: &Object) -> String {
         .iter()
         .filter(|o| o.parent.as_deref() == Some(object.id.as_str()) && o.machine != "signal")
         .collect();
-    children.sort_by_key(|o| (o.created, o.id.clone()));
+    children.sort_by(|a, b| flywheel_engine::rail::id_order(&a.id, &b.id));
     if !children.is_empty() {
         let mut held = String::from("<ol class=\"elaborations\">\n");
         for child in &children {

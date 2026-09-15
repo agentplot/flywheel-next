@@ -620,8 +620,9 @@ pub(crate) struct ChoreRow<'a> {
 /// A fold's chores as lettered rows (S232).
 ///
 /// The letters run over every chore of the fold's batch that stands in it or
-/// has left it since it was raised, in the order the chores were made, so a
-/// letter stays with its chore when another row is answered and leaves. A chore
+/// has left it since it was raised, in the order their ids count them, the
+/// order the engine takes among a batch's objects, so a letter stays with its
+/// chore when another row is answered and leaves. A chore
 /// answered before the fold was raised takes none. `None` for a decision that
 /// is no fold of chores.
 pub(crate) fn rows_of<'a>(objects: &'a [Object], decision: &DecisionInstance) -> Option<Vec<ChoreRow<'a>>> {
@@ -637,7 +638,7 @@ pub(crate) fn rows_of<'a>(objects: &'a [Object], decision: &DecisionInstance) ->
                 || o.entered_at.get(&decision.region).is_some_and(|left| *left >= decision.since)
         })
         .collect();
-    held.sort_by(|a, b| made(a).cmp(&made(b)));
+    held.sort_by(|a, b| flywheel_engine::rail::id_order(&a.id, &b.id));
     Some(
         held.into_iter()
             .enumerate()
@@ -648,14 +649,6 @@ pub(crate) fn rows_of<'a>(objects: &'a [Object], decision: &DecisionInstance) ->
             })
             .collect(),
     )
-}
-
-/// The order a chore was made in within its batch: the ordinal its id ends
-/// with, `chore-<n>`, which `record_offers` counts per batch and never reuses,
-/// then the id itself. The store records no creation order of its own.
-fn made(chore: &Object) -> (u64, &str) {
-    let ordinal = chore.id.rsplit('-').next().and_then(|n| n.parse::<u64>().ok()).unwrap_or(u64::MAX);
-    (ordinal, chore.id.as_str())
 }
 
 /// The letter of the row at a position: `a` to `z`, then `aa`.

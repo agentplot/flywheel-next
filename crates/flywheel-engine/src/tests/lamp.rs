@@ -551,6 +551,41 @@ fn an_answer_naming_one_folded_object_is_that_objects_alone() {
     assert_eq!(after[0].folds, vec!["lamp/1".to_string()]);
 }
 
+/// Ids order as they count: a run of digits is its number, the rest is text.
+#[test]
+fn ids_order_as_they_count() {
+    use std::cmp::Ordering::*;
+    for (a, b, order) in [
+        ("lamp/2", "lamp/10", Less),
+        ("lamp/10", "lamp/2", Greater),
+        ("lamp/2", "lamp/2", Equal),
+        ("hall/lamp-9", "porch/lamp-1", Less),
+        ("lamp/2", "lamp/2a", Less),
+        ("lamp/007", "lamp/8", Less),
+        ("lamp/b", "lamp/a", Greater),
+    ] {
+        assert_eq!(rail::id_order(a, b), order, "{a} against {b}");
+    }
+}
+
+/// A batch's objects stand in the order their ids count, whichever was put
+/// first, so `lamp/2` heads the fold and `lamp/10` follows it (model.md §5.1,
+/// S232).
+#[test]
+fn a_fold_is_headed_by_its_first_id_as_ids_count() {
+    let d = defs();
+    for (first, second) in [("lamp/10", "lamp/2"), ("lamp/2", "lamp/10")] {
+        let mut objects = BTreeMap::new();
+        objects.insert(first.to_string(), named_lamp(&d, first, Some("hall"), 1, t0()));
+        objects.insert(second.to_string(), named_lamp(&d, second, Some("hall"), 2, t0()));
+        let mut register = Register::default();
+        let standing = rail_of(&d, &objects, &mut register, t0());
+        assert_eq!(standing.len(), 1, "one decision on the fixture");
+        assert_eq!(standing[0].object, "lamp/2", "put {first} first");
+        assert_eq!(standing[0].folds, vec!["lamp/2".to_string(), "lamp/10".to_string()]);
+    }
+}
+
 #[test]
 fn new_material_joins_the_proposal() {
     let d = defs();

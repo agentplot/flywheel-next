@@ -657,7 +657,7 @@ fn render_row(body: &mut String, row: &Row, group: &[&Row], nested: bool) {
         .iter()
         .filter(|r| r.parent.as_deref() == Some(row.object.as_str()))
         .collect();
-    parts.sort_by_key(|r| (r.created, r.object.clone()));
+    parts.sort_by(|a, b| flywheel_engine::rail::id_order(&a.object, &b.object));
     if !parts.is_empty() {
         body.push_str(&format!("<ol class=\"{}\">\n", parts_of(form)));
         for part in parts {

@@ -12,6 +12,49 @@ use crate::runtime::{DecisionInstance, Object, Register, TailEntry};
 use crate::tick::state_def;
 use std::collections::BTreeMap;
 
+/// The order ids count in: a run of digits against a run of digits is compared
+/// as the number it is, anything else as text, so `x-2` comes before `x-10`.
+///
+/// No object records when it was made and none needs to: a batch's objects,
+/// the rows of its fold and the order the engine takes among objects follow
+/// their ids as they count (model.md §5.1, S232).
+pub fn id_order(a: &str, b: &str) -> std::cmp::Ordering {
+    use std::cmp::Ordering;
+    let (mut left, mut right) = (a, b);
+    loop {
+        match (left.is_empty(), right.is_empty()) {
+            (true, true) => return a.cmp(b),
+            (true, false) => return Ordering::Less,
+            (false, true) => return Ordering::Greater,
+            (false, false) => {}
+        }
+        let digits = |s: &str| s.starts_with(|c: char| c.is_ascii_digit());
+        let run = |s: &str, numeric: bool| {
+            s.find(|c: char| c.is_ascii_digit() != numeric).unwrap_or(s.len())
+        };
+        let numeric = digits(left) && digits(right);
+        let (l, r) = match numeric {
+            true => (run(left, true), run(right, true)),
+            // Text runs to the next digit on either side, so `x-2` and `x-10`
+            // part at the same place and their numbers meet.
+            false => (run(left, false).max(1), run(right, false).max(1)),
+        };
+        let (lh, rh) = (&left[..l], &right[..r]);
+        let order = match numeric {
+            true => {
+                let (ln, rn) = (lh.trim_start_matches('0'), rh.trim_start_matches('0'));
+                ln.len().cmp(&rn.len()).then_with(|| ln.cmp(rn))
+            }
+            false => lh.cmp(rh),
+        };
+        if order != Ordering::Equal {
+            return order;
+        }
+        left = &left[l..];
+        right = &right[r..];
+    }
+}
+
 /// The decision id: `<object>/<kind>/<entered_at>`. A re-entered decision state is a new decision.
 pub fn decision_id(obj: &Object, region: &str, kind: &str) -> String {
     let since = obj.entered_at.get(region).map(|t| t.to_rfc3339()).unwrap_or_default();
@@ -64,7 +107,7 @@ pub fn folds_together(defs: &Definitions, a: &Object, b: &Object, kind: &str) ->
 pub fn derive(defs: &Definitions, objects: &BTreeMap<String, Object>, register: &Register) -> Vec<DecisionInstance> {
     let mut out: Vec<DecisionInstance> = Vec::new();
     let mut objs: Vec<&Object> = objects.values().collect();
-    objs.sort_by_key(|o| o.created);
+    objs.sort_by(|a, b| id_order(&a.id, &b.id));
     for obj in objs {
         for (region, state) in &obj.config {
             // A decision stands on a state the object is in. One it has left

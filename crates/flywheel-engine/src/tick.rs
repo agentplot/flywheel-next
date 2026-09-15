@@ -116,7 +116,7 @@ pub fn active_regions(obj: &Object) -> Vec<String> {
 pub fn plan_tick(defs: &Definitions, snap: &Snapshot) -> Vec<Fired> {
     let mut fired = Vec::new();
     let mut objs: Vec<&Object> = snap.objects.values().collect();
-    objs.sort_by_key(|o| o.created);
+    objs.sort_by(|a, b| crate::rail::id_order(&a.id, &b.id));
     for obj in objs {
         let mut regions_fired: Vec<String> = Vec::new();
         for region in active_regions(obj) {
