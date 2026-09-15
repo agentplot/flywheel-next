@@ -100,7 +100,9 @@ that kind and batch without `retracted_at` SHALL be the fold on every later
 tick; a fold whose every decision has gone and that later gains one SHALL be a
 new decision (15; model.md §5.1, §5.2). A fold's rows, and any order among a
 batch's objects, SHALL follow the ids as they count, `chore-2` before
-`chore-10` (S232).
+`chore-10` (S232). A register entry SHALL record when its decision was retracted
+and SHALL be kept thirty days after it, so a reply to a number that has gone
+still resolves and is reported, and pruned then (15, 235).
 
 #### Scenario: A fold keeps its number when its first row leaves
 - **WHEN** a fold of three chores numbered 415 has its first chore dropped, and
@@ -119,6 +121,12 @@ batch's objects, SHALL follow the ids as they count, `chore-2` before
   object is raised later
 - **THEN** the later decision carries a new number, and the retracted number is
   never issued again (15)
+
+#### Scenario: A retracted entry is pruned
+- **WHEN** a reply names a number whose decision was retracted twenty-nine days
+  ago, and again one whose decision was retracted thirty-one days ago
+- **THEN** the first is reported as unapplicable against the decision it named,
+  and the second's entry is gone from the register (15, 235)
 
 ### Requirement: Decisions group, and any one can be answered alone
 

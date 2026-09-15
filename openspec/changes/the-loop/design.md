@@ -515,11 +515,15 @@ need not resolve on the operator's network: it does not on a tailnet (204).
   It fetches from its own host alone (310).
 - The page is built to a budget (310a, S235). A load ships the first view alone
   — the top, the rail, the board's lanes, the counts and the dock page a link
-  named — compressed, with the fonts served once under a name carrying the
-  binary's version (291); every other dock page is fetched when opened, every
+  named — compressed, with the bundle's style, script and fonts served beside it,
+  each a response of its own, cached for a year under a name carrying the
+  binary's version, so the 100 KB is the HTML the host renders for that load
+  (291, 310a); every other dock page is fetched when opened, every
   list past 50 rows is paged, and the rail never is; an update is the regions
   changed since a generation, at most 8 KB for one move; and a page read is
-  answered while a pass records a delivery. What the page costs grows with what
+  answered while a pass records a delivery, a call that writes taken as sent,
+  kept beside the state and made at the start of the host's next pass, recorded
+  once (137, 153). What the page costs grows with what
   is on screen and not with the instance. A system-tier test beside the
   client-view test seeds two instance sizes and holds 310a's numbers in the
   headless browser throttled as `surfaces.yaml` budget states (D15, D17).
@@ -974,7 +978,9 @@ extension (293a, 322, S230, `member_client.wire`):
   identity like any call (293, 307; in this phase the one operator of 253a); an
   address under another version is refused naming the served ones. The bundle
   is the page's template with nothing of the state drawn, and the page the host
-  serves is the same template filled (293a). Inside a client only the view's
+  serves is the same template filled (293a); the frame fetches nothing, so it
+  carries the style and the script inline, the served files' bytes, where the
+  page fetches them from the host beside it (S235, 310a). Inside a client only the view's
   regions show, at the frame's width, and the view tells the client its height.
   What it draws is the tool's result, handed to the view by the client, so a
   view holds nothing between renders (310).

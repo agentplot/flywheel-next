@@ -474,16 +474,25 @@ note, offer or refusal, SHALL be a cause at once; the poll SHALL stay the floor
 The first view — the top, the rail, the board and the dock page a link named —
 SHALL first paint within 1.0 s and take a press within 1.5 s on a mid-range phone
 over an ordinary mobile connection, and a load with nothing cached SHALL be at
-most 200 KB on the wire, 60 KB once the fonts are cached, with the first view's
-HTML at most 100 KB before compression (310a). A load SHALL ship the first view
+most 200 KB on the wire, 60 KB once the bundle's fonts, style and script are
+cached, with the first view's HTML — what the host renders for that load, the
+bundle's style and script out of it — at most 100 KB before compression (310a).
+A load SHALL ship the first view
 alone: a dock page SHALL be fetched when its object is opened, and the tray's
 rows and every other list SHALL show 50 rows with their count and a `more`,
-the rail never paged (310a, S235, 15). Every response SHALL be compressed, the
-fonts served once under a name carrying the binary's version (310a, S235, 291).
+the rail never paged (310a, S235, 15). Every response SHALL be compressed. The
+bundle's style, script and fonts are the same bytes for every load and every
+instance, so each SHALL be a response of its own at the host's address, served
+once and cached for a year under a name carrying the binary's version, and the
+copy a member's client renders inside its own frame SHALL carry them inline,
+since that frame fetches nothing (310a, S235, 291, 293a).
 The time and the bytes SHALL grow with what is on screen and not with the
-instance, and the page SHALL answer within its budget whatever the host is doing
-(310a). The numbers SHALL be held by a test measured as the surfaces profile
-states (310a, S235).
+instance, and the page SHALL answer within its budget whatever the host is
+doing: while the host's pass holds the store a read SHALL be answered from the
+instance as it was last read, and a call that writes SHALL be taken as sent,
+kept, made at the start of the host's next pass and recorded once, however many
+times it was sent (310a, 137, 153). The numbers SHALL be held by a test measured
+as the surfaces profile states (310a, S235).
 
 #### Scenario: A phone opens the page
 - **WHEN** the page is loaded in a browser throttled to a mid-range phone over an
@@ -509,6 +518,13 @@ states (310a, S235).
 - **THEN** the page answers within its budget and does not wait for the pass
   (310a)
 
+#### Scenario: An answer given while the host is busy
+- **WHEN** the operator answers a decision while the host's pass holds the
+  store, and presses the same control again before the pass ends
+- **THEN** the answer is taken as sent at once, with the control spent until the
+  next update draws it, the host makes it at the start of its next pass, and one
+  response is recorded (310a, 137, 153)
+
 ### Requirement: A session chip's pane link says where the pane is
 
 A session chip's pane link SHALL open a popover naming the multiplexer session
@@ -532,7 +548,9 @@ nothing to copy (S234). The page SHALL never open, focus or read a pane (68).
 ### Requirement: The dock gives each kind its page
 
 The dock SHALL give each kind its own page as `surfaces.md` S28 lists it, with no
-record of keys and values and no sentence about the model (S28, S214). A bolt's
+record of keys and values and no sentence about the model, and a moment SHALL be
+said as since when in the operator's own terms and never as a raw stamp (S28,
+S214, 150a). A bolt's
 page SHALL show its repository, branch, host and place, every session on it and
 the commits on its branch, and the page SHALL say *branch* for what the model
 calls a line (S28, S222). A host SHALL be a chip in the hosts strip, and nothing

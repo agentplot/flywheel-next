@@ -77,7 +77,8 @@ Decisions SHALL be presented to the operator and the response SHALL come back
 attributed to the decision it answers (129). A response that arrives twice SHALL
 be applied once, however many times it is delivered and whatever restarts happen
 between its giving and its application (129, 137). A response that cannot be
-applied SHALL be handed back to the engine and never dropped (129, 6).
+applied — its decision gone, or its answer one no transition of the object's
+state takes — SHALL be handed back to the engine and never dropped (129, 6).
 
 #### Scenario: A response is recorded before anything follows
 - **WHEN** a response is received
@@ -93,6 +94,14 @@ applied SHALL be handed back to the engine and never dropped (129, 6).
 - **WHEN** a response arrives naming a decision that has been retracted
 - **THEN** it is handed back as unapplicable, shown once under attention, and
   never dropped (6, 129)
+
+#### Scenario: An answer the object's state does not take
+- **WHEN** a response gives an answer that no transition of the object's active
+  states names, its decision still standing
+- **THEN** it is handed back as unapplicable on the pass that would have applied
+  it, shown once under attention, and never dropped; a response the object took
+  on the same pass is read as applied and never judged against the state it
+  left (6, 129)
 
 ### Requirement: Notify only shortens the wait
 
