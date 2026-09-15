@@ -24,6 +24,13 @@ fn rendered(store: &mut FakeStore, world: &world::Files, defs: &Definitions) -> 
     crate::page::render(&read)
 }
 
+/// One object's dock page, as the drawer fetches it when the object is opened
+/// (310a, S235).
+fn docked(store: &mut FakeStore, world: &world::Files, defs: &Definitions, id: &str) -> String {
+    let read = crate::page::read(store, world, defs, ADDRESS, "chuck").expect("the page reads");
+    crate::page::dock_page(&read, id).unwrap_or_else(|| panic!("no dock page for {id}"))
+}
+
 /// A bolt whose close is offered: one decision, standing (22, 39).
 fn a_decision(store: &mut FakeStore, defs: &Definitions, id: &str) {
     let at = commands::now(store).expect("a point");
@@ -720,16 +727,49 @@ fn a_link_opens_its_object_in_the_dock_with_no_fragment() {
         .iter()
         .find(|o| !read.decisions.iter().any(|d| d.object == o.id))
         .expect("something on this instance has nothing standing on it");
-    let quiet = html
-        .split("<article ")
-        .find(|block| block.contains(&format!("id=\"dock-{}\"", settled.id)))
-        .expect("it has a surface");
+    let quiet = crate::page::dock_page(&read, &settled.id).expect("it has a surface, fetched when it is opened");
     let quiet = &quiet[..quiet.find("</article>").unwrap_or(quiet.len())];
     assert!(
         quiet.contains("dk-answers none"),
         "`{}` has nothing to answer and does not say so: {quiet}",
         settled.id
     );
+}
+
+/// A load carries the first view and the dock page a link named, and no other:
+/// every other object's page is fetched when it is opened, so the page weighs
+/// what is on screen and never the instance (310a, S235, 308).
+#[test]
+fn the_first_view_carries_only_the_dock_page_its_link_named() {
+    let (mut store, world, defs) = a_page();
+    rail_mockup(&mut store, &defs);
+    let mut read = crate::page::read(&mut store, &world, &defs, ADDRESS, "chuck").expect("a read");
+    assert!(read.objects.len() > 3, "the mockup holds several objects");
+    let surfaces = |html: &str| -> Vec<String> {
+        html.split("<article class=\"surface ")
+            .skip(1)
+            .filter_map(|block| block.split_once("id=\"dock-").and_then(|(_, rest)| rest.split_once('"')).map(|(id, _)| id.to_string()))
+            .collect()
+    };
+
+    let bare = crate::page::render(&read);
+    assert_eq!(surfaces(&bare), Vec::<String>::new(), "a load no link named carries a dock page");
+    assert!(bare.contains("id=\"dk-b\""), "the drawer the fetched pages open in is on the page");
+
+    let named = "intent/atlas-provider-limits".to_string();
+    read.opened = Some(named.clone());
+    let linked = crate::page::render(&read);
+    assert_eq!(surfaces(&linked), vec![named.clone()], "a link carries its own dock page and no other");
+    assert!(linked.contains(&format!("id=\"dock-{named}\" data-kind=\"intent\"")), "{linked}");
+
+    // Every other object's page is there to fetch, and the tray's.
+    for object in &read.objects {
+        let page = crate::page::dock_page(&read, &object.id).unwrap_or_else(|| panic!("no dock page for {}", object.id));
+        assert_eq!(surfaces(&page), vec![object.id.clone()], "the page fetched for {} is its own", object.id);
+        assert!(page.contains("data-opened=\"false\""), "a fetched page opens where the drawer puts it: {page}");
+    }
+    assert!(crate::page::dock_page(&read, crate::page::tray::ID).is_some_and(|tray| tray.contains("id=\"dock-tray\"")));
+    assert_eq!(crate::page::dock_page(&read, "bolt/atlas/nothing"), None, "a page for no object");
 }
 
 /// An answer that takes an argument takes it on the card, and what is recorded
@@ -761,7 +801,8 @@ fn an_answer_that_takes_an_argument_takes_it_in_the_dock() {
         .find(|block| block.contains(&format!("data-number=\"{number}\"")))
         .expect("its card");
     let card = &card[..card.find("</article>").expect("the card closes")];
-    let dock = html
+    let fetched = crate::page::dock_page(&read, &unit.object).expect("the unit's dock surface");
+    let dock = fetched
         .split("<article ")
         .find(|block| block.starts_with(&format!("class=\"surface form-unit\" id=\"dock-{}\"", unit.object)))
         .expect("the unit's dock surface");
@@ -972,7 +1013,7 @@ fn a_bead_card_and_dock_page_name_an_elaboration_not_its_id() {
         .expect("the elaboration");
     commands::rail(&mut store, &defs).expect("the rail derives");
 
-    let html = rendered(&mut store, &world, &defs);
+    let html = rendered(&mut store, &world, &defs) + &docked(&mut store, &world, &defs, &proposed);
     let name = "self-closing · rows lose their numbers";
     let card = html
         .split("<article class=\"card decision")
@@ -1048,7 +1089,7 @@ fn a_capture_being_read_carries_the_readers_chip() {
     Records::put(&mut store, id, &capture, base).expect("reading");
 
     let chip = "<span class=\"ag\">capture-reader</span><span class=\"ac\">reading</span>";
-    let html = rendered(&mut store, &world, &defs);
+    let html = rendered(&mut store, &world, &defs) + &docked(&mut store, &world, &defs, id);
     let quote = html
         .split("<div class=\"quote\"")
         .skip(1)
@@ -1116,7 +1157,7 @@ fn a_waiting_note_carries_its_four_controls_and_a_moved_one_none() {
     let (mut store, _, defs) = a_page();
     let mut world = world::Files::new().tracking("atlas");
     let capture = a_note(&mut store, &mut world, &defs, "the rows lose their numbers on the second page");
-    let html = rendered(&mut store, &world, &defs);
+    let html = rendered(&mut store, &world, &defs) + &docked(&mut store, &world, &defs, &capture);
     let hands = html.matches(&format!("data-hand=\"{capture}\"")).count();
     assert_eq!(hands, 2, "the note's controls are on the board and in its drawer: {html}");
     for (tool, key, verb) in [
@@ -1135,7 +1176,7 @@ fn a_waiting_note_carries_its_four_controls_and_a_moved_one_none() {
     let signal = flywheel_domain::signals::of_capture(&store, &capture).expect("a read").remove(0);
     let dropped = crate::catalogue::Call::new("drop-signal", "chuck", "page").arg("signal", json!(signal));
     crate::catalogue::call(&mut store, &mut world, &defs, &dropped).expect("the note is dropped");
-    let html = rendered(&mut store, &world, &defs);
+    let html = rendered(&mut store, &world, &defs) + &docked(&mut store, &world, &defs, &capture);
     assert!(!html.contains(&format!("data-hand=\"{capture}\"")), "a moved note still carries its controls");
     assert!(html.contains("<div class=\"tail\">dropped</div>"), "its drawer says what became of it");
 }
@@ -1673,4 +1714,34 @@ fn the_recently_done_list_is_titled_and_counted_by_the_day() {
     merged(&mut store, &defs, 30, now);
     let (_, items) = listed(&rendered(&mut store, &world, &defs));
     assert_eq!(items, 30, "thirty from today show all thirty");
+}
+
+/// The template is served with its comments and indentation taken out, and
+/// nothing else: every element, every rule and every line of script it carries
+/// is still there, word for word (310a, S235).
+#[test]
+fn the_served_template_keeps_everything_but_its_comments() {
+    let raw = include_str!("../page/template.html");
+    let served = crate::page::compact(raw);
+    assert!(served.len() < raw.len(), "nothing was taken out");
+    assert!(!served.contains("<!--"), "a markup comment is served");
+    let style = |html: &str| html[html.find("<style>").unwrap()..html.find("</style>").unwrap()].to_string();
+    let script = |html: &str| html[html.find("<script>").unwrap()..html.rfind("</script>").unwrap()].to_string();
+    assert!(!style(&served).contains("/*"), "a stylesheet comment is served");
+    assert!(!script(&served).lines().any(|line| line.trim_start().starts_with("//")), "a script comment is served");
+    // What is left is what was there, line for line.
+    let kept = |text: &str, comment: &dyn Fn(&str) -> bool| -> Vec<String> {
+        text.lines().map(str::trim).filter(|l| !l.is_empty() && !comment(l)).map(String::from).collect()
+    };
+    assert_eq!(
+        kept(&script(&served), &|_| false),
+        kept(&script(raw), &|l| l.starts_with("//")),
+        "a line of script changed"
+    );
+    for id in raw.match_indices("id=\"").map(|(at, _)| &raw[at..at + raw[at + 4..].find('"').unwrap() + 5]) {
+        assert!(served.contains(id), "`{id}` is not served");
+    }
+    for rule in ["--accent:#0B6E79;", ".card{position:relative;border:1px solid var(--line);border-left-width:3px", ".dk-b{flex:1;overflow:auto;"] {
+        assert!(served.contains(rule), "`{rule}` is not served");
+    }
 }

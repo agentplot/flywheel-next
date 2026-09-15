@@ -269,6 +269,10 @@ fn encode(text: &str) -> String {
 #[serde(default)]
 pub struct Asked {
     pub refused: Option<String>,
+    /// `dock`: the dock page of the object the path names and nothing of the
+    /// page around it, which is what the drawer fetches when its object is
+    /// opened (310a, S235).
+    pub part: Option<String>,
 }
 
 /// `GET /api/tools`: the catalogue as the HTTP caller enumerates it.
@@ -744,7 +748,34 @@ async fn page_of_object<S: StateStore + Send + 'static>(
             }
         }
     }
+    if asked.part.as_deref() == Some("dock") {
+        return docked(&served, &headers, &object).await;
+    }
     rendered(&served, &headers, Some(object), asked.refused).await
+}
+
+/// One dock page as the drawer fetches it: the surface alone, from one read like
+/// the page's (310, 310a, S235).
+async fn docked<S: StateStore + Send + 'static>(
+    served: &Served<S>,
+    headers: &axum::http::HeaderMap,
+    object: &str,
+) -> (StatusCode, Html<String>) {
+    if let Err(refused) = served.admits(host_of(headers)) {
+        return (StatusCode::FORBIDDEN, Html(format!("<p class=\"refused\">{refused}</p>")));
+    }
+    let mut store = served.store.lock().await;
+    let world = served.world.lock().await;
+    match page::read(&mut *store, &**world, &served.defs, &served.address, served.operator()) {
+        Ok(read) => match page::dock_page(&read, object) {
+            Some(page) => (StatusCode::OK, Html(page)),
+            None => (
+                StatusCode::NOT_FOUND,
+                Html(format!("<p class=\"refused\">the instance holds no object `{}`</p>", page::escape(object))),
+            ),
+        },
+        Err(refused) => (StatusCode::INTERNAL_SERVER_ERROR, Html(format!("<p class=\"refused\">{refused}</p>"))),
+    }
 }
 
 /// `GET /<instance>/deliverable/<repository>/<path>` — a file a session left.

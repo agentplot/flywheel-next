@@ -12,9 +12,11 @@ use serde_json::json;
 
 const ADDRESS: &str = "http://studio.tailnet.ts.net/willdan";
 
+/// The page, with the tray's dock page as the drawer fetches it when the counter
+/// opens it (310a, S235).
 fn rendered(store: &mut FakeStore, world: &world::Files, defs: &Definitions) -> String {
     let read = crate::page::read(store, world, defs, ADDRESS, "chuck").expect("the page reads");
-    crate::page::render(&read)
+    crate::page::render(&read) + &crate::page::dock_page(&read, crate::page::tray::ID).expect("the tray's page")
 }
 
 /// The tray's surface in a rendered page.

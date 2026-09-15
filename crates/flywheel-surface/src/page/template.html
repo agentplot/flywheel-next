@@ -669,6 +669,11 @@ ul.sigs li{margin:0}
    and a target wins over the one the request opened. */
 .dock .surface[data-opened="true"]{display:block}
 body:has(.dock .surface:target) .dock .surface[data-opened="true"]:not(:target){display:none}
+/* A dock page is fetched when its object is opened: the drawer shows the
+   object's head at once, from what the page already says of it, and its body
+   when it arrives, with a spinner for as long as the fetch and no longer
+   (310a, S235). */
+.surface[data-loading] .dk-b .loading{display:flex;align-items:center;gap:8px;margin:14px 0;font-size:12.5px;color:var(--ink3)}
 .pal-scrim{display:none}
 .pal-scrim:target,.pal-scrim.open{display:flex}
 .log{display:none}
@@ -989,7 +994,7 @@ body[data-served="view"] .dk-b{overflow:visible}
 </style>
 {{VIEWFACES}}
 </head>
-<body data-gen="{{GEN}}" data-served="{{SERVED}}">
+<body data-gen="{{GEN}}" data-served="{{SERVED}}" data-instance="{{INSTANCE}}">
 <!-- The top. Everything on it is read from the one request's read: the
      instance, the point the read is as of, and how many decisions stand. -->
 <header class="top">
@@ -1294,6 +1299,59 @@ body[data-served="view"] .dk-b{overflow:visible}
   function dockOpen(){ return /^#dock-/.test(location.hash) || !!document.querySelector('.dock .surface[data-opened=true]'); }
   function closeDock(){ document.querySelectorAll('.dock .surface[data-opened=true]').forEach(function(s){ s.setAttribute('data-opened','false'); }); clearHash(); }
 
+  // A dock page is fetched from the host when its object is opened, and the
+  // page a link named is the only one a load carries (310a, S235). The drawer
+  // shows the object's head at once, from what the page already says of it,
+  // and its body when it arrives; opened again, it is fetched again, so what it
+  // shows is current.
+  var INSTANCE=document.body.getAttribute('data-instance')||'';
+  var fetching={};
+  function linkTo(object){ return Array.prototype.filter.call(document.querySelectorAll('a[href^="#dock-"]'), function(a){ return a.getAttribute('href')==='#dock-'+object; })[0]; }
+  function headOf(object){
+    if(object==='tray') return {kind:'signals', title:'Waiting for curation'};
+    var el=document.getElementById(object), card=cards().filter(function(c){ return c.getAttribute('data-object')===object; })[0], link=linkTo(object);
+    var named=el && el.querySelector('.th-name,.lg-name,.on,.sl-n,.en,q a,.rc-name a,.sh-title');
+    var title=((named || (card && card.querySelector('.title')) || link || {}).textContent || '').trim();
+    var kind=(el && el.getAttribute('data-machine')) || object.split('/')[0];
+    return {kind:kind==='signal' ? 'capture' : kind, title:title || object.split('/').pop()};
+  }
+  function placeholder(object){
+    var head=headOf(object), held=document.createElement('div');
+    held.innerHTML='<article class="surface" data-loading data-opened="false"><div class="dk-h"><div class="row"><span class="kind"></span></div><h2></h2></div>'
+      +'<div class="dk-b"><p class="loading"><span class="spin"></span>opening</p></div></article>';
+    var page=held.firstChild;
+    page.id='dock-'+object; page.querySelector('.kind').textContent=head.kind; page.querySelector('h2').textContent=head.title;
+    return page;
+  }
+  function fetchDock(object){
+    if(client || !INSTANCE || fetching[object]) return;
+    fetching[object]=true; if(progress) progress.hidden=false;
+    fetch('/'+INSTANCE+'/'+object.split('/').map(encodeURIComponent).join('/')+'?part=dock', {credentials:'same-origin', headers:{'Accept':'text/html'}})
+      .then(function(r){ return r.ok ? r.text() : Promise.reject(r.status); })
+      .then(function(html){
+        var held=document.getElementById('dock-'+object), page=new DOMParser().parseFromString(html, 'text/html').querySelector('article.surface');
+        if(!held || !page) return;
+        page.setAttribute('data-opened', held.getAttribute('data-opened') || 'false');
+        held.replaceWith(document.adoptNode(page));
+      })
+      .catch(function(){
+        var held=document.getElementById('dock-'+object), said=held && held.querySelector('.loading');
+        if(said){ said.textContent='the host did not answer · open it again'; held.removeAttribute('data-loading'); }
+      })
+      .then(function(){ delete fetching[object]; if(progress && !busy) progress.hidden=true; });
+  }
+  function openDock(object){
+    if(client){ client.open(object); return; }
+    var into=document.getElementById('dk-b'); if(!into) return;
+    var page=document.getElementById('dock-'+object);
+    if(!page){ page=placeholder(object); into.appendChild(page); }
+    document.querySelectorAll('.dock .surface[data-opened=true]').forEach(function(s){ if(s!==page) s.setAttribute('data-opened', 'false'); });
+    page.setAttribute('data-opened', 'true');
+    if(location.hash!=='#dock-'+object) location.hash='#dock-'+object;
+    fetchDock(object);
+  }
+  addEventListener('hashchange', function(){ var m=/^#dock-(.+)$/.exec(location.hash); if(m && !client) openDock(decodeURIComponent(m[1])); });
+
   // ---- one selection: the decision in hand on the rail, and the object it
   // stands on lit on the board (S219). j and k walk the rail; a mark on a
   // board object takes its decision in hand; a board object with no decision
@@ -1356,6 +1414,10 @@ body[data-served="view"] .dk-b{overflow:visible}
     if(t.closest('#pal-close,#pal-cancel')){ e.preventDefault(); closeBox(); return; }
     if(drop && !drop.hidden && !t.closest('#pal-open')){ drop.hidden=true; }
     var mark=t.closest('#board .marks .mark'); if(mark){ e.preventDefault(); focusNumber(mark.getAttribute('data-mark')); return; }
+    // A link to a dock page anywhere but on a board object opens that page, and
+    // it is fetched (310a, S235).
+    var docked=t.closest('a[href^="#dock-"]');
+    if(docked && !t.closest('#board [data-machine]')){ e.preventDefault(); openDock(decodeURIComponent(docked.getAttribute('href').slice(6))); return; }
     var card=t.closest('#rail .card.decision'); if(card && !t.closest('a,button,input,label')){ focusCard(cards().indexOf(card)); return; }
     // A click anywhere on a board object opens it in the dock and makes it the
     // selection: its decision in hand where it has one, lit alone where it has
@@ -1372,8 +1434,7 @@ body[data-served="view"] .dk-b{overflow:visible}
   });
   function openObject(object){
     focusObject(object);
-    if(client){ client.open(object); return; }
-    if(document.getElementById('dock-'+object)) location.hash='#dock-'+object;
+    openDock(object);
   }
 
   document.addEventListener('keydown', function(e){
@@ -1486,7 +1547,9 @@ body[data-served="view"] .dk-b{overflow:visible}
   // moved, and the page fetches itself and swaps the regions that differ,
   // keeping the decision in hand, the drawer and where each column was
   // scrolled to. Nothing is navigated; the page is never blank.
-  var REGIONS=['hosts','rail','board-h','lanes','dk-b','count','bd-plan','bd-board','sent','loglist','clock','pal-dyn'];
+  // The dock is not one of them: its page is fetched again below, while it is
+  // open, and no other page is on the page to swap (310a, S235).
+  var REGIONS=['hosts','rail','board-h','lanes','count','bd-plan','bd-board','sent','loglist','clock','pal-dyn'];
   function swap(html){
     var doc=new DOMParser().parseFromString(html, 'text/html');
     if(!doc.body || !doc.getElementById('rail')) return false;
@@ -1501,6 +1564,8 @@ body[data-served="view"] .dk-b{overflow:visible}
     if(!(number!==null && focusNumber(number))){ if(litId && document.getElementById(litId)) focusObject(litId); else focusCard(Math.max(0, at), true); }
     // A number's answers are read off its card, which may just have changed.
     if(boxOpen()) update();
+    var open=document.querySelector('.dock .surface[data-opened=true]');
+    if(open && open.id!=='dock-deliverable') fetchDock(open.id.slice(5));
     return true;
   }
   var refreshing=false, again=false, busy=false;
@@ -1560,6 +1625,7 @@ body[data-served="view"] .dk-b{overflow:visible}
   // the link opened (S219).
   var opened=/^#dock-(.+)$/.exec(location.hash);
   if(!(opened && focusObject(decodeURIComponent(opened[1])))) focusCard(0, true);
+  if(opened && !client) openDock(decodeURIComponent(opened[1]));
 })();
 </script>
 <!-- The tour: an instance standing part-way through a scenario onboards

@@ -285,7 +285,14 @@ fn only_a_decision_is_answerable() {
         store.put("bolt/atlas/plan-rows", &bolt, base).expect("open");
         commands::rail(store, &defs).expect("the rail derives");
     });
-    let html = page.html("/");
+    let first = page.html("/");
+    // Each object's dock page, as the drawer fetches it when it is opened: the
+    // first view carries none a link did not name (310a, S235).
+    let docks: String = ["bolt/atlas/plan-rows", "intent/rows-lose-numbers", "elaboration/rows-lose-numbers/first", "signal/s1"]
+        .iter()
+        .map(|id| page.html(&format!("/willdan/{id}?part=dock")))
+        .collect();
+    let html = first + &docks;
 
     // The decision card carries answers; nothing else does.
     assert!(html.contains("<div class=\"answers\">"), "{html}");
@@ -506,7 +513,9 @@ fn proposed_intent_shows_weight() {
         .expect("the proposed intent");
     });
 
-    let html = page.html("/");
+    // The intent's dock page, as the drawer fetches it when it is opened (310a,
+    // S235).
+    let html = page.html("/") + &page.html("/willdan/intent/retry-jitter?part=dock");
     // How many, from which sources, over what span — the span counted by event
     // date and never by when the flywheel read it (109).
     assert!(html.contains("data-signals=\"3\""), "the count is not shown: {html}");
@@ -656,7 +665,13 @@ fn page_carries_the_mockups_regions() {
         store.put("bolt/atlas/plan-rows", &bolt, base).expect("open");
         commands::rail(store, &defs).expect("the rail derives");
     });
-    let html = page.html("/");
+    // The drawer holds the dock page of the object opened, as it is fetched
+    // when the object is opened (310a, S235).
+    let html = page.html("/").replacen(
+        "<div class=\"dk-b\" id=\"dk-b\"></div>",
+        &format!("<div class=\"dk-b\" id=\"dk-b\">{}</div>", page.html("/willdan/bolt/atlas/plan-rows?part=dock")),
+        1,
+    );
     let design = mockup();
 
     let mut missing: Vec<String> = Vec::new();

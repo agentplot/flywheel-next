@@ -40,6 +40,62 @@ pub const VERSION: &str = env!("CARGO_PKG_VERSION");
 /// The one file the mockup is diffed against (D16, task 14.1).
 const TEMPLATE: &str = include_str!("page/template.html");
 
+/// The template as it is served: its comments and indentation taken out, once
+/// per process. They are for the person reading the file, and every load paid
+/// for them (310a, S235).
+fn template() -> &'static str {
+    static SERVED: std::sync::OnceLock<String> = std::sync::OnceLock::new();
+    SERVED.get_or_init(|| compact(TEMPLATE))
+}
+
+/// A document with its comments and the indentation of its lines taken out:
+/// `<!-- -->` in the markup, `/* */` in the stylesheet and whole `//` lines in
+/// the script. Every line keeps its own content and its end, so nothing a line
+/// says changes meaning (310a).
+pub(crate) fn compact(document: &str) -> String {
+    let lines = |text: &str, keep: &dyn Fn(&str) -> bool| -> String {
+        text.lines()
+            .map(str::trim)
+            .filter(|line| !line.is_empty() && keep(line))
+            .collect::<Vec<_>>()
+            .join("\n")
+    };
+    let without = |text: &str, open: &str, close: &str| -> String {
+        let mut out = String::with_capacity(text.len());
+        let mut rest = text;
+        while let Some(at) = rest.find(open) {
+            out.push_str(&rest[..at]);
+            match rest[at..].find(close) {
+                Some(end) => rest = &rest[at + end + close.len()..],
+                None => {
+                    rest = "";
+                }
+            }
+        }
+        out.push_str(rest);
+        out
+    };
+    let markup = |text: &str| lines(&without(text, "<!--", "-->"), &|_| true);
+    let (Some(style), Some(style_end), Some(script), Some(script_end)) = (
+        document.find("<style>"),
+        document.find("</style>"),
+        document.find("<script>"),
+        document.rfind("</script>"),
+    ) else {
+        return markup(document);
+    };
+    let style = style + "<style>".len();
+    let script = script + "<script>".len();
+    [
+        markup(&document[..style]),
+        lines(&without(&document[style..style_end], "/*", "*/"), &|_| true),
+        markup(&document[style_end..script]),
+        lines(&document[script..script_end], &|line| !line.starts_with("//")),
+        markup(&document[script_end..]),
+    ]
+    .join("\n")
+}
+
 /// What one request read. Everything the page shows comes from here, so the
 /// whole page is one read and a reload shows what is recorded (310).
 pub struct Read {
@@ -1031,7 +1087,7 @@ pub fn render(read: &Read) -> String {
         .filter(|d| flywheel_engine::rail::counted(&d.group))
         .count();
     let sent: usize = read.answered.values().map(Vec::len).sum();
-    let mut out = TEMPLATE
+    let mut out = template()
         .replace("{{VERSION}}", VERSION)
         .replace("{{SERVED}}", "page")
         .replace("{{GEN}}", &read.generation.to_string())
@@ -1067,8 +1123,8 @@ pub fn render(read: &Read) -> String {
 /// regions a tool's result carries into the same places (293a, 322, S230). So
 /// there is one page and never a second implementation of it.
 pub fn bundle() -> String {
-    let mut out = String::with_capacity(TEMPLATE.len());
-    let mut rest = TEMPLATE;
+    let mut out = String::with_capacity(template().len());
+    let mut rest = template();
     while let Some(open) = rest.find("{{") {
         let Some(close) = rest[open..].find("}}").map(|at| open + at) else {
             break;
@@ -2906,13 +2962,27 @@ fn dock(read: &Read) -> String {
             body = reading.body,
         );
     }
-    // The signals tray, which the curation counter opens (S225).
-    out.push_str(&tray::surface(read, read.opened.as_deref() == Some(tray::ID)));
-    for object in &read.objects {
-        let opened = read.opened.as_deref() == Some(object.id.as_str());
-        out.push_str(&surface(read, object, opened));
+    // The dock page a link named, and no other: every other page is fetched
+    // from the host when its object is opened, so what a load costs is what is
+    // on screen and never the instance (308, 310a, S235).
+    if let Some(page) = read.opened.as_deref().and_then(|opened| dock_surface(read, opened, true)) {
+        out.push_str(&page);
     }
     out
+}
+
+/// One object's dock page, or the signals tray's, as the drawer fetches it when
+/// its object is opened; `None` for an id the instance does not hold (310a,
+/// S235, S225).
+pub fn dock_page(read: &Read, id: &str) -> Option<String> {
+    dock_surface(read, id, false)
+}
+
+fn dock_surface(read: &Read, id: &str, opened: bool) -> Option<String> {
+    if id == tray::ID {
+        return Some(tray::surface(read, opened));
+    }
+    read.objects.iter().find(|o| o.id == id).map(|object| surface(read, object, opened))
 }
 
 /// One object's surface in the dock: its header in the form of the object, its

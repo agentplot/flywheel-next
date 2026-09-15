@@ -120,7 +120,12 @@ fn rendered(store: &mut FakeStore, world: &world::Files, defs: &Definitions, lan
     if landed {
         read.commits_are_mains.insert(BOLT.into());
     }
-    crate::page::render(&read)
+    // The dock pages these tests open, as the drawer fetches them (310a, S235).
+    let mut html = crate::page::render(&read);
+    for id in [BOLT, UNIT, ITEM] {
+        html.push_str(&crate::page::dock_page(&read, id).expect("a dock page"));
+    }
+    html
 }
 
 /// The page's body names no field of the record and no word of the model's
@@ -280,7 +285,7 @@ fn a_captures_page_is_its_words_its_source_and_what_became_of_it() {
     let id_of = |machine: &str| read.objects.iter().find(|o| o.machine == machine).expect("taken").id.clone();
     let (capture, signal) = (id_of("capture"), id_of("signal"));
 
-    let page = page_of(&crate::page::render(&read), &capture);
+    let page = page_of(&crate::page::dock_page(&read, &capture).expect("its dock page"), &capture);
     assert!(page.contains(&format!("<blockquote class=\"dtext said\">{JOB}</blockquote>")), "{page}");
     assert!(page.contains("from the console · by chuck"), "{page}");
     assert!(!page.contains("what became of it"), "nothing has become of it yet: {page}");
@@ -290,7 +295,7 @@ fn a_captures_page_is_its_words_its_source_and_what_became_of_it() {
     let base = moved.seq;
     Records::put(&mut store, &signal, &moved, base).expect("the signal dropped");
     let read = crate::page::read(&mut store, &world, &defs, ADDRESS, "chuck").expect("the page reads");
-    let page = page_of(&crate::page::render(&read), &capture);
+    let page = page_of(&crate::page::dock_page(&read, &capture).expect("its dock page"), &capture);
     assert!(page.contains("<h3>what became of it</h3>"), "{page}");
     assert!(page.contains("<div class=\"tail\">dropped</div>"), "{page}");
 }
@@ -311,7 +316,7 @@ fn any_other_page_is_what_it_holds_and_what_it_is_part_of() {
     commands::rail(&mut store, &defs).expect("the rail derives");
     let read = crate::page::read(&mut store, &world, &defs, ADDRESS, "chuck").expect("the page reads");
 
-    let page = page_of(&crate::page::render(&read), "intent/atlas-rows");
+    let page = page_of(&crate::page::dock_page(&read, "intent/atlas-rows").expect("its dock page"), "intent/atlas-rows");
     assert!(page.contains("<h3>elaborations</h3><ol class=\"elaborations\">"), "{page}");
     assert!(page.contains("href=\"#dock-elaboration/atlas-rows/research\""), "{page}");
     // An elaboration is named by its type and its material, and one with no
