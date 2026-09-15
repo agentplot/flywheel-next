@@ -47,6 +47,12 @@ be recorded with what was refused and why (79, 81, 6).
   operation and the object, and it reaches the operator under attention rather
   than becoming a unit (4, 79, 81)
 
+#### Scenario: A refused call reaches the run record whichever caller made it
+- **WHEN** a call from the page's own form or from a member's client is refused
+- **THEN** one run-record entry of kind `refusal` names the identity, the
+  operation, the object and the delivery it came by, beside the answer the
+  caller is shown (79, 321)
+
 #### Scenario: A machinery failure is not turned into work
 - **WHEN** the machinery cannot perform an effect for a reason of its own
 - **THEN** it is reported through the run record, and no intent, unit or chore

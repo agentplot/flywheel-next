@@ -573,8 +573,8 @@ once beside its threshold and cadence (110, 118, S225). Every signal takes
 exactly one standing move with a stated consequence, and only the operator's
 response replaces one (107, 116). A route names what curation, being a
 session, offered for a signal that argues with no claim: a chore through
-`flywheel offer`, which `record_offers` makes a proposed chore unit under the
-repository, on its shared line (60, 62), or an ask filed by `flywheel ask`, the `ask` tool of D9 called as the session, whose
+`flywheel offer --scope <repository>`, which `record_offers` makes a proposed
+chore unit under the repository the scope names, on its shared line (60, 62), or an ask filed by `flywheel ask`, the `ask` tool of D9 called as the session, whose
 printed `ask/<id>` the route names (116, 58–60, 28, 67). A route that offers
 neither is refused. Where the operator runs curation (93b), the curator's
 surface files a route's ask through the same tool, by the operator, before the
@@ -594,9 +594,19 @@ nothing has judged does: asserted by the session, its assertion the document's
 path, no excerpt, position `whole`, unmoved until curation or the operator moves
 it (62, 111, 113, 19a, S231). In the tray it is a row whose quote is the path
 and whose source reads "offer". A chore offered off every bolt is not a signal
-but a proposed chore unit under the repository whose shared line it belongs on,
-folded on the rail with that repository's other shared-line chores (60, 62,
-S231; `unit.yaml`, `repository.yaml`).
+but a proposed chore unit on the shared line of the repository its offer names.
+The offer says where a chore's fix belongs through `--scope`: `bolt-line` under a
+bolt, which may be left off, and off every bolt a repository's manifest name,
+the names `propose-chore` and `flywheel ask` take, `blueprints` among them since
+an instruction change is a chore there (60, 123). The unit stands under that
+repository, or under the instance with `repository: blueprints` for the
+blueprints, and folds on the rail under that name with the repository's other
+shared-line chores (60, 62, S231; `unit.yaml`, `repository.yaml`,
+`instance.yaml`). An offer off every bolt whose scope names no tracked
+repository is refused on the session's thread with the names, exits 1 and is
+never pending, as `flywheel ask` refuses; nothing is read from `--about`, which
+says what the chore concerns and not where its fix lands (sessions.yaml
+`commands.offer`).
 
 The pull-request and issue-tracker adapters of 215 read the git host's issues and
 reviews, which C.2 forbids the machinery doing; they belong to the tracker
@@ -847,33 +857,65 @@ curate or answer on gives the week nothing to measure.
 ### D18. A member's client gets the page's views through the protocol's user-interface extension
 
 The catalogue is served at the host's address as a remote server of the model
-context protocol (D9, 293). The views a member's client renders are the page's
-own, carried on that server under the protocol's user-interface extension
-(293a, 322, S230, `surfaces.yaml` `member_client.wire`):
+context protocol (D9, 293), at the address the page is served at with the
+instance in the path: one message a request posted to `/<instance>`, no session
+held and no stream opened, so a client asking for a stream alone is told the
+host offers none and a message naming another instance is refused (205a, 319,
+`surfaces.yaml` `member_client.address`). The views a member's client renders
+are the page's own, carried on that server under the protocol's user-interface
+extension (293a, 322, S230, `member_client.wire`):
 
+- Each view is the result of a read-only query named for it — `rail`, `board`,
+  `status`, `object <object>` — which writes and records nothing and follows the
+  catalogue's tools in every enumeration (193, `tools.queries`). A result is the
+  view's regions keyed by their element ids on the page — the rail; the board's
+  header and four lanes; for `status` the hosts strip with them (141); for
+  `object` its dock surface, opened — with the version and the view's name, and
+  the same view in words, so a client that renders nothing reads the decisions'
+  numbers and answers (311).
 - A tool whose result is a view names the view's resource on its declaration in
   the catalogue, as `_meta.ui.resourceUri`, so a client that renders such
   resources fetches the view as it calls the tool. The result names no
   resource.
-- The address is `ui://flywheel/<version>/<view>`, the view one of `rail`,
-  `board`, `status` and `object` (the dock). All four read the one bundle the
-  host serves, with media type `text/html;profile=mcp-app`, under the caller's
-  identity like any call (293, 307; in this phase the one operator of 253a).
-  Which region the bundle draws, and from what, is the tool's result, handed to
-  the view by the client, so a view holds nothing between renders (310).
+- The address is `ui://flywheel/<version>/<view>`. All four read the one
+  bundle, with media type `text/html;profile=mcp-app`, under the caller's
+  identity like any call (293, 307; in this phase the one operator of 253a); an
+  address under another version is refused naming the served ones. The bundle
+  is the page's template with nothing of the state drawn, and the page the host
+  serves is the same template filled (293a). Inside a client only the view's
+  regions show, at the frame's width, and the view tells the client its height.
+  What it draws is the tool's result, handed to the view by the client, so a
+  view holds nothing between renders (310).
 - Every result carries the version it was rendered under. A newer binary names
   newer addresses, which is how a client holding an older copy fetches again;
-  a view whose bundle is of another version than its result shows "this view
-  is out of date · fetch it again" and nothing of the state (326).
+  a view whose bundle is of another version than its result empties every
+  region and shows "this view is out of date · fetch it again" (326).
 - The bundle declares no external origin and asks no permission of the
   client's sandbox (307, 310, 204).
 - The four views are listed among the server's resources, so a client can ask
   for the rail before calling any tool.
 - A tap inside a rendered view is the control the page has, sent as
-  `tools/call` through the client on the same tool and object the page's form
-  would post, checked, recorded once and idempotent as any call (321, 323,
-  137). The bridge that sends it is in the bundle; it holds no state a reload
-  loses and fetches nothing external, which is what 310 asks.
+  `tools/call` through the client on the tool and object the page's form would
+  post — `yes all` one `answer` per number, in order — checked, recorded once
+  and idempotent as any call (321, 323, 137, S7). The control goes busy at once,
+  the view fetches itself again once the calls are made, and a refusal is a
+  toast with its reason (S30). An object's link opens that object's view in the
+  same frame through `object`; a link out of the flywheel is handed to the
+  client (308, 315). The bridge that sends it is in the bundle; it holds no
+  state a reload loses and fetches nothing external, which is what 310 asks.
+- A call names its own delivery under `_meta` (`flywheel/delivery`), and the
+  response is recorded as `client-<name>`, so the same call delivered twice is
+  one response; a call naming none is counted `client-<n>`. The record's
+  delivery is `client` (137, 323, `git-only.yaml` responses).
+- A refusal — by the catalogue, of a view with no such object, or of a caller at
+  the door — is one run-record entry of kind `refusal` naming the identity
+  (`unsigned-in` at the door), the operation, the object and delivery `client`
+  (79, 321, `member_client.calls`).
+- At start the host prints `client at <address> · <authority>` once per
+  address it listens on. In phase 1 the authority is 253a's exception: with one
+  operators-list entry it names the entry every call is given by; with more it
+  says no client is served until the device flow is built (320, 253,
+  `member_client.added_by`).
 
 A client that renders none of them still holds every tool, and every decision
 stays answerable as a call (311, 322). It is a caller and never a host (325).

@@ -100,8 +100,9 @@ the date (107). Curation SHALL run over signals with no move and SHALL NOT
 re-judge one that has a move; only the operator's response SHALL replace a move
 (107). Every move SHALL have a stated consequence (116). A route move SHALL name
 what curation, being a session, offered for a signal that argues with no claim:
-a chore through `flywheel offer`, which `record_offers` makes a proposed chore
-unit under the repository, on its shared line (60, 62), or an ask filed by running `flywheel ask <repository> <words>` in its
+a chore through `flywheel offer --scope <repository>`, which `record_offers`
+makes a proposed chore unit under the repository the scope names, on its shared
+line (60, 62), or an ask filed by running `flywheel ask <repository> <words>` in its
 place, which calls the `ask` tool as the session, writes the ask record and
 prints the id the route names (116, 58–60, 28, 67). An exit SHALL NOT carry an
 ask, and a route that offers neither a chore nor an ask SHALL be refused (116).
@@ -143,10 +144,19 @@ page capture's are (62, 111, 113, S231). That signal SHALL be of kind ask,
 asserted by the session, its assertion the document's path, its excerpt empty
 and its position whole, and SHALL stay unmoved until curation or the operator
 moves it (62, 19a, 107). A chore offered off every bolt SHALL NOT be a signal:
-it SHALL be a proposed chore unit under the repository whose shared line it
-belongs on, folded on the rail with that repository's other proposed shared-line
-chores into one decision answered yes or drop, as a bolt's chores fold by bolt
-(60, 62, 11, S231).
+it SHALL be a proposed chore unit on the shared line of the repository its
+offer names, folded on the rail with that repository's other proposed
+shared-line chores into one decision headed by its name and answered yes or
+drop, as a bolt's chores fold by bolt (60, 62, 11, S231). The offer SHALL say
+where a chore's fix belongs through `--scope`: `bolt-line` under a bolt, which
+MAY be left off, and under no bolt a tracked repository's manifest name or
+`blueprints`, the names `propose-chore` and `flywheel ask` take (60, 123). A
+chore of the blueprints SHALL stand under the instance with repository
+`blueprints` and fold by that name (123). A chore offered under no bolt whose
+scope names no tracked repository SHALL be refused on the session's thread with
+the tracked names and `blueprints`, exit 1 and never be pending, as an ask is
+refused; nothing SHALL be read from `--about` (60; sessions.yaml
+`commands.offer`).
 
 #### Scenario: A curation session's finding reaches its exit
 - **WHEN** a curation session offers a finding and exits done
@@ -160,10 +170,23 @@ chores into one decision answered yes or drop, as a bolt's chores fold by bolt
   written (62, 113)
 
 #### Scenario: A chore off every bolt is its repository's
-- **WHEN** a session under no bolt offers a chore for a repository
+- **WHEN** a session under no bolt offers a chore with `--scope` naming a
+  tracked repository
 - **THEN** a proposed chore unit under that repository points at the document,
-  no capture or signal is written, and the rail shows it in one decision with
-  that repository's other proposed shared-line chores (60, 62, S231)
+  no capture or signal is written, and the rail shows it in one decision headed
+  by the repository's name with its other proposed shared-line chores (60, 62,
+  S231)
+
+#### Scenario: A chore of the blueprints stands under the instance
+- **WHEN** a session under no bolt offers a chore with `--scope blueprints`
+- **THEN** the proposed chore unit stands under the instance with repository
+  `blueprints` and folds on the rail under that name (60, 123)
+
+#### Scenario: A chore off every bolt that names no tracked repository
+- **WHEN** a session under no bolt offers a chore with no scope, or with a scope
+  the instance does not track
+- **THEN** the offer is refused on the session's thread with the tracked names
+  and `blueprints`, the command exits 1, and nothing is pending or written (60)
 
 ### Requirement: A capture is a note, and the operator may move its signal by hand
 

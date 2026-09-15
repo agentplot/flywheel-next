@@ -149,24 +149,82 @@ foreclosed).
 - **WHEN** the machinery performs an operation the operator could also invoke
 - **THEN** it calls the same tool function and the same record is written (193)
 
+### Requirement: A member's client reaches the catalogue at the page's address
+
+The protocol SHALL be answered at the address the page is served at, with the
+instance in the path: one message a request posted to `/<instance>`, with no
+session to hold (205a, 291, 319). The host SHALL open no stream to a client, a
+client asking for a stream alone SHALL be told the host offers none, and a
+message naming another instance SHALL be refused (310, 325, 205a). A call MAY
+name its own delivery under `_meta` as `flywheel/delivery` — letters, digits,
+`.`, `_` and `-`, at most 64, never a bare number — and SHALL be recorded under
+that name as `client-<name>`, so the same call delivered twice is one response;
+a call naming none SHALL be counted `client-<n>`; the record's delivery SHALL be
+`client` (137, 323). A call the catalogue refuses, a view refused for want of
+its object and a caller refused at the door SHALL each be one run-record entry
+of kind `refusal` naming the identity, `unsigned-in` at the door, the operation,
+the object the call named — a decision by its number, `none named` when none was
+— and delivery `client` (79, 321, 253a). At start the host SHALL print
+`client at <address> · <authority>` once per address it listens on; in this
+phase the authority is 253a's exception, naming the one operators-list entry
+every call is given by, and with more than one entry saying no client is served
+(320, 253). A client SHALL be a caller and never a host: a call over the
+protocol runs no tick and takes no lease, and no credential of a client is
+written to the state store, the manifest, a record or the page (325, 291, 204,
+207).
+
+#### Scenario: A client asks for a stream
+- **WHEN** a client sends a GET to `/<instance>` asking only for an event stream
+- **THEN** the host answers that it offers none and opens no stream (310, 325)
+
+#### Scenario: The same call delivered twice
+- **WHEN** a client sends the same `answer` call twice naming one delivery
+- **THEN** one response `client-<name>` is recorded with delivery `client`, and
+  the second delivery writes nothing (137, 323)
+
+#### Scenario: A refusal at the door reaches the run record
+- **WHEN** a caller the host does not admit calls a tool over the protocol
+- **THEN** the run record holds one `refusal` entry with identity
+  `unsigned-in`, the operation, the object and delivery `client`, and no
+  response is recorded (79, 321, 253a)
+
+#### Scenario: The host says where to add a client
+- **WHEN** a host with one operators-list entry starts
+- **THEN** it prints `client at http://<listener>/<instance>` beside the
+  authority, once per address it listens on, naming the entry every call is
+  given by (320, 253a)
+
 ### Requirement: A member's client renders the page's own views
 
 The views a member's client renders SHALL be the page's own — the rail, the
 board, the status view and one object's detail — carried under the model
-context protocol's user-interface extension (293a, 322, S230). A tool whose
-result is a view SHALL name the view's resource on its declaration
-(`_meta.ui.resourceUri`) and never on its result. The address SHALL be
+context protocol's user-interface extension (293a, 322, S230). Each SHALL be
+the result of a read-only query named for it — `rail`, `board`, `status`,
+`object <object>` — that writes and records nothing and follows the catalogue's
+tools in every enumeration (193, 322). A result SHALL carry the view's regions
+keyed by their element ids on the page — the rail; the board's header and four
+lanes; for `status` the hosts strip with them; for `object` its dock surface,
+opened — and the same view in words (141, 311). A tool whose result is a view
+SHALL name the view's resource on its declaration (`_meta.ui.resourceUri`) and
+never on its result. The address SHALL be
 `ui://flywheel/<version>/<rail|board|status|object>`, read under the caller's
-identity like any call, and every address SHALL answer the one bundle the host
-serves, with media type `text/html;profile=mcp-app`, drawing the region and the
-state the tool returned (293, 307, 310). Every result SHALL carry the version
-it was rendered under, and a view whose bundle is of another version than its
-result SHALL show that it is out of date and nothing of the state (326). The
-bundle SHALL declare no external origin and ask no permission of the client's
-sandbox (307, 310, 204). The four views SHALL be listed among the server's
-resources. A tap inside a rendered view SHALL be a `tools/call` through the
-client on the tool and object the page's form would post, checked, recorded
-once and idempotent as any call (321, 323, 137). A client that renders none of
+identity like any call, and every address SHALL answer the one bundle, the
+page's template with nothing of the state drawn, with media type
+`text/html;profile=mcp-app`, drawing the regions and the state the tool returned
+(293, 293a, 307, 310); inside a client only the view's regions SHALL show, at
+the frame's width. An address under another version SHALL be refused naming the
+served ones. Every result SHALL carry the version it was rendered under, and a
+view whose bundle is of another version than its result SHALL empty every
+region and show that it is out of date (326). The bundle SHALL declare no
+external origin and ask no permission of the client's sandbox (307, 310, 204).
+The four views SHALL be listed among the server's resources. A tap inside a
+rendered view SHALL be a `tools/call` through the client on the tool and object
+the page's form would post — `yes all` one `answer` per number, in order —
+checked, recorded once and idempotent as any call; the control SHALL go busy at
+once, the view SHALL fetch itself again once the calls are made, and a refusal
+SHALL show as a toast with its reason (321, 323, 137, S7, S30). A link to an
+object SHALL open that object's view through the client, and a link out of the
+flywheel SHALL be handed to the client (308, 315). A client that renders none of
 them SHALL still hold every tool, and every decision SHALL stay answerable as a
 call (311, 322).
 
@@ -179,9 +237,15 @@ call (311, 322).
 #### Scenario: A copy of another version is not rendered as state
 - **WHEN** a client holding the bundle of an earlier binary renders a result a
   newer binary returned
-- **THEN** the view shows "this view is out of date · fetch it again" and
-  nothing of the state, and the newer binary's declarations name the newer
-  address (326, S230)
+- **THEN** the view empties every region and shows "this view is out of date ·
+  fetch it again", and the newer binary's declarations name the newer address
+  (326, S230)
+
+#### Scenario: Yes all through a client
+- **WHEN** the operator taps `yes all` naming three decisions inside a rendered
+  rail
+- **THEN** the client sends three `answer` calls in order, each recorded once,
+  and the view fetches itself again and redraws (323, S7)
 
 #### Scenario: A tap is a call through the client
 - **WHEN** the operator taps yes on a decision inside a rendered rail
@@ -190,6 +254,7 @@ call (311, 322).
   delivery of the same call writes nothing (323, 321, 137, 153)
 
 #### Scenario: A client that renders nothing
-- **WHEN** a client that renders no resource enumerates the catalogue
-- **THEN** every decision on the rail is answerable by a call it holds (311,
-  322)
+- **WHEN** a client that renders no resource enumerates the catalogue and calls
+  `rail`
+- **THEN** the result's words give every decision's number and answers, and
+  every decision is answerable by a call it holds (311, 322)
