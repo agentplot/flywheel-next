@@ -121,6 +121,21 @@ fn a_curators_delivery_writes_its_moves_and_proposed_intents() {
     commands::put_new(&mut store, &defs, "curation/willdan", "curation", None, Default::default(), now()).unwrap();
     commands::put_new(&mut store, &defs, "intent/rows-keep-numbers", "intent", None, Default::default(), now()).unwrap();
     let session = "curation/willdan/main/1";
+    // The session the curation charged: its proofs read what that session
+    // delivered.
+    let fact = flywheel_atoms::Object {
+        id: format!("fact/session/{session}"),
+        machine: "fact".into(),
+        parent: None,
+        config: Default::default(),
+        entered_at: Default::default(),
+        record: Default::default(),
+        counters: Default::default(),
+        applied_responses: vec![],
+        seq: 0,
+        created: 0,
+    };
+    Records::put(&mut store, &fact.id, &fact, 0).unwrap();
 
     let moves = format!(
         "Signal: {a}\nMove: join\nTarget: intent/export-ownership\nReason: both ask who owns a shared export\n\n\
@@ -167,9 +182,18 @@ fn a_curators_delivery_writes_its_moves_and_proposed_intents() {
     let (delivered, stated) = offers::delivered(&store, session).unwrap();
     assert_eq!(delivered.len(), 3, "three moves are admitted: {delivered:?}");
     assert_eq!(stated.len(), 1, "one proposal is admitted: {stated:?}");
+    // Delivered and not yet applied, so neither proof holds and the engine
+    // performs the effects that apply the delivery (127).
+    let proof = |store: &FakeStore, world: &FakeWorld, name: &str| {
+        signals::proofs(store, &world.files, "curation/willdan", name)
+    };
+    assert_eq!(proof(&store, &world, "curation.moves_recorded"), Some(json!(false)));
+    assert_eq!(proof(&store, &world, "curation.intents_proposed"), Some(json!(false)));
     signals::record_moves(&mut store, &mut world, &delivered, now()).unwrap();
     let proposed = offers::proposals_with(&delivered, &stated);
     signals::propose_intents(&mut store, &defs, &proposed, now()).unwrap();
+    assert_eq!(proof(&store, &world, "curation.moves_recorded"), Some(json!(true)));
+    assert_eq!(proof(&store, &world, "curation.intents_proposed"), Some(json!(true)));
 
     let moved = |signal: &str| signals::standing_move(&world, signal).unwrap().map(|m| m.target);
     assert_eq!(moved(&ids[0]).as_deref(), Some("join intent/export-ownership"));

@@ -413,7 +413,7 @@ impl EvidenceSource for HostStore {
             .or_else(|| name.starts_with("instance.").then(|| self.instance.get(name).cloned()).flatten())
             // Curation's proofs read the blueprints and the records together
             // (107, 109, 116).
-            .or_else(|| flywheel_domain::signals::proofs(&self.git, &*self.material(), name))
+            .or_else(|| flywheel_domain::signals::proofs(&self.git, &*self.material(), object, name))
             // `record_refusals` and its proof, read from one comparison: every
             // refusal on the session's thread is in the run record (43, 79).
             // Pending is the complement of recorded and is answered here

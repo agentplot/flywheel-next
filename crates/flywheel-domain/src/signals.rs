@@ -514,23 +514,48 @@ pub fn evidence<R: Reads + ?Sized>(files: &R, object: &str, name: &str) -> Optio
 /// moves the session delivered against what `record_moves` wrote on the
 /// signals, and the intents those moves propose against the intents that
 /// exist (107, 109, 110, 116).
-pub fn proofs<S: Records, R: Reads + ?Sized>(store: &S, files: &R, name: &str) -> Option<Value> {
+///
+/// What was delivered is both what the operator's surface wrote into the
+/// blueprints and what the curation's newest session delivered onto its
+/// thread; a proof that read only the first found an agent's delivery already
+/// applied, and the engine skipped the effects that apply it.
+pub fn proofs<S: Records, R: Reads + ?Sized>(store: &S, files: &R, object: &str, name: &str) -> Option<Value> {
+    if !matches!(name, "curation.moves_recorded" | "curation.intents_proposed") {
+        return None;
+    }
+    let (delivered, stated) = crate::offers::newest_session(store, object)
+        .ok()
+        .flatten()
+        .and_then(|session| crate::offers::delivered(store, &session).ok())
+        .unwrap_or_default();
+    let held = moves(files);
     Some(match name {
-        // Every move in the blueprints stands on its signal's record.
-        "curation.moves_recorded" => json!(moves(files).iter().all(|moved| {
-            store
-                .get(&moved.signal)
-                .ok()
-                .flatten()
-                .and_then(|s| s.record.get("move").cloned())
-                .and_then(|m| m.get("target").and_then(|t| t.as_str().map(String::from)))
-                .is_some_and(|t| t == moved.target)
-        })),
-        // Every intent the joins name exists.
-        "curation.intents_proposed" => json!(proposals_of(&moves(files))
-            .iter()
-            .all(|p| store.get(&p.id).ok().flatten().is_some())),
-        _ => return None,
+        // Every move in the blueprints stands on its signal's record, where the
+        // signal has one (`apply_move` leaves a record that is not there as it
+        // was), and every move the session delivered is a move record.
+        "curation.moves_recorded" => json!(
+            held.iter().all(|moved| match store.get(&moved.signal).ok().flatten() {
+                Some(signal) => signal
+                    .record
+                    .get("move")
+                    .and_then(|m| m.get("target").and_then(|t| t.as_str().map(String::from)))
+                    .is_some_and(|t| t == moved.target),
+                None => true,
+            }) && delivered.iter().all(|moved| {
+                files
+                    .read(&move_path(&moved.signal))
+                    .and_then(|text| rec::parse(&text).first().map(Move::from_record))
+                    .is_some_and(|written| written.target == moved.target)
+            })
+        ),
+        // Every intent the joins and the stated proposals name exists.
+        _ => {
+            let mut all = held;
+            all.extend(delivered);
+            json!(crate::offers::proposals_with(&all, &stated)
+                .iter()
+                .all(|p| store.get(&p.id).ok().flatten().is_some()))
+        }
     })
 }
 
