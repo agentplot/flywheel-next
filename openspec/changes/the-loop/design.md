@@ -455,7 +455,9 @@ need not resolve on the operator's network: it does not on a tailnet (204).
   nothing is reachable only by hover or keyboard, and a long-form answer uses the
   platform's own keyboard (311, 15). The decision card is the only answerable
   form; every other kind keeps the form the status view gives it (209), and an
-  elaboration is a surface of its own reached from its intent (210).
+  elaboration is a surface of its own reached from its intent (210), named by
+  its type and the material it was proposed from, never by its ordinal or its
+  id (27, S226).
 - Every chat line, notification and rail line carries a link at the host's
   address (D10a) with the instance in the path,
   opening that object in the dock with its answer controls in reach (308, 205a).

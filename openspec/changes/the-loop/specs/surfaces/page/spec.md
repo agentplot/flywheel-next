@@ -75,7 +75,8 @@ order (210).
 
 #### Scenario: An elaboration opens from its intent
 - **WHEN** the operator opens an intent
-- **THEN** its elaborations are listed in order and each opens its own surface,
+- **THEN** its elaborations are listed in order, each named by its type and the
+  material it was proposed from (S226), and each opens its own surface,
   showing its type, its state, its decision when one is pending, and its
   session's last activity (210)
 

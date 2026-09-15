@@ -63,7 +63,10 @@ kind SHALL have exactly one creating condition and one retracting condition
 An intent SHALL carry at most one elaboration awaiting approval at a time, and
 new material for the intent SHALL join that proposal (21). The type of an
 elaboration SHALL be chosen when it is proposed and SHALL be correctable by the
-operator's response (27).
+operator's response (27). An elaboration SHALL be named by its type and the
+material it was proposed from, in the operator's words, and never by its
+ordinal or its id; its id SHALL stay its id and SHALL not be shown as its name
+(27, S226).
 
 #### Scenario: New material joins the standing proposal
 - **WHEN** a second elaboration would be proposed on an intent that already has
@@ -75,6 +78,14 @@ operator's response (27).
 - **WHEN** the operator answers a proposed elaboration naming another type
 - **THEN** the elaboration is approved under the type the response named and its
   record says so (27)
+
+#### Scenario: An elaboration is named by its type and its material
+- **WHEN** an open intent proposes an elaboration from a signal attached to it,
+  and the operator then answers `type research`
+- **THEN** the bead, the card and the elaboration's own surface name it
+  "self-closing · " and then the signal's first words, and "research · " and
+  those words after the answer; no surface names it by its ordinal or its id,
+  and its id is unchanged (27, S226)
 
 ### Requirement: Every decision carries a number, given once and never reused
 
