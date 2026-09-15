@@ -167,6 +167,65 @@ fn a_bolts_page_is_its_branch_units_sessions_and_commits() {
     assert!(!landed.contains("commits on the branch"), "{landed}");
 }
 
+/// Move an object into a state, as a tick would have left it.
+fn moved_to(store: &mut FakeStore, id: &str, life: &str) {
+    let mut held = Records::get(store, id).expect("a read").expect("the object");
+    held.config.retain(|region, _| !region.starts_with("life."));
+    held.config.insert("life".into(), life.into());
+    let base = held.seq;
+    Records::put(store, id, &held, base).expect("the object moved");
+}
+
+/// A landed bolt's page is the record: when it landed and through which gates,
+/// its place removed, the units it landed, the acceptance file it wrote on main
+/// and main's latest commits, with no session and nothing to answer (S28, 175,
+/// 192).
+#[test]
+fn a_landed_bolts_page_is_its_landing_and_the_units_it_landed() {
+    let (mut store, world, defs) = a_bolt_worked();
+    moved_to(&mut store, BOLT, "landed");
+    moved_to(&mut store, UNIT, "merged");
+    fact(
+        &mut store,
+        &format!("fact/line/{BOLT}"),
+        &[
+            ("exists", json!(true)),
+            ("contains_parent", json!(true)),
+            ("acceptance", json!(true)),
+            ("landed", json!(true)),
+            ("landing", json!("passed")),
+        ],
+    );
+    let place = format!("fact/place/{BOLT}#own");
+    let mut removed = Records::get(&store, &place).expect("a read").expect("the place");
+    removed.record.insert("exists".into(), json!(false));
+    let base = removed.seq;
+    Records::put(&mut store, &place, &removed, base).expect("the place removed");
+    commands::rail(&mut store, &defs).expect("the rail derives");
+
+    let page = page_of(&rendered(&mut store, &world, &defs, true), BOLT);
+    for shown in [
+        "dk-h dk-record",
+        "<span class=\"kind\">landed</span>",
+        "<h2>atlas/rows-lose-numbers</h2>",
+        "<div class=\"tail\">landed 20",
+        "<h3>the landing</h3>",
+        "<span class=\"st\">landed</span><span class=\"grow\">20",
+        "main taken into the branch, then acceptance file written, then merged into main",
+        "rows-lose-numbers</span> · removed",
+        "<h3>units landed</h3>",
+        &format!("href=\"#dock-{UNIT}\""),
+        "<h3>acceptance file</h3>",
+        "flywheel/acceptance/bolt-atlas-rows-lose-numbers.md",
+        "<h3>landed · main",
+    ] {
+        assert!(page.contains(shown), "the landed bolt's page lacks `{shown}`: {page}");
+    }
+    assert!(!page.contains("<h3>sessions</h3>"), "a landed bolt's page lists no sessions: {page}");
+    assert!(page.contains("dk-answers none"), "a landed bolt has nothing to answer: {page}");
+    assert_no_dump(&page);
+}
+
 /// A unit's page is its job as a quote, its type, bolt and repository, its work
 /// items with their stage, its sessions and the commits on its bolt (S28).
 #[test]

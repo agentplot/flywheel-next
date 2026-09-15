@@ -92,8 +92,18 @@ pub fn subtitle(read: &Read, object: &Object, row: Option<&status::Row>) -> Stri
                 _ => "waiting on you".into(),
             }
         }
+        // A landed bolt's record is stamped with when it landed (S28).
+        "bolt" if is_landed(object) => match object.entered_at.get("life") {
+            Some(at) => format!("landed {}", at.format("%Y-%m-%d %H:%M")),
+            None => "landed".into(),
+        },
         _ => row.map(|r| r.said.clone()).unwrap_or_default(),
     }
+}
+
+/// Whether a bolt has landed, which makes its page the record (S28).
+pub fn is_landed(bolt: &Object) -> bool {
+    bolt.machine == "bolt" && bolt.config.get("life").map(String::as_str) == Some("landed")
 }
 
 /// The page's title: a capture's words, everything else its name.
@@ -107,6 +117,12 @@ pub fn title(read: &Read, object: &Object) -> String {
                 .unwrap_or_else(|| name_of(&object.id).to_string());
             format!("“{}”", super::clipped(&said))
         }
+        // A landed bolt's record names the repository it landed in, as the
+        // board's record does (S28).
+        "bolt" if is_landed(object) => match field(object, "repository") {
+            Some(repository) => format!("{repository}/{}", name_of(&object.id)),
+            None => name_of(&object.id).to_string(),
+        },
         _ => name_of(&object.id).to_string(),
     }
 }
@@ -156,6 +172,7 @@ pub fn body(read: &Read, object: &Object, row: Option<&status::Row>) -> String {
 
     match object.machine.as_str() {
         "capture" | "signal" => out.push_str(&capture_page(read, object)),
+        "bolt" if is_landed(object) => out.push_str(&landed_page(read, object)),
         "bolt" => out.push_str(&bolt_page(read, object, row)),
         "unit" => out.push_str(&unit_page(read, object, row)),
         "work-item" => out.push_str(&item_page(read, object, row)),
@@ -393,27 +410,7 @@ fn bolt_page(read: &Read, bolt: &Object, row_: Option<&status::Row>) -> String {
     line.push_str(&place_rows_of(read, &bolt.id, false));
     out.push_str(&sec("the branch", "", &line));
 
-    let units: Vec<&Object> = read
-        .objects
-        .iter()
-        .filter(|o| o.machine == "unit" && o.parent.as_deref() == Some(bolt.id.as_str()))
-        .collect();
-    let mut chain = String::from("<div class=\"rows\">\n");
-    for unit in &units {
-        let state = unit.config.get("life").cloned().unwrap_or_default();
-        let kind = field(unit, "type").unwrap_or("unit");
-        let _ = write!(
-            chain,
-            "<div class=\"row\"><span class=\"st\">{}</span><span class=\"grow\"><span class=\"nm\">{}</span> <span class=\"m\">{}</span></span></div>\n",
-            escape(&state),
-            link(read, &unit.id, name_of(&unit.id)),
-            escape(kind)
-        );
-    }
-    chain.push_str("</div>\n");
-    if !units.is_empty() {
-        out.push_str(&sec("units", "", &chain));
-    }
+    out.push_str(&sec("units", "", &unit_rows(read, bolt)));
 
     let sessions: Vec<&Session> = read
         .sessions
@@ -431,6 +428,77 @@ fn bolt_page(read: &Read, bolt: &Object, row_: Option<&status::Row>) -> String {
         .collect();
     if !sessions.is_empty() {
         out.push_str(&sec("sessions", "", &session_rows(&sessions)));
+    }
+    if let Some(commits) = read.commits.get(&bolt.id) {
+        out.push_str(&sec(commits_title(read, &bolt.id), "", &commit_rows(commits)));
+    }
+    out
+}
+
+/// A bolt's units as rows: each one's state, name and type, opening it.
+/// Nothing where the bolt has none.
+fn unit_rows(read: &Read, bolt: &Object) -> String {
+    let units: Vec<&Object> = read
+        .objects
+        .iter()
+        .filter(|o| o.machine == "unit" && o.parent.as_deref() == Some(bolt.id.as_str()))
+        .collect();
+    if units.is_empty() {
+        return String::new();
+    }
+    let mut chain = String::from("<div class=\"rows\">\n");
+    for unit in &units {
+        let state = unit.config.get("life").cloned().unwrap_or_default();
+        let kind = field(unit, "type").unwrap_or("unit");
+        let _ = write!(
+            chain,
+            "<div class=\"row\"><span class=\"st\">{}</span><span class=\"grow\"><span class=\"nm\">{}</span> <span class=\"m\">{}</span></span></div>\n",
+            escape(&state),
+            link(read, &unit.id, name_of(&unit.id)),
+            escape(kind)
+        );
+    }
+    chain.push_str("</div>\n");
+    chain
+}
+
+// -------------------------------------------------------------- landed bolt
+
+/// A landed bolt's page is its record (S28): when it landed and through which
+/// gates, with its place removed; the units it landed; the acceptance file it
+/// wrote on main; and main's latest commits (175, 192, 50).
+fn landed_page(read: &Read, bolt: &Object) -> String {
+    let mut out = String::new();
+    let line = read.objects.iter().find(|o| o.id == format!("fact/line/{}", bolt.id));
+    let flag = |name: &str| line.and_then(|l| l.record.get(name)).and_then(|v| v.as_bool()) == Some(true);
+
+    let mut landing = String::new();
+    if let Some(at) = bolt.entered_at.get("life") {
+        landing.push_str(&row("landed", &escape(&at.format("%Y-%m-%d %H:%M").to_string())));
+    }
+    landing.push_str(&row("repository", &mono(field(bolt, "repository").unwrap_or_default())));
+    landing.push_str(&row("branch", &mono(&bolt.id)));
+    // What the branch passed through on its way to main, in the order it did.
+    let mut gates: Vec<&str> = Vec::new();
+    if flag("contains_parent") {
+        gates.push("main taken into the branch");
+    }
+    if flag("acceptance") {
+        gates.push("acceptance file written");
+    }
+    match line.and_then(|l| field(l, "landing")) {
+        Some("passed") => gates.push("merged into main"),
+        Some("open") => gates.push("pull request opened"),
+        _ => {}
+    }
+    landing.push_str(&row("gates", &escape(&gates.join(", then "))));
+    landing.push_str(&place_rows_of(read, &bolt.id, false));
+    out.push_str(&sec("the landing", "", &landing));
+
+    out.push_str(&sec("units landed", "", &unit_rows(read, bolt)));
+    if flag("acceptance") {
+        let path = format!("flywheel/acceptance/{}.md", bolt.id.replace(['/', '#', ' ', ':'], "-"));
+        out.push_str(&sec("acceptance file", "", &row("on main", &mono(&path))));
     }
     if let Some(commits) = read.commits.get(&bolt.id) {
         out.push_str(&sec(commits_title(read, &bolt.id), "", &commit_rows(commits)));

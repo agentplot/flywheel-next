@@ -2783,6 +2783,8 @@ fn surface(read: &Read, object: &Object, opened: bool) -> String {
 fn dock_head(read: &Read, object: &Object, row: Option<&status::Row>) -> String {
     let mut out = String::new();
     let form = match silhouette(&object.machine) {
+        // A landed bolt's header is the record's, as its board form is (S28).
+        "ledger" if dock::is_landed(object) => "dk-record",
         "thread bead" => "dk-bead",
         "thread" => "dk-thread",
         "ledger" => "dk-ledger",
@@ -2808,6 +2810,7 @@ fn dock_head(read: &Read, object: &Object, row: Option<&status::Row>) -> String 
          <span class=\"ph\" data-phase=\"{phase}\">{phase}</span>",
         machine = escape(match object.machine.as_str() {
             "signal" => "capture",
+            "bolt" if dock::is_landed(object) => "landed",
             other => other,
         }),
         phase = escape(&phase_of(&object.machine).to_lowercase()),
