@@ -1159,3 +1159,111 @@ fn losing_a_client_loses_nothing() {
     drop(held);
     let _ = std::fs::remove_dir_all(&serving.dir);
 }
+
+/// Every tracked file on the state repository's shared line, by path, as a
+/// reader with no host running finds it (160, 167).
+fn shared_line(dir: &std::path::Path) -> BTreeMap<String, String> {
+    use flywheel_world_host::git::{ls_tree, show, Repo};
+    let state = Repo::at(dir.join("flywheel-state.git"));
+    ls_tree(&state, "main", "")
+        .expect("the shared line lists")
+        .into_iter()
+        .map(|path| {
+            let text = show(&state, "main", &path).expect("a read").unwrap_or_default();
+            (path, text)
+        })
+        .collect()
+}
+
+/// One message, posted as a client posts it, and the body that came back —
+/// nothing, for a notification.
+fn client_says(address: std::net::SocketAddr, message: &serde_json::Value) -> String {
+    let body = message.to_string();
+    speak(
+        address,
+        &format!(
+            "POST /willdan HTTP/1.1\r\nHost: mac-mini.example\r\nContent-Type: application/json\r\n\
+             Accept: application/json, text/event-stream\r\nContent-Length: {}\r\nConnection: close\r\n\r\n{body}",
+            body.len()
+        ),
+    )
+}
+
+/// The conversation is the client's. After a session in which a member's
+/// client said hello, carried what the member typed in messages of its own,
+/// read the rail and the status view and made two calls, the state repository
+/// holds those two calls and nothing of the prose, and nothing it holds was
+/// derived from anything else (324, 136, 194a).
+#[test]
+fn the_record_after_a_client_session_holds_calls_and_nothing_else() {
+    let serving = a_serving_host("client-session");
+    let before = shared_line(&serving.dir);
+    let prose = [
+        "can you check what needs me before I head out at five",
+        "the plan-rows bolt looks finished to me so land it",
+        "thanks, and keep the tail one where it is until Monday",
+    ];
+    let session = [
+        json!({"jsonrpc": "2.0", "id": 1, "method": "initialize", "params": {
+            "protocolVersion": "2025-06-18", "clientInfo": {"name": "a member's client", "version": "1"},
+            "capabilities": {"extensions": {"io.modelcontextprotocol/ui": {"mimeTypes": ["text/html;profile=mcp-app"]}}}}}),
+        json!({"jsonrpc": "2.0", "method": "notifications/initialized"}),
+        // What the member typed, carried in the client's own messages, none of
+        // which is a call of the catalogue.
+        json!({"jsonrpc": "2.0", "id": 2, "method": "completion/complete", "params": {
+            "ref": {"type": "ref/prompt", "name": "rail"}, "argument": {"name": "question", "value": prose[0]}}}),
+        json!({"jsonrpc": "2.0", "method": "notifications/cancelled", "params": {"requestId": 2, "reason": prose[1]}}),
+        json!({"jsonrpc": "2.0", "id": 3, "method": "ping"}),
+        json!({"jsonrpc": "2.0", "id": 4, "method": "tools/list"}),
+        json!({"jsonrpc": "2.0", "id": 5, "method": "tools/call", "params": {
+            "name": "rail", "arguments": {}, "_meta": {"conversation": prose[0]}}}),
+        json!({"jsonrpc": "2.0", "id": 6, "method": "tools/call", "params": {"name": "status"}}),
+        // The two calls it was asked to make, each with the member's words
+        // riding alongside in the call's own metadata.
+        json!({"jsonrpc": "2.0", "id": 7, "method": "tools/call", "params": {
+            "name": "answer", "arguments": {"decision": serving.number, "answer": "yes"},
+            "_meta": {"flywheel/delivery": "tap-session-1", "said": prose[1]}}}),
+        json!({"jsonrpc": "2.0", "id": 8, "method": "tools/call", "params": {
+            "name": "hold", "arguments": {"object": "bolt/atlas/plan-rows"}, "_meta": {"said": prose[2]}}}),
+    ];
+    for message in &session {
+        let reply = client_says(serving.address, message);
+        match message.get("id") {
+            Some(_) => assert!(reply.contains("\"jsonrpc\""), "{message} was not answered: {reply}"),
+            None => assert!(reply.trim().is_empty(), "a notification was answered: {reply}"),
+        }
+    }
+
+    let after = shared_line(&serving.dir);
+    for (path, text) in &after {
+        for said in prose {
+            assert!(!text.contains(said), "`{path}` keeps what the member said to their client: {said}");
+        }
+    }
+    // The calls, and only the calls, are responses on record.
+    let reader = sandbox(&serving.dir, "reader", at(0)).unwrap();
+    let mut responses: Vec<String> = reader
+        .list(&Scope::Machine("response".into()))
+        .unwrap()
+        .objects
+        .into_iter()
+        .map(|o| o.id)
+        .collect();
+    responses.sort();
+    assert_eq!(responses, ["response/client-1", "response/client-tap-session-1"]);
+    // And everything the session changed on the shared line is one of them.
+    let changed: Vec<&String> = after
+        .iter()
+        .filter(|(path, text)| before.get(*path) != Some(*text))
+        .map(|(path, _)| path)
+        .collect();
+    assert!(!changed.is_empty(), "the calls wrote nothing");
+    for path in changed {
+        let text = &after[path];
+        assert!(
+            path.contains("response") || text.contains("client-1") || text.contains("client-tap-session-1"),
+            "`{path}` changed in a client session and is no call's record: {text}"
+        );
+    }
+    let _ = std::fs::remove_dir_all(&serving.dir);
+}
