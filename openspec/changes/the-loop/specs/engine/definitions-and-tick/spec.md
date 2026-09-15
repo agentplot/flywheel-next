@@ -36,14 +36,25 @@ runs under, and a type change SHALL NOT move an object already in flight (57,
 never reach working: its approval SHALL be refused with the missing type named,
 it SHALL stand in proposed, and its decision SHALL name the type it lacks and
 offer `type <name>`; nothing SHALL move on with no stages and no session (85a,
-S6).
+S6). A type SHALL be defined where the shipped registry lists it or where the
+definitions in force hold a template of that name the core set does not carry,
+the instance's own, and a null or empty type SHALL NOT be (85a;
+`record-derived.yaml`). The card of an object whose type is not defined SHALL
+drop its type line and read "<name> is not a type here · set one with type…",
+or "no type named · set one with type…" when none was named (S226).
 
 #### Scenario: An undefined type waits for the operator to set one
 - **WHEN** the operator approves an elaboration or a unit whose type has no
   definition on the host that runs it
 - **THEN** the approval is refused naming the missing type, the object stands in
-  proposed with no session started, and its decision names the type and offers
-  `type <name>` (85a)
+  proposed with no session started, its decision names the type and offers
+  `type <name>`, and its card reads "<name> is not a type here · set one with
+  type…" with no type line (85a, S226)
+
+#### Scenario: The instance's own type is defined
+- **WHEN** the definitions in force hold a template of a name the core set does
+  not carry, and the operator approves a unit of that type
+- **THEN** the approval is taken and the unit reaches working (85a)
 
 #### Scenario: Setting a type lets the approval through
 - **WHEN** the operator answers that decision with `type <name>` naming a

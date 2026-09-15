@@ -74,7 +74,9 @@ machinery notices SHALL be visible only on the host that noticed it (82).
 The status view SHALL show every intent, elaboration, bolt, unit, work item and
 session with its current state, grouped by state — queued, in progress, waiting
 on the operator, done — and for each, which host holds it, which runs it and
-whether that host is alive (141). For every state an object can be in, exactly
+whether that host is alive (141). A capture whose signal has no move SHALL be
+grouped queued, since it waits on curation and never on the operator (141, 19a,
+S13). For every state an object can be in, exactly
 one source of truth SHALL prove it, and anything else showing that state SHALL
 be a projection, written from the source and never read as truth (76, 142). The
 status view SHALL be such a projection, never written by hand to look right
@@ -88,6 +90,11 @@ sit in one group (209).
 - **WHEN** the operator opens the status view
 - **THEN** every object appears once under queued, in progress, waiting on the
   operator or done, with its holder, its runner and that host's liveness (141)
+
+#### Scenario: A capture waits on curation, not on the operator
+- **WHEN** a capture's signal has no move
+- **THEN** the capture is grouped queued, and nothing about it is grouped waiting
+  on the operator (141, 19a, S13)
 
 #### Scenario: A projection that disagrees is rewritten from its source
 - **WHEN** a projection disagrees with the state it projects

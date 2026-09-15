@@ -10,7 +10,16 @@ when a laptop closes: declarations, leases, heartbeats and the away window.
 A host SHALL declare in the manifest what it takes: kinds of object,
 repositories, unit types, and whether it presents (149). It SHALL take leases
 only within its declaration (149). An object that no host's declaration covers
-SHALL be a decision under attention and never a silent wait (149).
+SHALL be a decision under attention and never a silent wait (149). Every host's
+declaration SHALL cover the blueprints, whatever repositories it lists, since
+every host clones them, so a chore of the blueprints is never uncovered (149,
+123).
+
+#### Scenario: The blueprints are every host's
+- **WHEN** a host whose declaration lists only storefront runs beside a proposed
+  chore of the blueprints the operator approves
+- **THEN** that host covers it and takes it, and no decision under attention is
+  raised for it (149, 123)
 
 #### Scenario: An object no declaration covers — mirrors X05
 - **WHEN** work exists of a type no host declares
@@ -113,8 +122,9 @@ offering a chore, stalled — with anything else refused (65, 66).
 
 #### Scenario: A report outside the fixed exits is refused
 - **WHEN** a report arrives that is none of the five exits
-- **THEN** it is refused and the refusal is recorded, because the exits are a
-  closed set (65, 66)
+- **THEN** it is refused, the refusal is recorded on the session with the raw
+  report, and the command says so in those words, the same for a refused exit
+  and a refused offer, because the exits are a closed set (65, 66)
 
 #### Scenario: The with-operator rules apply and the binding is recorded
 - **WHEN** a host so bound starts and a session it charged goes idle for a day

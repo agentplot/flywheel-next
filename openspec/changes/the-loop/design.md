@@ -113,7 +113,13 @@ Two sources, one rule each:
   with no code change and no host is rebuilt for one (57, 85). An elaboration
   or a unit whose type has no definition where it runs never reaches working:
   its approval is refused naming the missing type, it stands in proposed, and
-  its decision offers `type <name>` for the operator to set one (85a, S6). Packages are
+  its decision offers `type <name>` for the operator to set one (85a, S6). A
+  type is defined where the shipped registry lists it, or where the
+  definitions in force hold a template of that name the core set does not
+  carry, which is the instance's own; a null or empty type is not, and the
+  card of an object whose type is not defined reads "<name> is not a type
+  here · set one with type…" in place of its type (85a, S226;
+  `record-derived.yaml`). Packages are
   A.28 and phase 3; phase 1 installs none, and the loader reads the type files
   only (228).
 
@@ -575,7 +581,9 @@ response replaces one (107, 116). A route names what curation, being a
 session, offered for a signal that argues with no claim: a chore through
 `flywheel offer --scope <repository>`, which `record_offers` makes a proposed
 chore unit under the repository the scope names, on its shared line (60, 62), or an ask filed by `flywheel ask`, the `ask` tool of D9 called as the session, whose
-printed `ask/<id>` the route names (116, 58–60, 28, 67). A route that offers
+printed `ask/<id>` the route names (116, 58–60, 28, 67). A route naming an
+offer entry is written on the signal as the unit that offer became, as
+`propose-unit` names its unit (116, `blueprints.yaml` `record_moves`). A route that offers
 neither is refused. Where the operator runs curation (93b), the curator's
 surface files a route's ask through the same tool, by the operator, before the
 route names it, and checks every ask before any move is written, so a refused
@@ -596,17 +604,27 @@ it (62, 111, 113, 19a, S231). In the tray it is a row whose quote is the path
 and whose source reads "offer". A chore offered off every bolt is not a signal
 but a proposed chore unit on the shared line of the repository its offer names.
 The offer says where a chore's fix belongs through `--scope`: `bolt-line` under a
-bolt, which may be left off, and off every bolt a repository's manifest name,
-the names `propose-chore` and `flywheel ask` take, `blueprints` among them since
-an instruction change is a chore there (60, 123). The unit stands under that
-repository, or under the instance with `repository: blueprints` for the
-blueprints, and folds on the rail under that name with the repository's other
-shared-line chores (60, 62, S231; `unit.yaml`, `repository.yaml`,
-`instance.yaml`). An offer off every bolt whose scope names no tracked
-repository is refused on the session's thread with the names, exits 1 and is
-never pending, as `flywheel ask` refuses; nothing is read from `--about`, which
-says what the chore concerns and not where its fix lands (sessions.yaml
-`commands.offer`).
+bolt, which may be left off, and otherwise a repository's manifest name, the
+names `propose-chore` and `flywheel ask` take, `blueprints` among them since an
+instruction change is a chore there (60, 123); under a bolt a repository's name
+puts the chore on that shared line and not on the bolt. `flywheel offer` finds
+the session's object from the session id alone, as the longest prefix of the
+id on record. The unit records its scope as `bolt-line` or `shared-line`,
+stands under that repository, or under the instance with `repository:
+blueprints` for the blueprints, and works off that shared line (60, 62, S231;
+`unit.yaml`, `repository.yaml`, `instance.yaml`). Every host's declaration
+covers the blueprints whatever repositories it lists, since every host clones
+them, so a chore of the blueprints is never uncovered (149, 123). An offer off
+every bolt whose scope names no tracked repository is refused on the session's
+thread with the names, exits 1 and is never pending, as `flywheel ask` refuses;
+one that reached the thread without that check is refused there by
+`record_offers` with `refuses: <entry>`, so it holds no session and nothing is
+made of it (sessions.yaml `commands.offer`, `record-derived.yaml`). Nothing is
+read from `--about`, which says what the chore concerns and not where its fix
+lands. On the rail any fold of proposed chores, a bolt's or a repository's, is
+one card headed by its name and count and the session that offered them,
+answered yes or drop, and a proposed chore on no ledger is a slip naming its
+repository (11, S231, S14).
 
 The pull-request and issue-tracker adapters of 215 read the git host's issues and
 reviews, which C.2 forbids the machinery doing; they belong to the tracker

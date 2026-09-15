@@ -104,7 +104,9 @@ a chore through `flywheel offer --scope <repository>`, which `record_offers`
 makes a proposed chore unit under the repository the scope names, on its shared
 line (60, 62), or an ask filed by running `flywheel ask <repository> <words>` in its
 place, which calls the `ask` tool as the session, writes the ask record and
-prints the id the route names (116, 58–60, 28, 67). An exit SHALL NOT carry an
+prints the id the route names (116, 58–60, 28, 67). A route naming an offer
+entry SHALL be written on the signal as the unit that offer became (116). An
+exit SHALL NOT carry an
 ask, and a route that offers neither a chore nor an ask SHALL be refused (116).
 A challenge move SHALL record
 the claim it argues with by name and version; the consequence that stales that
@@ -149,14 +151,22 @@ offer names, folded on the rail with that repository's other proposed
 shared-line chores into one decision headed by its name and answered yes or
 drop, as a bolt's chores fold by bolt (60, 62, 11, S231). The offer SHALL say
 where a chore's fix belongs through `--scope`: `bolt-line` under a bolt, which
-MAY be left off, and under no bolt a tracked repository's manifest name or
-`blueprints`, the names `propose-chore` and `flywheel ask` take (60, 123). A
-chore of the blueprints SHALL stand under the instance with repository
-`blueprints` and fold by that name (123). A chore offered under no bolt whose
-scope names no tracked repository SHALL be refused on the session's thread with
-the tracked names and `blueprints`, exit 1 and never be pending, as an ask is
-refused; nothing SHALL be read from `--about` (60; sessions.yaml
-`commands.offer`).
+MAY be left off, and otherwise a tracked repository's manifest name or
+`blueprints`, the names `propose-chore` and `flywheel ask` take (60, 123); under
+a bolt a repository's name SHALL put the chore on that shared line and not on
+the bolt. A chore unit SHALL record its scope as `bolt-line` or `shared-line`
+(60; `unit.yaml`). A chore of the blueprints SHALL stand under the instance
+with repository `blueprints` and fold by that name (123). A unit under a
+repository or under the instance SHALL work off that shared line, and a yes
+SHALL start its one session in a place off it, merged there (60). A chore
+offered under no bolt whose scope names no tracked repository SHALL be refused
+on the session's thread with the tracked names and `blueprints`, exit 1 and
+never be pending, as an ask is refused; one that reached the thread without
+that check SHALL be refused there by `record_offers` with `refuses: <entry>`,
+so it holds no session and nothing is made of it (60, 62; sessions.yaml
+`commands.offer`, `record-derived.yaml`). The command SHALL find the session's
+object from the session id alone, as the longest prefix of the id on record,
+and nothing SHALL be read from `--about` (sessions.yaml `commands.offer`).
 
 #### Scenario: A curation session's finding reaches its exit
 - **WHEN** a curation session offers a finding and exits done
@@ -187,6 +197,24 @@ refused; nothing SHALL be read from `--about` (60; sessions.yaml
   the instance does not track
 - **THEN** the offer is refused on the session's thread with the tracked names
   and `blueprints`, the command exits 1, and nothing is pending or written (60)
+
+#### Scenario: A chore the command never checked is refused on its thread
+- **WHEN** a chore entry off every bolt whose scope names no tracked repository
+  stands on a session's thread without the command having refused it
+- **THEN** `record_offers` writes `refuses: <entry>` on that thread, the offer is
+  not pending, no session is held on it, and no unit, capture or signal is
+  written (60, 62)
+
+#### Scenario: Under a bolt, a repository's scope is its shared line
+- **WHEN** a session under a bolt offers a chore with `--scope storefront`
+- **THEN** the proposed chore unit stands under the storefront repository with
+  scope `shared-line`, and nothing is added to the bolt (60)
+
+#### Scenario: A route naming an offer names its unit
+- **WHEN** curation routes a signal naming the chore entry it offered with
+  `--scope storefront`
+- **THEN** the signal's move is a route naming the proposed chore unit that
+  offer became (116, 62)
 
 ### Requirement: A capture is a note, and the operator may move its signal by hand
 

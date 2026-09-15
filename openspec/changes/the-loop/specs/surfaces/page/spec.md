@@ -312,22 +312,59 @@ S219).
 - **THEN** the dock opens on the bolt, the bolt is lit, and its decision is in
   hand on the rail (S219)
 
-#### Scenario: A signal's decision lights its capture
-- **WHEN** the operator walks the rail to a signal's decision
-- **THEN** the capture the signal was read from is lit on the board and in view
-  (S219)
+#### Scenario: A decision on an object the board does not draw
+- **WHEN** the operator walks the rail to a decision whose object the board
+  does not draw
+- **THEN** the nearest parent the board draws is lit and in view (S219)
 
 ### Requirement: What finished lately is titled in plain words and windowed
 
 The rail's list of what finished SHALL be titled in words that say what it holds,
 "Recently done", and never "since" (S9). It SHALL hold today's entries, or the
 last twenty when today holds fewer, and what falls off it SHALL stay on record
-(S9).
+(S9). A capture SHALL enter it as captured, dated when the capture was put and
+reading its words (S224, S9).
+
+#### Scenario: A note enters Recently done
+- **WHEN** the operator types a note on the page
+- **THEN** the newest entry under "Recently done" reads captured with the note's
+  first words, dated when the capture was put (S224, S9)
 
 #### Scenario: A quiet day
 - **WHEN** twenty-five things finished yesterday and none today
 - **THEN** the list under "Recently done" shows the latest twenty, and the other
   five are still on record (S9)
+
+### Requirement: Proposed chores fold into one card, and a chore names its repository
+
+Any fold of proposed chores, a bolt's or a repository's shared line's, SHALL be
+one decision of kind chores, headed "<repository or bolt> · N chores", subtitled
+with the session that offered them, and answered yes or drop (11, S231). The
+unit's page SHALL list every chore of the fold by its document and SHALL show a
+bolt only when a bolt stands above it (S231, S28). A proposed chore on no ledger
+SHALL be a slip naming its repository before its name, so two shared lines'
+chores of one name read apart (S14). Accepted chores of a shared line SHALL show
+in Construction as items on that repository's shared line under a chores head
+per repository, and never as a bolt (S15, 60).
+
+#### Scenario: Two repositories' chores fold apart
+- **WHEN** sessions under no bolt offer two chores with `--scope storefront` and
+  one with `--scope blueprints`
+- **THEN** the rail carries one chores card headed storefront with a count of
+  two and one headed blueprints with a count of one, each naming the session
+  that offered it and answering yes or drop, and the storefront unit's page
+  lists both documents and shows no bolt (S231)
+
+#### Scenario: Slips read apart by repository
+- **WHEN** storefront and the blueprints each hold a proposed `chore-1` on no
+  ledger
+- **THEN** Bolt plan shows two slips, each naming its repository before
+  `chore-1` (S14)
+
+#### Scenario: An accepted chore is not a bolt
+- **WHEN** the operator says yes to a storefront chores card
+- **THEN** Construction shows the chores as items under a chores head for
+  storefront, and no ledger is drawn for them (S15, 60)
 
 ### Requirement: A decision reads as a question
 
