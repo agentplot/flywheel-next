@@ -5,7 +5,7 @@
 types:
   chore@2:
     file: unit-types/chore@2.yaml
-    sha256: 25b19620cc47a5e86dcdc8ba4614425736c595b0dd00f32c3584c454300803d6
+    sha256: b0f4291fa73ef73acbc5dd0dcf30d07513f6733ee6c7fa238c17db5a4273aed7
   default@5:
     file: unit-types/default@5.yaml
     sha256: 2774a70f656645474ed2a91817722ef2d2deeccc42efb420ac7fe20f094dd94a
@@ -199,8 +199,8 @@ instructions:
     sha256: 80c8ea10f4d58f44e3d3ca84cb140e061095936a661904a4163f81e3e60a2af1
   flywheel/skills/chore-fixer/SKILL.md:
     file: skills/chore-fixer/SKILL.md
-    version: 1
-    sha256: af8d6246d5d1e00310a7bc27e601112b0c4523ea6da16851d201128d05c31161
+    version: 2
+    sha256: 1523b1a30fd92cadb52e4bfcd98fb90b4d223863f47ca59555765c23fcc66440
   flywheel/skills/curator/SKILL.md:
     file: skills/curator/SKILL.md
     version: 1

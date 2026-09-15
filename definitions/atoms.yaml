@@ -131,7 +131,7 @@ evidence:
   elaboration.type_version: {of: elaboration, type: int}
   elaboration.shown_with_parent: {of: elaboration, type: bool, doc: the parent intent is itself proposed; the decision folds into the intent's}
   elaboration.kept_since: {of: elaboration, type: time}
-  elaboration.type_defined: {of: elaboration, type: bool, doc: the instance's registry holds a definition of the elaboration's type; false is a type no curator named or one the instance does not know, and the elaboration does not start until the operator sets one (85a)}
+  elaboration.type_defined: {of: elaboration, type: bool, doc: the definitions in force hold the elaboration's type — the shipped registry lists it, or a template of that name the core set does not carry, the instance's own (223); false is a type no curator named or one the instance does not know, and the elaboration does not start until the operator sets one (85a)}
   intent.covered_by: {of: intent, type: enum, values: [none, proposed, active, done], doc: the state of the newest elaboration owned by another intent whose covers name this one — none when there is none, proposed while it awaits approval, active from approved to finishing, done once it finished (188, 189)}
   # ---- claims and ledger (bound to the blueprints repository and the ledger store)
   claim.on_shared_line: {of: claim, type: bool}
@@ -171,7 +171,7 @@ evidence:
   unit.deps_merged:        {of: unit, type: bool}
   unit.type:               {of: unit, type: string}
   unit.type_version:       {of: unit, type: int}
-  unit.type_defined:       {of: unit, type: bool, doc: the instance's registry holds a definition of the unit's type; false is a type the instance does not know, and the unit does not start until the operator sets one (85a)}
+  unit.type_defined:       {of: unit, type: bool, doc: the definitions in force hold the unit's type — the shipped registry lists it, or a template of that name the core set does not carry, the instance's own (223); false is a type the instance does not know, and the unit does not start until the operator sets one (85a)}
   unit.batch:              {of: unit, type: string, doc: baseline id or none; equal values fold into one decision}
   unit.proposal:           {of: unit, type: enum, values: [none, proposed, approved, withdrawn, deferred, superseded], doc: the state of the proposal that names this unit; none when no proposal does (172)}
   proposal.replaced:       {of: proposal, type: bool, doc: planning's next run recorded a newer proposal for the repository (35, 172)}
@@ -248,7 +248,7 @@ effects:
   start_session:   {of: session, args: [agent, kind, place, work_order], proof: session.pane, satisfies: [65, 72, 73, 89, 93, 173, 174, 196, 197], doc: start the named agent of the named kind (claude, codex, opencode) in the place, through the one command, in the multiplexer session the manifest gives the session, in the workspace of its bolt or intent and the tab of its unit or elaboration, created when absent; the pane and the agent are named by the session id, so a second start of the same name is refused by the multiplexer; the session's identity token is issued and written into the work order first}
   end_session:     {of: session, args: [], proof: session.pane_absent, satisfies: [26, 69, 74, 196], doc: end the pane; only ever run from a state the operator's response or the type reached; the tab and workspace outlive it until their object leaves every view}
   record_exit:     {of: session, args: [], proof: session.exit_recorded, satisfies: [66, 67, 70, 80], doc: read the exit the session reported through the command, compare expected with delivered, and write both to the session record}
-  record_offers:   {of: session, args: [], proof: session.offers_recorded, satisfies: [58, 59, 62], doc: for each offer the session made, one record pointing at its document — a chore becomes a proposed chore unit, a finding on the session's own thread a proposal there, anything else a signal; the record never holds the text}
+  record_offers:   {of: session, args: [], proof: session.offers_recorded, satisfies: [58, 59, 62], doc: for each offer the session made, one record pointing at its document — a chore becomes a proposed chore unit, a finding on the session's own thread a proposal there, anything else a signal — a finding with no thread above the session, or an offer of kind signal, which is a signal wherever the session stands (58); the record never holds the text}
   record_refusals: {of: session, args: [], proof: session.refusals_recorded, satisfies: [43]}
   deliver_answer:  {of: session, args: [text], proof: session.answer_delivered, satisfies: [68, 70, 197], doc: send the answer to the living session through its thread and the multiplexer, or start a fresh one whose work order opens with it; one of the two ways the machinery speaks to a session}
   tell_moved:      {of: session, args: [], proof: place.line_moved_told, satisfies: [51, 71, 197], doc: tell an idle session what moved under it, through its thread and the multiplexer; the other way the machinery speaks to a session}
@@ -318,7 +318,7 @@ effects:
   set_map_status:  {of: any, args: [id, status, question], proof: map.status_set, satisfies: [193, 198, 201, 211], doc: set an id's status — settled, candidate or open — with its question when open; refused for settled or candidate without a ref}
   mark_reviewed:   {of: rail, args: [], proof: rail.review_marked, satisfies: [122, 193, 211], doc: record the operator's review mark at the current blueprints revision; the since-last-review overlay is computed from history between the mark and head}
   # ---- planning and curation
-  record_moves:    {of: curation, args: [moves], proof: curation.moves_recorded, satisfies: [107, 116, 203], doc: one move per judged signal — attach, challenge, join, answered, route or drop — with its reason; a route move names the offer record the session's exit produced for the signal (58–60)}
+  record_moves:    {of: curation, args: [moves], proof: curation.moves_recorded, satisfies: [107, 116, 203], doc: one move per judged signal — attach, challenge, join, answered, route or drop — with its reason; a route move names what the session's offer for the signal became — the proposed chore unit, or the ask (58–60, 116)}
   propose_intents: {of: curation, args: [intents], proof: curation.intents_proposed, satisfies: [109]}
   gather_elaborations: {of: curation, args: [gatherings], proof: curation.gatherings_proposed, satisfies: [188], doc: for each gathering the session delivered — elaborations of one type proposed in this run on several intents — one proposed elaboration on the first intent named, covering all of them, in place of one per intent}
   propose_units:   {of: planning, args: [units], proof: planning.units_proposed, satisfies: [29, 34, 36, 60, 64, 101, 172, 182], doc: one unit in in-proposal per unit the session delivered, each naming its proposal; a signal from operation routed to an open bolt arrives here like any other, and as a chore on the shared line when no bolt is open (60); a unit that answers a stale verdict cites the challenge signal (101)}

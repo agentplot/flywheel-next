@@ -2,15 +2,15 @@
 name: chore-fixer
 kind: skill
 path: flywheel/skills/chore-fixer/SKILL.md
-version: 1
+version: 2
 set: 1
 satisfies: [52, 60, 62, 64]
 ---
 
 # Doing a chore
 
-Do exactly what the chore document says, on the line the work order names, and
-stop.
+The chore's document is in the work order, as the job. Do exactly what it
+says, on the line the work order names, and stop.
 
 Where several chores of one bolt are gathered here, do each one and report
 each one. Where the chore is a conflict, the work order names the units whose

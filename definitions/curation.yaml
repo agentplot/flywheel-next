@@ -62,7 +62,7 @@ regions:
             enter: {session: ended, place: removing}
             note: dictation retires the session (4); the run is due again on the next tick
       applying:
-        doc: every judged signal gets its one standing move; each join becomes or grows a proposed intent with its elaborations; a challenge stales the claim's verdicts wherever they stand (101, 116); a route names the chore or ask the session offered — a chore through `flywheel offer --scope <repository>`, which record_offers on the session already turned into a proposed chore unit under the repository the scope names, on its shared line (60, 62), an ask through `flywheel ask`, the ask tool called as the session, which already wrote the ask record and printed the id the move names (58–60, 28, 67)
+        doc: every judged signal gets its one standing move; each join becomes or grows a proposed intent with its elaborations; a challenge stales the claim's verdicts wherever they stand (101, 116); a route names the chore or ask the session offered — a chore through `flywheel offer --scope <repository>`, which record_offers on the session already turned into a proposed chore unit under the repository the scope names, on its shared line, and the move written on the signal names that unit, not the offer entry (60, 62), an ask through `flywheel ask`, the ask tool called as the session, which already wrote the ask record and printed the id the move names (58–60, 28, 67)
         entry:
           - {do: record_moves, args: {moves: delivered}}
           - {do: propose_intents, args: {intents: delivered}}

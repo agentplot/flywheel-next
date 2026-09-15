@@ -60,7 +60,7 @@ regions:
           - when: {ev: signal.move, is: none}
             to: unmoved
       routed:
-        doc: the curation session offered a chore or an ask for it through the command, like any session (58–60), and the move names that offer's record; the chore is a proposed chore unit under the repository, on its shared line (60, 62), the ask a record for planning (116)
+        doc: the curation session offered a chore or an ask for it through the command, like any session (58–60), and the move names what the offer became; the chore is a proposed chore unit under the repository, on its shared line, and the move names that unit (60, 62), the ask a record for planning, named ask/<id> (116)
         transitions:
           - when: {ev: signal.move, is: none}
             to: unmoved
