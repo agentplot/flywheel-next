@@ -17,26 +17,153 @@
 //!
 //! Every Herdr call is one process and its JSON answer; a Herdr that is not
 //! there is reported by the caller and never invented.
+//!
+//! Every call names the herdr session it is for — `herdr --session
+//! flywheel-<instance>-<role> <command…>` — so a host opens panes in sessions
+//! of its own and never in the one its own process happens to run in, which is
+//! the operator's (174, `sessions.yaml` multiplexer_sessions). A session herdr
+//! does not list running is started headless, as a detached child, before any
+//! call against its socket; the host never stops or deletes one.
 
 use anyhow::{bail, Context, Result};
 use chrono::{DateTime, Utc};
 use flywheel_atoms::{Records, WorkOrder};
 use flywheel_sessions_operator as operator;
 use serde_json::{json, Value};
+use std::collections::BTreeMap;
 use std::path::Path;
 use std::process::Command;
 
-/// The multiplexer, as a command on the path.
+/// The multiplexer, as a command on the path, addressed at one of its named
+/// sessions (174). There is no unaddressed Herdr: a call with no session runs
+/// against whatever server the host's own process sits in, which is what put
+/// the machinery's panes in the operator's session.
 #[derive(Debug, Clone)]
 pub struct Herdr {
     pub binary: String,
+    /// The herdr session every call names: `flywheel-<instance>-intents`,
+    /// `-bolts` or `-machinery`, or what the host's manifest overrode it with.
+    pub session: String,
 }
 
-impl Default for Herdr {
-    fn default() -> Self {
+impl Herdr {
+    /// The multiplexer on the path, at this session.
+    pub fn at(session: &str) -> Herdr {
         Herdr {
             binary: "herdr".into(),
+            session: session.to_string(),
         }
+    }
+
+    /// The multiplexer on the path with no session yet: every use resolves the
+    /// session from the record it acts on, and a call made before that is
+    /// refused rather than run against whatever server this process sits in
+    /// (174). A session recorded before panes were addressed by name has none,
+    /// and its pane is the operator's to close.
+    pub fn unbound() -> Herdr {
+        Herdr {
+            binary: "herdr".into(),
+            session: String::new(),
+        }
+    }
+
+    /// The same multiplexer at another of its sessions: what a host does when
+    /// the record says which session a pane is in.
+    pub fn in_session(&self, session: &str) -> Herdr {
+        Herdr {
+            binary: self.binary.clone(),
+            session: session.to_string(),
+        }
+    }
+
+    /// The same session through another binary: what a test's own herdr is.
+    pub fn with_binary(&self, binary: &str) -> Herdr {
+        Herdr {
+            binary: binary.to_string(),
+            session: self.session.clone(),
+        }
+    }
+}
+
+/// Who charged a session, which is what names the herdr session it starts in
+/// (174, `sessions.yaml` multiplexer_sessions).
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum Charged {
+    /// Elaboration sessions and the operator's own session.
+    Intents,
+    /// Stage sessions of units the operator approved.
+    Bolts,
+    /// Curation, planning, capture reading, and the fix of a take conflict.
+    Machinery,
+}
+
+impl Charged {
+    pub fn role(&self) -> &'static str {
+        match self {
+            Charged::Intents => "intents",
+            Charged::Bolts => "bolts",
+            Charged::Machinery => "machinery",
+        }
+    }
+}
+
+/// The herdr session a session starts in: `flywheel-<instance>-<role>` by who
+/// charged it, overridden per host by kind or by repository, the most specific
+/// winning — repository over kind over default (174).
+pub fn session_name(
+    instance: &str,
+    charged: Charged,
+    overrides: &BTreeMap<String, String>,
+    kind: &str,
+    repository: &str,
+) -> String {
+    if let Some(named) = overrides.get(repository).filter(|n| !n.is_empty()) {
+        return named.clone();
+    }
+    if let Some(named) = overrides.get(kind).filter(|n| !n.is_empty()) {
+        return named.clone();
+    }
+    format!("flywheel-{instance}-{}", charged.role())
+}
+
+/// Who charged a session, from the object it is under and the chain of parents
+/// above it: a unit's stage session is the bolts' and an elaboration's is the
+/// intents', while curation, planning and capture reading are the machinery's
+/// (174, `sessions.yaml` multiplexer_sessions).
+pub fn charged_by(object: &str, chain: &[String]) -> Charged {
+    if machinery_workspace(object).is_some() {
+        return Charged::Machinery;
+    }
+    if chain.iter().any(|id| id.starts_with("bolt/")) || object.starts_with("unit/") {
+        return Charged::Bolts;
+    }
+    if chain.iter().any(|id| id.starts_with("intent/"))
+        || object.starts_with("elaboration/")
+        || object.starts_with("operator-session/")
+    {
+        return Charged::Intents;
+    }
+    Charged::Machinery
+}
+
+/// The one workspace a machinery run reads, where the object is a machinery
+/// one: curation, planning per repository, and capture reading each have a
+/// workspace of their own in the machinery session, with a tab per run
+/// (196, `sessions.yaml` layout.workspace).
+pub fn machinery_workspace(object: &str) -> Option<String> {
+    let head = object.split('/').next().unwrap_or_default();
+    match head {
+        "curation" => Some("curation".into()),
+        // `planning/<repository>` is the object's own id, which is the label.
+        "planning" => Some(
+            object
+                .split('/')
+                .take(2)
+                .collect::<Vec<_>>()
+                .join("/"),
+        ),
+        "capture" => Some("capture-reading".into()),
+        _ => None,
     }
 }
 
@@ -74,10 +201,26 @@ pub fn first_prompt() -> String {
 }
 
 impl Herdr {
-    /// One call: its JSON answer, or what Herdr said when it refused. The
-    /// refusal is Herdr's words alone, so a caller reading it for "not found"
-    /// or "timed out" is not reading its own arguments back.
+    /// One call at this host's own session: its JSON answer, or what Herdr
+    /// said when it refused. The refusal is Herdr's words alone, so a caller
+    /// reading it for "not found" or "timed out" is not reading its own
+    /// arguments back.
     fn call(&self, args: &[&str]) -> Result<std::result::Result<Value, String>> {
+        if self.session.is_empty() {
+            bail!(
+                "`herdr {}` names no session: a host addresses its own sessions by name and \
+                 never the one its process runs in, which is the operator's (174)",
+                args.join(" ")
+            );
+        }
+        let mut addressed: Vec<&str> = vec!["--session", &self.session];
+        addressed.extend_from_slice(args);
+        self.unaddressed(&addressed)
+    }
+
+    /// A call that names no session: `session list`, and the `server` that
+    /// starts one. Everything else goes through `call` (174).
+    fn unaddressed(&self, args: &[&str]) -> Result<std::result::Result<Value, String>> {
         let out = Command::new(&self.binary)
             .args(args)
             .output()
@@ -103,22 +246,101 @@ impl Herdr {
     }
 
     /// Whether Herdr answers at all: the one check a host makes before
-    /// binding a session to it (217f).
+    /// binding a session to it (217f). It names no session, since a session
+    /// that is not running is a thing to start and not an absent Herdr.
     pub fn available(&self) -> Result<()> {
-        self.run(&["workspace", "list"]).map(|_| ())
+        match self.unaddressed(&["session", "list", "--json"])? {
+            Ok(_) => Ok(()),
+            Err(said) => bail!("herdr session list: {said}"),
+        }
     }
 
-    /// The workspace carrying a label, where one does.
-    pub fn workspace_by_label(&self, label: &str) -> Result<Option<String>> {
+    /// Whether `herdr session list` names this session running. A session is a
+    /// named server with its own socket, so this is what says whether a call
+    /// against that socket will be answered (174).
+    /// `herdr session list` prints a table for a person; `--json` is the
+    /// answer this reads, and it names each session with a `running` flag
+    /// (verified against herdr 0.9, 2026-09-15).
+    pub fn session_running(&self) -> Result<bool> {
+        let listed = match self.unaddressed(&["session", "list", "--json"])? {
+            Ok(v) => v,
+            Err(said) => bail!("herdr session list: {said}"),
+        };
+        let rows = ["/sessions", "/result/sessions"]
+            .iter()
+            .find_map(|at| listed.pointer(at).and_then(|v| v.as_array()))
+            .cloned()
+            .or_else(|| listed.as_array().cloned())
+            .unwrap_or_default();
+        Ok(rows.iter().any(|row| {
+            let named = row.get("name").and_then(|v| v.as_str()) == Some(self.session.as_str());
+            // A session herdr lists as not running is one to start: its socket
+            // refuses every call until the server is up (174).
+            let running = row
+                .get("running")
+                .and_then(|v| v.as_bool())
+                .unwrap_or(true);
+            named && running
+        }))
+    }
+
+    /// The session, running. One herdr does not list running is started
+    /// headless as a detached child — `herdr --session <name> server` — and
+    /// the proof is the session listed running; the host never stops or
+    /// deletes one (174, `sessions.yaml` multiplexer_sessions.create).
+    pub fn ensure_session(&self) -> Result<()> {
+        if self.session.is_empty() || self.session_running()? {
+            return Ok(());
+        }
+        Command::new(&self.binary)
+            .args(["--session", &self.session, "server"])
+            .stdin(std::process::Stdio::null())
+            .stdout(std::process::Stdio::null())
+            .stderr(std::process::Stdio::null())
+            .spawn()
+            .with_context(|| format!("starting the herdr session `{}` headless", self.session))?;
+        // The server is listed the moment its socket is up; this is the wait
+        // for that and nothing else, so a herdr that answers at once costs no
+        // pause at all.
+        for _ in 0..100 {
+            if self.session_running()? {
+                return Ok(());
+            }
+            std::thread::sleep(std::time::Duration::from_millis(100));
+        }
+        bail!(
+            "the herdr session `{}` did not come up after `{} --session {} server` (174)",
+            self.session,
+            self.binary,
+            self.session
+        )
+    }
+
+    /// This session's workspaces: each by its id and its label.
+    pub fn workspaces(&self) -> Result<Vec<(String, String)>> {
         let listed = self.run(&["workspace", "list"])?;
         Ok(listed
             .pointer("/result/workspaces")
             .and_then(|v| v.as_array())
-            .and_then(|ws| {
+            .map(|ws| {
                 ws.iter()
-                    .find(|w| w.get("label").and_then(|l| l.as_str()) == Some(label))
-                    .and_then(|w| w.get("workspace_id").and_then(|id| id.as_str()).map(String::from))
-            }))
+                    .filter_map(|w| {
+                        let id = w.get("workspace_id").and_then(|v| v.as_str())?;
+                        let label = w.get("label").and_then(|v| v.as_str()).unwrap_or_default();
+                        Some((id.to_string(), label.to_string()))
+                    })
+                    .collect()
+            })
+            .unwrap_or_default())
+    }
+
+    /// The workspace carrying a label, where one does.
+    pub fn workspace_by_label(&self, label: &str) -> Result<Option<String>> {
+        Ok(self
+            .workspaces()?
+            .into_iter()
+            .find(|(_, held)| held == label)
+            .map(|(id, _)| id))
     }
 
     /// A workspace at a place, labelled; returns the workspace, its first tab
@@ -131,6 +353,57 @@ impl Herdr {
         Ok((workspace, tab, pane))
     }
 
+    /// A workspace's tabs: each by its id and its label. A tab's listing names
+    /// no pane of its own (herdr 0.9), so its panes are read from `pane list`.
+    pub fn tabs(&self, workspace: &str) -> Result<Vec<(String, String)>> {
+        let listed = self.run(&["tab", "list", "--workspace", workspace])?;
+        Ok(listed
+            .pointer("/result/tabs")
+            .and_then(|v| v.as_array())
+            .map(|ts| {
+                ts.iter()
+                    .filter_map(|t| {
+                        let id = t.get("tab_id").and_then(|v| v.as_str())?;
+                        let label = t.get("label").and_then(|v| v.as_str()).unwrap_or_default();
+                        Some((id.to_string(), label.to_string()))
+                    })
+                    .collect()
+            })
+            .unwrap_or_default())
+    }
+
+    /// A workspace's panes: each by its id and the tab it is in.
+    pub fn panes(&self, workspace: &str) -> Result<Vec<(String, String)>> {
+        let listed = self.run(&["pane", "list", "--workspace", workspace])?;
+        Ok(listed
+            .pointer("/result/panes")
+            .and_then(|v| v.as_array())
+            .map(|ps| {
+                ps.iter()
+                    .filter_map(|p| {
+                        let pane = p.get("pane_id").and_then(|v| v.as_str())?;
+                        let tab = p.get("tab_id").and_then(|v| v.as_str()).unwrap_or_default();
+                        Some((pane.to_string(), tab.to_string()))
+                    })
+                    .collect()
+            })
+            .unwrap_or_default())
+    }
+
+    /// The tab of a workspace carrying a label, with a pane of its own where
+    /// it has one: the pane a further session of that tab is split off (196).
+    pub fn tab_by_label(&self, workspace: &str, label: &str) -> Result<Option<(String, Option<String>)>> {
+        let Some((tab, _)) = self.tabs(workspace)?.into_iter().find(|(_, held)| held == label) else {
+            return Ok(None);
+        };
+        let pane = self
+            .panes(workspace)?
+            .into_iter()
+            .find(|(_, at)| at == &tab)
+            .map(|(pane, _)| pane);
+        Ok(Some((tab, pane)))
+    }
+
     /// A tab in a workspace at a place, labelled; returns the tab and its pane.
     pub fn create_tab(&self, workspace: &str, cwd: &Path, label: &str) -> Result<(String, String)> {
         let made = self.run(&["tab", "create", "--workspace", workspace, "--cwd", &cwd.to_string_lossy(), "--label", label, "--no-focus"])?;
@@ -139,8 +412,42 @@ impl Herdr {
         Ok((tab, pane))
     }
 
+    /// A further session of a tab takes a pane split off the one it has
+    /// (196, `sessions.yaml` layout.pane).
+    pub fn split_pane(&self, pane: &str, cwd: &Path) -> Result<String> {
+        let made = self.run(&[
+            "pane",
+            "split",
+            pane,
+            "--direction",
+            "right",
+            "--cwd",
+            &cwd.to_string_lossy(),
+            "--no-focus",
+        ])?;
+        text_at(&made, &["/result/pane/pane_id", "/result/pane_id"])
+    }
+
     pub fn rename_tab(&self, tab: &str, label: &str) -> Result<()> {
         self.run(&["tab", "rename", tab, label]).map(|_| ())
+    }
+
+    pub fn close_tab(&self, tab: &str) -> Result<()> {
+        self.run(&["tab", "close", tab]).map(|_| ())
+    }
+
+    pub fn close_workspace(&self, workspace: &str) -> Result<()> {
+        self.run(&["workspace", "close", workspace]).map(|_| ())
+    }
+
+    /// Every agent this session lists, as Herdr reports them.
+    pub fn agents(&self) -> Result<Vec<Value>> {
+        let listed = self.run(&["agent", "list"])?;
+        Ok(listed
+            .pointer("/result/agents")
+            .and_then(|v| v.as_array())
+            .cloned()
+            .unwrap_or_default())
     }
 
     /// The agent by name, or none when Herdr lists no such agent.
@@ -168,10 +475,21 @@ impl Herdr {
         self.run(&["pane", "close", pane]).map(|_| ())
     }
 
-    /// The pane's visible text, plain: what the agent is showing (196).
+    /// The pane's visible text, plain: what the agent is showing (196). Read
+    /// in the session the pane is in, like every other call (174).
     pub fn read_visible(&self, name: &str) -> Result<String> {
         let out = Command::new(&self.binary)
-            .args(["agent", "read", name, "--source", "visible", "--lines", "60"])
+            .args([
+                "--session",
+                &self.session,
+                "agent",
+                "read",
+                name,
+                "--source",
+                "visible",
+                "--lines",
+                "60",
+            ])
             .output()
             .with_context(|| format!("running {} agent read {name}", self.binary))?;
         Ok(String::from_utf8_lossy(&out.stdout).to_string())
@@ -263,10 +581,15 @@ fn text_at(v: &Value, pointers: &[&str]) -> Result<String> {
     bail!("herdr answered without {}: {v}", pointers.join(" or "))
 }
 
-/// Where a session's pane goes: the workspace for the bolt or the intent, the
-/// tab for the unit or the elaboration (196, layout).
+/// Where a session's pane goes: the herdr session by who charged it, the
+/// workspace for the bolt or the intent, the tab for the unit or the
+/// elaboration (174, 196, layout). A machinery run reads one workspace of its
+/// kind — `curation`, `planning/<repository>`, `capture-reading` — with a tab
+/// per run.
 #[derive(Debug, Clone)]
 pub struct Placement {
+    /// The herdr session the pane is started in (174).
+    pub session: String,
     pub workspace_label: String,
     pub tab_label: String,
     pub cwd: std::path::PathBuf,
@@ -288,16 +611,29 @@ pub fn start<S: Records>(
     if operator::running(store, &order.session) {
         return Ok(());
     }
+    // Every call below is at the session this placement names, and the session
+    // is started headless first: a socket command against a stopped session is
+    // refused, which is the signal to start it (174).
+    let herdr = &herdr.in_session(&placement.session);
+    herdr.ensure_session()?;
     let name = agent_name(&order.session);
     let mut pane = None;
     let mut workspace = None;
     let mut fresh = false;
     if herdr.agent(&name)?.is_none() {
         let (ws, tab, pane_id) = match herdr.workspace_by_label(&placement.workspace_label)? {
-            Some(ws) => {
-                let (tab, pane) = herdr.create_tab(&ws, &placement.cwd, &placement.tab_label)?;
-                (ws, tab, pane)
-            }
+            Some(ws) => match herdr.tab_by_label(&ws, &placement.tab_label)? {
+                // A further session of the same tab is a split of its pane, so
+                // two agents of one unit sit side by side (196, layout.pane).
+                Some((tab, Some(at))) => {
+                    let pane = herdr.split_pane(&at, &placement.cwd)?;
+                    (ws, tab, pane)
+                }
+                _ => {
+                    let (tab, pane) = herdr.create_tab(&ws, &placement.cwd, &placement.tab_label)?;
+                    (ws, tab, pane)
+                }
+            },
             None => {
                 let (ws, tab, pane) = herdr.create_workspace(&placement.cwd, &placement.workspace_label)?;
                 let _ = herdr.rename_tab(&tab, &placement.tab_label);
@@ -326,7 +662,14 @@ pub fn start<S: Records>(
         herdr.prompt(&name, &first_prompt())?;
     }
     operator::start(store, host, now, order)?;
-    let mut fields: Vec<(&str, Value)> = vec![("runner", json!("herdr")), ("herdr_agent", json!(name))];
+    // The record keeps the herdr session's name beside the workspace, tab and
+    // pane ids, so every later call — the pane's evidence, its end, an answer
+    // — addresses the same server (174, 196).
+    let mut fields: Vec<(&str, Value)> = vec![
+        ("runner", json!("herdr")),
+        ("herdr_agent", json!(name)),
+        ("herdr_session", json!(placement.session)),
+    ];
     if let Some(pane) = &pane {
         fields.push(("herdr_pane", json!(pane)));
     }
@@ -361,6 +704,8 @@ pub fn evidence<S: Records>(store: &S, herdr: &Herdr, session: &str, name: &str)
     if !operator::running(store, session) {
         return operator::evidence(store, session, name);
     }
+    // The pane is asked for in the herdr session the record names (174).
+    let herdr = &at_recorded(herdr, store, session);
     let listed = herdr.agent(&agent).ok().flatten();
     let status = listed
         .as_ref()
@@ -385,9 +730,19 @@ pub fn evidence<S: Records>(store: &S, herdr: &Herdr, session: &str, name: &str)
     })
 }
 
-/// Every session this store says is running with an agent in Herdr: the
-/// session and the agent's name, which is what a host watches (S221).
-pub fn live_agents<S: Records>(store: &S) -> Vec<(String, String)> {
+/// A session this store says is running with an agent in Herdr: what a host
+/// watches (S221), with the herdr session its pane is in so the wait addresses
+/// the right server (174).
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct Live {
+    pub session: String,
+    pub agent: String,
+    /// The herdr session the pane is in, as the record names it.
+    pub multiplexer: String,
+}
+
+/// Every session this store says is running with an agent in Herdr.
+pub fn live_agents<S: Records>(store: &S) -> Vec<Live> {
     let prefix = operator::session_fact("");
     store
         .list_records(&flywheel_atoms::Scope::All)
@@ -397,16 +752,37 @@ pub fn live_agents<S: Records>(store: &S) -> Vec<(String, String)> {
         .filter_map(|o| {
             let session = o.id.strip_prefix(&prefix)?.to_string();
             let agent = o.record.get("herdr_agent")?.as_str()?.to_string();
-            operator::running(store, &session).then_some((session, agent))
+            let multiplexer = o
+                .record
+                .get("herdr_session")
+                .and_then(|v| v.as_str())
+                .unwrap_or_default()
+                .to_string();
+            operator::running(store, &session).then_some(Live {
+                session,
+                agent,
+                multiplexer,
+            })
         })
         .collect()
 }
 
-/// End the pane and close the record (26, 74, 196).
+/// The multiplexer at the herdr session a session's record names, which is
+/// where its pane is (174). A record written before sessions were addressed by
+/// name leaves the caller's own session standing.
+fn at_recorded<S: Records>(herdr: &Herdr, store: &S, session: &str) -> Herdr {
+    match field(store, session, "herdr_session") {
+        Some(named) if !named.is_empty() => herdr.in_session(&named),
+        _ => herdr.clone(),
+    }
+}
+
+/// End the pane and close the record: `pane close <pane id>` in the session
+/// the record names, which ends the agent with its pane (26, 74, 196).
 pub fn end<S: Records>(store: &mut S, herdr: &Herdr, session: &str, now: DateTime<Utc>) -> Result<()> {
     if let Some(pane) = field(store, session, "herdr_pane") {
-        // A pane already gone is not an error: the end is what was wanted.
-        let _ = herdr.close_pane(&pane);
+        // A pane already gone is not an error: the end is what was wanted (73).
+        let _ = at_recorded(herdr, store, session).close_pane(&pane);
     }
     operator::end(store, session, now)
 }
@@ -415,6 +791,7 @@ pub fn end<S: Records>(store: &mut S, herdr: &Herdr, session: &str, now: DateTim
 pub fn answer<S: Records>(store: &mut S, herdr: &Herdr, session: &str, host: &str, now: DateTime<Utc>, text: &str) -> Result<()> {
     operator::answer(store, session, host, now, text)?;
     if let Some(agent) = field(store, session, "herdr_agent") {
+        let herdr = &at_recorded(herdr, store, session);
         if herdr.agent(&agent)?.is_some() {
             herdr.prompt(&agent, &format!("The operator answered your question: {text}\n\nCarry on from where you stopped, and report with the flywheel command when you are done."))?;
         }
@@ -426,6 +803,7 @@ pub fn answer<S: Records>(store: &mut S, herdr: &Herdr, session: &str, host: &st
 pub fn moved<S: Records>(store: &mut S, herdr: &Herdr, session: &str, host: &str, now: DateTime<Utc>) -> Result<()> {
     operator::moved(store, session, host, now)?;
     if let Some(agent) = field(store, session, "herdr_agent") {
+        let herdr = &at_recorded(herdr, store, session);
         if herdr.agent(&agent)?.is_some() {
             herdr.prompt(&agent, "The line moved under your place and it has been rebased onto it; read what changed before you continue.")?;
         }
@@ -449,6 +827,10 @@ mod tests {
     use super::*;
     use flywheel_atoms::testing::FakeStore;
 
+    /// The herdr session these tests address, as a machinery run's would be
+    /// named on an instance called agentplot (174).
+    const SESSION: &str = "flywheel-agentplot-machinery";
+
     #[test]
     fn a_name_is_at_most_thirty_two_and_starts_with_a_letter() {
         let name = agent_name("work-item/storefront/order-total/wi-1/fix/1");
@@ -463,7 +845,7 @@ mod tests {
     #[test]
     fn a_session_this_binding_did_not_start_reads_by_the_operators_rule() {
         let store = FakeStore::default();
-        let herdr = Herdr { binary: "/nonexistent/herdr".into() };
+        let herdr = Herdr::at("flywheel-agentplot-machinery").with_binary("/nonexistent/herdr");
         // No fact at all: absent, as the operator binding says.
         assert_eq!(evidence(&store, &herdr, "unit/atlas/u/fix/1", "session.pane"), Some(json!("absent")));
         assert_eq!(evidence(&store, &herdr, "unit/atlas/u/fix/1", "session.exit"), Some(json!("none")));
@@ -472,7 +854,7 @@ mod tests {
     #[test]
     fn a_session_that_reported_done_is_exited_whatever_the_pane_says() {
         let mut store = FakeStore::default();
-        let herdr = Herdr { binary: "/nonexistent/herdr".into() };
+        let herdr = Herdr::at("flywheel-agentplot-machinery").with_binary("/nonexistent/herdr");
         operator::set(
             &mut store,
             "unit/atlas/u/fix/1",
@@ -524,7 +906,7 @@ mod tests {
             )
             .unwrap();
             std::fs::set_permissions(&script, std::fs::Permissions::from_mode(0o755)).unwrap();
-            let herdr = Herdr { binary: script.display().to_string() };
+            let herdr = Herdr::at(SESSION).with_binary(&script.display().to_string());
             Fake { dir, herdr }
         }
 
@@ -562,7 +944,9 @@ mod tests {
     fn a_wait_that_runs_out_is_none_and_one_on_a_gone_agent_is_an_error() {
         let fake = Fake::new(
             "timeout",
-            r#"if [ "$3" = gone ]; then echo '{"error":{"message":"agent gone not found"}}' >&2; exit 1; fi
+            r#"case "$*" in
+  *"agent wait gone"*) echo '{"error":{"message":"agent gone not found"}}' >&2; exit 1 ;;
+esac
 echo '{"error":{"message":"timed out after 500ms"}}' >&2; exit 1"#,
         );
         assert_eq!(fake.herdr.wait_change("u-fix-1", "working", 500).unwrap(), None);
@@ -593,7 +977,16 @@ echo '{"error":{"message":"timed out after 500ms"}}' >&2; exit 1"#,
         )
         .unwrap();
 
-        assert_eq!(live_agents(&store), vec![("unit/atlas/a/fix/1".to_string(), "a-fix-1".to_string())]);
+        assert_eq!(
+            live_agents(&store),
+            vec![Live {
+                session: "unit/atlas/a/fix/1".into(),
+                agent: "a-fix-1".into(),
+                // Started before panes were addressed by name: its pane is the
+                // operator's, and the host watches nothing of it (174).
+                multiplexer: String::new(),
+            }]
+        );
     }
 
     /// Claude Code's question whether the folder is trusted is answered from
@@ -603,11 +996,11 @@ echo '{"error":{"message":"timed out after 500ms"}}' >&2; exit 1"#,
     fn the_trust_question_is_answered_and_the_way_waits_for_the_prompt() {
         let fake = Fake::new(
             "trust",
-            r#"case "$1 $2" in
-  "agent get") if [ -e "$D/answered" ]; then s=idle; else s=blocked; fi
+            r#"case "$*" in
+  *"agent get"*) if [ -e "$D/answered" ]; then s=idle; else s=blocked; fi
     echo "{\"result\":{\"agent\":{\"agent_status\":\"$s\"}}}" ;;
-  "agent read") echo 'Do you trust the files in this folder?' ;;
-  "agent send-keys") touch "$D/answered" ;;
+  *"agent read"*) echo 'Do you trust the files in this folder?' ;;
+  *"agent send-keys"*) touch "$D/answered" ;;
 esac"#,
         );
         assert!(fake.herdr.clear_the_way_every("u-fix-1", std::time::Duration::ZERO).unwrap());
@@ -627,12 +1020,203 @@ esac"#,
 
         let asking = Fake::new(
             "asking",
-            r#"case "$1 $2" in
-  "agent get") echo '{"result":{"agent":{"agent_status":"blocked"}}}' ;;
-  "agent read") echo 'Which file should I change first?' ;;
+            r#"case "$*" in
+  *"agent get"*) echo '{"result":{"agent":{"agent_status":"blocked"}}}' ;;
+  *"agent read"*) echo 'Which file should I change first?' ;;
 esac"#,
         );
         assert!(!asking.herdr.clear_the_way_every("u-fix-1", std::time::Duration::ZERO).unwrap());
         assert!(!asking.calls().contains("send-keys"), "{}", asking.calls());
+    }
+
+    /// A herdr that answers everything `start` asks: the session running, no
+    /// agent until one is started, and the layout ids it hands back. What it
+    /// already holds is said by the marker files the test touches first.
+    const ANSWERS: &str = r#"case "$*" in
+  *"session list"*) echo '{"sessions":[{"name":"flywheel-agentplot-machinery","running":true}]}' ;;
+  *"agent get"*) if [ -e "$D/started" ]; then echo '{"result":{"agent":{"agent_status":"idle"}}}';
+    else echo '{"error":{"message":"agent not found"}}' >&2; exit 1; fi ;;
+  *"workspace list"*) if [ -e "$D/ws" ]; then echo '{"result":{"workspaces":[{"workspace_id":"w1","label":"curation"}]}}';
+    else echo '{"result":{"workspaces":[]}}'; fi ;;
+  *"workspace create"*) touch "$D/ws"; echo '{"result":{"workspace":{"workspace_id":"w1"},"tab":{"tab_id":"w1:t1"},"root_pane":{"pane_id":"w1:p1"}}}' ;;
+  *"tab list"*) if [ -e "$D/tab" ]; then echo '{"result":{"tabs":[{"tab_id":"w1:t1","label":"curation/agentplot/main/1","pane_count":1,"workspace_id":"w1"}]}}';
+    else echo '{"result":{"tabs":[]}}'; fi ;;
+  *"pane list"*) if [ -e "$D/tab" ]; then echo '{"result":{"panes":[{"pane_id":"w1:p1","tab_id":"w1:t1","workspace_id":"w1"}]}}';
+    else echo '{"result":{"panes":[]}}'; fi ;;
+  *"tab create"*) touch "$D/tab"; echo '{"result":{"tab":{"tab_id":"w1:t2"},"root_pane":{"pane_id":"w1:p2"}}}' ;;
+  *"pane split"*) echo '{"result":{"pane":{"pane_id":"w1:p9"}}}' ;;
+  *"agent start"*) touch "$D/started"; echo '{"result":{}}' ;;
+  *) echo '{"result":{}}' ;;
+esac"#;
+
+    fn order(session: &str) -> WorkOrder {
+        WorkOrder {
+            session: session.into(),
+            kind: "claude".into(),
+            place: "curation/agentplot#own".into(),
+            body: "the work order".into(),
+        }
+    }
+
+    fn placement(workspace: &str, tab: &str) -> Placement {
+        Placement {
+            session: SESSION.into(),
+            workspace_label: workspace.into(),
+            tab_label: tab.into(),
+            cwd: std::env::temp_dir(),
+            kind: "claude".into(),
+        }
+    }
+
+    /// Every call a host makes names the herdr session it is for, so its panes
+    /// open in sessions of its own and never in the one its own process runs
+    /// in, which is the operator's (174).
+    #[test]
+    fn every_call_names_the_herdr_session() {
+        let fake = Fake::new("addressed", ANSWERS);
+        let mut store = FakeStore::default();
+        start(
+            &mut store,
+            &fake.herdr,
+            "mac-studio",
+            Utc::now(),
+            &order("curation/agentplot/main/1"),
+            &placement("curation", "curation/agentplot/main/1"),
+        )
+        .unwrap();
+        let calls = fake.calls();
+        assert!(calls.contains("agent start"), "the agent was never started: {calls}");
+        for line in calls.lines().filter(|l| !l.trim().is_empty()) {
+            assert!(
+                line.starts_with(&format!("--session {SESSION} ")) || line == "session list --json",
+                "a call naming no session runs in whatever session this process sits in: {line}"
+            );
+        }
+        // The record keeps the session's name, so every later call finds the
+        // same server (174).
+        assert_eq!(
+            field(&store, "curation/agentplot/main/1", "herdr_session").as_deref(),
+            Some(SESSION)
+        );
+    }
+
+    /// A session herdr does not list running is started headless as a detached
+    /// child before any call against its socket (174).
+    #[test]
+    fn a_session_not_running_is_started_headless() {
+        let fake = Fake::new(
+            "headless",
+            r#"case "$*" in
+  *"session list"*) if [ -e "$D/up" ]; then echo '{"sessions":[{"name":"flywheel-agentplot-machinery","running":true}]}';
+    else echo '{"sessions":[{"name":"flywheel-agentplot-machinery","running":false}]}'; fi ;;
+  *"server"*) touch "$D/up"; echo '{"result":{}}' ;;
+  *) echo '{"result":{}}' ;;
+esac"#,
+        );
+        fake.herdr.ensure_session().unwrap();
+        let calls = fake.calls();
+        assert!(
+            calls.contains(&format!("--session {SESSION} server")),
+            "the session was never started headless: {calls}"
+        );
+        // Already running, so nothing is started a second time.
+        let before = fake.calls().matches("server").count();
+        fake.herdr.ensure_session().unwrap();
+        assert_eq!(fake.calls().matches("server").count(), before);
+    }
+
+    /// Curation, planning and capture reading read one workspace each in the
+    /// machinery session, with a tab per run (196).
+    #[test]
+    fn a_curation_run_is_a_tab_of_the_machinery_workspace() {
+        let fake = Fake::new("machinery", ANSWERS);
+        // The machinery workspace is already there; this run is a tab of it.
+        std::fs::write(fake.dir.join("ws"), "").unwrap();
+        let mut store = FakeStore::default();
+        start(
+            &mut store,
+            &fake.herdr,
+            "mac-studio",
+            Utc::now(),
+            &order("curation/agentplot/main/1"),
+            &placement("curation", "curation/agentplot/main/1"),
+        )
+        .unwrap();
+        let calls = fake.calls();
+        assert!(
+            calls.contains("tab create --workspace w1")
+                && calls.contains("--label curation/agentplot/main/1"),
+            "the run is a tab of the machinery workspace: {calls}"
+        );
+        assert!(!calls.contains("workspace create"), "the workspace is made once: {calls}");
+        // The workspace a machinery object reads is its kind's, not its own id.
+        assert_eq!(machinery_workspace("curation/agentplot").as_deref(), Some("curation"));
+        assert_eq!(machinery_workspace("planning/atlas").as_deref(), Some("planning/atlas"));
+        assert_eq!(machinery_workspace("capture/folder/notes/9f").as_deref(), Some("capture-reading"));
+        assert_eq!(machinery_workspace("unit/atlas/u"), None);
+    }
+
+    /// A further session of a tab takes a pane split off the one it has, so
+    /// two agents of one unit sit side by side (196).
+    #[test]
+    fn a_second_session_of_a_tab_splits_its_pane() {
+        let fake = Fake::new("split", ANSWERS);
+        std::fs::write(fake.dir.join("ws"), "").unwrap();
+        std::fs::write(fake.dir.join("tab"), "").unwrap();
+        let mut store = FakeStore::default();
+        start(
+            &mut store,
+            &fake.herdr,
+            "mac-studio",
+            Utc::now(),
+            &order("curation/agentplot/main/2"),
+            &placement("curation", "curation/agentplot/main/1"),
+        )
+        .unwrap();
+        let calls = fake.calls();
+        assert!(
+            calls.contains("pane split w1:p1 --direction right"),
+            "the second session splits the tab's pane: {calls}"
+        );
+        assert!(!calls.contains("tab create"), "the tab is made once: {calls}");
+        assert!(calls.contains("agent start curation-agentplot-main-2 --kind claude --pane w1:p9"), "{calls}");
+    }
+
+    /// Who charged the session names the herdr session it starts in, and a
+    /// host's override wins by repository over kind over the default (174).
+    #[test]
+    fn the_herdr_session_is_named_by_who_charged_it() {
+        let none = BTreeMap::new();
+        let chain = |ids: &[&str]| ids.iter().map(|s| s.to_string()).collect::<Vec<_>>();
+        assert_eq!(charged_by("unit/atlas/u", &chain(&["unit/atlas/u", "bolt/atlas/b"])), Charged::Bolts);
+        assert_eq!(
+            charged_by("elaboration/e", &chain(&["elaboration/e", "intent/i"])),
+            Charged::Intents
+        );
+        assert_eq!(charged_by("curation/agentplot", &chain(&["curation/agentplot"])), Charged::Machinery);
+        assert_eq!(
+            session_name("agentplot", Charged::Machinery, &none, "claude", "atlas"),
+            "flywheel-agentplot-machinery"
+        );
+        let mut overrides = BTreeMap::new();
+        overrides.insert("codex".to_string(), "flywheel-agentplot-codex".to_string());
+        assert_eq!(
+            session_name("agentplot", Charged::Bolts, &overrides, "codex", "atlas"),
+            "flywheel-agentplot-codex"
+        );
+        // The repository is the more specific of the two, so it wins.
+        overrides.insert("atlas".to_string(), "flywheel-atlas".to_string());
+        assert_eq!(
+            session_name("agentplot", Charged::Bolts, &overrides, "codex", "atlas"),
+            "flywheel-atlas"
+        );
+    }
+
+    /// A call that names no session is refused rather than run against
+    /// whatever server this process sits in (174).
+    #[test]
+    fn an_unbound_herdr_refuses_to_call() {
+        let said = Herdr::unbound().agent("u-fix-1").unwrap_err().to_string();
+        assert!(said.contains("names no session"), "{said}");
     }
 }

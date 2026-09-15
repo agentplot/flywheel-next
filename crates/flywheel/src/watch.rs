@@ -20,7 +20,7 @@ pub struct Watchers {
 
 impl Watchers {
     pub fn new(woken: Arc<tokio::sync::Notify>, changed: Arc<tokio::sync::watch::Sender<u64>>) -> Self {
-        Watchers::over(flywheel_sessions_herdr::Herdr::default(), std::time::Duration::from_secs(30), woken, changed)
+        Watchers::over(flywheel_sessions_herdr::Herdr::unbound(), std::time::Duration::from_secs(30), woken, changed)
     }
 
     /// The same over a Herdr of the caller's.
@@ -38,7 +38,14 @@ impl Watchers {
     /// is gone frees its name, and the next pass decides whether to wait
     /// again.
     pub fn follow<S: flywheel_atoms::Records>(&self, store: &S) {
-        for (_session, agent) in flywheel_sessions_herdr::live_agents(store) {
+        for live in flywheel_sessions_herdr::live_agents(store) {
+            let agent = live.agent.clone();
+            // A pane recorded before sessions were addressed by name is the
+            // operator's, in the operator's own session: it is not watched
+            // here, and nothing this host does reaches it (174).
+            if live.multiplexer.is_empty() {
+                continue;
+            }
             {
                 let mut set = self.watching.lock().expect("the watchers are poisoned");
                 if !set.insert(agent.clone()) {
@@ -48,7 +55,8 @@ impl Watchers {
             let watching = self.watching.clone();
             let woken = self.woken.clone();
             let changed = self.changed.clone();
-            let herdr = self.herdr.clone();
+            // Every wait addresses the herdr session the pane is in (174).
+            let herdr = self.herdr.in_session(&live.multiplexer);
             let retry = self.retry;
             tokio::task::spawn_blocking(move || {
                 let mut current = herdr.status(&agent).unwrap_or_else(|_| "absent".into());

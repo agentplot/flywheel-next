@@ -73,6 +73,13 @@ pub struct Host {
     /// tick (215, 231, `host.yaml` adapters).
     #[serde(default, skip_serializing_if = "Vec::is_empty")]
     pub sources: Vec<String>,
+    /// The herdr session a pane is started in, overriding the default this
+    /// host would take from who charged the session: by kind (`codex:
+    /// flywheel-<instance>-codex`) or by repository (`atlas: flywheel-atlas`),
+    /// the most specific winning — repository over kind over default (174,
+    /// `sessions.yaml` multiplexer_sessions).
+    #[serde(default, skip_serializing_if = "BTreeMap::is_empty")]
+    pub multiplexer_sessions: BTreeMap<String, String>,
 }
 
 /// The port a host's page is served on for the operator at the machine when

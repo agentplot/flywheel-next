@@ -151,6 +151,13 @@ pub struct HostStore {
     /// What starts a session: `operator` records it for the operator to run,
     /// `herdr` starts the agent in a pane of the multiplexer (93b, 217c, D8).
     pub sessions: String,
+    /// The operator's name for the instance. Every multiplexer session and
+    /// every agent in one is named from it, which is why an instance's name is
+    /// unique on its computer (174, 196, 218).
+    pub instance_name: String,
+    /// `flywheel.yaml` hosts.<host>.multiplexer_sessions: the herdr session a
+    /// pane goes in, overridden by kind or by repository (174).
+    pub multiplexer_sessions: BTreeMap<String, String>,
     /// The manifest the host was opened on, which a work order hands to the
     /// session commands that read it (`flywheel ask`, 183).
     pub manifest: Option<std::path::PathBuf>,
@@ -175,6 +182,8 @@ impl HostStore {
             workspace: "recorded".into(),
             root: None,
             sessions: "operator".into(),
+            instance_name: String::new(),
+            multiplexer_sessions: BTreeMap::new(),
             manifest: None,
             material: RefCell::new(None),
         }
@@ -507,7 +516,7 @@ impl EvidenceSource for HostStore {
                 match self.sessions.as_str() {
                     "herdr" => flywheel_sessions_herdr::evidence(
                         &self.git,
-                        &flywheel_sessions_herdr::Herdr::default(),
+                        &flywheel_sessions_herdr::Herdr::unbound(),
                         &session,
                         name,
                     ),
@@ -689,6 +698,9 @@ impl Host {
         host.bound = entry.bound;
         host.intermittent = entry.intermittent;
         host.sources = entry.sources.clone();
+        // What this host overrides the herdr session with, by kind or by
+        // repository (174, `sessions.yaml` multiplexer_sessions).
+        host.store.multiplexer_sessions = entry.multiplexer_sessions.clone();
         // How often this host looks, as the manifest says (D6, D7, 130, 231).
         host.poll = read.intervals.poll;
         host.sweep_every = read.intervals.sweep;
@@ -718,6 +730,8 @@ impl Host {
         let mut store = HostStore::new(git, name, now);
         store.reading.declarations = vec![declaration.clone()];
         store.defs = Some(defs.clone());
+        // The multiplexer sessions this host opens are named from it (174).
+        store.instance_name = instance.to_string();
         Host {
             store,
             name: name.to_string(),
@@ -2043,10 +2057,10 @@ fn performing(
             }
             match store.sessions.as_str() {
                 "herdr" => {
-                    let placement = placement_of(store, object, &place)?;
+                    let placement = placement_of(store, object, &place, &fresh)?;
                     flywheel_sessions_herdr::start(
                         &mut store.git,
-                        &flywheel_sessions_herdr::Herdr::default(),
+                        &flywheel_sessions_herdr::Herdr::unbound(),
                         host,
                         now,
                         &order,
@@ -2057,7 +2071,7 @@ fn performing(
             }
         }
         "end_session" => match store.sessions.as_str() {
-            "herdr" => flywheel_sessions_herdr::end(&mut store.git, &flywheel_sessions_herdr::Herdr::default(), &session, now)?,
+            "herdr" => flywheel_sessions_herdr::end(&mut store.git, &flywheel_sessions_herdr::Herdr::unbound(), &session, now)?,
             _ => flywheel_sessions_operator::end(&mut store.git, &session, now)?,
         },
         "deliver_answer" => {
@@ -2068,12 +2082,12 @@ fn performing(
                 .unwrap_or("")
                 .to_string();
             match store.sessions.as_str() {
-                "herdr" => flywheel_sessions_herdr::answer(&mut store.git, &flywheel_sessions_herdr::Herdr::default(), &session, host, now, &text)?,
+                "herdr" => flywheel_sessions_herdr::answer(&mut store.git, &flywheel_sessions_herdr::Herdr::unbound(), &session, host, now, &text)?,
                 _ => flywheel_sessions_operator::answer(&mut store.git, &session, host, now, &text)?,
             }
         }
         "tell_moved" => match store.sessions.as_str() {
-            "herdr" => flywheel_sessions_herdr::moved(&mut store.git, &flywheel_sessions_herdr::Herdr::default(), &session, host, now)?,
+            "herdr" => flywheel_sessions_herdr::moved(&mut store.git, &flywheel_sessions_herdr::Herdr::unbound(), &session, host, now)?,
             _ => flywheel_sessions_operator::moved(&mut store.git, &session, host, now)?,
         },
         // One record per uncited offer on the session's thread, pointing at its
@@ -2422,12 +2436,19 @@ fn place_dir_of(store: &HostStore, place: &str) -> Option<std::path::PathBuf> {
     })
 }
 
-/// Where a session's pane goes and what runs in it: the workspace for the
-/// bolt or the intent above the object, the tab for the unit or the
-/// elaboration, the place's own directory, and the agent kind the manifest's
-/// role gives (174, 196, 173; `sessions.yaml` layout). Everything is read
-/// from the records; nothing is remembered.
-fn placement_of(store: &HostStore, object: &str, place: &str) -> Result<flywheel_sessions_herdr::Placement> {
+/// Where a session's pane goes and what runs in it: the herdr session by who
+/// charged it, the workspace for the bolt or the intent above the object, the
+/// tab for the unit or the elaboration, the place's own directory, and the
+/// agent kind the manifest's role gives (174, 196, 173; `sessions.yaml`
+/// layout). A machinery run — curation, planning, capture reading — reads one
+/// workspace of its kind with a tab per run. Everything is read from the
+/// records; nothing is remembered.
+fn placement_of(
+    store: &HostStore,
+    object: &str,
+    place: &str,
+    session: &str,
+) -> Result<flywheel_sessions_herdr::Placement> {
     let Some(cwd) = place_dir_of(store, place) else {
         bail!(
             "`{place}` has no worktree on disk to start a session in; a pane runs in a real place, \
@@ -2445,17 +2466,41 @@ fn placement_of(store: &HostStore, object: &str, place: &str) -> Result<flywheel
             break;
         }
     }
-    let workspace_label = chain
-        .iter()
-        .find(|id| id.starts_with("bolt/") || id.starts_with("intent/"))
-        .cloned()
-        .unwrap_or_else(|| chain.last().cloned().unwrap_or_default());
-    let tab_label = chain.get(1).cloned().filter(|p| p != &workspace_label).unwrap_or_else(|| object.to_string());
+    let kind = "claude".to_string();
+    // Who charged the session names the herdr session it starts in, unless
+    // this host overrode it for the kind or the repository (174).
+    let repository = flywheel_domain::regions::repository_of(&store.git, object).unwrap_or_default();
+    let herdr_session = flywheel_sessions_herdr::session_name(
+        &store.instance_name,
+        flywheel_sessions_herdr::charged_by(object, &chain),
+        &store.multiplexer_sessions,
+        &kind,
+        &repository,
+    );
+    let (workspace_label, tab_label) = match flywheel_sessions_herdr::machinery_workspace(object) {
+        // Curation, planning and capture reading read one workspace each in
+        // the machinery session, with a tab per run (196).
+        Some(workspace) => (workspace, session.to_string()),
+        None => {
+            let workspace_label = chain
+                .iter()
+                .find(|id| id.starts_with("bolt/") || id.starts_with("intent/"))
+                .cloned()
+                .unwrap_or_else(|| chain.last().cloned().unwrap_or_default());
+            let tab_label = chain
+                .get(1)
+                .cloned()
+                .filter(|p| p != &workspace_label)
+                .unwrap_or_else(|| object.to_string());
+            (workspace_label, tab_label)
+        }
+    };
     Ok(flywheel_sessions_herdr::Placement {
+        session: herdr_session,
         workspace_label,
         tab_label,
         cwd,
-        kind: "claude".into(),
+        kind,
     })
 }
 

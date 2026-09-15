@@ -26,9 +26,11 @@ impl Fake {
         let _ = std::fs::remove_dir_all(&dir);
         std::fs::create_dir_all(&dir).unwrap();
         let script = dir.join("herdr");
-        let body = r#"case "$1 $2" in
-  "agent get") echo '{"result":{"agent":{"agent_status":"working"}}}' ;;
-  "agent wait")
+        // Every call names the herdr session the pane is in, so the agent's
+        // name is no longer the second word (174).
+        let body = r#"case "$*" in
+  *"agent get"*) echo '{"result":{"agent":{"agent_status":"working"}}}' ;;
+  *"agent wait"*)
     if [ -e "$D/waited" ]; then echo '{"error":{"message":"agent not found"}}' >&2; exit 1; fi
     touch "$D/waited"
     echo '{"result":{"agent":{"agent_status":"idle"}}}' ;;
@@ -36,7 +38,7 @@ impl Fake {
 esac"#;
         std::fs::write(&script, format!("#!/bin/sh\nD=\"{}\"\n{body}\n", dir.display())).unwrap();
         std::fs::set_permissions(&script, std::fs::Permissions::from_mode(0o755)).unwrap();
-        let herdr = Herdr { binary: script.display().to_string() };
+        let herdr = Herdr::at("flywheel-willdan-bolts").with_binary(&script.display().to_string());
         Fake { dir, herdr }
     }
 }
@@ -61,6 +63,8 @@ fn an_agents_change_of_state_raises_the_generation_and_wakes_the_loop() {
             ("ended_at", Value::Null),
             ("host", json!("laptop")),
             ("herdr_agent", json!("rows-wi-1-fix-1")),
+            // The herdr session the pane is in: what the wait addresses (174).
+            ("herdr_session", json!("flywheel-willdan-bolts")),
         ],
     )
     .unwrap();

@@ -188,6 +188,9 @@ impl RealHosts {
                     localhost_port: first_port + index as u16 * PORTS_PER_HOST,
                     presents: vec![],
                     sources: vec![],
+                    // The herdr sessions a host opens are named from the
+                    // instance; a scenario overrides none (174).
+                    multiplexer_sessions: Default::default(),
                 },
             );
         }
