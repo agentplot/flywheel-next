@@ -67,22 +67,39 @@ be a response that can be pointed to (12, I1).
   claim, calls `ask` naming a repository and the words
 - **THEN** one ask record exists under `asks/`, written as the dictation's
   effect, holding the repository, the words, who gave it, when, and no
-  consumer yet (28, 116, git-only `layout.asks`)
+  consumer yet; its id is `<repository>-<n>`, the next number for that
+  repository and never one used before; the call is recorded once as a
+  response whose object is the ask, and the answer names it `ask/<id>`
+  (28, 116, 153, git-only `layout.asks`, `surfaces.yaml` tools.ask)
+
+#### Scenario: An ask naming no tracked repository or no words is refused
+- **WHEN** `ask` is called naming a repository the instance does not track, or
+  with no words
+- **THEN** nothing is written, and the refusal names the tracked repositories
+  where the repository was the reason (`surfaces.yaml` tools.ask)
 
 #### Scenario: A curation session files an ask through its own command
 - **WHEN** a curation session runs `flywheel ask <repository> <words>` in its
   place for a signal that argues with no claim
 - **THEN** the `ask` tool is called with the session's identity, the ask record
   written is the one the operator's dictation writes with the session as who
-  gave it, no thread entry is written, the ask's id is printed, and the signal's
-  route move names that id (67, 116, 197, `sessions.yaml` commands.ask)
+  gave it, nothing is written on the session's thread, `ask/<id>` alone is
+  printed, and the signal's route move names it (67, 116, 197, `sessions.yaml`
+  commands.ask)
 
 #### Scenario: An ask from a session not granted it is refused
 - **WHEN** a session other than curation or the operator's own session runs
   `flywheel ask`, or any session names a repository the instance does not track
-- **THEN** no ask record is written, and the refusal is an entry on the
-  session's own thread, naming the tracked repositories where the repository
-  was the reason (43, 197, `sessions.yaml` commands.ask)
+- **THEN** no ask record is written, the refusal is an entry on the session's
+  own thread naming `ask` as the operation, or naming the repository and the
+  tracked ones where the repository was the reason, and the command exits 1
+  (43, 197, `sessions.yaml` commands.ask)
+
+#### Scenario: A granted session's work order carries the command
+- **WHEN** a work order is rendered for a curation session or the operator's
+  own session
+- **THEN** under how to report it carries the exact `flywheel ask` command with
+  the state and the manifest filled in (67, `sessions.yaml` commands.ask)
 
 #### Scenario: A dropped signal revived — mirrors S24
 - **WHEN** the operator revives a dropped signal by dictation

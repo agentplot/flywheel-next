@@ -88,7 +88,8 @@ as the operator's to run (93b, 89). The operator SHALL report through the same
 command a session reports through, and the exits, offers and refusals SHALL be
 the same records, so nothing downstream tells the two apart (93b, 67); the
 operator SHALL file curation's asks through the same `flywheel ask` a curation
-session runs (93b, 116). A session
+session runs, or through the page's curator surface, which calls the same `ask`
+tool (93b, 116, S229). A session
 charged this way SHALL be a with-operator session for every rule that turns on
 the type, and the machinery's own sessions, curation among them, SHALL be the
 operator's under the same rule (93b, 25, 110). A session SHALL be given one job,

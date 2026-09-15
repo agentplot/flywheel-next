@@ -383,14 +383,24 @@ curation's: its effect writes `asks/<id>.rec` through the commit path every
 effect takes, holding the repository, the words, who gave it, when, and
 `consumed_by`, which planning's `propose_units` sets. The record holds the words,
 since it is a dictation's record and not a document a session writes (28, 62,
-116, git-only `layout.asks`). A session reaches a tool only through its own
-command (67, 197), so curation files an ask by running `flywheel ask
-<repository> <text>` in its place: the command calls `ask` with the session's
-identity, writes the same record `by` the session and no thread entry, and
-prints the id its `route` move names. Only the curation session and the
-operator's own session are granted it; any other session's call is refused as a
-line operation is (43). An exit never carries an ask (`sessions.yaml`
-commands.ask).
+116, git-only `layout.asks`). The id is `<repository>-<n>`, counted per
+repository from the records on file and never reused, and whatever points at an
+ask names it `ask/<id>`; the store contract gains the write and the read
+(`put_ask`, `asks`) so every store binds them. The call is refused with nothing
+written for a repository the instance does not track, naming the tracked ones,
+or for empty words (model 1, `surfaces.yaml` tools.ask). A session reaches a
+tool only through its own command (67, 197), so curation files an ask by
+running `flywheel ask <repository> <text>` in its place: the command reads the
+state and the manifest through the variables `flywheel exit` reads, calls `ask`
+with the session's identity, writes the same record `by` the session and nothing
+on the thread, and prints `ask/<id>` alone for its `route` move to name. Only
+the curation session and the operator's own session are granted it, read from
+the session id's first segment, and their work orders carry the command filled
+in; any other session's call is refused as a line operation is (43), and a
+refusal exits 1. An exit never carries an ask (`sessions.yaml` commands.ask).
+The operator reaches the same tool as the palette's `/ask <repository> <words>`,
+the repository typed first because nothing in hand names one (S228), and,
+running curation, through the curator's surface (D13).
 
 Phase 1 builds no stdio or MCP transport: there is no session client to use it,
 and by the proposal's own foreclosure argument a later transport is a transport,
@@ -563,7 +573,12 @@ response replaces one (107, 116). A route names what curation, being a
 session, offered for a signal that argues with no claim: a chore through
 `flywheel offer`, which `record_offers` makes a proposed chore unit, or an ask
 filed by `flywheel ask`, the `ask` tool of D9 called as the session, whose
-printed id the route names (116, 58–60, 28, 67).
+printed `ask/<id>` the route names (116, 58–60, 28, 67). A route that offers
+neither is refused. Where the operator runs curation (93b), the curator's
+surface files a route's ask through the same tool, by the operator, before the
+route names it, and checks every ask before any move is written, so a refused
+one leaves no move and no exit (S229). A signal routed to an ask reads "asked",
+with the repository and the words (S28, S9).
 
 The pull-request and issue-tracker adapters of 215 read the git host's issues and
 reviews, which C.2 forbids the machinery doing; they belong to the tracker

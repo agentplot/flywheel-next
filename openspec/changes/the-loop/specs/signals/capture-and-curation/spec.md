@@ -104,7 +104,8 @@ a chore through `flywheel offer`, which `record_offers` makes a proposed chore
 unit, or an ask filed by running `flywheel ask <repository> <words>` in its
 place, which calls the `ask` tool as the session, writes the ask record and
 prints the id the route names (116, 58–60, 28, 67). An exit SHALL NOT carry an
-ask. A challenge move SHALL record
+ask, and a route that offers neither a chore nor an ask SHALL be refused (116).
+A challenge move SHALL record
 the claim it argues with by name and version; the consequence that stales that
 claim's verdicts (101) belongs to the phase that has a ledger.
 

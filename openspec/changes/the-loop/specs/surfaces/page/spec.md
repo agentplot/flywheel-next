@@ -155,7 +155,8 @@ under a line saying exactly what will be sent; a command SHALL be the catalogue
 tool of its own name, with what is typed after the name as its argument, and a
 command that acts on an object SHALL take the one in hand — the object the dock
 has open, else the decision the rail holds — or an id typed after the name
-(S228). A command the palette cannot seed as one call SHALL be reached by its
+(S228). `/ask` SHALL take the repository as its first word and the rest as the
+words, since nothing in hand names a repository (S228, 28). A command the palette cannot seed as one call SHALL be reached by its
 own control and not listed (S228, 311). A bare number SHALL list that card's
 answers, each with the line its control carries; a number with an answer SHALL
 press the card's own control, a number with words SHALL send the words as the
@@ -171,6 +172,12 @@ moving the rail (S56, S57).
 - **THEN** the `drop` tool is called on that unit, recorded once like any
   response (S228, 193, 153)
 
+#### Scenario: An ask typed in the box
+- **WHEN** the operator types `/ask`, then `/ask storefront add a coupon field`
+- **THEN** the box first says to type the repository, then the words, and then
+  reads "will send: ask(storefront, …)"; Enter files the ask, recorded once
+  like any response (S228, 193, 153)
+
 #### Scenario: A number and its answers
 - **WHEN** the operator types `412` in the box
 - **THEN** the box lists card 412's answers with each control's line; `412 yes`
@@ -180,6 +187,33 @@ moving the rail (S56, S57).
 #### Scenario: A number naming nothing
 - **WHEN** the operator types a number no decision on the rail holds
 - **THEN** the box says so and says that `/capture` keeps it as a note (S228)
+
+### Requirement: The curator's surface files a route's ask
+
+Where the operator runs curation (93b), the page's curation section SHALL carry
+each unmoved signal with the standing moves as controls, and picking route SHALL
+swap the signal's target field for "ask in <repository> <words>": the
+repository a chip when the instance tracks one and a picker when it tracks
+several, the words starting as the signal's own (S229, 116). Submitting SHALL
+file the ask through the `ask` tool, by the operator, and write the signal's
+move as `route ask/<id>`; every ask SHALL be checked before anything is written,
+so a refused one leaves no move and no exit, and a route that names nothing and
+asks for nothing SHALL be refused (S229, 116, 93b). With no repository tracked
+the field SHALL say so and say to add one to `flywheel.yaml` (S229). A signal
+routed to an ask SHALL read "asked" under its capture's title, the capture's
+dock page SHALL show the repository and the words, and Recently done SHALL list
+it as asked (S229, S28, S9).
+
+#### Scenario: A route becomes an ask
+- **WHEN** the operator picks route for a signal on an instance tracking
+  storefront and submits the words
+- **THEN** `asks/storefront-1.rec` holds the words by the operator, the signal's
+  move is `route ask/storefront-1`, and its capture reads asked (S229, 116)
+
+#### Scenario: A refused ask writes nothing
+- **WHEN** the operator submits the curation section with one ask the tool
+  refuses among other moves
+- **THEN** no move and no exit is written (S229)
 
 ### Requirement: The signals tray lists what curation has not read
 
