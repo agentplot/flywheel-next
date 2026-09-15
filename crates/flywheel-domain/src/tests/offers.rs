@@ -214,6 +214,81 @@ fn a_pin_is_stale_once_its_record_has_ended() {
     assert_eq!((ended.repository.as_str(), ended.revision.as_str()), (signals::BLUEPRINTS, revision));
 }
 
+/// A proposed or deferred chore of a bolt that is dropped retires with the bolt,
+/// as every unit of a dropped bolt does: its decision leaves the rail with a
+/// tail entry and nothing is started for it. A chore whose bolt stands, and one
+/// on a repository's shared line, stay proposed. Where the offering place went
+/// is not read: the document is at its pin (62, 74, `unit.yaml` proposed,
+/// deferred).
+#[test]
+fn a_chore_whose_bolt_is_dropped_retires() {
+    let defs = crate::set::load().unwrap();
+    let mut store = FakeStore::default();
+    let at = commands::now(&store).unwrap();
+    let put = |store: &mut FakeStore, id: &str, machine: &str, parent: Option<&str>, life: &str, record: &[(&str, serde_json::Value)]| {
+        let record = record.iter().map(|(k, v)| (k.to_string(), v.clone())).collect();
+        commands::put_new(store, &defs, id, machine, parent, record, at).unwrap();
+        let mut held = store.get(id).unwrap().unwrap();
+        held.config.insert("life".into(), life.into());
+        let base = held.seq;
+        flywheel_atoms::Records::put(store, id, &held, base).unwrap();
+    };
+    put(&mut store, "bolt/atlas/plan-rows", "bolt", None, "dropped", &[("repository", json!("atlas"))]);
+    put(&mut store, "bolt/atlas/limits", "bolt", None, "open", &[("repository", json!("atlas"))]);
+    let chore = |batch: &str, n: u32| {
+        vec![
+            ("type", json!("chore")),
+            ("repository", json!("atlas")),
+            ("batch", json!(batch)),
+            ("document", json!(format!("notes/chore-{n}.md"))),
+            ("revision", json!("5181390b2c4d6e8f0a1b3c5d7e9f1a2b3c4d5e6f")),
+        ]
+    };
+    let dropped = ["unit/atlas/plan-rows/chore-1", "unit/atlas/plan-rows/chore-2"];
+    put(&mut store, dropped[0], "unit", Some("bolt/atlas/plan-rows"), "proposed", &chore("bolt/atlas/plan-rows", 1));
+    put(&mut store, dropped[1], "unit", Some("bolt/atlas/plan-rows"), "deferred", &chore("bolt/atlas/plan-rows", 2));
+    let standing = ["unit/atlas/limits/chore-1", "unit/atlas/chore-1"];
+    put(&mut store, standing[0], "unit", Some("bolt/atlas/limits"), "proposed", &chore("bolt/atlas/limits", 3));
+    put(&mut store, standing[1], "unit", Some("repository/atlas"), "proposed", &chore("atlas", 4));
+    let before = commands::rail(&mut store, &defs).unwrap();
+    assert!(before.iter().any(|d| d.object == dropped[0]), "the dropped bolt's proposed chore stood on the rail");
+
+    let (mut asked, mut entered) = (Vec::new(), Vec::new());
+    for _ in 0..8 {
+        let writes = store.writes();
+        commands::tick(
+            &mut store,
+            &defs,
+            &flywheel_atoms::Scope::All,
+            |_, object, _, effect| {
+                asked.push(format!("{object} {}", effect.name));
+                true
+            },
+            |_, fired, tail| entered.push((fired.object.clone(), fired.to.to_string(), tail.len())),
+        )
+        .unwrap();
+        if store.writes() == writes {
+            break;
+        }
+    }
+
+    let life = |store: &FakeStore, id: &str| store.get(id).unwrap().unwrap().config.get("life").cloned().unwrap_or_default();
+    for id in dropped {
+        assert_eq!(life(&store, id), "retired", "{id} did not retire with its bolt");
+        assert!(
+            entered.iter().any(|(object, to, tail)| object == id && to.contains("retired") && *tail > 0),
+            "{id} left no tail entry: {entered:?}"
+        );
+        assert!(!asked.iter().any(|a| a.starts_with(&format!("{id} "))), "something was started for {id}: {asked:?}");
+    }
+    for id in standing {
+        assert_eq!(life(&store, id), "proposed", "{id} is not a chore of a dropped bolt");
+    }
+    let after = commands::rail(&mut store, &defs).unwrap();
+    assert!(!after.iter().any(|d| dropped.contains(&d.object.as_str())), "a retired chore's decision stayed on the rail");
+    assert!(after.iter().any(|d| d.object == standing[1]), "the shared line's chore still stands");
+}
+
 /// The one record a signal offer makes: a signal citing the document, of a
 /// capture of its own of source offer, and nothing left pending (62, 111).
 fn assert_the_offer_is_a_signal(store: &FakeStore, made: &[String], session: &str, document: &str) {
