@@ -315,7 +315,8 @@ its place and its work order, the rail and the status view show it as the
 operator's to run, and the operator does the work and reports through
 `flywheel exit | offer | note | refuse` — the same command the stand-in plays
 and the same one the phase-2 runner will call (67, 93). The machinery's own
-sessions are the same: curation is a person writing the move records (110), and
+sessions are the same: curation is a person writing the move records and filing
+its asks through `flywheel ask` (110, 116, 67), and
 planning does not run in phase 1. Nothing infers an exit from what is on disk
 (67).
 
@@ -382,7 +383,14 @@ curation's: its effect writes `asks/<id>.rec` through the commit path every
 effect takes, holding the repository, the words, who gave it, when, and
 `consumed_by`, which planning's `propose_units` sets. The record holds the words,
 since it is a dictation's record and not a document a session writes (28, 62,
-116, git-only `layout.asks`).
+116, git-only `layout.asks`). A session reaches a tool only through its own
+command (67, 197), so curation files an ask by running `flywheel ask
+<repository> <text>` in its place: the command calls `ask` with the session's
+identity, writes the same record `by` the session and no thread entry, and
+prints the id its `route` move names. Only the curation session and the
+operator's own session are granted it; any other session's call is refused as a
+line operation is (43). An exit never carries an ask (`sessions.yaml`
+commands.ask).
 
 Phase 1 builds no stdio or MCP transport: there is no session client to use it,
 and by the proposal's own foreclosure argument a later transport is a transport,
@@ -554,7 +562,8 @@ exactly one standing move with a stated consequence, and only the operator's
 response replaces one (107, 116). A route names what curation, being a
 session, offered for a signal that argues with no claim: a chore through
 `flywheel offer`, which `record_offers` makes a proposed chore unit, or an ask
-through the `ask` tool of D9 (116, 58–60, 28).
+filed by `flywheel ask`, the `ask` tool of D9 called as the session, whose
+printed id the route names (116, 58–60, 28, 67).
 
 The pull-request and issue-tracker adapters of 215 read the git host's issues and
 reviews, which C.2 forbids the machinery doing; they belong to the tracker

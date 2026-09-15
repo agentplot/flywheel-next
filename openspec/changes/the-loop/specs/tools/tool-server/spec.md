@@ -69,6 +69,21 @@ be a response that can be pointed to (12, I1).
   effect, holding the repository, the words, who gave it, when, and no
   consumer yet (28, 116, git-only `layout.asks`)
 
+#### Scenario: A curation session files an ask through its own command
+- **WHEN** a curation session runs `flywheel ask <repository> <words>` in its
+  place for a signal that argues with no claim
+- **THEN** the `ask` tool is called with the session's identity, the ask record
+  written is the one the operator's dictation writes with the session as who
+  gave it, no thread entry is written, the ask's id is printed, and the signal's
+  route move names that id (67, 116, 197, `sessions.yaml` commands.ask)
+
+#### Scenario: An ask from a session not granted it is refused
+- **WHEN** a session other than curation or the operator's own session runs
+  `flywheel ask`, or any session names a repository the instance does not track
+- **THEN** no ask record is written, and the refusal is an entry on the
+  session's own thread, naming the tracked repositories where the repository
+  was the reason (43, 197, `sessions.yaml` commands.ask)
+
 #### Scenario: A dropped signal revived — mirrors S24
 - **WHEN** the operator revives a dropped signal by dictation
 - **THEN** the drop move is removed, the signal is unmoved again, no decision is

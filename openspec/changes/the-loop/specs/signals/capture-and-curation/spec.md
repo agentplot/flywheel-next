@@ -101,8 +101,10 @@ re-judge one that has a move; only the operator's response SHALL replace a move
 (107). Every move SHALL have a stated consequence (116). A route move SHALL name
 what curation, being a session, offered for a signal that argues with no claim:
 a chore through `flywheel offer`, which `record_offers` makes a proposed chore
-unit, or an ask through the `ask` tool, which wrote the ask record (116, 58–60,
-28). A challenge move SHALL record
+unit, or an ask filed by running `flywheel ask <repository> <words>` in its
+place, which calls the `ask` tool as the session, writes the ask record and
+prints the id the route names (116, 58–60, 28, 67). An exit SHALL NOT carry an
+ask. A challenge move SHALL record
 the claim it argues with by name and version; the consequence that stales that
 claim's verdicts (101) belongs to the phase that has a ledger.
 
