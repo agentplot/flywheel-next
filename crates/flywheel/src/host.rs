@@ -2462,37 +2462,20 @@ fn work_order(
         .unwrap_or_else(|| "flywheel".into());
     // Where this host's page is, so the report wakes the loop the moment it is
     // written (S221); a host serving no page leaves it out.
-    let page = std::env::var("FLYWHEEL_PAGE")
-        .map(|page| format!(" FLYWHEEL_PAGE={page}"))
-        .unwrap_or_default();
-    body.push_str("\n## how to report\n\n");
-    body.push_str("When the work is done, from this directory:\n\n");
-    body.push_str(&format!(
-        "    FLYWHEEL_SESSION={session} FLYWHEEL_STATE={state}{page} {flywheel} exit done{} --host {host}\n\n",
-        named.iter().map(|d| format!(" --deliverable {d}")).collect::<String>()
-    ));
-    body.push_str("When you cannot go on without the operator's answer:\n\n");
-    body.push_str(&format!(
-        "    FLYWHEEL_SESSION={session} FLYWHEEL_STATE={state}{page} {flywheel} exit blocked --question \"<the question>\" --host {host}\n\n"
-    ));
-    // The ask is the curation session's and the operator's own session's, so
-    // theirs alone carry its command (116, 197, `sessions.yaml` commands.ask).
-    if flywheel_domain::asks::granted(session) {
-        let manifest = store
-            .manifest
-            .as_ref()
-            .map(|m| std::fs::canonicalize(m).unwrap_or_else(|_| m.clone()))
-            .map(|m| format!(" FLYWHEEL_MANIFEST={}", m.display()))
-            .unwrap_or_default();
-        body.push_str(
-            "To ask for something to be done in a repository; it prints the ask's id, which the \
-             signal's route move names:\n\n",
-        );
-        body.push_str(&format!(
-            "    FLYWHEEL_SESSION={session} FLYWHEEL_STATE={state}{manifest}{page} {flywheel} ask <repository> \"<the words>\" --host {host}\n\n"
-        ));
-    }
-    body.push_str("The machinery reads the report and nothing else you leave here; what you leave here is your work (66, 67).\n");
+    let page = std::env::var("FLYWHEEL_PAGE").ok();
+    let manifest = store
+        .manifest
+        .as_ref()
+        .map(|m| std::fs::canonicalize(m).unwrap_or_else(|_| m.clone()));
+    body.push_str(&how_to_report(&Reporting {
+        session,
+        state: &state,
+        manifest: manifest.as_deref(),
+        page: page.as_deref(),
+        flywheel: &flywheel,
+        host: &host,
+        deliverables: &named,
+    }));
     body.push_str("\n## rules\n\n");
     body.push_str(
         "Commit in this place, on the branch you are on. Never create, merge, rebase, push or land a \
@@ -2509,6 +2492,68 @@ fn work_order(
         place: place.to_string(),
         body,
     }
+}
+
+/// What a session's report commands are made of: the session, this host's
+/// checkout of the state repository, the manifest, the page, the binary by its
+/// full path and the host (67, 89).
+pub(crate) struct Reporting<'a> {
+    pub session: &'a str,
+    pub state: &'a str,
+    pub manifest: Option<&'a Path>,
+    pub page: Option<&'a str>,
+    pub flywheel: &'a str,
+    pub host: &'a str,
+    pub deliverables: &'a [String],
+}
+
+/// The order's `how to report`: the exact command for every report the session
+/// may make, from its place (65, 67, 89).
+///
+/// Every session may offer what is outside its job — a finding, or a small
+/// necessary fix as a chore — so every order gives the offer's command, with
+/// the manifest a chore's scope is checked against (58, 60, 62, `sessions.yaml`
+/// commands.offer). The ask is the curation session's and the operator's own
+/// session's, so theirs alone carry its command (116, 197, `sessions.yaml`
+/// commands.ask).
+pub(crate) fn how_to_report(r: &Reporting) -> String {
+    let Reporting { session, state, flywheel, host, .. } = r;
+    let env = format!("FLYWHEEL_SESSION={session} FLYWHEEL_STATE={state}");
+    let page = r.page.map(|page| format!(" FLYWHEEL_PAGE={page}")).unwrap_or_default();
+    let manifest = r
+        .manifest
+        .map(|m| format!(" FLYWHEEL_MANIFEST={}", m.display()))
+        .unwrap_or_default();
+    let mut body = String::from("\n## how to report\n\n");
+    body.push_str("When the work is done, from this directory:\n\n");
+    body.push_str(&format!(
+        "    {env}{page} {flywheel} exit done{} --host {host}\n\n",
+        r.deliverables.iter().map(|d| format!(" --deliverable {d}")).collect::<String>()
+    ));
+    body.push_str("When you cannot go on without the operator's answer:\n\n");
+    body.push_str(&format!(
+        "    {env}{page} {flywheel} exit blocked --question \"<the question>\" --host {host}\n\n"
+    ));
+    body.push_str(
+        "To offer what is outside the job, pointing at a document you committed here: a finding, or a \
+         small necessary fix as a chore. A chore says where its fix belongs with --scope: bolt-line, \
+         which a session under a bolt may leave off, or a repository the instance tracks, blueprints \
+         among them:\n\n",
+    );
+    body.push_str(&format!(
+        "    {env}{manifest}{page} {flywheel} offer finding|chore --document <path> [--scope bolt-line|<repository>] --host {host}\n\n"
+    ));
+    if flywheel_domain::asks::granted(session) {
+        body.push_str(
+            "To ask for something to be done in a repository; it prints the ask's id, which the \
+             signal's route move names:\n\n",
+        );
+        body.push_str(&format!(
+            "    {env}{manifest}{page} {flywheel} ask <repository> \"<the words>\" --host {host}\n\n"
+        ));
+    }
+    body.push_str("The machinery reads the report and nothing else you leave here; what you leave here is your work (66, 67).\n");
+    body
 }
 
 /// The stage a session id names, where it names one: `<item>/<stage>/<n>`.

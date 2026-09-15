@@ -1297,11 +1297,21 @@ fn since(read: &Read) -> String {
                 .and_then(signals::text_of),
             _ => None,
         };
+        // An object named by its id says which repository it is in, greyed, as
+        // a slip does: two chores merged onto two shared lines are both
+        // `chore-1` by name (209, S231).
+        let pre = match said {
+            Some(_) => None,
+            None => repository_of(&object.id),
+        };
         let name = said.map(|s| clipped_to(&s, 56)).unwrap_or_else(|| name_of(&object.id).to_string());
         let _ = write!(
             out,
-            "<li><span class=\"v {verb}\">{verb}</span><a class=\"grow\" href=\"#dock-{id}\">{name}</a><span class=\"t\">{when}</span></li>\n",
+            "<li><span class=\"v {verb}\">{verb}</span><a class=\"grow\" href=\"#dock-{id}\">{pre}{name}</a><span class=\"t\">{when}</span></li>\n",
             id = escape(&object.id),
+            pre = pre
+                .map(|r| format!("<span class=\"pre\">{} · </span>", escape(r)))
+                .unwrap_or_default(),
             name = escape(&name),
             when = escape(&at.format("%H:%M").to_string()),
         );

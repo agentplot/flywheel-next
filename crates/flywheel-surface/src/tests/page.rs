@@ -1066,3 +1066,41 @@ fn shared_line_chores_fold_by_repository() {
     }
     assert!(docked.contains("atlas · chores"));
 }
+
+/// Two chores merged onto two shared lines are both `chore-1` by name, so each
+/// line under since says which repository it merged in, greyed before the name,
+/// as its slip did on the board (209, S231).
+#[test]
+fn a_merged_chore_under_since_names_its_repository() {
+    let (mut store, world, defs) = a_page();
+    let at = commands::now(&store).expect("a point");
+    commands::put_new(&mut store, &defs, "instance/willdan", "instance", None, Default::default(), at).expect("the instance");
+    for (id, parent, repository) in [
+        ("unit/atlas/chore-1", "repository/atlas", "atlas"),
+        ("unit/blueprints/chore-1", "instance/willdan", "blueprints"),
+    ] {
+        let record = [("type", json!("chore")), ("repository", json!(repository)), ("scope", json!("shared-line"))]
+            .into_iter()
+            .map(|(k, v)| (k.to_string(), v))
+            .collect();
+        commands::put_new(&mut store, &defs, id, "unit", Some(parent), record, at).expect("the chore");
+        let mut unit = Records::get(&store, id).expect("a read").expect("the chore");
+        unit.config.retain(|region, _| !region.starts_with("life."));
+        unit.config.insert("life".into(), "merged".into());
+        unit.entered_at.insert("life".into(), at);
+        let base = unit.seq;
+        Records::put(&mut store, id, &unit, base).expect("the chore merged");
+    }
+    commands::rail(&mut store, &defs).expect("the rail derives");
+
+    let html = rendered(&mut store, &world, &defs);
+    let listed = html
+        .split("<ul class=\"since\">")
+        .nth(1)
+        .and_then(|rest| rest.split("</ul>").next())
+        .expect("what happened lately is listed");
+    for repository in ["atlas", "blueprints"] {
+        let line = format!("<span class=\"pre\">{repository} · </span>chore-1</a>");
+        assert!(listed.contains(&line), "no merged line names {repository}: {listed}");
+    }
+}

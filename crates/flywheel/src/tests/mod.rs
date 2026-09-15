@@ -7,3 +7,4 @@ mod console;
 mod render_order;
 mod report;
 mod seeding;
+mod work_order;
