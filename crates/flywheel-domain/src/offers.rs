@@ -10,13 +10,17 @@
 //! proposed chore unit that folds by its bolt, and anything else a signal
 //! citing the path.
 
-use crate::commands;
+use crate::{commands, signals};
 use anyhow::Result;
 use chrono::{DateTime, Utc};
-use flywheel_atoms::{Records, StateStore, ThreadEntry};
+use flywheel_atoms::{Records, StateStore, ThreadEntry, World};
 use flywheel_engine::Definitions;
 use serde_json::{json, Value};
 use std::collections::BTreeMap;
+
+/// The source a capture of an offer names: the session's offer is the event
+/// (111).
+pub const SOURCE: &str = "offer";
 
 /// One offer, as the thread holds it.
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -25,6 +29,8 @@ pub struct Offer {
     pub entry: String,
     pub kind: String,
     pub document: String,
+    /// When the session made it, which is when it judged the document (62).
+    pub at: DateTime<Utc>,
 }
 
 /// The offers on one session's thread, in the order they were made. A refused
@@ -40,6 +46,7 @@ pub fn on_thread(session: &str, entries: &[ThreadEntry]) -> Vec<Offer> {
                 entry: format!("{session}#{at}"),
                 kind: entry.fields.get("offer")?.as_str()?.to_string(),
                 document: entry.fields.get("document")?.as_str()?.to_string(),
+                at: entry.at,
             })
         })
         .collect()
@@ -107,9 +114,12 @@ fn next<S: Records>(store: &S, parent: &str, machine: &str, name: &str) -> Resul
 ///
 /// The session is the one that offered; `owner` is the object it runs under.
 /// Every record holds the document path and the entry it came from; none holds
-/// the text (62).
-pub fn record<S: StateStore>(
+/// the text (62). An offer with nothing above it to take it is a signal, so
+/// every offer is recorded on the pass that finds it and the session reaches
+/// its exit.
+pub fn record<S: StateStore, W: World + ?Sized>(
     store: &mut S,
+    world: &mut W,
     defs: &Definitions,
     session: &str,
     owner: &str,
@@ -121,46 +131,126 @@ pub fn record<S: StateStore>(
         record.insert("document".into(), json!(offer.document));
         record.insert("sources".into(), json!([offer.entry]));
 
-        // A chore is a chore unit of its bolt, folded with the bolt's others
-        // by the `batch` field the decision names (11).
         if offer.kind == "chore" {
-            let Some(bolt) = above(store, owner, "bolt")? else { continue };
-            let id = id_under(&bolt, "unit", &format!("chore-{}", next(store, &bolt, "unit", "chore")?));
-            record.insert("type".into(), json!("chore"));
-            record.insert("type_version".into(), json!(2));
-            record.insert("batch".into(), json!(bolt));
-            if let Some(repository) = repository_of(store, &bolt)? {
-                record.insert("repository".into(), json!(repository));
+            // A chore is a chore unit of its bolt, folded with the bolt's others
+            // by the `batch` field the decision names (11).
+            if let Some(bolt) = above(store, owner, "bolt")? {
+                let id = id_under(&bolt, "unit", &format!("chore-{}", next(store, &bolt, "unit", "chore")?));
+                record.insert("type".into(), json!("chore"));
+                record.insert("type_version".into(), json!(2));
+                record.insert("batch".into(), json!(bolt));
+                if let Some(repository) = repository_of(store, &bolt)? {
+                    record.insert("repository".into(), json!(repository));
+                }
+                commands::put_new(store, defs, &id, "unit", Some(&bolt), record, at)?;
+                made.push(id);
+                continue;
             }
-            commands::put_new(store, defs, &id, "unit", Some(&bolt), record, at)?;
-            made.push(id);
-            continue;
+        } else {
+            // A finding on the session's own intent is a proposed elaboration
+            // there; on its own bolt, a proposed unit of the fast type (58, 59).
+            if let Some(intent) = above(store, owner, "intent")? {
+                let id = id_under(&intent, "elaboration", &format!("finding-{}", next(store, &intent, "elaboration", "finding")?));
+                record.insert("type".into(), json!("self-closing"));
+                record.insert("type_version".into(), json!(2));
+                commands::put_new(store, defs, &id, "elaboration", Some(&intent), record, at)?;
+                made.push(id);
+                continue;
+            }
+            if let Some(bolt) = above(store, owner, "bolt")? {
+                let id = id_under(&bolt, "unit", &format!("finding-{}", next(store, &bolt, "unit", "finding")?));
+                record.insert("type".into(), json!("fast"));
+                record.insert("type_version".into(), json!(3));
+                record.insert("target".into(), json!(bolt));
+                if let Some(repository) = repository_of(store, &bolt)? {
+                    record.insert("repository".into(), json!(repository));
+                }
+                commands::put_new(store, defs, &id, "unit", Some(&bolt), record, at)?;
+                made.push(id);
+                continue;
+            }
         }
 
-        // A finding on the session's own intent is a proposed elaboration
-        // there; on its own bolt, a proposed unit of the fast type (58, 59).
-        if let Some(intent) = above(store, owner, "intent")? {
-            let id = id_under(&intent, "elaboration", &format!("finding-{}", next(store, &intent, "elaboration", "finding")?));
-            record.insert("type".into(), json!("self-closing"));
-            record.insert("type_version".into(), json!(2));
-            commands::put_new(store, defs, &id, "elaboration", Some(&intent), record, at)?;
-            made.push(id);
-            continue;
-        }
-        if let Some(bolt) = above(store, owner, "bolt")? {
-            let id = id_under(&bolt, "unit", &format!("finding-{}", next(store, &bolt, "unit", "finding")?));
-            record.insert("type".into(), json!("fast"));
-            record.insert("type_version".into(), json!(3));
-            record.insert("target".into(), json!(bolt));
-            if let Some(repository) = repository_of(store, &bolt)? {
-                record.insert("repository".into(), json!(repository));
-            }
-            commands::put_new(store, defs, &id, "unit", Some(&bolt), record, at)?;
-            made.push(id);
-            continue;
-        }
+        made.push(as_signal(store, world, defs, session, owner, &offer, record, at)?);
     }
     Ok(made)
+}
+
+/// Anything else is a signal citing the path (58, 62, 113): a finding offered
+/// under neither an intent nor a bolt — a capture reader's, a curation
+/// session's — and a chore offered outside every bolt.
+///
+/// A signal carries its capture (113). Under a capture it is that capture's
+/// next signal; otherwise the offer is a capture of its own, the entry its
+/// event and the document the pointer to its material (111). Nothing judged
+/// it yet, so it asks, as a capture that is its own excerpt does, until
+/// curation or the operator moves it (107, 116). What it asserts is where the
+/// document is, and its excerpt stays empty: the record never holds the text
+/// (62).
+#[allow(clippy::too_many_arguments)]
+fn as_signal<S: StateStore, W: World + ?Sized>(
+    store: &mut S,
+    world: &mut W,
+    defs: &Definitions,
+    session: &str,
+    owner: &str,
+    offer: &Offer,
+    mut record: BTreeMap<String, Value>,
+    at: DateTime<Utc>,
+) -> Result<String> {
+    let capture = match above(store, owner, "capture")? {
+        Some(capture) => capture,
+        None => {
+            let index = offer.entry.rsplit_once('#').map(|(_, n)| n).unwrap_or_default();
+            let key = format!("{SOURCE}/{}/{index}", session.trim_start_matches("session/"));
+            let capture = signals::Capture {
+                key: key.clone(),
+                source: SOURCE.into(),
+                event_at: offer.at.to_rfc3339(),
+                captured_by: session.to_string(),
+                raw: offer.document.clone(),
+            };
+            signals::write_capture(world, &capture)?;
+            let id = signals::object_of(&key);
+            if store.get(&id)?.is_none() {
+                let fields: BTreeMap<String, Value> = [
+                    ("source", json!(capture.source)),
+                    ("event_key", json!(key)),
+                    ("event_at", json!(capture.event_at)),
+                    ("captured_by", json!(capture.captured_by)),
+                    ("raw", json!(capture.raw)),
+                ]
+                .into_iter()
+                .map(|(k, v)| (k.to_string(), v))
+                .collect();
+                commands::put_new(store, defs, &id, "capture", None, fields, at)?;
+            }
+            id
+        }
+    };
+    let key = signals::key_of_capture(store, &capture)?;
+    let mut ordinal = 1;
+    while world.read_file(signals::BLUEPRINTS, &signals::signal_path(&key, ordinal))?.is_some()
+        || store.get(&signals::signal_object(&key, ordinal))?.is_some()
+    {
+        ordinal += 1;
+    }
+    let id = signals::signal_object(&key, ordinal);
+    let signal = signals::Signal {
+        id: id.clone(),
+        capture: capture.clone(),
+        kind: "ask".into(),
+        asserted_by: session.to_string(),
+        subject_tags: vec![],
+        assertion: offer.document.clone(),
+        excerpt: String::new(),
+        position: "whole".into(),
+        argues_with: vec![],
+    };
+    signals::write_signal(world, &key, ordinal, &signal)?;
+    record.extend(signal.fields());
+    commands::put_new(store, defs, &id, "signal", Some(&capture), record, at)?;
+    Ok(id)
 }
 
 fn repository_of<S: Records>(store: &S, object: &str) -> Result<Option<String>> {

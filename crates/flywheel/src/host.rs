@@ -2023,7 +2023,8 @@ fn performing(
         // document; the record never holds the text and the session is not
         // interrupted (58, 62, `atoms.yaml` record_offers).
         "record_offers" => {
-            flywheel_domain::offers::record(&mut store.git, defs, &session, object, now)?;
+            let HostStore { git, world, .. } = store;
+            flywheel_domain::offers::record(git, &mut **world, defs, &session, object, now)?;
         }
         // Every refusal the session wrote is carried to the run record, where
         // the report effect beside it takes it to attention (43,

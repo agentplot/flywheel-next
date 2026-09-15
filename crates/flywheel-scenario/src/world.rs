@@ -229,7 +229,9 @@ pub fn perform(defs: &Definitions, store: &mut Store, object: &str, region: &str
             let at = store.now;
             let session = skey.clone();
             let defs = defs.clone();
-            let _ = flywheel_domain::offers::record(store, &defs, &session, object, at);
+            let _ = crate::bindings::with_files(store, |store, world| {
+                flywheel_domain::offers::record(store, world, &defs, &session, object, at)
+            });
         }
         // A capture that is its own excerpt writes its one signal here, and
         // never a second: no judgment is involved (19, 112, `atoms.yaml`

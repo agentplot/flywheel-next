@@ -5,6 +5,7 @@ mod asks;
 mod binding;
 mod blueprints;
 mod envelope;
+mod offers;
 mod rail_folding;
 mod rail_record;
 mod set;

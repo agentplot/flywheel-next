@@ -201,6 +201,15 @@ pub fn of_capture<S: StateStore>(store: &S, capture: &str) -> Result<Vec<String>
         .collect())
 }
 
+/// The source-event key a capture object is ticked under: the one its record
+/// holds, else the id less its prefix (111).
+pub fn key_of_capture<S: Records>(store: &S, capture: &str) -> Result<String> {
+    Ok(store
+        .get(capture)?
+        .and_then(|o| o.record.get("event_key").and_then(|v| v.as_str()).map(String::from))
+        .unwrap_or_else(|| capture.trim_start_matches("capture/").to_string()))
+}
+
 /// `ensure_signal`: one capture, one signal, and never a second (19, 112,
 /// `atoms.yaml` ensure_signal).
 ///
@@ -227,12 +236,7 @@ pub fn ensure_signal<S: StateStore, W: World + ?Sized>(
             .unwrap_or_default()
             .to_string()
     };
-    let key = held
-        .as_ref()
-        .and_then(|o| o.record.get("event_key"))
-        .and_then(|v| v.as_str())
-        .map(String::from)
-        .unwrap_or_else(|| capture.trim_start_matches("capture/").to_string());
+    let key = key_of_capture(store, capture)?;
     let excerpt = field("raw");
     let asserter = match field("captured_by").is_empty() {
         true => by.to_string(),

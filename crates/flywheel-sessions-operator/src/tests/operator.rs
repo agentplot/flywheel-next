@@ -252,6 +252,7 @@ fn an_offer_is_pending_only_until_a_record_points_at_it() {
         let mut held = store.lock().unwrap();
         flywheel_domain::offers::record(
             &mut *held,
+            &mut flywheel_atoms::testing::FakeWorld::new(),
             &defs,
             session,
             "elaboration/atlas/research-1",
