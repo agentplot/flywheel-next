@@ -380,8 +380,10 @@ fn the_page_opens_what_a_session_delivered() {
         text
     };
 
-    // The page links both, at the route that opens them.
-    let page = fetch("/");
+    // The page links both, at the route that opens them: on the dock page of the
+    // capture whose session left them, which the page fetches when the capture
+    // is opened (310a, S235).
+    let page = fetch(&format!("/{instance}/capture/meeting-2026-09-02-storefront-weekly?part=dock"));
     assert!(page.starts_with("HTTP/1.1 200"), "{}", page.lines().next().unwrap_or_default());
     let document = format!("/{instance}/deliverable/flywheel-blueprints/openspec/changes/declines/research/note.md");
     let prototype = format!("/{instance}/deliverable/flywheel-blueprints/openspec/changes/declines/prototype/report.html");

@@ -185,7 +185,12 @@ fn curated_from_the_page_raises_a_decision() {
         held.set_now(at(2));
         held.sweep().unwrap();
     }
-    let page = get(address);
+    // The curator's surface is the tray's, whose page is fetched when the tray
+    // is opened (S225, 310a, S235).
+    let page = speak(
+        address,
+        "GET /willdan/tray?part=dock HTTP/1.1\r\nHost: mac-mini.example\r\nConnection: close\r\n\r\n",
+    );
     assert!(
         page.contains("id=\"curate-box\""),
         "the page carries no curator's surface: {page}"
