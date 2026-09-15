@@ -28,6 +28,9 @@ pub const DESKTOP: (u32, u32) = (1440, 900);
 pub struct Served {
     /// Where the page is, on loopback.
     pub url: String,
+    /// What tells every open page the store moved, as the loop beside a host
+    /// raises it (S221).
+    pub changed: std::sync::Arc<tokio::sync::watch::Sender<u64>>,
     /// Kept so the runtime lives as long as the page is served; dropping it
     /// ends the server.
     _runtime: tokio::runtime::Runtime,
@@ -69,11 +72,13 @@ impl Served {
         // localhost port 245 permits beside the private-network address; the
         // page is served unsigned-in there and nowhere else (155, 253a).
         served.localhost_port = port;
+        let changed = served.changed.clone();
         runtime.spawn(async move {
             let _ = flywheel_surface::http::serve_on(served, listener).await;
         });
         Ok(Served {
             url: format!("http://127.0.0.1:{port}/"),
+            changed,
             _runtime: runtime,
         })
     }

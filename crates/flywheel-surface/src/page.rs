@@ -1134,38 +1134,122 @@ pub fn render(read: &Read) -> String {
     // Attention stands outside the count: it is what the machinery could not do,
     // reported and never dropped, and not a choice the operator is being asked
     // to make (S3, S8, 6).
-    let standing = read
-        .decisions
-        .iter()
-        .filter(|d| flywheel_engine::rail::counted(&d.group))
-        .count();
-    let sent: usize = read.answered.values().map(Vec::len).sum();
+    // Every region an update swaps, drawn once: the page is those regions in
+    // their places, and the digest of each is what the page holds to ask for
+    // what moved (S221, S235).
+    let drawn: BTreeMap<String, String> = regions(read).into_iter().collect();
+    let part = |id: &str| drawn.get(id).cloned().unwrap_or_default();
+    let digests = drawn.iter().map(|(id, html)| format!("{id}:{}", digest(html))).collect::<Vec<_>>().join(",");
+    let dock_digest = read
+        .opened
+        .as_deref()
+        .and_then(|opened| dock_page(read, opened))
+        .map(|page| digest(&page))
+        .unwrap_or_default();
     let mut out = parts()
         .shell
         .replace("{{STYLE}}", &format!("<link rel=\"stylesheet\" href=\"{}\">", style_address()))
         .replace("{{SCRIPT}}", &format!("<script src=\"{}\"></script>", script_address()))
         .replace("{{VERSION}}", VERSION)
+        .replace("{{DIGESTS}}", &digests)
+        .replace("{{DOCKDIGEST}}", &dock_digest)
         .replace("{{SERVED}}", "page")
         .replace("{{GEN}}", &read.generation.to_string())
         .replace("{{VIEWFACES}}", "")
         .replace("{{INSTANCE}}", &escape(instance))
         .replace("{{OPERATOR}}", &escape(&read.operator))
-        .replace("{{CLOCK}}", &escape(&read.status.at.format("%H:%M").to_string()))
-        .replace("{{COUNT}}", &standing.to_string())
-        .replace("{{YESALL}}", &yes_all(read))
-        .replace("{{SENT}}", &sent.to_string())
-        .replace("{{OBJECTS}}", &read.status.rows.len().to_string())
-        .replace("{{HOSTS}}", &hosts(read))
-        .replace("{{RAIL}}", &rail(read))
-        .replace("{{BOARDH}}", &board_header(read))
+        .replace("{{CLOCK}}", &part("clock"))
+        .replace("{{COUNT}}", &part("count"))
+        .replace("{{YESALL}}", &part("yes-all"))
+        .replace("{{SENT}}", &part("sent"))
+        .replace("{{OBJECTS}}", &part("bd-board"))
+        .replace("{{HOSTS}}", &part("hosts"))
+        .replace("{{RAIL}}", &rail_frame(&part("rail-cards"), &part("rail-since")))
+        .replace("{{BOARDH}}", &part("board-h"))
         .replace("{{DOCK}}", &dock(read))
-        .replace("{{SENTLIST}}", &sent_list(read))
+        .replace("{{SENTLIST}}", &part("pal-dyn"))
         .replace("{{PALCOMMANDS}}", &palette::template())
-        .replace("{{LOG}}", &log(read))
+        .replace("{{LOG}}", &part("loglist"))
         .replace("{{TOUR}}", &tour(read))
         .replace("{{TOURHEAD}}", &tour_head(read));
+    for (slot, _) in LANES.iter() {
+        let id = lane_id(slot);
+        out = out.replace(slot, &lane_frame(&id, &|piece| part(&format!("{id}-{piece}"))));
+    }
+    out
+}
+
+/// A short digest of a drawn region: what an update compares, so a region that
+/// did not move is not sent again and no rendering is kept (15, 310a, S235).
+pub fn digest(text: &str) -> String {
+    let mut hash: u64 = 0xcbf2_9ce4_8422_2325;
+    for byte in text.bytes() {
+        hash ^= u64::from(byte);
+        hash = hash.wrapping_mul(0x0100_0000_01b3);
+    }
+    format!("{hash:016x}")
+}
+
+/// The regions of the page an update swaps, by the id each has on the page,
+/// drawn from one read: the hosts, the rail's cards and Recently done, the
+/// board's head, each lane's head, groups and empty line, the counts, the log,
+/// the lists of what was sent, the clock and yes all (S221, S235).
+pub fn regions(read: &Read) -> Vec<(String, String)> {
+    let standing = read.decisions.iter().filter(|d| flywheel_engine::rail::counted(&d.group)).count().to_string();
+    let sent: usize = read.answered.values().map(Vec::len).sum();
+    let lately = sent_list(read);
+    let mut out = vec![
+        ("hosts".to_string(), hosts(read)),
+        ("rail-cards".to_string(), rail_cards(read)),
+        ("rail-since".to_string(), since(read)),
+        ("board-h".to_string(), board_header(read)),
+        ("count".to_string(), standing.clone()),
+        ("bd-plan".to_string(), standing),
+        ("bd-board".to_string(), read.status.rows.len().to_string()),
+        ("sent".to_string(), sent.to_string()),
+        ("loglist".to_string(), log(read)),
+        ("clock".to_string(), escape(&read.status.at.format("%H:%M").to_string())),
+        ("pal-dyn".to_string(), lately),
+        // The control itself, which the page puts where the one it holds stands.
+        ("yes-all".to_string(), yes_all(read)),
+    ];
     for ((slot, machines), (title, sub)) in LANES.iter().zip(LANE_HEADS.iter()) {
-        out = out.replace(slot, &lane(read, &lane_id(slot), title, sub, machines));
+        let id = lane_id(slot);
+        let mine = lane_rows(read, machines);
+        out.push((format!("{id}-head"), lane_head(read, title, sub, machines, &mine)));
+        for group in status::GROUPS {
+            out.push((format!("{id}-{}", group.replace(' ', "-")), lane_group(read, &id, group, &mine)));
+        }
+        out.push((format!("{id}-empty"), lane_empty(read, title, machines, &mine)));
+    }
+    out
+}
+
+/// What an update carries: every region whose digest is not the one the page
+/// holds, with its new digest, and the open drawer's page where it moved;
+/// nothing else, and never the whole page (S221, S235, 310a). `open` is the
+/// object whose page the drawer holds and that page's digest.
+pub fn update(
+    read: &Read,
+    generation: u64,
+    held: &BTreeMap<String, String>,
+    open: Option<(&str, &str)>,
+) -> serde_json::Value {
+    let mut moved = serde_json::Map::new();
+    for (id, html) in regions(read) {
+        let now = digest(&html);
+        if held.get(&id) != Some(&now) {
+            moved.insert(id, serde_json::json!({"html": html, "digest": now}));
+        }
+    }
+    let mut out = serde_json::json!({"generation": generation, "regions": moved});
+    if let Some((object, was)) = open {
+        if let Some(page) = dock_page(read, object) {
+            let now = digest(&page);
+            if now != was {
+                out["dock"] = serde_json::json!({"object": object, "html": page, "digest": now});
+            }
+        }
     }
     out
 }
@@ -1600,12 +1684,24 @@ fn host_chips(read: &Read) -> Vec<HostChip> {
 /// The rail: every standing decision with its number and its answers, one tap
 /// each, in the groups the model folds them into (15, 11, 311).
 fn rail(read: &Read) -> String {
-    let mut out = String::from(
-        "<div class=\"rail-h\"><h2>Decisions</h2>\
-         <span class=\"keys\" title=\"j and k walk the decisions; the key on a control answers it; Enter opens the one in hand\">\
-         <kbd>j</kbd><kbd>k</kbd> walk <kbd>↵</kbd> open</span>\
-         <a class=\"btn sm phone-only\" id=\"pal-open-rail\" href=\"#pal-scrim\">capture…</a></div>\n",
-    );
+    rail_frame(&rail_cards(read), &since(read))
+}
+
+/// The rail's head, which says how it is walked and nothing of the state.
+const RAIL_HEAD: &str = "<div class=\"rail-h\"><h2>Decisions</h2>\
+     <span class=\"keys\" title=\"j and k walk the decisions; the key on a control answers it; Enter opens the one in hand\">\
+     <kbd>j</kbd><kbd>k</kbd> walk <kbd>↵</kbd> open</span>\
+     <a class=\"btn sm phone-only\" id=\"pal-open-rail\" href=\"#pal-scrim\">capture…</a></div>\n";
+
+/// The rail as it stands on the page: its head, its cards and what finished
+/// lately, the last two regions an update swaps apart (S221, S235).
+fn rail_frame(cards: &str, since: &str) -> String {
+    format!("{RAIL_HEAD}<div id=\"rail-cards\">{cards}</div>\n<div id=\"rail-since\">{since}</div>\n")
+}
+
+/// The rail's decisions, in the model's order, each group named once.
+fn rail_cards(read: &Read) -> String {
+    let mut out = String::new();
     // A control that was refused says so where the control is, and the page is
     // otherwise the page: nothing is lost and nothing has to be gone back for
     // (81, 310, 311).
@@ -1617,9 +1713,7 @@ fn rail(read: &Read) -> String {
         );
     }
     if read.decisions.is_empty() {
-        out.push_str(
-            "<div class=\"empty\">Nothing to decide.</div>\n",
-        );
+        out.push_str("<div class=\"empty\">Nothing to decide.</div>\n");
     }
     // The groups in the model's order, each sorted by number: approve, decide,
     // answer, then attention outside the count (S3, 11). `derive` hands them
@@ -1632,15 +1726,10 @@ fn rail(read: &Read) -> String {
         if decision.group != group || first {
             group = decision.group.clone();
             first = false;
-            let _ = write!(
-                out,
-                "<div class=\"grp {0}\"><span class=\"g\">{0}</span></div>\n",
-                escape(&group)
-            );
+            let _ = write!(out, "<div class=\"grp {0}\"><span class=\"g\">{0}</span></div>\n", escape(&group));
         }
         out.push_str(&card(read, decision));
     }
-    out.push_str(&since(read));
     out
 }
 
@@ -2134,10 +2223,31 @@ fn board_header(read: &Read) -> String {
 /// own, or the board would say the same thing twice and the thread would be a
 /// list of names with nothing on it.
 fn lane(read: &Read, id: &str, title: &str, sub: &str, machines: &[&str]) -> String {
-    let mut out = String::new();
     let mine = lane_rows(read, machines);
-    let _ = write!(
-        out,
+    lane_frame(id, &|piece| match piece {
+        "head" => lane_head(read, title, sub, machines, &mine),
+        "empty" => lane_empty(read, title, machines, &mine),
+        group => lane_group(read, id, &group.replace('-', " "), &mine),
+    })
+}
+
+/// A lane as it stands on the page: its head, a region per group and the line
+/// an empty lane says, each swapped apart by an update (S221, S235).
+fn lane_frame(id: &str, piece: &dyn Fn(&str) -> String) -> String {
+    let mut out = format!("<div id=\"{id}-head\">{}</div>\n<div class=\"status-groups\">\n", piece("head"));
+    for group in status::GROUPS {
+        let group = group.replace(' ', "-");
+        let _ = write!(out, "<div id=\"{id}-{group}\">{}</div>\n", piece(&group));
+    }
+    let _ = write!(out, "<div id=\"{id}-empty\">{}</div>\n</div>\n", piece("empty"));
+    out
+}
+
+/// A lane's head: its title, how much it draws and, in Inception, the counter
+/// that opens the tray, since what waits for curation belongs where curation
+/// reads it (118, 110, S225).
+fn lane_head(read: &Read, title: &str, sub: &str, machines: &[&str], mine: &[&status::Row]) -> String {
+    let mut out = format!(
         "<div class=\"lane-h\"><h2 class=\"lane-title\">{}</h2>{}<span class=\"n\">{}</span></div>\n",
         escape(title),
         match sub.is_empty() {
@@ -2146,49 +2256,44 @@ fn lane(read: &Read, id: &str, title: &str, sub: &str, machines: &[&str]) -> Str
         },
         mine.len()
     );
-    // What waits for curation belongs to inception, where curation reads it:
-    // the counter opens the tray, and none of it is discarded (118, 110, S225).
     if machines.contains(&"signal") {
         out.push_str(&tray::counter(read));
     }
-    out.push_str("<div class=\"status-groups\">\n");
-    let mut drawn = 0;
-    for group in status::GROUPS {
-        let rows = group_rows(read, group, &mine);
-        // A group with nothing in it keeps its heading and says nothing
-        // under it: four "nothing"s down a lane read as the machine talking to
-        // itself, and the grouping is what 141 asks for (141, D16).
-        drawn += rows.len();
-        let _ = write!(
-            out,
-            "<section class=\"sec-h-group{empty}\" data-group=\"{}\">\n<h2>{group}</h2>\n",
-            group.replace(' ', "-"),
-            empty = match rows.is_empty() {
-                true => " empty",
-                false => "",
-            },
-        );
-        let drawn_rows: Vec<String> = rows.iter().map(|row| object_on_the_board(read, row, &mine)).collect();
-        let list = format!("{id}.{}", group.replace(' ', "-"));
-        out.push_str(&lists::page(&drawn_rows, 0, None, &list, lists::Row::Div));
-        out.push_str("</section>\n");
-    }
-    if drawn == 0 {
-        let waiting = read.status.waiting.iter().any(|w| !w.signals.is_empty());
-        let said = match (machines.contains(&"signal"), waiting) {
-            // What arrived is not nothing: it waits for curation, one tap up
-            // (S214, S225).
-            (true, true) => "No notes yet. What arrived waits for curation above; type what you noticed in the box to add a note.",
-            _ => LANE_EMPTY
-                .iter()
-                .find(|(t, _)| *t == title)
-                .map(|(_, s)| *s)
-                .unwrap_or("Nothing here."),
-        };
-        let _ = write!(out, "<div class=\"quiet empty\">{}</div>\n", escape(said));
-    }
-    out.push_str("</div>\n");
     out
+}
+
+/// One group of a lane, its objects fifty at a time. A group with nothing in it
+/// keeps its heading and says nothing under it: four "nothing"s down a lane
+/// read as the machine talking to itself, and the grouping is what 141 asks for
+/// (141, D16).
+fn lane_group(read: &Read, id: &str, group: &str, mine: &[&status::Row]) -> String {
+    let rows = group_rows(read, group, mine);
+    let drawn: Vec<String> = rows.iter().map(|row| object_on_the_board(read, row, mine)).collect();
+    let slug = group.replace(' ', "-");
+    format!(
+        "<section class=\"sec-h-group{empty}\" data-group=\"{slug}\">\n<h2>{group}</h2>\n{rows}</section>\n",
+        empty = match rows.is_empty() {
+            true => " empty",
+            false => "",
+        },
+        rows = lists::page(&drawn, 0, None, &format!("{id}.{slug}"), lists::Row::Div),
+    )
+}
+
+/// What a lane with nothing in it says, which is what to do next (S214, S225).
+fn lane_empty(read: &Read, title: &str, machines: &[&str], mine: &[&status::Row]) -> String {
+    let drawn: usize = status::GROUPS.iter().map(|group| group_rows(read, group, mine).len()).sum();
+    if drawn > 0 {
+        return String::new();
+    }
+    let waiting = read.status.waiting.iter().any(|w| !w.signals.is_empty());
+    let said = match (machines.contains(&"signal"), waiting) {
+        // What arrived is not nothing: it waits for curation, one tap up
+        // (S214, S225).
+        (true, true) => "No notes yet. What arrived waits for curation above; type what you noticed in the box to add a note.",
+        _ => LANE_EMPTY.iter().find(|(t, _)| *t == title).map(|(_, s)| *s).unwrap_or("Nothing here."),
+    };
+    format!("<div class=\"quiet empty\">{}</div>\n", escape(said))
 }
 
 /// The rows a lane draws: the objects whose phase it is. A capture of several

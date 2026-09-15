@@ -179,3 +179,117 @@ fn the_style_and_script_are_cached_under_the_binarys_version() {
         }
     });
 }
+
+/// A form body posted the way the page's script posts one, with what the page
+/// holds in the query, and the reply as it came.
+async fn posted(address: std::net::SocketAddr, path: &str, body: &str) -> Vec<u8> {
+    let mut socket = tokio::net::TcpStream::connect(address).await.unwrap();
+    let request = format!(
+        "POST {path} HTTP/1.1\r\nHost: localhost:4242\r\nConnection: close\r\n\
+         Content-Type: application/x-www-form-urlencoded\r\nContent-Length: {}\r\n\r\n{body}",
+        body.len()
+    );
+    socket.write_all(request.as_bytes()).await.unwrap();
+    let mut reply = Vec::new();
+    socket.read_to_end(&mut reply).await.unwrap();
+    reply
+}
+
+/// What the page holds, as it asks for an update: every region's digest.
+fn holding(digests: &std::collections::BTreeMap<String, String>) -> String {
+    let pairs: Vec<String> = digests.iter().map(|(id, digest)| format!("{id}:{digest}")).collect();
+    pairs.join(",").replace(':', "%3A").replace(',', "%2C")
+}
+
+/// An update carries only the regions that moved since what the page holds, and
+/// the open drawer's page only when it moved; a form's post answers with the
+/// same, and nothing already on the page is sent again (S221, S235, 310a).
+#[test]
+fn an_update_carries_only_the_regions_changed_since_its_generation() {
+    use flywheel_atoms::Records;
+    use serde_json::Value;
+    const BOLT: &str = "bolt/atlas/plan-rows";
+    in_a_runtime(async {
+        let defs = flywheel_domain::set::load().expect("the embedded definitions");
+        let mut store = FakeStore::default();
+        let at = flywheel_domain::commands::now(&store).expect("a point");
+        let record = [("repository".to_string(), serde_json::json!("atlas"))].into_iter().collect();
+        flywheel_domain::commands::put_new(&mut store, &defs, BOLT, "bolt", None, record, at).expect("the bolt");
+        let mut bolt = Records::get(&store, BOLT).expect("a read").expect("the bolt");
+        bolt.config.insert("life".into(), "open".into());
+        bolt.config.insert("life.open.close".into(), "offered".into());
+        let base = bolt.seq;
+        Records::put(&mut store, BOLT, &bolt, base).expect("its close offered");
+        let number = flywheel_domain::commands::rail(&mut store, &defs)
+            .expect("the rail")
+            .into_iter()
+            .find_map(|d| d.number)
+            .expect("a numbered decision");
+        let served = Served::over(store, Box::new(FakeWorld::new()), defs, &["chuck".to_string()], "http://studio.tailnet.ts.net/willdan");
+        let listener = tokio::net::TcpListener::bind("127.0.0.1:0").await.unwrap();
+        let address = listener.local_addr().unwrap();
+        tokio::spawn(crate::http::serve_on(served, listener));
+
+        // The first view names the digest of every region it draws.
+        let (_, page) = split(&asked(address, "/willdan/", "").await);
+        let page = String::from_utf8_lossy(&page).to_string();
+        let named = page
+            .split("<meta name=\"flywheel-digests\" content=\"")
+            .nth(1)
+            .and_then(|rest| rest.split('"').next())
+            .expect("the page names its regions' digests");
+        let mut held: std::collections::BTreeMap<String, String> = named
+            .split(',')
+            .filter_map(|pair| pair.rsplit_once(':'))
+            .map(|(id, digest)| (id.to_string(), digest.to_string()))
+            .collect();
+        for id in ["rail-cards", "rail-since", "lane-construction-in-progress", "count", "loglist"] {
+            assert!(held.contains_key(id), "the page holds no digest for `{id}`: {named}");
+            assert!(page.contains(&format!("id=\"{id}\"")), "`{id}` is no region of the page");
+        }
+        assert!(held.contains_key("yes-all"), "the page holds no digest for yes all: {named}");
+        let (head, drawer) = split(&asked(address, &format!("/willdan/{BOLT}?part=dock"), "").await);
+        let drawer_digest = header(&head, "x-flywheel-digest").expect("the dock page's digest").to_string();
+        assert_eq!(drawer_digest, crate::page::digest(&String::from_utf8_lossy(&drawer)));
+        let open = format!("{}%20{drawer_digest}", BOLT.replace('/', "%2F"));
+
+        // Nothing moved: nothing comes.
+        let (_, body) = split(&asked(address, &format!("/willdan/?part=update&have={}&open={open}", holding(&held)), "").await);
+        let nothing: Value = serde_json::from_slice(&body).expect("an update");
+        assert_eq!(nothing["regions"], serde_json::json!({}), "{nothing}");
+        assert!(nothing.get("dock").is_none(), "the drawer's page did not move: {nothing}");
+
+        // An answer moves the rail's card, what was sent and the log, and the
+        // drawer's page, whose answers are under its title; nothing on the board.
+        let (head, body) = split(
+            &posted(address, &format!("/api/tools/answer?part=update&have={}&open={open}", holding(&held)), &format!("decision={number}&answer=yes")).await,
+        );
+        assert!(head.starts_with("http/1.1 200"), "a post from the page's script is answered with an update: {head}");
+        let moved: Value = serde_json::from_slice(&body).expect("an update");
+        let regions: Vec<String> = moved["regions"].as_object().expect("regions").keys().cloned().collect();
+        for id in ["rail-cards", "sent", "loglist"] {
+            assert!(regions.contains(&id.to_string()), "`{id}` moved and was not sent: {regions:?}");
+        }
+        for unmoved in ["hosts", "rail-since", "bd-board"] {
+            assert!(!regions.contains(&unmoved.to_string()), "`{unmoved}` did not move and was sent: {regions:?}");
+        }
+        assert!(!regions.iter().any(|id| id.starts_with("lane-")), "the board did not move and was sent: {regions:?}");
+        assert_eq!(moved["dock"]["object"], serde_json::json!(BOLT), "the open drawer's page moved and was not sent: {moved}");
+        assert!(moved["regions"]["rail-cards"]["html"].as_str().is_some_and(|html| html.contains("chuck")), "{moved}");
+        assert!(body.len() < 8_000, "one answer's update is {} bytes", body.len());
+
+        // Holding what it was sent, the page is current.
+        for (id, region) in moved["regions"].as_object().expect("regions") {
+            held.insert(id.clone(), region["digest"].as_str().expect("a digest").to_string());
+        }
+        let open = format!("{}%20{}", BOLT.replace('/', "%2F"), moved["dock"]["digest"].as_str().expect("a digest"));
+        let (_, body) = split(&asked(address, &format!("/willdan/?part=update&have={}&open={open}", holding(&held)), "").await);
+        let current: Value = serde_json::from_slice(&body).expect("an update");
+        assert_eq!(current["regions"], serde_json::json!({}), "{current}");
+        assert!(current.get("dock").is_none(), "{current}");
+
+        // A post with no script behind it still lands on the page.
+        let (head, _) = split(&posted(address, "/api/tools/answer", &format!("decision={number}&answer=yes")).await);
+        assert!(head.starts_with("http/1.1 303"), "{head}");
+    });
+}

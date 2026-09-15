@@ -277,6 +277,11 @@ pub struct Asked {
     /// (310a, S235).
     pub list: Option<String>,
     pub from: Option<usize>,
+    /// With `part=update`: the digest of every region the page holds, as
+    /// `<id>:<digest>` pairs, and the object whose page its drawer holds with
+    /// that page's digest (S221, S235).
+    pub have: Option<String>,
+    pub open: Option<String>,
 }
 
 /// `GET /api/tools`: the catalogue as the HTTP caller enumerates it.
@@ -315,6 +320,7 @@ struct Invocation {
 async fn invoke<S: StateStore + Send + 'static>(
     State(served): State<Served<S>>,
     Path(name): Path<String>,
+    Query(asked): Query<Asked>,
     headers: axum::http::HeaderMap,
     body: axum::body::Bytes,
 ) -> Response {
@@ -386,15 +392,18 @@ async fn invoke<S: StateStore + Send + 'static>(
     let mut call = Call::new(&name, served.operator(), "page");
     call.args = input.args;
     call.delivery_id = input.delivery_id;
-    let mut store = served.store.lock().await;
-    let mut world = served.world.lock().await;
-    let outcome = catalogue::call(&mut *store, &mut **world, &served.defs, &call);
-    // A refused control is answered where the operator is, as it always was,
-    // and kept in the run record with who asked, the tool, the object and the
-    // page's delivery, as a client's is (321, 79).
-    if let Err(refused) = &outcome {
-        served.record_refusals(&mut *store, &[protocol::Refused::of(&call, &refused.to_string())]);
-    }
+    let outcome = {
+        let mut store = served.store.lock().await;
+        let mut world = served.world.lock().await;
+        let outcome = catalogue::call(&mut *store, &mut **world, &served.defs, &call);
+        // A refused control is answered where the operator is, as it always
+        // was, and kept in the run record with who asked, the tool, the object
+        // and the page's delivery, as a client's is (321, 79).
+        if let Err(refused) = &outcome {
+            served.record_refusals(&mut *store, &[protocol::Refused::of(&call, &refused.to_string())]);
+        }
+        outcome
+    };
     // A page response is one of the three local causes, and it does not wait
     // for the poll (130, D6).
     if outcome.is_ok() {
@@ -403,7 +412,7 @@ async fn invoke<S: StateStore + Send + 'static>(
     match (outcome, form) {
         // The control the operator used sends them back to the page they were
         // on, which renders the answer they just gave (137, 310).
-        (Ok(_), true) => to_the_page(&back),
+        (Ok(_), true) => respond(&served, &back, &asked, None).await,
         (Ok(outcome), false) => {
             let mut answered = json!({"id": outcome.id, "recorded": catalogue::recorded(&outcome)});
             // An ask answers with the name a route move gives it (116).
@@ -412,7 +421,10 @@ async fn invoke<S: StateStore + Send + 'static>(
             }
             (StatusCode::OK, Json(answered)).into_response()
         }
-        (Err(refused), true) => back_with(&back, &refused.to_string()),
+        (Err(refused), true) => {
+            let refused = refused.to_string();
+            respond(&served, &back, &asked, Some(refused)).await
+        }
         (Err(refused), false) => (
             StatusCode::BAD_REQUEST,
             Json(json!({"refused": refused.to_string()})),
@@ -430,6 +442,7 @@ async fn invoke<S: StateStore + Send + 'static>(
 /// so this adds no operation to the catalogue (193, D9).
 async fn answer_all<S: StateStore + Send + 'static>(
     State(served): State<Served<S>>,
+    Query(asked): Query<Asked>,
     headers: axum::http::HeaderMap,
     body: axum::body::Bytes,
 ) -> Response {
@@ -465,57 +478,112 @@ async fn answer_all<S: StateStore + Send + 'static>(
         )
             .into_response();
     }
-    if named.is_empty() {
-        let reason = "the control named no decision to answer";
-        let asked = Call::new(catalogue::ANSWER, served.operator(), "page");
-        served.record_refusals(&mut *served.store.lock().await, &[protocol::Refused::of(&asked, reason)]);
-        return back_with(&back, reason);
-    }
-    let mut store = served.store.lock().await;
-    let mut world = served.world.lock().await;
-    // The rail as it stands, read and not renumbered: a request is not a tick
-    // (15, D12).
-    let decisions = match flywheel_domain::commands::rail_read(&*store, &served.defs) {
-        Ok(decisions) => decisions,
-        Err(e) => return back_with(&back, &e.to_string()),
+    let outcome = match named.is_empty() {
+        true => {
+            let reason = "the control named no decision to answer";
+            let asked = Call::new(catalogue::ANSWER, served.operator(), "page");
+            served.record_refusals(&mut *served.store.lock().await, &[protocol::Refused::of(&asked, reason)]);
+            Err(reason.to_string())
+        }
+        false => {
+            let mut store = served.store.lock().await;
+            let mut world = served.world.lock().await;
+            yes_to_each(&served, &mut *store, &mut **world, &named)
+        }
     };
-    // Of the numbers named, the ones that still stand and still take a yes. One
-    // answered or retracted since the page was drawn is passed over, not
-    // refused: approval given once is never re-asked and a yes is never applied
-    // twice (6, 137).
+    if outcome.is_ok() {
+        served.woken.notify_one();
+    }
+    respond(&served, &back, &asked, outcome.err()).await
+}
+
+/// One `answer` per number the control named that still stands and still takes
+/// a yes, in number order, each recorded on its own. The rail is read as it
+/// stands and not renumbered: a request is not a tick (15, D12). One answered or
+/// retracted since the page was drawn is passed over, not refused: approval
+/// given once is never re-asked and a yes is never applied twice (6, 137). One
+/// that cannot be recorded stops the rest and says which did not go (11, 81).
+fn yes_to_each<S: StateStore + Send + 'static, W: World + ?Sized>(
+    served: &Served<S>,
+    store: &mut S,
+    world: &mut W,
+    named: &[u32],
+) -> Result<(), String> {
+    let decisions = flywheel_domain::commands::rail_read(&*store, &served.defs).map_err(|e| e.to_string())?;
     let answering: Vec<(u32, String)> = page::yes_all_answers(&decisions)
         .into_iter()
         .filter(|(number, _)| named.contains(number))
         .collect();
     if answering.is_empty() {
-        return back_with(
-            &back,
-            "every decision the control named has been answered or retracted since the page \
-             was drawn; nothing was answered twice (6)",
-        );
+        return Err("every decision the control named has been answered or retracted since the page \
+                    was drawn; nothing was answered twice (6)"
+            .to_string());
     }
-    let mut given = 0usize;
-    for (number, _) in &answering {
+    for (given, (number, _)) in answering.iter().enumerate() {
         let call = yes_to(*number, served.operator());
-        match catalogue::call(&mut *store, &mut **world, &served.defs, &call) {
-            Ok(_) => given += 1,
-            // One that cannot be recorded does not stop the rest: each of these
-            // is its own response and the operator is told which did not go
-            // (11, 81).
-            Err(refused) => {
-                served.record_refusals(&mut *store, &[protocol::Refused::of(&call, &refused.to_string())]);
-                return back_with(
-                    &back,
-                    &format!(
-                        "{given} of {} answered; decision {number} was refused: {refused}",
-                        answering.len()
-                    ),
-                )
-            }
+        if let Err(refused) = catalogue::call(store, world, &served.defs, &call) {
+            served.record_refusals(store, &[protocol::Refused::of(&call, &refused.to_string())]);
+            return Err(format!(
+                "{given} of {} answered; decision {number} was refused: {refused}",
+                answering.len()
+            ));
         }
     }
-    served.woken.notify_one();
-    to_the_page(&back)
+    Ok(())
+}
+
+/// What a control on the page is answered with: where the page's script asked
+/// for an update, the regions that moved, with the reason where the control
+/// was refused; otherwise the page it was on, with the reason on it (310, S221,
+/// S235).
+async fn respond<S: StateStore + Send + 'static>(
+    served: &Served<S>,
+    back: &str,
+    asked: &Asked,
+    refused: Option<String>,
+) -> Response {
+    if asked.part.as_deref() != Some("update") {
+        return match refused {
+            Some(refused) => back_with(back, &refused),
+            None => to_the_page(back),
+        };
+    }
+    let mut store = served.store.lock().await;
+    let world = served.world.lock().await;
+    update_response(served, &mut *store, &**world, asked, refused)
+}
+
+/// The page's update as a response, from one read: every region whose digest
+/// the page does not hold, and the open drawer's page where it moved (S221,
+/// S235, 310a).
+fn update_response<S: StateStore + Send + 'static, W: World + ?Sized>(
+    served: &Served<S>,
+    store: &mut S,
+    world: &W,
+    asked: &Asked,
+    refused: Option<String>,
+) -> Response {
+    let held: BTreeMap<String, String> = asked
+        .have
+        .as_deref()
+        .unwrap_or_default()
+        .split(',')
+        .filter_map(|pair| pair.rsplit_once(':'))
+        .map(|(id, digest)| (id.to_string(), digest.to_string()))
+        .collect();
+    let open = asked.open.as_deref().map(|open| open.rsplit_once(' ').unwrap_or((open, "")));
+    match page::read(store, world, &served.defs, &served.address, served.operator()) {
+        Ok(read) => {
+            let mut answered = page::update(&read, *served.changed.borrow(), &held, open);
+            if let Some(refused) = refused {
+                answered["refused"] = json!(refused);
+            }
+            (StatusCode::OK, Json(answered)).into_response()
+        }
+        Err(failed) => {
+            (StatusCode::INTERNAL_SERVER_ERROR, Json(json!({"refused": failed.to_string()}))).into_response()
+        }
+    }
 }
 
 /// One number's yes under the "yes all" control: its own `answer` call, as the
@@ -535,6 +603,7 @@ fn yes_to(number: u32, by: &str) -> Call {
 /// the page (310, 311).
 async fn curate<S: StateStore + Send + 'static>(
     State(served): State<Served<S>>,
+    Query(asked): Query<Asked>,
     headers: axum::http::HeaderMap,
     body: axum::body::Bytes,
 ) -> Response {
@@ -552,19 +621,22 @@ async fn curate<S: StateStore + Send + 'static>(
     }
     let mut call = Call::new("curate", served.operator(), "page");
     call.args = fields;
-    let mut store = served.store.lock().await;
-    let mut world = served.world.lock().await;
-    match catalogue::call(&mut *store, &mut **world, &served.defs, &call) {
-        Ok(_) => {
-            // A session's report is a local cause too (130, D6).
-            served.woken.notify_one();
-            to_the_page(&back)
+    let refused = {
+        let mut store = served.store.lock().await;
+        let mut world = served.world.lock().await;
+        match catalogue::call(&mut *store, &mut **world, &served.defs, &call) {
+            Ok(_) => None,
+            Err(refused) => {
+                served.record_refusals(&mut *store, &[protocol::Refused::of(&call, &refused.to_string())]);
+                Some(refused.to_string())
+            }
         }
-        Err(refused) => {
-            served.record_refusals(&mut *store, &[protocol::Refused::of(&call, &refused.to_string())]);
-            back_with(&back, &refused.to_string())
-        }
+    };
+    // A session's report is a local cause too (130, D6).
+    if refused.is_none() {
+        served.woken.notify_one();
     }
+    respond(&served, &back, &asked, refused).await
 }
 
 /// A form body's fields, by object id. Percent-encoding and `+` for a space,
@@ -641,6 +713,14 @@ async fn page_of_instance<S: StateStore + Send + 'static>(
     }
     if asked.part.as_deref() == Some("list") {
         return listed(&served, &headers, None, &asked).await.into_response();
+    }
+    if asked.part.as_deref() == Some("update") {
+        if let Err(refused) = served.admits(host_of(&headers)) {
+            return (StatusCode::FORBIDDEN, Json(json!({"refused": refused}))).into_response();
+        }
+        let mut store = served.store.lock().await;
+        let world = served.world.lock().await;
+        return update_response(&served, &mut *store, &**world, &asked, None);
     }
     rendered(&served, &headers, None, asked.refused).await.into_response()
 }
@@ -727,9 +807,9 @@ async fn page_of_object<S: StateStore + Send + 'static>(
     Path((instance, object)): Path<(String, String)>,
     Query(asked): Query<Asked>,
     headers: axum::http::HeaderMap,
-) -> impl IntoResponse {
+) -> Response {
     if instance != served.instance() {
-        return wrong_instance(&served, &instance);
+        return wrong_instance(&served, &instance).into_response();
     }
     let object = object.trim_matches('/').to_string();
     // The signals tray is no object and opens at its own link all the same, so
@@ -746,22 +826,24 @@ async fn page_of_object<S: StateStore + Send + 'static>(
                         page::escape(&object)
                     )),
                 )
+                    .into_response()
             }
             Err(refused) => {
                 return (
                     StatusCode::INTERNAL_SERVER_ERROR,
                     Html(format!("<p class=\"refused\">{refused}</p>")),
                 )
+                    .into_response()
             }
         }
     }
     if asked.part.as_deref() == Some("list") {
-        return listed(&served, &headers, Some(&object), &asked).await;
+        return listed(&served, &headers, Some(&object), &asked).await.into_response();
     }
     if asked.part.as_deref() == Some("dock") {
         return docked(&served, &headers, &object).await;
     }
-    rendered(&served, &headers, Some(object), asked.refused).await
+    rendered(&served, &headers, Some(object), asked.refused).await.into_response()
 }
 
 /// The next rows of one list as its `more` fetches them, from one read like the
@@ -799,21 +881,29 @@ async fn docked<S: StateStore + Send + 'static>(
     served: &Served<S>,
     headers: &axum::http::HeaderMap,
     object: &str,
-) -> (StatusCode, Html<String>) {
+) -> Response {
     if let Err(refused) = served.admits(host_of(headers)) {
-        return (StatusCode::FORBIDDEN, Html(format!("<p class=\"refused\">{refused}</p>")));
+        return (StatusCode::FORBIDDEN, Html(format!("<p class=\"refused\">{refused}</p>"))).into_response();
     }
     let mut store = served.store.lock().await;
     let world = served.world.lock().await;
     match page::read(&mut *store, &**world, &served.defs, &served.address, served.operator()) {
         Ok(read) => match page::dock_page(&read, object) {
-            Some(page) => (StatusCode::OK, Html(page)),
+            Some(page) => {
+                // Its digest beside it, which the page holds to ask whether it
+                // moved (S221, S235).
+                let digest = page::digest(&page);
+                (StatusCode::OK, [(axum::http::HeaderName::from_static("x-flywheel-digest"), digest)], Html(page)).into_response()
+            }
             None => (
                 StatusCode::NOT_FOUND,
                 Html(format!("<p class=\"refused\">the instance holds no object `{}`</p>", page::escape(object))),
-            ),
+            )
+                .into_response(),
         },
-        Err(refused) => (StatusCode::INTERNAL_SERVER_ERROR, Html(format!("<p class=\"refused\">{refused}</p>"))),
+        Err(refused) => {
+            (StatusCode::INTERNAL_SERVER_ERROR, Html(format!("<p class=\"refused\">{refused}</p>"))).into_response()
+        }
     }
 }
 

@@ -4,6 +4,7 @@
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
 <meta name="flywheel-version" content="{{VERSION}}">
+<meta name="flywheel-digests" content="{{DIGESTS}}">
 {{TOURHEAD}}
 <title>flywheel</title>
 <style>
@@ -1057,7 +1058,7 @@ body[data-served="view"] .dk-b{overflow:visible}
       <!-- The surfaces themselves. Each carries its own header in the form of
            the object, its body and its footer of answers (S27, S28); this is
            the scroll container they sit in and brings no padding of its own. -->
-      <div class="dk-b" id="dk-b">{{DOCK}}</div>
+      <div class="dk-b" id="dk-b" data-digest="{{DOCKDIGEST}}">{{DOCK}}</div>
       <div class="dk-f" id="dk-f"></div>
     </aside>
     <!-- A dock page as the drawer shows it before its fetch comes back: shut
@@ -1336,11 +1337,12 @@ body[data-served="view"] .dk-b{overflow:visible}
     if(client || !INSTANCE || fetching[object]) return;
     fetching[object]=true; if(progress) progress.hidden=false;
     fetch('/'+INSTANCE+'/'+object.split('/').map(encodeURIComponent).join('/')+'?part=dock', {credentials:'same-origin', headers:{'Accept':'text/html'}})
-      .then(function(r){ return r.ok ? r.text() : Promise.reject(r.status); })
-      .then(function(html){
-        var held=document.getElementById('dock-'+object), page=new DOMParser().parseFromString(html, 'text/html').querySelector('article.surface');
+      .then(function(r){ if(!r.ok) return Promise.reject(r.status); var digest=r.headers.get('X-Flywheel-Digest')||''; return r.text().then(function(html){ return {html:html, digest:digest}; }); })
+      .then(function(got){
+        var held=document.getElementById('dock-'+object), page=new DOMParser().parseFromString(got.html, 'text/html').querySelector('article.surface');
         if(!held || !page) return;
         page.setAttribute('data-opened', held.getAttribute('data-opened') || 'false');
+        page.setAttribute('data-digest', got.digest);
         held.replaceWith(document.adoptNode(page));
       })
       .catch(function(){
@@ -1568,40 +1570,52 @@ body[data-served="view"] .dk-b{overflow:visible}
     };
   }
 
-  // ---- the page keeps itself current (S221): the host says when its store
-  // moved, and the page fetches itself and swaps the regions that differ,
-  // keeping the decision in hand, the drawer and where each column was
-  // scrolled to. Nothing is navigated; the page is never blank.
-  // The dock is not one of them: its page is fetched again below, while it is
-  // open, and no other page is on the page to swap (310a, S235).
-  var REGIONS=['hosts','rail','board-h','lanes','count','bd-plan','bd-board','sent','loglist','clock','pal-dyn'];
-  function swap(html){
-    var doc=new DOMParser().parseFromString(html, 'text/html');
-    if(!doc.body || !doc.getElementById('rail')) return false;
+  // ---- the page keeps itself current (S221, S235): the host says when its
+  // store moved, and the page asks it for what moved since the regions it
+  // holds, by their digests, and swaps those and nothing else, keeping the
+  // decision in hand, the drawer and where each column was scrolled to; the
+  // open drawer's page comes only when it moved. What a form's post returns is
+  // the same, so nothing is navigated and the whole page is never fetched again.
+  var DIGESTS={};
+  (document.querySelector('meta[name="flywheel-digests"]')||{content:''}).content.split(',').forEach(function(pair){ var at=pair.lastIndexOf(':'); if(at>0) DIGESTS[pair.slice(0, at)]=pair.slice(at+1); });
+  function asking(){
+    var have=Object.keys(DIGESTS).map(function(id){ return id+':'+DIGESTS[id]; }).join(',');
+    var query='part=update&have='+encodeURIComponent(have), open=document.querySelector('.dock .surface[data-opened=true]');
+    if(open && open.id!=='dock-deliverable' && !open.hasAttribute('data-loading')) query+='&open='+encodeURIComponent(open.id.slice(5)+' '+(open.getAttribute('data-digest')||''));
+    return query;
+  }
+  function applyUpdate(moved){
+    if(!moved || !moved.regions) return false;
     var keep=focused(); var number=keep ? keep.getAttribute('data-number') : null;
     var lit=document.querySelector('#board .lit'); var litId=lit ? lit.id : null;
     var scrolled=[]; document.querySelectorAll('#rail,#board,#lanes,.lane,#dk-b').forEach(function(el){ scrolled.push(el.scrollTop); });
-    REGIONS.forEach(function(id){ var cur=document.getElementById(id); var next=doc.getElementById(id); if(cur && next && cur.innerHTML!==next.innerHTML) cur.innerHTML=next.innerHTML; });
-    var dropBody=document.querySelector('#pal-drop .pal-body'), nextDrop=doc.querySelector('#pal-drop .pal-body'); if(dropBody && nextDrop && dropBody.innerHTML!==nextDrop.innerHTML) dropBody.innerHTML=nextDrop.innerHTML;
-    var ya=document.querySelector('form.yesall-form'), nya=doc.querySelector('form.yesall-form'); if(ya && nya && ya.outerHTML!==nya.outerHTML) ya.outerHTML=nya.outerHTML;
-    document.body.setAttribute('data-gen', doc.body.getAttribute('data-gen')||'');
+    Object.keys(moved.regions).forEach(function(id){
+      var region=moved.regions[id]; DIGESTS[id]=region.digest;
+      // Yes all is the control itself, and what was sent lately stands in the
+      // header's box as well as the phone's.
+      if(id==='yes-all'){ var control=document.querySelector('form.yesall-form'); if(control) control.outerHTML=region.html; return; }
+      if(id==='pal-dyn'){ var lately=document.querySelector('#pal-drop .pal-body'); if(lately) lately.innerHTML=region.html; }
+      var el=document.getElementById(id); if(el) el.innerHTML=region.html;
+    });
+    if(moved.dock){
+      var held=document.getElementById('dock-'+moved.dock.object), page=new DOMParser().parseFromString(moved.dock.html, 'text/html').querySelector('article.surface');
+      if(held && page){ page.setAttribute('data-opened', held.getAttribute('data-opened')||'false'); page.setAttribute('data-digest', moved.dock.digest); held.replaceWith(document.adoptNode(page)); }
+    }
+    if(moved.generation!==undefined) document.body.setAttribute('data-gen', String(moved.generation));
     document.querySelectorAll('#rail,#board,#lanes,.lane,#dk-b').forEach(function(el,i){ if(scrolled[i]!==undefined) el.scrollTop=scrolled[i]; });
     if(!(number!==null && focusNumber(number))){ if(litId && document.getElementById(litId)) focusObject(litId); else focusCard(Math.max(0, at), true); }
     // A number's answers are read off its card, which may just have changed.
     if(boxOpen()) update();
-    var open=document.querySelector('.dock .surface[data-opened=true]');
-    if(open && open.id!=='dock-deliverable') fetchDock(open.id.slice(5));
     return true;
   }
   var refreshing=false, again=false, busy=false;
   function refresh(){
-    if(client) return;
-    if(refreshing){ again=true; return; }
-    if(busy){ again=true; return; }
+    if(client || !INSTANCE) return;
+    if(refreshing || busy){ again=true; return; }
     refreshing=true;
-    fetch(location.pathname+location.search, {credentials:'same-origin', headers:{'Accept':'text/html'}})
-      .then(function(r){ return r.ok ? r.text() : Promise.reject(r.status); })
-      .then(swap)
+    fetch('/'+INSTANCE+'/?'+asking(), {credentials:'same-origin', headers:{'Accept':'application/json'}})
+      .then(function(r){ return r.ok ? r.json() : Promise.reject(r.status); })
+      .then(applyUpdate)
       .catch(function(){})
       .then(function(){ refreshing=false; if(again){ again=false; refresh(); } });
   }
@@ -1630,11 +1644,13 @@ body[data-served="view"] .dk-b{overflow:visible}
     e.preventDefault();
     var body=new URLSearchParams(new FormData(form));
     var submitter=e.submitter; if(submitter && submitter.name) body.append(submitter.name, submitter.value);
-    fetch(form.getAttribute('action')||location.pathname, {method:'POST', body:body, credentials:'same-origin', headers:{'Accept':'text/html'}})
-      .then(function(r){ return r.text(); })
-      .then(function(html){
-        if(!swap(html)) { location.reload(); return; }
-        if(form.id==='pal-open' || form.id==='capture-box'){ form.reset(); closeBox(); }
+    var action=form.getAttribute('action')||location.pathname;
+    fetch(action+(action.indexOf('?')<0 ? '?' : '&')+asking(), {method:'POST', body:body, credentials:'same-origin', headers:{'Accept':'application/json'}})
+      .then(function(r){ return r.json(); })
+      .then(function(moved){
+        if(!applyUpdate(moved)) { location.reload(); return; }
+        if(moved.refused) toast(moved.refused);
+        else if(form.id==='pal-open' || form.id==='capture-box'){ form.reset(); closeBox(); }
         settle(form);
         if(again){ again=false; refresh(); }
       })
@@ -1649,6 +1665,9 @@ body[data-served="view"] .dk-b{overflow:visible}
   // ---- at the start: the first decision is in hand, or the one whose object
   // the link opened (S219).
   var opened=/^#dock-(.+)$/.exec(location.hash);
+  // The page a link named came with the load, its digest beside it.
+  var named=document.querySelector('.dock .surface[data-opened=true]'), drawer=document.getElementById('dk-b');
+  if(named && drawer) named.setAttribute('data-digest', drawer.getAttribute('data-digest')||'');
   if(!(opened && focusObject(decodeURIComponent(opened[1])))) focusCard(0, true);
   if(opened && !client) openDock(decodeURIComponent(opened[1]));
 })();

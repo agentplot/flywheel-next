@@ -282,7 +282,7 @@ fn bundle_has_no_external_fetch() {
     for kept in ["fetch(\"http", "fetch('http", "localStorage", "sessionStorage", "XMLHttpRequest", "indexedDB"] {
         assert!(!html.contains(kept) && !script.contains(kept), "the page keeps client state or fetches from elsewhere: `{kept}`");
     }
-    assert!(script.contains("fetch(location.pathname"), "the page fetches itself when the host says it moved (S221)");
+    assert!(script.contains("part=update"), "the page asks its host for what moved when the host says it moved (S221, S235)");
     assert!(script.contains("new EventSource('/events')"), "the page listens for the host's changes (S221)");
 }
 
