@@ -1,10 +1,11 @@
-//! A link names the host's private-network address, never a localhost port
-//! (205a, 308, D10a).
+//! A link is written at the host's one address with the instance in the path,
+//! whether that is a name on the private network or a localhost port (205a,
+//! 308, D10a).
 
 use crate::links;
 
 #[test]
-fn link_never_names_localhost() {
+fn a_link_is_written_at_the_hosts_address() {
     // The address the manifest's router gives the host, with the instance in
     // the path: this is what a link opens.
     let address = "http://mac-mini.tailnet.ts.net/willdan";
@@ -13,20 +14,17 @@ fn link_never_names_localhost() {
     assert!(link.contains("/willdan/"), "the instance is in the path");
     assert!(!links::is_localhost(&link));
 
-    // The port the operator at the machine uses is served, and is never what a
-    // link names: it opens nothing on a phone (245, 306).
+    // A host that serves this computer alone writes its links at its localhost
+    // port, where they open (191, 245, D10a).
     for machine_only in [
         "http://localhost:4242/willdan",
         "http://127.0.0.1:4242/willdan",
         "http://[::1]:4242/willdan",
     ] {
         assert!(links::is_localhost(machine_only));
-        let refused = links::to_object(machine_only, "unit/atlas/u")
-            .expect_err("a link naming the machine's own address is refused");
-        assert!(
-            format!("{refused}").contains("opens nothing on a phone"),
-            "{refused}"
-        );
+        let link = links::to_object(machine_only, "unit/atlas/u").expect("a link at the machine");
+        assert_eq!(link, format!("{machine_only}/unit/atlas/u"));
+        assert_eq!(links::to_page(&format!("{machine_only}/")).unwrap(), machine_only);
     }
 }
 

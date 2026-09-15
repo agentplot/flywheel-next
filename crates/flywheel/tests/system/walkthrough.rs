@@ -242,7 +242,7 @@ fn readme_walkthrough_runs() {
 
     // Each of them is a record on the shared line, readable with nothing
     // running, and none of them was written by hand (132, 160, 167).
-    let state = home.join("hosts/laptop/agentplot/flywheel-state");
+    let state = home.join("hosts/laptop/agentplot/flywheel-state/main");
     for under in ["capture", "signal", "unit", "bolt", "work-item", "response"] {
         let held = std::fs::read_dir(state.join("objects").join(under))
             .unwrap_or_else(|e| panic!("`objects/{under}` on the shared line: {e}"))

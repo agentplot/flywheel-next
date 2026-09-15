@@ -55,9 +55,9 @@ pub struct Init {
 
 impl Init {
     /// This host's checkout of the state repository: the one place a host keeps
-    /// it, `<root>/<instance>/flywheel-state` (205, 218).
+    /// it, `<root>/<instance>/flywheel-state/main` (205, 218).
     pub fn checkout(&self) -> PathBuf {
-        self.root.join(&self.instance).join("flywheel-state")
+        self.root.join(&self.instance).join("flywheel-state").join("main")
     }
 }
 

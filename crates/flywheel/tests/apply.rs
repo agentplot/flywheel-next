@@ -153,7 +153,7 @@ fn a_delivered_artifact_is_a_file_in_the_repository() {
         .0
         .canonicalize()
         .expect("the directory resolves")
-        .join("root/t-reading/flywheel-blueprints")
+        .join("root/t-reading/flywheel-blueprints/main")
         .join(path);
     assert!(
         checkout.is_file(),
@@ -348,7 +348,7 @@ fn the_page_opens_what_a_session_delivered() {
         .0
         .canonicalize()
         .expect("the directory resolves")
-        .join("root/t-delivering/flywheel-blueprints");
+        .join("root/t-delivering/flywheel-blueprints/main");
     for path in ["openspec/changes/declines/research/note.md", "openspec/changes/declines/prototype/report.html"] {
         assert!(checkout.join(path).is_file(), "the session delivered {path} and it is not there");
     }

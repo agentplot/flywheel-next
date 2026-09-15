@@ -14,6 +14,15 @@ pub fn is_localhost(base: &str) -> bool {
     base.contains("localhost") || base.contains("127.0.0.1") || base.contains("[::1]")
 }
 
+/// Whether an address names its port: `http://localhost:4242` does,
+/// `http://localhost` and `http://[::1]` do not.
+fn names_a_port(base: &str) -> bool {
+    let rest = base.split_once("//").map(|(_, r)| r).unwrap_or(base);
+    let authority = rest.split('/').next().unwrap_or_default();
+    let after_ipv6 = authority.rsplit_once(']').map(|(_, r)| r).unwrap_or(authority);
+    after_ipv6.contains(':')
+}
+
 /// One host, serving one instance.
 pub struct HostWorld {
     pub manifest: Manifest,
@@ -26,11 +35,15 @@ pub struct HostWorld {
 impl HostWorld {
     pub fn open(manifest: Manifest, host: &str) -> Result<HostWorld> {
         let root = manifest.instance_root(host)?;
-        Ok(HostWorld {
+        let world = HostWorld {
             manifest,
             host: host.to_string(),
             root,
-        })
+        };
+        for (name, _) in world.manifest.all_repositories() {
+            world.move_an_earlier_checkout(&name)?;
+        }
+        Ok(world)
     }
 
     /// Where a repository's bare clone lives under the root.
@@ -38,10 +51,33 @@ impl HostWorld {
         self.root.join(format!("{name}.git"))
     }
 
-    /// Where its one checkout of the shared line lives. Places are worktrees
-    /// made later; this is the machinery's own (205, 93a).
+    /// Where its one checkout of the shared line lives:
+    /// `<root>/<instance>/<repo>/main`, beside which the profile keeps a
+    /// repository's `bolts/` and `places/`. Places are worktrees made later;
+    /// this is the machinery's own, and no session runs here (205, 93a,
+    /// `host.yaml` disk.shared_line).
     pub fn checkout(&self, name: &str) -> PathBuf {
-        self.root.join(name)
+        self.root.join(name).join("main")
+    }
+
+    /// A host this binary did not make kept its checkout at `<repo>` itself.
+    /// The layout is the machinery's own and not a hand-made one, so it is
+    /// moved under `main` once rather than refused. Nothing else is at
+    /// `<repo>`: places and lines are worktrees of the bare clone, elsewhere
+    /// under the root, and a checkout is a plain clone that names no path of
+    /// its own (205).
+    fn move_an_earlier_checkout(&self, name: &str) -> Result<()> {
+        let earlier = self.root.join(name);
+        if !earlier.join(".git").is_dir() || self.checkout(name).exists() {
+            return Ok(());
+        }
+        let aside = self.root.join(format!(".{name}.moving"));
+        std::fs::rename(&earlier, &aside)
+            .with_context(|| format!("moving {} aside", earlier.display()))?;
+        std::fs::create_dir_all(&earlier)?;
+        std::fs::rename(&aside, self.checkout(name))
+            .with_context(|| format!("moving {name}'s checkout under main"))?;
+        Ok(())
     }
 
     /// The router in force for a host: its own where the manifest gives it one,
@@ -54,18 +90,17 @@ impl HostWorld {
             .unwrap_or(&self.manifest.router)
     }
 
-    /// A host's one address: the private-network name its router gives it, with
-    /// the instance in the path (205a, D10a). Never a localhost port — that is
-    /// what `localhost_port_of` serves the operator at the machine, and no link
-    /// ever names it (245, 308).
+    /// A host's one address, with the instance in the path: the name its
+    /// router gives it on the operator's private network, or a localhost port
+    /// when it serves this computer alone (191, 205a, D10a). A localhost base
+    /// that names no port is at the port the page is served on there, so a
+    /// link written at it opens (245, 308).
     pub fn address_of(&self, host: &str) -> Result<String> {
         let base = self.router_of(host).base.trim_end_matches('/');
-        if is_localhost(base) {
-            bail!(
-                "host `{host}`'s router base `{base}` is a localhost address; a host's address \
-                 is its private-network name, so a link opens on a phone (191, 205a, D10a)"
-            );
-        }
+        let base = match is_localhost(base) && !names_a_port(base) {
+            true => format!("{base}:{}", self.localhost_port_of(host)),
+            false => base.to_string(),
+        };
         Ok(format!("{base}/{}", self.manifest.instance))
     }
 
@@ -137,8 +172,8 @@ impl World for HostWorld {
         Ok(())
     }
 
-    /// A host has one address — its private-network name — with the instance in
-    /// the path, and a link never names a localhost port (205a, D10a).
+    /// A host has one address, with the instance in the path, and every
+    /// endpoint is at it (205a, D10a).
     fn route(&self, name: &str) -> Result<Endpoint> {
         Ok(Endpoint {
             name: name.to_string(),

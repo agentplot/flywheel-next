@@ -32,7 +32,7 @@ fn a_host_with(repository: &str, name: &str) -> (PathBuf, PathBuf) {
     // What a join makes (205).
     let root = dir.join("root").join("storefront");
     git::clone_bare(&origin, &root.join(format!("{repository}.git"))).expect("the bare clone");
-    git::checkout_line(&root.join(format!("{repository}.git")), &root.join(repository), "main")
+    git::checkout_line(&root.join(format!("{repository}.git")), &root.join(repository).join("main"), "main")
         .expect("the checkout");
     (dir, root)
 }
@@ -140,7 +140,7 @@ fn a_places_commits_merge_into_the_line_and_the_line_lands_on_the_git_host() {
     let landed = log(&origin, "main");
     assert!(landed.contains("number the rows"), "the git host's main carries the work: {landed}");
     assert!(landed.contains("acceptance"), "and the acceptance commit (192): {landed}");
-    assert!(root.join("storefront").join("src/rows.rs").is_file(), "the machinery's checkout followed");
+    assert!(root.join("storefront/main/src/rows.rs").is_file(), "the machinery's checkout followed");
     assert_eq!(
         flywheel_workspace_recorded::evidence(ws.store, "bolt/storefront/plan-rows", "line.landed"),
         Some(json!(true))

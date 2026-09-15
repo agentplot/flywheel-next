@@ -40,9 +40,10 @@ pub struct Instance {
 }
 
 impl Instance {
-    /// This host's checkout of a repository the instance tracks (205, 218).
+    /// This host's checkout of a repository the instance tracks,
+    /// `<root>/<instance>/<repo>/main` (205, 218).
     pub fn checkout(&self, repository: &str) -> PathBuf {
-        self.root.join(&self.name).join(repository)
+        self.root.join(&self.name).join(repository).join("main")
     }
 
     pub fn open(&self, at: DateTime<Utc>) -> Result<Host> {

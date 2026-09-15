@@ -53,12 +53,13 @@ pub struct Host {
     #[serde(default = "yes")]
     pub intermittent: bool,
     /// This host's router: the manifest names one per host, and the host's one
-    /// address is the private-network name it gives (191, 205a, D10a). Where a
-    /// host names none the instance's own stands for it.
+    /// address is the one it gives — a name on the operator's private network,
+    /// or localhost when the host serves this computer alone (191, 205a,
+    /// D10a). Where a host names none the instance's own stands for it.
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub router: Option<Router>,
     /// The port the page is also served on for the operator sitting at this
-    /// machine. What 245 permits rather than requires; a link never names it
+    /// machine (245); a localhost address that names no port is at this one
     /// (205a, 308, D10a).
     #[serde(default = "localhost_port")]
     pub localhost_port: u16,
@@ -104,8 +105,9 @@ pub struct App {
     pub installation_covers: Vec<String>,
 }
 
-/// The host's router: a host has one address, its private-network name, with
-/// the instance in the path. Never a localhost port (205a, D10a).
+/// The host's router: a host has one address, with the instance in the path —
+/// a name on the operator's private network, or a localhost port on the
+/// operator's own computer (191, 205a, D10a).
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct Router {
     pub base: String,

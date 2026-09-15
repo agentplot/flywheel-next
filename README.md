@@ -96,7 +96,7 @@ reports with that line, which from the place is:
 
 ```sh
 FLYWHEEL_SESSION=work-item/flywheel-next/readme-crates-table-lacks/wi-1/fix/1 \
-FLYWHEEL_STATE=~/flywheel/hosts/laptop/agentplot/flywheel-state \
+FLYWHEEL_STATE=~/flywheel/hosts/laptop/agentplot/flywheel-state/main \
   cargo run -q -- exit done --deliverable commits --deliverable verdict --host laptop
 ```
 

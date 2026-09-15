@@ -18,7 +18,7 @@
 
 use crate::catalogue::{self, Call};
 use crate::links;
-use anyhow::{bail, Result};
+use anyhow::Result;
 use flywheel_atoms::{Received, StateStore, World};
 use flywheel_domain::commands::{self, Called};
 use flywheel_domain::sinks::{self, Sink};
@@ -331,7 +331,6 @@ pub fn render(
     notices: &[sinks::Notice],
     away: &BTreeMap<String, sinks::Away>,
 ) -> Result<Post> {
-    check_address(address)?;
     let mut lines = Vec::new();
     // The same list the page draws, in the same order: the groups the model
     // names, each sorted by number (18, S3). A number means the same thing on
@@ -617,15 +616,3 @@ impl<C: Channel> Chat<C> {
     }
 }
 
-/// Refuse to write a link that names a localhost port, which opens nothing on a
-/// phone (205a, 308, D10a).
-pub fn check_address(address: &str) -> Result<()> {
-    if links::is_localhost(address) {
-        bail!(
-            "the chat would carry a link at `{address}`, which opens nothing on a phone; a \
-             rendering links at the host's private-network address with the instance in the \
-             path (205a, 308, D10a)"
-        );
-    }
-    Ok(())
-}

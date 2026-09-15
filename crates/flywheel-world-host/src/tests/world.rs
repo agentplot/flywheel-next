@@ -91,15 +91,57 @@ fn a_repository_a_manifest_and_a_route() {
     assert!(!endpoint.url.contains("localhost"));
 }
 
-/// A localhost base is refused: a link to one opens nothing on a phone (205a,
-/// D10a).
+/// A host that serves this computer alone has its localhost port as its
+/// address, with the instance in the path, so a link written at it opens
+/// (191, 205a, 245, D10a).
 #[test]
-fn a_localhost_address_is_refused() {
+fn a_localhost_address_carries_the_port_the_page_is_on() {
     let sandbox = Sandbox::new("localhost");
-    let manifest = sandbox.initialized_at("mac-mini", "http://localhost");
+    let mut manifest = sandbox.initialized_at("mac-mini", "http://localhost");
+    manifest.router.base = "http://localhost".into();
+    manifest.hosts.get_mut("mac-mini").unwrap().router = None;
+    manifest.hosts.get_mut("mac-mini").unwrap().localhost_port = 5150;
+    let world = HostWorld::open(manifest.clone(), "mac-mini").unwrap();
+    assert_eq!(world.address_of("mac-mini").unwrap(), "http://localhost:5150/willdan");
+    assert_eq!(world.route("rail").unwrap().url, "http://localhost:5150/willdan/rail");
+
+    // A port the operator gave is the one kept.
+    manifest.router.base = "http://127.0.0.1:4343/".into();
     let world = HostWorld::open(manifest, "mac-mini").unwrap();
-    let refused = world.route("rail").expect_err("localhost is no host address");
-    assert!(format!("{refused}").contains("205a"));
+    assert_eq!(world.address_of("mac-mini").unwrap(), "http://127.0.0.1:4343/willdan");
+}
+
+/// A host this binary did not make kept each checkout at `<repo>`; opening it
+/// moves each under `main` once, where the profile keeps it, and a join then
+/// finds nothing to do (205, `host.yaml` disk.shared_line).
+#[test]
+fn an_earlier_checkout_moves_under_main() {
+    let sandbox = Sandbox::new("earlier");
+    let manifest = sandbox.initialized("mac-mini");
+    let mut world = HostWorld::open(manifest.clone(), "mac-mini").unwrap();
+    join::join(&mut world).unwrap();
+    let head = |dir: &std::path::Path| crate::git::Repo::at(dir).run(&["rev-parse", "HEAD"]).unwrap().out;
+    let before = head(&world.checkout("flywheel-blueprints"));
+
+    // The layout as an earlier binary left it.
+    for name in ["flywheel-state", "flywheel-blueprints"] {
+        let at = world.root.join(name);
+        let old = world.root.join(format!("{name}.old"));
+        std::fs::rename(world.checkout(name), &old).unwrap();
+        std::fs::remove_dir_all(&at).unwrap();
+        std::fs::rename(&old, &at).unwrap();
+        assert!(at.join(".git").is_dir());
+    }
+
+    let mut world = HostWorld::open(manifest, "mac-mini").unwrap();
+    for name in ["flywheel-state", "flywheel-blueprints"] {
+        assert!(world.checkout(name).join(".git").is_dir(), "{name} is under main");
+        assert!(!world.root.join(name).join(".git").exists(), "{name} is no longer at <repo>");
+    }
+    assert_eq!(head(&world.checkout("flywheel-blueprints")), before, "the same checkout, moved");
+    let again = join::join(&mut world).unwrap();
+    assert!(again.cloned.is_empty() && again.checked_out.is_empty(), "{again:?}");
+    assert!(join::doctor(&world).is_empty(), "{:?}", join::doctor(&world));
 }
 
 /// Creating what exists changes nothing: a second init adopts and adds only
@@ -396,11 +438,11 @@ hosts:
     assert!(!world.address_of("studio").unwrap().contains("localhost"));
 }
 
-/// A router base that is the machine's own address is refused: a link written
-/// at it opens nothing on a phone, which is what 306 asks of every decision
-/// (205a, 308, D10a).
+/// A router base that is the machine's own address is the host's address: it
+/// serves this computer alone, and a link written at it opens there (191,
+/// 205a, 245, D10a).
 #[test]
-fn a_localhost_router_is_refused() {
+fn a_localhost_router_is_the_hosts_address() {
     let text = r#"
 instance: willdan
 router: {base: "http://localhost:4242"}
@@ -411,12 +453,11 @@ hosts:
 "#;
     let manifest = Manifest::parse(text).expect("the manifest parses");
     let world = HostWorld::open(manifest, "studio").expect("the world opens");
-    let refused = world.address_of("studio").expect_err("refused");
-    assert!(
-        format!("{refused}").contains("private-network name"),
-        "{refused}"
+    assert_eq!(world.address_of("studio").unwrap(), "http://localhost:4242/willdan");
+    assert_eq!(
+        world.route("unit/atlas/u").unwrap().url,
+        "http://localhost:4242/willdan/unit/atlas/u"
     );
-    assert!(world.route("unit/atlas/u").is_err());
 }
 
 /// Reading the blueprints spawns no process (`host.yaml` Tools, 169).

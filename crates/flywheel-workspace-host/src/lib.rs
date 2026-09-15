@@ -94,7 +94,7 @@ impl<'a, S: Records> HostWorkspace<'a, S> {
     }
 
     fn checkout(&self, repository: &str) -> PathBuf {
-        self.root.join(repository)
+        self.root.join(repository).join("main")
     }
 
     /// The repository an object's line is on: the `repository` its record or

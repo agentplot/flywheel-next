@@ -113,7 +113,7 @@ impl<S: StateStore + Send + 'static> Served<S> {
     /// is published beyond that network (46, 155, 245).
     pub fn bound(&self) -> Vec<String> {
         let mut out = vec![];
-        if let Some(host) = private_host(&self.address) {
+        if let Some(host) = private_host(&self.address).filter(|h| !crate::links::is_localhost(h)) {
             out.push(format!("{host}:80"));
         }
         out.push(format!("127.0.0.1:{}", self.localhost_port));
