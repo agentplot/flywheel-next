@@ -45,6 +45,9 @@ pub struct Offer {
     /// Where a chore's fix belongs: `bolt-line`, or a repository's manifest
     /// name. A finding's is not read (60).
     pub scope: Option<String>,
+    /// What the offer concerns, as the session said it. Nothing is derived
+    /// from it (58, 62).
+    pub about: Option<String>,
     /// When the session made it, which is when it judged the document (62).
     pub at: DateTime<Utc>,
 }
@@ -72,6 +75,7 @@ pub fn on_thread(session: &str, entries: &[ThreadEntry]) -> Vec<Offer> {
                 kind: entry.fields.get("offer")?.as_str()?.to_string(),
                 document: entry.fields.get("document")?.as_str()?.to_string(),
                 scope: entry.fields.get("scope").and_then(|v| v.as_str()).map(String::from),
+                about: entry.fields.get("about").and_then(|v| v.as_str()).map(String::from),
                 at: entry.at,
             })
         })
@@ -259,6 +263,7 @@ pub fn record<S: StateStore, W: World + ?Sized>(
                     kind: offer.kind.clone(),
                     document: offer.document.clone(),
                     scope: offer.scope.clone(),
+                    about: offer.about.clone(),
                 };
                 report::refuse_offer(store, session, MACHINERY, at, &taken_back, Some(&offer.entry), &reason)?;
                 continue;

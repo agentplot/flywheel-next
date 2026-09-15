@@ -50,6 +50,9 @@ pub enum Report {
         /// Where a chore's fix belongs: `bolt-line`, or a repository's
         /// manifest name (60).
         scope: Option<String>,
+        /// What the offer concerns. It is written on the entry and nothing is
+        /// derived from it: where a chore's fix lands is the scope's (58, 62).
+        about: Option<String>,
     },
     /// Something said on the thread that is not an exit.
     Note { text: String },
@@ -137,12 +140,15 @@ pub fn write_report(
                 }
             }
         }
-        Report::Offer { kind, document, scope } => {
+        Report::Offer { kind, document, scope, about } => {
             if OFFERS.contains(&kind.as_str()) {
                 fields.insert("offer".into(), json!(kind));
                 fields.insert("document".into(), json!(document));
                 if let Some(scope) = scope {
                     fields.insert("scope".into(), json!(scope));
+                }
+                if let Some(about) = about {
+                    fields.insert("about".into(), json!(about));
                 }
                 Reported::Accepted(entry(at, "offer", by, fields))
             } else {
@@ -188,7 +194,7 @@ pub fn refuse_offer(
             "no session: pass --session or set {SESSION_ENV}, which the work order names"
         ));
     }
-    let Report::Offer { kind, document, scope } = report else {
+    let Report::Offer { kind, document, scope, about } = report else {
         return Err(anyhow!("only an offer is refused for where it would land"));
     };
     let mut fields: BTreeMap<String, Value> = BTreeMap::new();
@@ -196,6 +202,9 @@ pub fn refuse_offer(
     fields.insert("document".into(), json!(document));
     if let Some(scope) = scope {
         fields.insert("scope".into(), json!(scope));
+    }
+    if let Some(about) = about {
+        fields.insert("about".into(), json!(about));
     }
     if let Some(refuses) = refuses {
         fields.insert("refuses".into(), json!(refuses));

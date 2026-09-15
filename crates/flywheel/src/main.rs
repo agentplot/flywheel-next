@@ -210,6 +210,10 @@ enum Cmd {
         /// Where a chore's fix belongs: `bolt-line`, or a repository's name.
         #[arg(long)]
         scope: Option<String>,
+        /// What the offer concerns, written on its entry; nothing is read from
+        /// it, and where a chore's fix lands stays the scope's (58, 62).
+        #[arg(long)]
+        about: Option<String>,
         #[arg(long, env = SESSION_ENV, default_value = "")]
         session: String,
         /// Which host's checkout the report is written through (232).
@@ -872,7 +876,7 @@ async fn main() -> Result<()> {
             let r = Report::Exit { kind: kind.clone(), deliverables: deliverables.clone(), question: question.clone(), text: text.clone() };
             std::process::exit(do_report(&cli, host, session, &r)?);
         }
-        Cmd::Offer { kind, document, scope, session, host, manifest, root } => {
+        Cmd::Offer { kind, document, scope, about, session, host, manifest, root } => {
             let mut store = open_state(&cli.state, host)?;
             let by = std::env::var("USER").unwrap_or_else(|_| "operator".into());
             // The tracked names, from the manifest as the ask reads them, and
@@ -882,7 +886,7 @@ async fn main() -> Result<()> {
                 let world = flywheel_world_host::HostWorld::open(read, host)?;
                 flywheel_domain::offers::tracked(&world)
             };
-            let outcome = report::offer(&mut store, tracked, session, &by, chrono::Utc::now(), kind, document, scope.as_deref())?;
+            let outcome = report::offer(&mut store, tracked, session, &by, chrono::Utc::now(), kind, document, scope.as_deref(), about.as_deref())?;
             wake_page();
             std::process::exit(said(session, &outcome));
         }

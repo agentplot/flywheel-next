@@ -61,6 +61,7 @@ fn scripted_exit_goes_through_the_command() {
         offers: vec![Offer {
             kind: "chore".into(),
             document: "chores/1.md".into(),
+            ..Default::default()
         }],
         ..Default::default()
     };

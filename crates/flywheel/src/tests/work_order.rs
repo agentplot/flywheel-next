@@ -40,7 +40,7 @@ fn every_order_gives_the_offer_command_and_curations_the_ask() {
             format!(
                 "FLYWHEEL_SESSION={session} FLYWHEEL_STATE=/hosts/laptop/scratch/flywheel-state/main \
                  FLYWHEEL_MANIFEST=/flywheel/flywheel.yaml FLYWHEEL_PAGE=http://127.0.0.1:4242 \
-                 /bin/flywheel offer finding|chore --document <path> [--scope bolt-line|<repository>] --host laptop"
+                 /bin/flywheel offer finding|chore --document <path> --about <object> [--scope bolt-line|<repository>] --host laptop"
             ),
         );
     }

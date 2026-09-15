@@ -685,6 +685,7 @@ fn delivered(
                 kind: offer.kind.clone(),
                 document: offer.document.clone(),
                 scope: offer.scope.clone(),
+                about: offer.about.clone(),
             },
         )?;
     }

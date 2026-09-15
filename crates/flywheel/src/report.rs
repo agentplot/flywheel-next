@@ -43,7 +43,7 @@ pub fn ask<S: StateStore, W: World + ?Sized>(
     catalogue::asked(&outcome).ok_or_else(|| anyhow!("the ask was recorded and named nothing"))
 }
 
-/// `flywheel offer finding|chore --document <path> [--scope bolt-line|<repository>]`:
+/// `flywheel offer finding|chore --document <path> [--about <object>] [--scope bolt-line|<repository>]`:
 /// one entry on the session's thread (`sessions.yaml` commands.offer).
 ///
 /// A chore says where its fix belongs. One offered off every bolt that names
@@ -61,11 +61,13 @@ pub fn offer<S: Records>(
     kind: &str,
     document: &str,
     scope: Option<&str>,
+    about: Option<&str>,
 ) -> Result<Reported> {
     let report = Report::Offer {
         kind: kind.to_string(),
         document: document.to_string(),
         scope: scope.map(String::from),
+        about: about.map(String::from),
     };
     if kind == "chore" && !session.is_empty() {
         let owner = flywheel_domain::offers::owner_of(&*store, session)?;

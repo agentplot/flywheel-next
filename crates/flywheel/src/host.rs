@@ -2536,12 +2536,12 @@ pub(crate) fn how_to_report(r: &Reporting) -> String {
     ));
     body.push_str(
         "To offer what is outside the job, pointing at a document you committed here: a finding, or a \
-         small necessary fix as a chore. A chore says where its fix belongs with --scope: bolt-line, \
-         which a session under a bolt may leave off, or a repository the instance tracks, blueprints \
-         among them:\n\n",
+         small necessary fix as a chore. --about names what it concerns. A chore says where its fix \
+         belongs with --scope: bolt-line, which a session under a bolt may leave off, or a repository \
+         the instance tracks, blueprints among them:\n\n",
     );
     body.push_str(&format!(
-        "    {env}{manifest}{page} {flywheel} offer finding|chore --document <path> [--scope bolt-line|<repository>] --host {host}\n\n"
+        "    {env}{manifest}{page} {flywheel} offer finding|chore --document <path> --about <object> [--scope bolt-line|<repository>] --host {host}\n\n"
     ));
     if flywheel_domain::asks::granted(session) {
         body.push_str(

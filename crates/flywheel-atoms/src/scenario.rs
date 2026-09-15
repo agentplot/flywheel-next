@@ -132,6 +132,9 @@ pub struct Offer {
     /// Where a chore's fix belongs: `bolt-line`, or a repository's name (60).
     #[serde(default)]
     pub scope: Option<String>,
+    /// What the offer concerns; nothing is derived from it (58, 62).
+    #[serde(default)]
+    pub about: Option<String>,
 }
 
 /// One service declaration a repository carries. `fails: true` scripts a

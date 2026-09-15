@@ -26,6 +26,7 @@ fn offer_scoped(store: &mut FakeStore, session: &str, kind: &str, document: &str
             kind: kind.into(),
             document: document.into(),
             scope: scope.map(String::from),
+            about: None,
         },
     )
     .unwrap();

@@ -72,6 +72,7 @@ fn exit_writes_one_thread_entry() {
             kind: "finding".into(),
             document: "findings/1.md".into(),
             scope: None,
+            about: None,
         },
     );
     write(
@@ -80,6 +81,7 @@ fn exit_writes_one_thread_entry() {
             kind: "chore".into(),
             document: "chores/1.md".into(),
             scope: None,
+            about: None,
         },
     );
     write(&mut store, &Report::Note { text: "halfway".into() });
@@ -149,6 +151,7 @@ fn exit_outside_the_five_is_refused() {
             kind: "opinion".into(),
             document: "d.md".into(),
             scope: None,
+            about: None,
         },
     );
     assert!(matches!(out, Reported::Refused { .. }));
@@ -178,7 +181,7 @@ fn an_offer_off_every_bolt_naming_no_tracked_repository_is_refused() {
     let mut store = a_store();
     let tracked = || Ok(vec!["atlas".to_string()]);
     let offer = |store: &mut Store, document: &str, scope: Option<&str>| {
-        crate::report::offer(store, tracked, SESSION, "chuck", Utc::now(), "chore", document, scope)
+        crate::report::offer(store, tracked, SESSION, "chuck", Utc::now(), "chore", document, scope, None)
             .expect("the offer is written")
     };
 
@@ -214,9 +217,56 @@ fn an_offer_off_every_bolt_naming_no_tracked_repository_is_refused() {
         "chore",
         "chores/2.md",
         Some("blueprints"),
+        None,
     )
     .unwrap();
     assert_eq!(crate::report::exit_code(&blueprints), 0);
     assert_eq!(flywheel_domain::offers::pending(&store, SESSION).unwrap().len(), 2);
     assert_eq!(store.thread(SESSION).unwrap()[3].fields.get("scope"), Some(&json!("atlas")));
+}
+
+/// What an offer is about is written on its entry beside the kind, the document
+/// and the scope, and nothing is derived from it: the unit a chore offer makes
+/// is the same with or without it, since where the fix lands is the scope's
+/// (58, 60, 62, `sessions.yaml` commands.offer).
+#[test]
+fn an_offers_about_is_written_on_its_entry() {
+    use flywheel_atoms::testing::{FakeStore, FakeWorld};
+    use flywheel_domain::{commands, offers};
+
+    let defs = flywheel_domain::set::load().expect("the embedded definitions");
+    let at = Utc::now();
+    let session = "curation/main/1";
+    let document = "flywheel/curation/chores/agents-md.md";
+    let offered = |about: Option<&str>| {
+        let mut store = FakeStore::default();
+        let mut world = FakeWorld::new().tracking("atlas");
+        commands::put_new(&mut store, &defs, "curation/main", "curation", None, Default::default(), at).expect("the curation");
+        let tracked = || Ok(vec!["atlas".to_string()]);
+        let out = crate::report::offer(&mut store, tracked, session, "chuck", at, "chore", document, Some("atlas"), about)
+            .expect("the offer is written");
+        assert_eq!(crate::report::exit_code(&out), 0, "{out:?}");
+        let made = offers::record(&mut store, &mut world, &defs, session, "curation/main", at).expect("the offer is recorded");
+        assert_eq!(made, vec!["unit/atlas/chore-1".to_string()]);
+        let entry = store.thread(session).expect("the thread").remove(0);
+        let unit = store.get(&made[0]).expect("a read").expect("the chore unit");
+        (entry, unit)
+    };
+
+    let (entry, with) = offered(Some("intent/atlas-provider-limits"));
+    for (field, value) in [
+        ("offer", json!("chore")),
+        ("document", json!(document)),
+        ("scope", json!("atlas")),
+        ("about", json!("intent/atlas-provider-limits")),
+    ] {
+        assert_eq!(entry.fields.get(field), Some(&value), "the entry's {field}");
+    }
+    let (plain, without) = offered(None);
+    assert!(!plain.fields.contains_key("about"), "an offer about nothing named writes none: {plain:?}");
+    assert_eq!(
+        (&with.id, &with.parent, &with.record, &with.config),
+        (&without.id, &without.parent, &without.record, &without.config),
+        "the unit is the same with or without what the offer is about"
+    );
 }

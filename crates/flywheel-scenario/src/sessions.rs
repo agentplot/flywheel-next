@@ -158,6 +158,10 @@ impl ScriptedSessions {
                 args.push("--scope".into());
                 args.push(scope.clone());
             }
+            if let Some(about) = &offer.about {
+                args.push("--about".into());
+                args.push(about.clone());
+            }
             self.run(&host, session, &args)?;
         }
         if let Some(reason) = &entry.refusal {
