@@ -172,7 +172,7 @@ evidence:
   unit.type:               {of: unit, type: string}
   unit.type_version:       {of: unit, type: int}
   unit.type_defined:       {of: unit, type: bool, doc: the definitions in force hold the unit's type — the shipped registry lists it, or a template of that name the core set does not carry, the instance's own (223); false is a type the instance does not know, and the unit does not start until the operator sets one (85a)}
-  unit.batch:              {of: unit, type: string, doc: baseline id or none; equal values fold into one decision}
+  unit.batch:              {of: unit, type: string, doc: "a chore's bolt id or repository name, a baseline id, or none; equal values fold into one decision that keeps its number while any of them stands, its rows in the order their ids count them (S232)"}
   unit.proposal:           {of: unit, type: enum, values: [none, proposed, approved, withdrawn, deferred, superseded], doc: the state of the proposal that names this unit; none when no proposal does (172)}
   proposal.replaced:       {of: proposal, type: bool, doc: planning's next run recorded a newer proposal for the repository (35, 172)}
   item.deps_merged:        {of: work-item, type: bool}

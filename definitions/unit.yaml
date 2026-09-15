@@ -19,7 +19,7 @@ record:
   type: string
   type_version: int
   document: ref          # the proposal document, kept with the proposal record in the state, not in a change directory (187); presented for review (17); for a finding or a chore offer, the offer's path in the offering session's place (62). The unit's own change lives in its built repository and is written at its first stage
-  revision: string       # a finding's or a chore offer's alone: the offering place's revision at the offer, from the offer entry, pinned on the git host by record_offers so every host reads the document there; where the document is read when the chore's work order is rendered, since the record never holds the text (62)
+  revision: string       # a finding's or a chore offer's alone: the offering place's revision at the offer, from the offer entry, pinned on the git host by record_offers so every host reads the document there; where the document is read when the unit's work order is rendered, a finding's fast unit as a chore, since the record never holds the text (62)
   target: {bolt: bolt-id, new_name: string}
   depends_on: list       # other units of the same bolt
   claims: list           # claim@version the work serves; empty when no standing claim in scope fits, which is legal and is the common case for a chore (34a, 61). An empty list means no as-built statement, no verdict and no ledger cell; the unit never proposes a claim of its own
