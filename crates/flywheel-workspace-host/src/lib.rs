@@ -101,29 +101,7 @@ impl<'a, S: Records> HostWorkspace<'a, S> {
     /// an ancestor's carries, or the blueprints for everything on the design
     /// side (an intent's line is off the blueprints' shared line).
     pub fn repository_of(&self, object: &str) -> Result<String> {
-        let mut at = object.strip_suffix("#own").unwrap_or(object).to_string();
-        for _ in 0..8 {
-            let Some(held) = self.store.get(&at)? else {
-                bail!("`{object}`: no record for `{at}`, so its repository is unknown");
-            };
-            if let Some(repository) = held.record.get("repository").and_then(|v| v.as_str()) {
-                return Ok(match repository {
-                    "blueprints" => BLUEPRINTS.to_string(),
-                    other => other.to_string(),
-                });
-            }
-            if matches!(
-                held.machine.as_str(),
-                "intent" | "elaboration" | "curation" | "planning" | "capture" | "signal" | "operator-session"
-            ) {
-                return Ok(BLUEPRINTS.to_string());
-            }
-            match held.parent {
-                Some(parent) => at = parent,
-                None => bail!("`{object}` names no repository and has no parent that does"),
-            }
-        }
-        bail!("`{object}`: the parent chain is deeper than any object of the model's")
+        flywheel_domain::regions::repository_of(&*self.store, object)
     }
 
     /// The line an object's place is off: a bolt or an intent is its own line;

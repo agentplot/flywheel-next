@@ -147,6 +147,73 @@ fn an_offer_under_a_capture_is_that_captures_signal() {
     assert_eq!(captures, 1, "the offer made no capture of its own");
 }
 
+/// An offer's revision is pinned on the git host in the repository the
+/// offering place is in — the blueprints, for a curation session — before a
+/// record points at it, and a recorded offer is not pinned again (62, 232,
+/// `record-derived.yaml` record_offers).
+#[test]
+fn an_offers_revision_is_pinned_in_the_offering_repository() {
+    let mut store = FakeStore::default();
+    let mut world = FakeWorld::new().tracking("atlas").tracking(signals::BLUEPRINTS);
+    let defs = crate::set::load().unwrap();
+    commands::put_new(&mut store, &defs, "curation/main", "curation", None, Default::default(), now()).unwrap();
+    let session = "session/curation/main/1";
+    let revision = "5181390b2c4d6e8f0a1b3c5d7e9f1a2b3c4d5e6f";
+    offer_at(&mut store, session, "chore", "flywheel/curation/chores/agents-md.md", Some("atlas"), Some(revision));
+    offer_at(&mut store, session, "signal", "flywheel/curation/notes/elsewhere.md", None, Some(revision));
+
+    let made = offers::record(&mut store, &mut world, &defs, session, "curation/main", now()).unwrap();
+    assert_eq!(made.len(), 2, "{made:?}");
+    assert_eq!(offers::pin_of(&format!("{session}#0")), "refs/flywheel/offers/session/curation/main/1/0");
+    assert_eq!(
+        world.pins(signals::BLUEPRINTS, offers::PINS).unwrap(),
+        vec![
+            (offers::pin_of(&format!("{session}#0")), revision.to_string()),
+            (offers::pin_of(&format!("{session}#1")), revision.to_string()),
+        ],
+        "each offer is pinned where it was made"
+    );
+    assert!(world.pins("atlas", offers::PINS).unwrap().is_empty(), "not where the chore's fix lands");
+    assert_eq!(offers::entry_of_pin(&offers::pin_of(&format!("{session}#1"))), Some(format!("{session}#1")));
+
+    world.pinned.clear();
+    let again = offers::record(&mut store, &mut world, &defs, session, "curation/main", now()).unwrap();
+    assert!(again.is_empty() && world.pinned.is_empty(), "a recorded offer is not pinned again");
+}
+
+/// A pin stands while the record its offer made stands. It is stale once that
+/// record has ended, and at once for an offer that made nothing and waits on
+/// nothing (55, 62, `host.yaml` host.no_stale_offer_pins).
+#[test]
+fn a_pin_is_stale_once_its_record_has_ended() {
+    let mut store = FakeStore::default();
+    let mut world = FakeWorld::new().tracking("atlas").tracking(signals::BLUEPRINTS);
+    let defs = crate::set::load().unwrap();
+    commands::put_new(&mut store, &defs, "curation/main", "curation", None, Default::default(), now()).unwrap();
+    let session = "session/curation/main/1";
+    let revision = "5181390b2c4d6e8f0a1b3c5d7e9f1a2b3c4d5e6f";
+    offer_at(&mut store, session, "chore", "flywheel/curation/chores/agents-md.md", Some("atlas"), Some(revision));
+    let made = offers::record(&mut store, &mut world, &defs, session, "curation/main", now()).unwrap();
+    assert!(offers::stale_pins(&store, &world, &defs).unwrap().is_empty(), "a proposed chore's pin stands");
+
+    let orphan = offers::pin_of("session/curation/main/9#0");
+    world.pin(signals::BLUEPRINTS, &orphan, revision).unwrap();
+    let stale = offers::stale_pins(&store, &world, &defs).unwrap();
+    assert_eq!(stale.len(), 1, "{stale:?}");
+    assert_eq!((stale[0].reference.as_str(), stale[0].record.as_deref()), (orphan.as_str(), None));
+
+    let mut unit = store.get(&made[0]).unwrap().expect("the chore unit");
+    unit.config.insert("life".into(), "retired".into());
+    let base = unit.seq;
+    Records::put(&mut store, &made[0], &unit, base).unwrap();
+    let stale = offers::stale_pins(&store, &world, &defs).unwrap();
+    assert_eq!(stale.len(), 2, "{stale:?}");
+    let ended = stale.iter().find(|pin| pin.record.is_some()).expect("the ended chore's pin");
+    assert_eq!(ended.reference, offers::pin_of(&format!("{session}#0")));
+    assert_eq!(ended.record.as_deref(), Some(made[0].as_str()));
+    assert_eq!((ended.repository.as_str(), ended.revision.as_str()), (signals::BLUEPRINTS, revision));
+}
+
 /// The one record a signal offer makes: a signal citing the document, of a
 /// capture of its own of source offer, and nothing left pending (62, 111).
 fn assert_the_offer_is_a_signal(store: &FakeStore, made: &[String], session: &str, document: &str) {

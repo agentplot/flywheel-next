@@ -211,6 +211,45 @@ pub fn head_holding(dir: &Path, path: &str) -> Result<Option<Head>> {
     Ok(Some(Head { revision: id.to_string(), holds }))
 }
 
+/// Whether the repository holds the object a revision names, in process.
+pub fn holds(repo: &Repo, revision: &str) -> bool {
+    let Some(opened) = opened(repo) else {
+        return false;
+    };
+    gix::ObjectId::from_hex(revision.as_bytes()).is_ok_and(|id| opened.has_object(id))
+}
+
+/// The revision a reference names, in process; none where the repository has
+/// no such reference.
+pub fn reference(repo: &Repo, name: &str) -> Option<String> {
+    let opened = opened(repo)?;
+    let mut found = opened.find_reference(name).ok()?;
+    found.peel_to_id().ok().map(|id| id.detach().to_string())
+}
+
+/// Every reference whose full name starts with a prefix, each with the
+/// revision it names, in process.
+pub fn references(repo: &Repo, prefix: &str) -> Result<Vec<(String, String)>> {
+    let Some(opened) = opened(repo) else {
+        return Ok(vec![]);
+    };
+    let platform = opened.references()?;
+    let mut out = Vec::new();
+    for found in platform.all()? {
+        let Ok(mut found) = found else {
+            continue;
+        };
+        let name = found.name().as_bstr().to_string();
+        if !name.starts_with(prefix) {
+            continue;
+        }
+        if let Ok(id) = found.peel_to_id() {
+            out.push((name, id.detach().to_string()));
+        }
+    }
+    Ok(out)
+}
+
 /// The repository, or none where the directory is not one — a host that has not
 /// cloned yet reads an empty world rather than failing.
 fn opened(repo: &Repo) -> Option<gix::Repository> {

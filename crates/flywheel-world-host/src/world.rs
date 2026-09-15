@@ -273,6 +273,61 @@ impl World for HostWorld {
         git::commit_file(&checkout, &line, path, &text, &reason)?;
         Ok(true)
     }
+
+    /// `git push origin <revision>:<reference>` from the bare clone, whose
+    /// objects every place on this host shares, and then the same reference in
+    /// the clone: a pin the clone holds is one that reached the git host, so a
+    /// repeat pushes nothing (62, 232, `record-derived.yaml` record_offers).
+    fn pin(&mut self, repository: &str, reference: &str, revision: &str) -> Result<bool> {
+        let bare = Repo::at(self.bare(repository));
+        if git::reference(&bare, reference).as_deref() == Some(revision) {
+            return Ok(false);
+        }
+        bare.git(&["push", "--quiet", "origin", &format!("{revision}:{reference}")])
+            .with_context(|| format!("pinning {revision} of {repository} as {reference} on the git host"))?;
+        bare.git(&["update-ref", reference, revision])?;
+        Ok(true)
+    }
+
+    /// Read in process from the bare clone. A clone that lacks the revision —
+    /// the offer was made on another host — fetches the pin first (62, 232,
+    /// `host.yaml` prepare_place).
+    fn read_pinned(&self, repository: &str, reference: &str, revision: &str, path: &str) -> Result<Option<Vec<u8>>> {
+        let bare = Repo::at(self.bare(repository));
+        if !git::holds(&bare, revision) {
+            bare.git(&["fetch", "--quiet", "origin", &format!("+{reference}:{reference}")])
+                .with_context(|| format!("fetching {reference} of {repository}, which pins {revision} (62, 232)"))?;
+        }
+        Ok(git::show(&bare, revision, path)?.map(String::into_bytes))
+    }
+
+    fn pins(&self, repository: &str, under: &str) -> Result<Vec<(String, String)>> {
+        let bare = Repo::at(self.bare(repository));
+        if !bare.exists() {
+            return Ok(vec![]);
+        }
+        git::references(&bare, under)
+    }
+
+    /// `git push origin :<reference>` leased on the revision it must still
+    /// hold, and then the reference out of the clone. A pin the git host no
+    /// longer holds — another host's reconciliation removed it — leaves the
+    /// clone too (55, 62, `host.yaml` remove_stale_offer_pins).
+    fn unpin(&mut self, repository: &str, reference: &str, revision: &str) -> Result<()> {
+        let bare = Repo::at(self.bare(repository));
+        let pushed = bare.run(&[
+            "push",
+            "--quiet",
+            &format!("--force-with-lease={reference}:{revision}"),
+            "origin",
+            &format!(":{reference}"),
+        ])?;
+        if !pushed.ok && !bare.git(&["ls-remote", "origin", reference])?.trim().is_empty() {
+            bail!("removing {reference} of {repository} from the git host: {}", pushed.err.trim());
+        }
+        bare.run(&["update-ref", "-d", reference, revision])?;
+        Ok(())
+    }
 }
 
 /// A short, stable mark for a key, so a token can be told from another without

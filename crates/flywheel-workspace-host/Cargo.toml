@@ -6,6 +6,7 @@ license.workspace = true
 
 [dependencies]
 flywheel-atoms = { path = "../flywheel-atoms" }
+flywheel-domain = { path = "../flywheel-domain" }
 flywheel-workspace-recorded = { path = "../flywheel-workspace-recorded" }
 flywheel-world-host = { path = "../flywheel-world-host" }
 anyhow.workspace = true

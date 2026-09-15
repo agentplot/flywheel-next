@@ -453,6 +453,18 @@ impl EvidenceSource for HostStore {
                     })
                 })
             })
+            // An offer's pin outlives its place and stands until the record the
+            // offer made has ended; this host's clones are read in process (55,
+            // 62, `host.yaml` host.no_stale_offer_pins).
+            .or_else(|| {
+                (name == "host.no_stale_offer_pins")
+                    .then(|| {
+                        let defs = self.defs.as_ref()?;
+                        let stale = flywheel_domain::offers::stale_pins(&self.git, &*self.world, defs).ok()?;
+                        Some(json!(stale.is_empty()))
+                    })
+                    .flatten()
+            })
             .or_else(|| {
                 flywheel_workspace_recorded::evidence(
                     &self.git,
@@ -1965,7 +1977,7 @@ fn performing(
             with_workspace(store, |ws| ws.write_acceptance(object, ""))?;
         }
         "prepare_place" => {
-            let order = work_order(defs, store, &session, &place, object);
+            let order = work_order(defs, store, &session, &place, object)?;
             with_workspace(store, |ws| ws.prepare_place(&place, object, &order.body))?;
         }
         "rebase_place" => {
@@ -1980,7 +1992,7 @@ fn performing(
         // ---- the sessions, with the operator as the session (93b)
         "start_session" => {
             let fresh = flywheel_sessions_operator::next_attempt(&store.git, &stem);
-            let order = work_order(defs, store, &fresh, &place, object);
+            let order = work_order(defs, store, &fresh, &place, object)?;
             // The order in the place, named for this session: `prepare_place`
             // wrote one before the stage's session had a name, and the one the
             // agent reads must say which session to report as (67, 89).
@@ -2039,6 +2051,27 @@ fn performing(
         // `record-derived.yaml` record_refusals).
         "record_refusals" => {
             store.refuse_from_session(&session, host, now);
+        }
+        // A pin whose offer's record has ended leaves the git host and this
+        // host's clone; each removal is on the run record with the revision it
+        // held and the record that ended (55, 62, `host.yaml`
+        // remove_stale_offer_pins).
+        "remove_stale_offer_pins" => {
+            let stale = flywheel_domain::offers::stale_pins(&store.git, &*store.world, defs)?;
+            let mut removed = Vec::new();
+            for pin in &stale {
+                store.world.unpin(&pin.repository, &pin.reference, &pin.revision)?;
+                removed.push(
+                    RunEntry::new(now, host, "write", object, "an offer's pin whose record has ended is removed")
+                        .with("repository", &pin.repository)
+                        .with("pin", &pin.reference)
+                        .with("revision", &pin.revision)
+                        .with("ended", pin.record.as_deref().unwrap_or("none: the offer made nothing")),
+                );
+            }
+            if !removed.is_empty() {
+                store.git.append_run(&removed)?;
+            }
         }
 
         // ---- the acts whose whole work is records (`flywheel-domain::effects`)
@@ -2383,13 +2416,13 @@ fn placement_of(store: &HostStore, object: &str, place: &str) -> Result<flywheel
 /// session never crosses, and the agent's definition and skill from the
 /// shipped instruction set (119, 190). Nothing here is state; it is what the
 /// session reads (67).
-fn work_order(
+pub(crate) fn work_order(
     defs: &Definitions,
     store: &HostStore,
     session: &str,
     place: &str,
     object: &str,
-) -> WorkOrder {
+) -> Result<WorkOrder> {
     let state = store.git.repo.dir.display().to_string();
     let host = store.reading.me.clone();
     let held = store.get(object).ok().flatten();
@@ -2413,7 +2446,15 @@ fn work_order(
             .and_then(|u| u.record.get(name))
             .and_then(|v| v.as_str().map(String::from))
     };
-    let job = field("subject")
+    // A chore a session offered carries no words of its own: its job is the
+    // document the offer pointed at, as it stood at the offer's revision (62,
+    // 89; chore@2 params.job).
+    let offered = match unit.as_ref().or(held.as_ref()) {
+        Some(chore) => offered_document(store, chore)?,
+        None => None,
+    };
+    let job = offered
+        .or_else(|| field("subject"))
         .or_else(|| unit_field("subject"))
         .or_else(|| field("title"))
         .unwrap_or_default();
@@ -2486,12 +2527,52 @@ fn work_order(
         body.push_str(&format!("\n## the agent · {}\n\n{definition}\n", agent.as_deref().unwrap_or_default()));
         body.push_str(&format!("\n## the skill\n\n{skill}\n"));
     }
-    WorkOrder {
+    Ok(WorkOrder {
         session: session.to_string(),
         kind,
         place: place.to_string(),
         body,
+    })
+}
+
+/// The document a chore was offered with, as it stood at the offer's revision,
+/// or none for anything that is not a chore made of an offer.
+///
+/// It is read from the git host's pin in the repository the offer was made in
+/// — the offering session's place's, found through the entry the chore came
+/// from — since a chore has no change directory and its session may stand on
+/// another repository's line or another host (62, 89, 232; `host.yaml`
+/// prepare_place).
+fn offered_document(store: &HostStore, chore: &Object) -> Result<Option<String>> {
+    let text = |name: &str| chore.record.get(name).and_then(|v| v.as_str());
+    if text("type") != Some("chore") {
+        return Ok(None);
     }
+    let (Some(document), Some(revision)) = (text("document"), text("revision")) else {
+        return Ok(None);
+    };
+    let Some(entry) = chore
+        .record
+        .get("sources")
+        .and_then(|v| v.as_array())
+        .and_then(|sources| sources.first())
+        .and_then(|v| v.as_str())
+    else {
+        return Ok(None);
+    };
+    let session = entry.rsplit_once('#').map(|(s, _)| s).unwrap_or(entry);
+    let Some(owner) = flywheel_domain::offers::owner_of(&store.git, session)? else {
+        bail!(
+            "`{document}` was offered by `{session}`, which runs under nothing on record, so the \
+             repository it was offered in is unknown (62)"
+        );
+    };
+    let repository = flywheel_domain::regions::repository_of(&store.git, &owner)?;
+    let pin = flywheel_domain::offers::pin_of(entry);
+    let Some(body) = store.world.read_pinned(&repository, &pin, revision, document)? else {
+        bail!("`{document}` is not in {repository} at {revision}, the revision its offer names (62)");
+    };
+    Ok(Some(String::from_utf8_lossy(&body).into_owned()))
 }
 
 /// What a session's report commands are made of: the session, this host's

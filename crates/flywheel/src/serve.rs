@@ -150,6 +150,18 @@ impl World for SharedWorld {
     ) -> Result<bool> {
         self.with(|w| w.write_file(repository, path, body, by_response))
     }
+    fn pin(&mut self, repository: &str, reference: &str, revision: &str) -> Result<bool> {
+        self.with(|w| w.pin(repository, reference, revision))
+    }
+    fn read_pinned(&self, repository: &str, reference: &str, revision: &str, path: &str) -> Result<Option<Vec<u8>>> {
+        self.with(|w| w.read_pinned(repository, reference, revision, path))
+    }
+    fn pins(&self, repository: &str, under: &str) -> Result<Vec<(String, String)>> {
+        self.with(|w| w.pins(repository, under))
+    }
+    fn unpin(&mut self, repository: &str, reference: &str, revision: &str) -> Result<()> {
+        self.with(|w| w.unpin(repository, reference, revision))
+    }
 }
 
 /// The page this host serves: its own store, its own world, its own address.

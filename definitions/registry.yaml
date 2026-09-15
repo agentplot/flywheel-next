@@ -5,7 +5,7 @@
 types:
   chore@2:
     file: unit-types/chore@2.yaml
-    sha256: b0f4291fa73ef73acbc5dd0dcf30d07513f6733ee6c7fa238c17db5a4273aed7
+    sha256: 79e8481cec88bcf2bf13a90947127133f620708a7e90da70d0f8a959eae62e9f
   default@5:
     file: unit-types/default@5.yaml
     sha256: 2774a70f656645474ed2a91817722ef2d2deeccc42efb420ac7fe20f094dd94a

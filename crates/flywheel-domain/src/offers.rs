@@ -16,7 +16,7 @@
 use crate::{commands, report, signals};
 use anyhow::{bail, Result};
 use chrono::{DateTime, Utc};
-use flywheel_atoms::{Records, Scope, StateStore, ThreadEntry, World};
+use flywheel_atoms::{Object, Records, Scope, StateStore, ThreadEntry, World};
 use flywheel_engine::Definitions;
 use serde_json::{json, Value};
 use std::collections::{BTreeMap, BTreeSet};
@@ -36,6 +36,99 @@ pub const BLUEPRINTS: &str = "blueprints";
 
 /// Who a refusal the machinery writes on a session's thread is by.
 const MACHINERY: &str = "flywheel";
+
+/// Where offers' revisions are pinned on the git host: under the machinery's
+/// own prefix, in the repository the offering place is in (62, 232,
+/// `record-derived.yaml` record_offers).
+pub const PINS: &str = "refs/flywheel/offers/";
+
+/// The pin of an offer, from its entry `<session>#<n>`:
+/// `refs/flywheel/offers/<session>/<n>`.
+pub fn pin_of(entry: &str) -> String {
+    let (session, index) = entry.rsplit_once('#').unwrap_or((entry, "0"));
+    format!("{PINS}{session}/{index}")
+}
+
+/// The entry a pin was made for, the other way from `pin_of`.
+pub fn entry_of_pin(reference: &str) -> Option<String> {
+    let (session, index) = reference.strip_prefix(PINS)?.rsplit_once('/')?;
+    Some(format!("{session}#{index}"))
+}
+
+/// A pin on the git host that stands for nothing any more: the record its
+/// offer made has ended, or no record cites the offer and it is not pending
+/// (55, 62, `host.yaml` host.no_stale_offer_pins).
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct StalePin {
+    pub repository: String,
+    pub reference: String,
+    pub revision: String,
+    /// The record that ended; none where the offer made nothing.
+    pub record: Option<String>,
+}
+
+/// Every stale pin this world's clones hold. The pins are read first and the
+/// records only when there is one, so a host with no pins reads nothing more.
+pub fn stale_pins<S: Records, W: World + ?Sized>(store: &S, world: &W, defs: &Definitions) -> Result<Vec<StalePin>> {
+    let mut pinned = Vec::new();
+    for repository in world.repositories()? {
+        if repository.name == "flywheel-state" {
+            continue;
+        }
+        for (reference, revision) in world.pins(&repository.name, PINS)? {
+            pinned.push((repository.name.clone(), reference, revision));
+        }
+    }
+    if pinned.is_empty() {
+        return Ok(vec![]);
+    }
+    let records = store.list_records(&Scope::All)?;
+    let mut stale = Vec::new();
+    for (repository, reference, revision) in pinned {
+        let Some(entry) = entry_of_pin(&reference) else {
+            continue;
+        };
+        let citing = records.iter().find(|object| {
+            object
+                .record
+                .get("sources")
+                .and_then(|v| v.as_array())
+                .is_some_and(|sources| sources.iter().any(|v| v.as_str() == Some(entry.as_str())))
+        });
+        let record = match citing {
+            Some(object) if ended(defs, object) => Some(object.id.clone()),
+            Some(_) => continue,
+            None => {
+                let session = entry.rsplit_once('#').map(|(s, _)| s).unwrap_or(&entry);
+                if pending(store, session)?.iter().any(|offer| offer.entry == entry) {
+                    continue;
+                }
+                None
+            }
+        };
+        stale.push(StalePin { repository, reference, revision, record });
+    }
+    Ok(stale)
+}
+
+/// Whether an object has ended: every top-level region of its machine it
+/// stands in is at a final state.
+fn ended(defs: &Definitions, object: &Object) -> bool {
+    let Some(machine) = defs.for_object(&object.machine).or_else(|| defs.get(&object.machine)) else {
+        return false;
+    };
+    let mut any = false;
+    for (name, region) in &machine.regions {
+        let Some(state) = object.config.get(name).and_then(|s| region.states.get(s)) else {
+            continue;
+        };
+        if !state.is_final {
+            return false;
+        }
+        any = true;
+    }
+    any
+}
 
 /// One offer, as the thread holds it.
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -254,14 +347,6 @@ pub fn record<S: StateStore, W: World + ?Sized>(
 ) -> Result<Vec<String>> {
     let mut made = Vec::new();
     for offer in pending(store, session)? {
-        let mut record: BTreeMap<String, Value> = BTreeMap::new();
-        record.insert("document".into(), json!(offer.document));
-        // Where the document is read, since the record never holds it (62).
-        if let Some(revision) = &offer.revision {
-            record.insert("revision".into(), json!(revision));
-        }
-        record.insert("sources".into(), json!([offer.entry]));
-
         if offer.kind == "chore" {
             // `flywheel offer` refuses a chore with nowhere to land before it
             // writes. A thread written some other way is refused here in the
@@ -278,6 +363,27 @@ pub fn record<S: StateStore, W: World + ?Sized>(
                 report::refuse_offer(store, session, MACHINERY, at, &taken_back, Some(&offer.entry), &reason)?;
                 continue;
             }
+        }
+
+        // The document is read at the offer's revision on whichever host takes
+        // up what the offer becomes, and a place's commits reach the git host
+        // only when the place merges. So the revision is pinned there before a
+        // record points at it, and a pin that fails leaves the offer pending
+        // for the next pass (62, 232).
+        if let Some(revision) = &offer.revision {
+            let repository = crate::regions::repository_of(&*store, owner)?;
+            world.pin(&repository, &pin_of(&offer.entry), revision)?;
+        }
+
+        let mut record: BTreeMap<String, Value> = BTreeMap::new();
+        record.insert("document".into(), json!(offer.document));
+        // Where the document is read, since the record never holds it (62).
+        if let Some(revision) = &offer.revision {
+            record.insert("revision".into(), json!(revision));
+        }
+        record.insert("sources".into(), json!([offer.entry]));
+
+        if offer.kind == "chore" {
             made.push(chore(store, defs, owner, &offer, record, at)?);
             continue;
         }

@@ -635,6 +635,8 @@ impl Store {
             "rail.unnumbered" => json!(self.register.unnumbered(&self.standing_now())),
             "rail.numbered" => json!(!self.register.unnumbered(&self.standing_now())),
             "sink.due" | "host.stray_places" => json!(false),
+            // The stand-in world keeps no git host, so it holds no pins (62).
+            "host.no_stale_offer_pins" => json!(true),
             // The projection's as-of equals the newest seq across `list(all)`,
             // or it is stale and is rewritten from its source on this tick
             // (77, 142, `record-derived.yaml` rail.status_current).

@@ -19,7 +19,7 @@ record:
   type: string
   type_version: int
   document: ref          # the proposal document, kept with the proposal record in the state, not in a change directory (187); presented for review (17); for a finding or a chore offer, the offer's path in the offering session's place (62). The unit's own change lives in its built repository and is written at its first stage
-  revision: string       # a finding's or a chore offer's alone: the offering place's revision at the offer, from the offer entry; where the document is read when the chore's work order is rendered, since the record never holds the text (62)
+  revision: string       # a finding's or a chore offer's alone: the offering place's revision at the offer, from the offer entry, pinned on the git host by record_offers so every host reads the document there; where the document is read when the chore's work order is rendered, since the record never holds the text (62)
   target: {bolt: bolt-id, new_name: string}
   depends_on: list       # other units of the same bolt
   claims: list           # claim@version the work serves; empty when no standing claim in scope fits, which is legal and is the common case for a chore (34a, 61). An empty list means no as-built statement, no verdict and no ledger cell; the unit never proposes a claim of its own
@@ -68,7 +68,7 @@ regions:
           - when: {response: drop}
             to: dropped
       proposed:
-        doc: a finding routed to a bolt or a chore offer, proposed on its own (58, 60); a chore offered from a place that was removed without merging is withdrawn here, its document gone with the place (62); a chore under a repository is on its shared line and names no bolt, and such chores fold by repository as a bolt's fold by bolt (11, 60); a fold is one card with lettered rows, each row this decision on its own chore — named by the fold's number and its letter in chat, carrying its own drop on the card, so some chores are accepted by dropping the others first or by answering rows by name, and no pick answer exists (S232); the decision names the target bolt and what a yes starts, derived from the type's stages and the item count (13, 16); the document is reviewed on its own surface and an annotation on it is the response (17); a unit whose type the instance does not know stays here, its decision naming the type it lacks and asking the operator to set one with `type <name>` (85a)
+        doc: a finding routed to a bolt or a chore offer, proposed on its own (58, 60); its document is read at the pinned revision, so the offering place's removal changes nothing here, and a proposed chore of a bolt that is dropped retires with the bolt (62, 74); a chore under a repository is on its shared line and names no bolt, and such chores fold by repository as a bolt's fold by bolt (11, 60); a fold is one card with lettered rows, each row this decision on its own chore — named by the fold's number and its letter in chat, carrying its own drop on the card, so some chores are accepted by dropping the others first or by answering rows by name, and no pick answer exists (S232); the decision names the target bolt and what a yes starts, derived from the type's stages and the item count (13, 16); the document is reviewed on its own surface and an annotation on it is the response (17); a unit whose type the instance does not know stays here, its decision naming the type it lacks and asking the operator to set one with `type <name>` (85a)
         decision: {kind: unit-proposed, group: approve, batch: batch, document: document,
                    answers: ["yes", drop, "redo: <notes>", "bolt <name>", "new bolt <name>", "rename <name>", "type <name>", later],
                    shows: [unit.type, unit.type_defined, target, depends_on, claims, estimate], satisfies: [10, 11, 16, 17, 29, 85, 172]}
@@ -76,6 +76,9 @@ regions:
           - when: {ev: unit.claim_moved, is: true}
             to: superseded
             note: a proposal is not work; planning's fingerprint moved with the claim, so its next proposal replaces this one silently (35)
+          - when: {parent: {in: [dropped]}}
+            to: retired
+            note: a chore offered under a bolt has nowhere to land once the bolt is dropped; its decision leaves the rail with a tail entry (62, 74)
           - when: {response: "bolt <name>"}
             to: proposed
             effects: [{do: route_unit, args: {bolt: $response}}]
@@ -106,6 +109,8 @@ regions:
         transitions:
           - when: {ev: unit.claim_moved, is: true}
             to: superseded
+          - when: {parent: {in: [dropped]}}
+            to: retired
           - when: {ev: entered_at, older: 7d}
             to: proposed
           - when: {response: drop}
@@ -170,7 +175,7 @@ regions:
         doc: back to planning with the notes; the next proposal is a new unit
         final: true
       retired:
-        doc: the bolt was dropped; the unit's items end their sessions and release their places (74)
+        doc: the bolt was dropped; the unit's items end their sessions and release their places (74); a proposed or deferred chore of the bolt comes here too, its decision gone from the rail (62)
         tail: dropped
         final: true
       dropped:

@@ -12,7 +12,7 @@ satisfies: [60, 61, 63, 91, 123, 190]
 doc: unit type
 params:
   place: the item's place
-  job: "the chore's document, read from the offering session's repository at the unit's revision and written into the fix session's work order as the job, since the session has no change directory and may stand on another repository's line (62, 89); a conflict chore's job names the conflicting units and their claims (52), a review request's the review's text"
+  job: "the chore's document, read from the git host at the unit's revision — the offering place's head at the offer, pinned there by record_offers so a host that never held the place reads it too — and written into the fix session's work order as the job, since the session has no change directory and may stand on another repository's line or another host (62, 89, 232); a conflict chore's job names the conflicting units and their claims (52), a review request's the review's text"
 record:
   needs_change_directory: "false"
   lands_on: chore.scope     # bolt-line when raised on a bolt, shared-line otherwise

@@ -384,6 +384,38 @@ pub trait World {
         body: &[u8],
         by_response: Option<&str>,
     ) -> Result<bool>;
+
+    /// Pin a revision of a repository on the git host under the machinery's
+    /// own prefix, `refs/flywheel/`, so what a session committed in its place
+    /// is readable on every host once the place is rebased, squashed or
+    /// removed (62, 232). A pin this world already holds at that revision
+    /// pushes nothing, and says so by returning false.
+    fn pin(&mut self, repository: &str, reference: &str, revision: &str) -> Result<bool> {
+        let _ = revision;
+        anyhow::bail!("this world keeps no git host to pin `{reference}` of {repository} on (62, 232)")
+    }
+
+    /// One file at a pinned revision of a repository, the pin fetched from the
+    /// git host first where this world's clone lacks the revision (62, 232).
+    fn read_pinned(&self, repository: &str, reference: &str, revision: &str, path: &str) -> Result<Option<Vec<u8>>> {
+        let _ = (revision, path);
+        anyhow::bail!("this world keeps no git host to read `{reference}` of {repository} from (62, 232)")
+    }
+
+    /// The pins under a prefix this world's clone of a repository holds, each
+    /// with the revision it holds; none where the world keeps no git host (55,
+    /// 62).
+    fn pins(&self, repository: &str, under: &str) -> Result<Vec<(String, String)>> {
+        let _ = (repository, under);
+        Ok(vec![])
+    }
+
+    /// Remove a pin from the git host and from this world's clone, where it
+    /// still holds that revision (55, 62).
+    fn unpin(&mut self, repository: &str, reference: &str, revision: &str) -> Result<()> {
+        let _ = revision;
+        anyhow::bail!("this world keeps no git host to remove `{reference}` of {repository} from (55, 62)")
+    }
 }
 
 // ------------------------------------------------------------------ workspace

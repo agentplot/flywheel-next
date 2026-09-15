@@ -4,6 +4,37 @@
 //! place. Both the stand-in and a real host resolve a region path the same way,
 //! so the rule is stated once here.
 
+/// The repository an object's place is in, by its manifest name: the
+/// `repository` its record or an ancestor's carries, with the blueprints named
+/// as the manifest names them, and the blueprints for everything on the design
+/// side, whose lines and places are off the blueprints' shared line (42, 205,
+/// `intent.yaml` line).
+pub fn repository_of<S: flywheel_atoms::Records + ?Sized>(store: &S, object: &str) -> anyhow::Result<String> {
+    let mut at = object.strip_suffix("#own").unwrap_or(object).to_string();
+    for _ in 0..8 {
+        let Some(held) = store.get(&at)? else {
+            anyhow::bail!("`{object}`: no record for `{at}`, so its repository is unknown");
+        };
+        if let Some(repository) = held.record.get("repository").and_then(|v| v.as_str()) {
+            return Ok(match repository {
+                "blueprints" => crate::signals::BLUEPRINTS.to_string(),
+                other => other.to_string(),
+            });
+        }
+        if matches!(
+            held.machine.as_str(),
+            "intent" | "elaboration" | "curation" | "planning" | "capture" | "signal" | "operator-session"
+        ) {
+            return Ok(crate::signals::BLUEPRINTS.to_string());
+        }
+        match held.parent {
+            Some(parent) => at = parent,
+            None => anyhow::bail!("`{object}` names no repository and has no parent that does"),
+        }
+    }
+    anyhow::bail!("`{object}`: the parent chain is deeper than any object of the model's")
+}
+
 /// The stage or type a nested region path belongs to: the stem a session's id
 /// is built on, `<owner id>/<stage or type>` (`session.yaml` id).
 pub fn session_stem(object: &str, region: &str, kind: Option<&str>) -> String {

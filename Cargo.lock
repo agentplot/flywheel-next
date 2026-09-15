@@ -953,6 +953,7 @@ version = "0.1.0"
 dependencies = [
  "anyhow",
  "flywheel-atoms",
+ "flywheel-domain",
  "flywheel-engine",
  "flywheel-workspace-recorded",
  "flywheel-world-host",

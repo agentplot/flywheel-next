@@ -203,6 +203,9 @@ regions:
           - when: {ev: host.stray_places, is: true}
             to: alive
             effects: [{do: remove_stray_places, note: "a place that belongs to no live object and is not held is removed; every removal is recorded (55)"}]
+          - when: {ev: host.no_stale_offer_pins, is: false}
+            to: alive
+            effects: [{do: remove_stale_offer_pins, note: "an offer's pinned revision on the git host whose unit, proposal or signal has ended is removed; recorded like any removal (62)"}]
           - when: {ev: host.layout_current, is: false}
             to: alive
             effects: [{do: remove_stale_layout, note: "a tab or workspace naming an object that has left every view is closed; recorded like any removal (186, 196)"}]

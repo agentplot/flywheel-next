@@ -22,6 +22,12 @@ pub struct FakeWorld {
     /// reading a record wrote nothing back reads this rather than counting
     /// commits (78, 114).
     written: Vec<String>,
+    /// The pins on the git host, by repository and reference, each with the
+    /// revision it holds (62).
+    pub pinned: BTreeMap<(String, String), String>,
+    /// Files as they stood at a revision of a repository, by repository,
+    /// revision and path: what a place committed (62).
+    pub at_revision: BTreeMap<(String, String, String), String>,
 }
 
 impl FakeWorld {
@@ -105,5 +111,42 @@ impl World for FakeWorld {
         self.files.insert(path.to_string(), text);
         self.written.push(path.to_string());
         Ok(true)
+    }
+
+    fn pin(&mut self, repository: &str, reference: &str, revision: &str) -> Result<bool> {
+        let key = (repository.to_string(), reference.to_string());
+        if self.pinned.get(&key).map(String::as_str) == Some(revision) {
+            return Ok(false);
+        }
+        self.pinned.insert(key, revision.to_string());
+        Ok(true)
+    }
+
+    fn read_pinned(&self, repository: &str, reference: &str, revision: &str, path: &str) -> Result<Option<Vec<u8>>> {
+        if self.pinned.get(&(repository.to_string(), reference.to_string())).map(String::as_str) != Some(revision) {
+            bail!("{repository}: no pin `{reference}` holds {revision} (62)");
+        }
+        Ok(self
+            .at_revision
+            .get(&(repository.to_string(), revision.to_string(), path.to_string()))
+            .map(|s| s.as_bytes().to_vec()))
+    }
+
+    fn pins(&self, repository: &str, under: &str) -> Result<Vec<(String, String)>> {
+        Ok(self
+            .pinned
+            .iter()
+            .filter(|((r, reference), _)| r == repository && reference.starts_with(under))
+            .map(|((_, reference), revision)| (reference.clone(), revision.clone()))
+            .collect())
+    }
+
+    fn unpin(&mut self, repository: &str, reference: &str, revision: &str) -> Result<()> {
+        let key = (repository.to_string(), reference.to_string());
+        if self.pinned.get(&key).is_some_and(|held| held != revision) {
+            bail!("{repository}: `{reference}` holds another revision than {revision}");
+        }
+        self.pinned.remove(&key);
+        Ok(())
     }
 }
