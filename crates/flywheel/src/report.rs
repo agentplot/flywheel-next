@@ -13,6 +13,7 @@ use flywheel_atoms::{Records, StateStore, World};
 use flywheel_engine::Definitions;
 use flywheel_surface::catalogue::{self, Call};
 use serde_json::json;
+use std::path::Path;
 
 pub use flywheel_domain::report::{write_report, Report, Reported, EXITS, OFFERS, SESSION_ENV};
 
@@ -47,6 +48,11 @@ pub fn ask<S: StateStore, W: World + ?Sized>(
 /// one entry on the session's thread (`sessions.yaml` commands.offer). Any
 /// other kind is refused there, as a report outside the exits is (65, 66).
 ///
+/// The command runs in the session's place, and the entry names the place's
+/// head, which must hold the document: the document is read at that revision
+/// wherever it is read, so one not committed there is refused on the thread
+/// naming the path and is never pending (62).
+///
 /// A chore says where its fix belongs. One offered off every bolt that names
 /// no repository the instance tracks, and not the blueprints, is refused on the
 /// thread with the names it could have given and is never pending. The tracked
@@ -56,6 +62,7 @@ pub fn ask<S: StateStore, W: World + ?Sized>(
 pub fn offer<S: Records>(
     store: &mut S,
     tracked: impl FnOnce() -> Result<Vec<String>>,
+    place: &Path,
     session: &str,
     by: &str,
     at: DateTime<Utc>,
@@ -64,13 +71,38 @@ pub fn offer<S: Records>(
     scope: Option<&str>,
     about: Option<&str>,
 ) -> Result<Reported> {
+    // A report that is refused whatever the place holds reads nothing of it.
+    let judged = !session.is_empty() && OFFERS.contains(&kind);
+    let head = match judged {
+        true => flywheel_world_host::git::head_holding(place, document)?,
+        false => None,
+    };
     let report = Report::Offer {
         kind: kind.to_string(),
         document: document.to_string(),
         scope: scope.map(String::from),
         about: about.map(String::from),
+        revision: head.as_ref().map(|h| h.revision.clone()),
     };
-    if kind == "chore" && !session.is_empty() {
+    if !judged {
+        return write_report(store, session, by, at, &report);
+    }
+    let uncommitted = match &head {
+        Some(head) if head.holds => None,
+        Some(head) => Some(format!(
+            "`{document}` is not committed at this place's head {}; commit it here and offer again (62)",
+            &head.revision[..head.revision.len().min(12)]
+        )),
+        None => Some(format!(
+            "`{document}` is offered from {}, which holds no commit; an offer points at a document \
+             committed in the session's place (62)",
+            place.display()
+        )),
+    };
+    if let Some(reason) = uncommitted {
+        return flywheel_domain::report::refuse_offer(store, session, by, at, &report, None, &reason);
+    }
+    if kind == "chore" {
         let owner = flywheel_domain::offers::owner_of(&*store, session)?;
         if let Some(reason) = flywheel_domain::offers::chore_refused(&*store, owner.as_deref(), scope, tracked)? {
             return flywheel_domain::report::refuse_offer(store, session, by, at, &report, None, &reason);

@@ -54,6 +54,9 @@ pub enum Report {
         /// What the offer concerns. It is written on the entry and nothing is
         /// derived from it: where a chore's fix lands is the scope's (58, 62).
         about: Option<String>,
+        /// The place's head at the offer, which holds the document: the
+        /// revision every host reads it at (62).
+        revision: Option<String>,
     },
     /// Something said on the thread that is not an exit.
     Note { text: String },
@@ -141,7 +144,7 @@ pub fn write_report(
                 }
             }
         }
-        Report::Offer { kind, document, scope, about } => {
+        Report::Offer { kind, document, scope, about, revision } => {
             if OFFERS.contains(&kind.as_str()) {
                 fields.insert("offer".into(), json!(kind));
                 fields.insert("document".into(), json!(document));
@@ -150,6 +153,9 @@ pub fn write_report(
                 }
                 if let Some(about) = about {
                     fields.insert("about".into(), json!(about));
+                }
+                if let Some(revision) = revision {
+                    fields.insert("revision".into(), json!(revision));
                 }
                 Reported::Accepted(entry(at, "offer", by, fields))
             } else {
@@ -176,7 +182,8 @@ pub fn write_report(
     Ok(reported)
 }
 
-/// An offer refused for where it would land: one entry on the session's thread
+/// An offer refused for where it would land, or for a document its place's head
+/// does not hold: one entry on the session's thread
 /// with the reason, never an offer and never pending, as an offer of a kind
 /// that is none is (60, 80). `refuses` names an offer already on the thread
 /// that the refusal takes back, where the entry was written before it was
@@ -195,7 +202,7 @@ pub fn refuse_offer(
             "no session: pass --session or set {SESSION_ENV}, which the work order names"
         ));
     }
-    let Report::Offer { kind, document, scope, about } = report else {
+    let Report::Offer { kind, document, scope, about, revision } = report else {
         return Err(anyhow!("only an offer is refused for where it would land"));
     };
     let mut fields: BTreeMap<String, Value> = BTreeMap::new();
@@ -206,6 +213,9 @@ pub fn refuse_offer(
     }
     if let Some(about) = about {
         fields.insert("about".into(), json!(about));
+    }
+    if let Some(revision) = revision {
+        fields.insert("revision".into(), json!(revision));
     }
     if let Some(refuses) = refuses {
         fields.insert("refuses".into(), json!(refuses));

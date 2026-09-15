@@ -887,7 +887,10 @@ async fn main() -> Result<()> {
                 let world = flywheel_world_host::HostWorld::open(read, host)?;
                 flywheel_domain::offers::tracked(&world)
             };
-            let outcome = report::offer(&mut store, tracked, session, &by, chrono::Utc::now(), kind, document, scope.as_deref(), about.as_deref())?;
+            // The command runs in the session's place, whose head the entry
+            // names (62).
+            let place = std::env::current_dir()?;
+            let outcome = report::offer(&mut store, tracked, &place, session, &by, chrono::Utc::now(), kind, document, scope.as_deref(), about.as_deref())?;
             wake_page();
             std::process::exit(said(session, &outcome));
         }

@@ -17,6 +17,10 @@ fn offer(store: &mut FakeStore, session: &str, kind: &str, document: &str) {
 }
 
 fn offer_scoped(store: &mut FakeStore, session: &str, kind: &str, document: &str, scope: Option<&str>) {
+    offer_at(store, session, kind, document, scope, None);
+}
+
+fn offer_at(store: &mut FakeStore, session: &str, kind: &str, document: &str, scope: Option<&str>, revision: Option<&str>) {
     write_report(
         store,
         session,
@@ -27,9 +31,31 @@ fn offer_scoped(store: &mut FakeStore, session: &str, kind: &str, document: &str
             document: document.into(),
             scope: scope.map(String::from),
             about: None,
+            revision: revision.map(String::from),
         },
     )
     .unwrap();
+}
+
+/// A unit made of a chore offer keeps the revision its offer named beside the
+/// document, since the record never holds the text and the document is read at
+/// that revision wherever the chore is taken (62, `unit.yaml` record).
+#[test]
+fn a_chore_unit_keeps_its_offers_revision() {
+    let mut store = FakeStore::default();
+    let mut world = FakeWorld::new().tracking("atlas");
+    let defs = crate::set::load().unwrap();
+    commands::put_new(&mut store, &defs, "curation/main", "curation", None, Default::default(), now()).unwrap();
+    let session = "session/curation/main/1";
+    let document = "flywheel/curation/chores/agents-md.md";
+    let revision = "4dacc66a0e5f1b2c3d4e5f60718293a4b5c6d7e8";
+    offer_at(&mut store, session, "chore", document, Some("atlas"), Some(revision));
+
+    let made = offers::record(&mut store, &mut world, &defs, session, "curation/main", now()).unwrap();
+    assert_eq!(made, vec!["unit/atlas/chore-1".to_string()]);
+    let unit = store.get(&made[0]).unwrap().expect("the chore unit");
+    assert_eq!(unit.record.get("document"), Some(&json!(document)));
+    assert_eq!(unit.record.get("revision"), Some(&json!(revision)));
 }
 
 /// An offer with neither an intent nor a bolt above the session is a signal

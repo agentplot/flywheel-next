@@ -686,6 +686,9 @@ fn delivered(
                 document: offer.document.clone(),
                 scope: offer.scope.clone(),
                 about: offer.about.clone(),
+                // A scenario's session delivers from its bundle and has no
+                // place of its own whose head it could name (19.3).
+                revision: None,
             },
         )?;
     }

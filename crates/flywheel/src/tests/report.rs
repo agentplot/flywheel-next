@@ -6,7 +6,9 @@ use chrono::Utc;
 use crate::report::{write_report, Report, Reported};
 use flywheel_atoms::Records;
 use flywheel_scenario::Store;
+use flywheel_world_host::git::Repo;
 use serde_json::json;
+use std::path::{Path, PathBuf};
 
 const SESSION: &str = "elaboration/a/1/self-closing/1";
 
@@ -27,6 +29,32 @@ fn a_store() -> Store {
 
 fn write(store: &mut Store, report: &Report) -> Reported {
     write_report(store, SESSION, "chuck", Utc::now(), report).expect("the report is written")
+}
+
+/// A place: a repository of its own with these documents committed at its
+/// head, as a session's worktree holds what the session committed (62).
+fn a_place(name: &str, documents: &[&str]) -> PathBuf {
+    let dir = std::env::temp_dir().join(format!(
+        "flywheel-place-{name}-{}-{:?}",
+        std::process::id(),
+        std::thread::current().id()
+    ));
+    let _ = std::fs::remove_dir_all(&dir);
+    std::fs::create_dir_all(&dir).expect("the place's directory");
+    let repo = Repo::at(&dir);
+    repo.git(&["init", "--quiet", "--initial-branch=main", "."]).expect("git init");
+    for document in documents {
+        let path = dir.join(document);
+        std::fs::create_dir_all(path.parent().expect("a document has a directory")).unwrap();
+        std::fs::write(&path, format!("# {document}\n")).unwrap();
+    }
+    repo.git(&["add", "--all"]).expect("git add");
+    repo.git(&["commit", "--quiet", "--allow-empty", "-m", "the session's documents"]).expect("git commit");
+    dir
+}
+
+fn head_of(place: &Path) -> String {
+    Repo::at(place).git(&["rev-parse", "HEAD"]).expect("the head").trim().to_string()
 }
 
 #[test]
@@ -73,6 +101,7 @@ fn exit_writes_one_thread_entry() {
             document: "findings/1.md".into(),
             scope: None,
             about: None,
+            revision: None,
         },
     );
     write(
@@ -82,6 +111,7 @@ fn exit_writes_one_thread_entry() {
             document: "chores/1.md".into(),
             scope: None,
             about: None,
+            revision: None,
         },
     );
     write(&mut store, &Report::Note { text: "halfway".into() });
@@ -152,6 +182,7 @@ fn exit_outside_the_five_is_refused() {
             document: "d.md".into(),
             scope: None,
             about: None,
+            revision: None,
         },
     );
     assert!(matches!(out, Reported::Refused { .. }));
@@ -179,9 +210,10 @@ fn a_report_with_no_session_is_an_error() {
 #[test]
 fn an_offer_off_every_bolt_naming_no_tracked_repository_is_refused() {
     let mut store = a_store();
+    let place = a_place("scope", &["chores/1.md", "chores/2.md"]);
     let tracked = || Ok(vec!["atlas".to_string()]);
     let offer = |store: &mut Store, document: &str, scope: Option<&str>| {
-        crate::report::offer(store, tracked, SESSION, "chuck", Utc::now(), "chore", document, scope, None)
+        crate::report::offer(store, tracked, &place, SESSION, "chuck", Utc::now(), "chore", document, scope, None)
             .expect("the offer is written")
     };
 
@@ -211,6 +243,7 @@ fn an_offer_off_every_bolt_naming_no_tracked_repository_is_refused() {
     let blueprints = crate::report::offer(
         &mut store,
         || panic!("the blueprints need no manifest read"),
+        &place,
         SESSION,
         "chuck",
         Utc::now(),
@@ -235,6 +268,7 @@ fn an_offer_of_an_unknown_kind_is_refused() {
     let out = crate::report::offer(
         &mut store,
         || panic!("an unknown kind reads no manifest"),
+        Path::new("/no/place/is/read/for/an/unknown/kind"),
         SESSION,
         "chuck",
         Utc::now(),
@@ -258,6 +292,7 @@ fn an_offer_of_an_unknown_kind_is_refused() {
     let signal = crate::report::offer(
         &mut store,
         || panic!("a signal's scope is not read"),
+        &a_place("signal", &["notes/2.md"]),
         SESSION,
         "chuck",
         Utc::now(),
@@ -269,6 +304,81 @@ fn an_offer_of_an_unknown_kind_is_refused() {
     .unwrap();
     assert_eq!(crate::report::exit_code(&signal), 0, "{signal:?}");
     assert_eq!(flywheel_domain::offers::pending(&store, SESSION).unwrap().len(), 1);
+}
+
+/// An offer names the place's head, which holds its document, on its entry
+/// beside the kind, the document, what it is about and its scope; the pending
+/// offer carries it (62, `sessions.yaml` commands.offer).
+#[test]
+fn an_offer_writes_the_places_head_on_its_entry() {
+    let mut store = a_store();
+    let document = "notes/provider-limits.md";
+    let place = a_place("head", &[document]);
+    let out = crate::report::offer(
+        &mut store,
+        || panic!("a finding's scope is not read"),
+        &place,
+        SESSION,
+        "chuck",
+        Utc::now(),
+        "finding",
+        document,
+        None,
+        Some("intent/atlas-provider-limits"),
+    )
+    .expect("the offer is written");
+    assert_eq!(crate::report::exit_code(&out), 0, "{out:?}");
+    let head = head_of(&place);
+    let entry = store.thread(SESSION).unwrap().remove(0);
+    for (field, value) in [
+        ("offer", json!("finding")),
+        ("document", json!(document)),
+        ("about", json!("intent/atlas-provider-limits")),
+        ("revision", json!(head)),
+    ] {
+        assert_eq!(entry.fields.get(field), Some(&value), "the entry's {field}");
+    }
+    let pending = flywheel_domain::offers::pending(&store, SESSION).unwrap();
+    assert_eq!(pending.len(), 1);
+    assert_eq!(pending[0].revision.as_deref(), Some(head.as_str()));
+}
+
+/// A document the place's head does not hold cannot be read anywhere else, so
+/// its offer is refused on the thread naming the path, exits 1 and is never
+/// pending — a file written and not committed, and an offer made outside any
+/// place (62).
+#[test]
+fn an_offer_of_a_document_not_committed_is_refused() {
+    let mut store = a_store();
+    let place = a_place("uncommitted", &["notes/committed.md"]);
+    std::fs::write(place.join("notes/draft.md"), "not yet committed\n").unwrap();
+    let nowhere = std::env::temp_dir().join(format!("flywheel-no-place-{}", std::process::id()));
+    std::fs::create_dir_all(&nowhere).unwrap();
+    for (from, document) in [(place.as_path(), "notes/draft.md"), (nowhere.as_path(), "notes/elsewhere.md")] {
+        let out = crate::report::offer(
+            &mut store,
+            || panic!("a refused document reads no manifest"),
+            from,
+            SESSION,
+            "chuck",
+            Utc::now(),
+            "chore",
+            document,
+            Some("blueprints"),
+            None,
+        )
+        .expect("the refusal is written");
+        assert_eq!(crate::report::exit_code(&out), 1, "{document} was not refused: {out:?}");
+        let Reported::Refused { reason, entry } = &out else {
+            unreachable!("exit 1 is a refusal");
+        };
+        assert!(reason.contains(document), "the refusal names the path: {reason}");
+        assert_eq!(entry.fields.get("document"), Some(&json!(document)));
+    }
+    let thread = store.thread(SESSION).unwrap();
+    assert_eq!(thread.len(), 2, "each refusal is one entry on the thread");
+    assert_eq!(thread[0].fields.get("revision"), Some(&json!(head_of(&place))), "the head it looked at");
+    assert!(flywheel_domain::offers::pending(&store, SESSION).unwrap().is_empty(), "a refused offer is never pending");
 }
 
 /// What an offer is about is written on its entry beside the kind, the document
@@ -284,12 +394,13 @@ fn an_offers_about_is_written_on_its_entry() {
     let at = Utc::now();
     let session = "curation/main/1";
     let document = "flywheel/curation/chores/agents-md.md";
+    let place = a_place("about", &[document]);
     let offered = |about: Option<&str>| {
         let mut store = FakeStore::default();
         let mut world = FakeWorld::new().tracking("atlas");
         commands::put_new(&mut store, &defs, "curation/main", "curation", None, Default::default(), at).expect("the curation");
         let tracked = || Ok(vec!["atlas".to_string()]);
-        let out = crate::report::offer(&mut store, tracked, session, "chuck", at, "chore", document, Some("atlas"), about)
+        let out = crate::report::offer(&mut store, tracked, &place, session, "chuck", at, "chore", document, Some("atlas"), about)
             .expect("the offer is written");
         assert_eq!(crate::report::exit_code(&out), 0, "{out:?}");
         let made = offers::record(&mut store, &mut world, &defs, session, "curation/main", at).expect("the offer is recorded");

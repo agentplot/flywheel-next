@@ -186,6 +186,31 @@ pub fn ls_tree(repo: &Repo, line: &str, prefix: &str) -> Result<Vec<String>> {
         .collect())
 }
 
+/// What a checkout's HEAD names, and whether it holds a file at a path.
+pub struct Head {
+    pub revision: String,
+    pub holds: bool,
+}
+
+/// The commit HEAD names in the repository `dir` is in, and whether that
+/// commit holds a file at `path`, in process: what an offer made in a place
+/// names as the revision its document is read at (62). None where the
+/// directory is in no repository or its HEAD names no commit yet.
+pub fn head_holding(dir: &Path, path: &str) -> Result<Option<Head>> {
+    let Ok(repo) = gix::discover(dir) else {
+        return Ok(None);
+    };
+    let Ok(id) = repo.head_id() else {
+        return Ok(None);
+    };
+    let id = id.detach();
+    let mut tree = repo.find_object(id)?.peel_to_tree()?;
+    let holds = tree
+        .peel_to_entry_by_path(path.trim_start_matches("./"))?
+        .is_some_and(|entry| !entry.mode().is_tree());
+    Ok(Some(Head { revision: id.to_string(), holds }))
+}
+
 /// The repository, or none where the directory is not one — a host that has not
 /// cloned yet reads an empty world rather than failing.
 fn opened(repo: &Repo) -> Option<gix::Repository> {

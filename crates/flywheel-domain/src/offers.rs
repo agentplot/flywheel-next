@@ -50,6 +50,8 @@ pub struct Offer {
     /// What the offer concerns, as the session said it. Nothing is derived
     /// from it (58, 62).
     pub about: Option<String>,
+    /// The offering place's head at the offer, which holds the document (62).
+    pub revision: Option<String>,
     /// When the session made it, which is when it judged the document (62).
     pub at: DateTime<Utc>,
 }
@@ -78,6 +80,7 @@ pub fn on_thread(session: &str, entries: &[ThreadEntry]) -> Vec<Offer> {
                 document: entry.fields.get("document")?.as_str()?.to_string(),
                 scope: entry.fields.get("scope").and_then(|v| v.as_str()).map(String::from),
                 about: entry.fields.get("about").and_then(|v| v.as_str()).map(String::from),
+                revision: entry.fields.get("revision").and_then(|v| v.as_str()).map(String::from),
                 at: entry.at,
             })
         })
@@ -253,6 +256,10 @@ pub fn record<S: StateStore, W: World + ?Sized>(
     for offer in pending(store, session)? {
         let mut record: BTreeMap<String, Value> = BTreeMap::new();
         record.insert("document".into(), json!(offer.document));
+        // Where the document is read, since the record never holds it (62).
+        if let Some(revision) = &offer.revision {
+            record.insert("revision".into(), json!(revision));
+        }
         record.insert("sources".into(), json!([offer.entry]));
 
         if offer.kind == "chore" {
@@ -266,6 +273,7 @@ pub fn record<S: StateStore, W: World + ?Sized>(
                     document: offer.document.clone(),
                     scope: offer.scope.clone(),
                     about: offer.about.clone(),
+                    revision: offer.revision.clone(),
                 };
                 report::refuse_offer(store, session, MACHINERY, at, &taken_back, Some(&offer.entry), &reason)?;
                 continue;

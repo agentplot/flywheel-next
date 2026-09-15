@@ -274,7 +274,9 @@ flywheel refuse "this is not the work"
 ```
 
 `FLYWHEEL_SESSION` and `FLYWHEEL_STATE` are what the work order sets; `--session`
-and `--state` say the same thing by hand.
+and `--state` say the same thing by hand. An offer points at a document committed
+in the place and names the place's head, where the document is read; one not
+committed there is refused (62).
 
 ## The crates
 
