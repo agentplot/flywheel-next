@@ -8,4 +8,5 @@ mod rail_folding;
 mod rail_record;
 mod set;
 mod signals;
+mod status;
 mod quiet;

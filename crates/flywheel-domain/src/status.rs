@@ -42,6 +42,15 @@ pub struct Row {
     pub lease: Option<String>,
     /// The question, the answer and the note kept on the object, in order (144).
     pub discussion: Vec<(String, String)>,
+    /// The object this one is part of, where it is part of one: an
+    /// elaboration's intent, a unit's bolt, a signal's capture. What the view
+    /// draws it inside (209).
+    pub parent: Option<String>,
+    /// When it was made among its siblings, so a thread's beads and a ledger's
+    /// units are drawn in order (209).
+    pub created: u64,
+    /// What a capture or a signal says, in the words it was said in (19a, 209).
+    pub words: Option<String>,
 }
 
 /// The whole view, before it is a page.
@@ -318,7 +327,19 @@ pub fn read_with<S: Records, R: crate::signals::Reads + ?Sized>(
             .map(|(region, state)| format!("{region}: {state}"))
             .collect();
         states.sort();
+        // A note is its signal's words and a quote its own (19a, 209).
+        let words = match object.machine.as_str() {
+            "signal" => crate::signals::text_of(object),
+            "capture" => objects
+                .iter()
+                .find(|o| o.machine == "signal" && o.parent.as_deref() == Some(object.id.as_str()))
+                .and_then(crate::signals::text_of),
+            _ => None,
+        };
         rows.push(Row {
+            parent: object.parent.clone(),
+            created: object.created,
+            words,
             object: object.id.clone(),
             machine: object.machine.clone(),
             group,
@@ -412,43 +433,11 @@ pub fn render(status: &Status) -> StatusView {
         if rows.is_empty() {
             body.push_str("<p class=\"none\">nothing</p>\n");
         }
-        for row in rows {
-            body.push_str(&format!(
-                "<article id=\"{}\" data-machine=\"{}\" data-holder=\"{}\" data-runner=\"{}\" data-liveness=\"{}\" data-lease=\"{}\">\n",
-                escape(&row.object),
-                escape(&row.machine),
-                escape(row.holder.as_deref().unwrap_or("none")),
-                escape(row.runner.as_deref().unwrap_or("none")),
-                escape(row.liveness.as_deref().unwrap_or("none")),
-                escape(row.lease.as_deref().unwrap_or("free")),
-            ));
-            body.push_str(&format!("<h3>{}</h3>\n", escape(&row.object)));
-            body.push_str(&format!("<p class=\"state\">{}</p>\n", escape(&row.said)));
-            body.push_str(&format!(
-                "<p class=\"holder\">held by {} ({})</p>\n",
-                escape(row.holder.as_deref().unwrap_or("no host")),
-                escape(row.liveness.as_deref().unwrap_or("no host"))
-            ));
-            if let Some(runner) = &row.runner {
-                body.push_str(&format!("<p class=\"runner\">run by the {}</p>\n", escape(runner)));
-            }
-            // An object no host's declaration covers is said here, in words, and
-            // not as a number on the rail: nothing about it is the operator's
-            // to answer beyond widening a declaration (79, 141, 149).
-            if row.lease.as_deref() == Some("uncovered") {
-                body.push_str(
-                    "<p class=\"lease\">no host's declaration covers this; it waits until one \
-                     does (149)</p>\n",
-                );
-            }
-            for (kind, said) in &row.discussion {
-                body.push_str(&format!(
-                    "<p class=\"said\" data-kind=\"{}\">{}</p>\n",
-                    escape(kind),
-                    escape(said)
-                ));
-            }
-            body.push_str("</article>\n");
+        // An object drawn inside the one it is part of is not drawn again on
+        // its own; one whose parent sits in another group is drawn where it
+        // sits, since the group is its phase and a form never says that (209).
+        for row in rows.iter().filter(|r| !part_of_one_here(r, &rows)) {
+            render_row(&mut body, row, &rows, false);
         }
         body.push_str("</section>\n");
     }
@@ -457,4 +446,109 @@ pub fn render(status: &Status) -> StatusView {
         as_of: status.as_of.clone(),
         body,
     }
+}
+
+/// The form an object takes on the status view (209, S62). A decision is the
+/// rail's and never drawn here; a proposal is a sheet with its unit proposals
+/// hanging off it, an intent a thread with its elaborations as beads in order,
+/// a bolt a ledger with its units as slips in order and a landed bolt a record
+/// of them, a capture a note with its words and a signal a quote. A work item
+/// is a line under its unit, a session a row of its own, and what the
+/// machinery keeps beside the work — curation, a place, a line — a plain entry.
+pub fn form_of(row: &Row) -> &'static str {
+    match (row.machine.as_str(), row.group.as_str()) {
+        ("bolt", "done") => "record",
+        ("bolt", _) => "ledger",
+        ("intent", _) => "thread",
+        ("elaboration", _) => "bead",
+        ("proposal", _) => "sheet",
+        ("unit", _) => "slip",
+        ("work-item", _) => "item",
+        ("capture", _) => "note",
+        ("signal", _) => "quote",
+        ("session", _) => "session",
+        _ => "entry",
+    }
+}
+
+/// What a form's parts are called when they hang off it.
+fn parts_of(form: &str) -> &'static str {
+    match form {
+        "thread" => "beads",
+        "ledger" | "record" => "slips",
+        "slip" => "items",
+        "sheet" => "unit-proposals",
+        "note" => "quotes",
+        _ => "parts",
+    }
+}
+
+/// Whether a row is drawn inside another row of the same group.
+fn part_of_one_here(row: &Row, group: &[&Row]) -> bool {
+    row.parent
+        .as_deref()
+        .is_some_and(|parent| group.iter().any(|r| r.object == parent))
+}
+
+/// One object in its form, with its parts inside it in the order they were
+/// made (209).
+fn render_row(body: &mut String, row: &Row, group: &[&Row], nested: bool) {
+    let form = form_of(row);
+    let tag = match (nested, form) {
+        (true, _) => "li",
+        (false, "quote") => "blockquote",
+        (false, _) => "article",
+    };
+    body.push_str(&format!(
+        "<{tag} class=\"{form}\" id=\"{}\" data-machine=\"{}\" data-holder=\"{}\" data-runner=\"{}\" data-liveness=\"{}\" data-lease=\"{}\">\n",
+        escape(&row.object),
+        escape(&row.machine),
+        escape(row.holder.as_deref().unwrap_or("none")),
+        escape(row.runner.as_deref().unwrap_or("none")),
+        escape(row.liveness.as_deref().unwrap_or("none")),
+        escape(row.lease.as_deref().unwrap_or("free")),
+    ));
+    body.push_str(&format!("<h3>{}</h3>\n", escape(&row.object)));
+    // A note and a quote are their words, as they were said (19a, 209).
+    if let Some(words) = row.words.as_deref().filter(|_| matches!(form, "note" | "quote")) {
+        body.push_str(&format!("<p class=\"words\">“{}”</p>\n", escape(words)));
+    }
+    body.push_str(&format!("<p class=\"state\">{}</p>\n", escape(&row.said)));
+    body.push_str(&format!(
+        "<p class=\"holder\">held by {} ({})</p>\n",
+        escape(row.holder.as_deref().unwrap_or("no host")),
+        escape(row.liveness.as_deref().unwrap_or("no host"))
+    ));
+    if let Some(runner) = &row.runner {
+        body.push_str(&format!("<p class=\"runner\">run by the {}</p>\n", escape(runner)));
+    }
+    // An object no host's declaration covers is said here, in words, and not
+    // as a number on the rail: nothing about it is the operator's to answer
+    // beyond widening a declaration (79, 141, 149).
+    if row.lease.as_deref() == Some("uncovered") {
+        body.push_str(
+            "<p class=\"lease\">no host's declaration covers this; it waits until one \
+             does (149)</p>\n",
+        );
+    }
+    for (kind, said) in &row.discussion {
+        body.push_str(&format!(
+            "<p class=\"said\" data-kind=\"{}\">{}</p>\n",
+            escape(kind),
+            escape(said)
+        ));
+    }
+    let mut parts: Vec<&&Row> = group
+        .iter()
+        .filter(|r| r.parent.as_deref() == Some(row.object.as_str()))
+        .collect();
+    parts.sort_by_key(|r| (r.created, r.object.clone()));
+    if !parts.is_empty() {
+        body.push_str(&format!("<ol class=\"{}\">\n", parts_of(form)));
+        for part in parts {
+            render_row(body, part, group, true);
+        }
+        body.push_str("</ol>\n");
+    }
+    body.push_str(&format!("</{tag}>\n"));
 }

@@ -150,6 +150,7 @@ pub fn body(read: &Read, object: &Object, row: Option<&status::Row>) -> String {
         "bolt" => out.push_str(&bolt_page(read, object, row)),
         "unit" => out.push_str(&unit_page(read, object, row)),
         "work-item" => out.push_str(&item_page(read, object, row)),
+        "elaboration" => out.push_str(&elaboration_page(read, object, row)),
         _ => out.push_str(&plain_page(read, object)),
     }
 
@@ -157,6 +158,58 @@ pub fn body(read: &Read, object: &Object, row: Option<&status::Row>) -> String {
     let said = row.map(discussion).unwrap_or_default();
     out.push_str(&sec("notes and questions", "", &said));
     out.push_str("</div>\n");
+    out
+}
+
+// -------------------------------------------------------------- elaboration
+
+/// An elaboration is a surface of its own, reached from its intent: its type
+/// and where it stands, the document it writes and what its sessions left in
+/// the intent's change directory, its sessions with what they last did, and
+/// the intents a gathering covers (210, 187, 188, 65–68). Its decision, when
+/// one is pending, is the page's own head and "the decision" above.
+fn elaboration_page(read: &Read, elaboration: &Object, row_: Option<&status::Row>) -> String {
+    let mut out = String::new();
+    let mut facts = String::new();
+    if let Some(kind) = field(elaboration, "type") {
+        facts.push_str(&row("type", &escape(kind)));
+    }
+    if let Some(said) = row_.map(|r| r.said.as_str()).filter(|s| !s.is_empty()) {
+        facts.push_str(&row("stands", &escape(said)));
+    }
+    if let Some(intent) = elaboration.parent.as_deref() {
+        facts.push_str(&row("intent", &link(read, intent, name_of(intent))));
+    }
+    if let Some(document) = field(elaboration, "document") {
+        facts.push_str(&row("document", &mono(document)));
+    }
+    if let Some(host) = row_.and_then(|r| r.holder.as_deref()) {
+        facts.push_str(&row("host", &mono(host)));
+    }
+    out.push_str(&sec("the elaboration", "", &facts));
+
+    // A gathering is one elaboration over several intents, proposed on the
+    // first and covering the rest (188).
+    let covers: Vec<String> = elaboration
+        .record
+        .get("covers")
+        .and_then(|v| v.as_array())
+        .map(|a| a.iter().filter_map(|v| v.as_str().map(String::from)).collect())
+        .unwrap_or_default();
+    if covers.len() > 1 {
+        let listed: Vec<String> = covers.iter().map(|i| link(read, i, name_of(i))).collect();
+        out.push_str(&sec("gathers", "", &row("intents", &listed.join(" · "))));
+    }
+
+    let sessions: Vec<&Session> = read
+        .sessions
+        .values()
+        .filter(|s| s.item == elaboration.id)
+        .collect();
+    match sessions.is_empty() {
+        true => out.push_str(&sec("sessions", "", "<p class=\"none\">No session yet: one starts when it is approved.</p>\n")),
+        false => out.push_str(&sec("sessions", "", &session_rows(&sessions))),
+    }
     out
 }
 
@@ -497,11 +550,15 @@ fn plain_page(read: &Read, object: &Object) -> String {
         cited.push_str("</ul>\n");
         out.push_str(&sec("what it cites", "", &cited));
     }
-    let children: Vec<&Object> = read
+    // What it holds, in the order it was made: an intent lists its
+    // elaborations in order, each with its type, and each opens its own
+    // surface (210).
+    let mut children: Vec<&Object> = read
         .objects
         .iter()
         .filter(|o| o.parent.as_deref() == Some(object.id.as_str()) && o.machine != "signal")
         .collect();
+    children.sort_by_key(|o| (o.created, o.id.clone()));
     if !children.is_empty() {
         let mut held = String::from("<ol class=\"elaborations\">\n");
         for child in &children {
@@ -512,15 +569,20 @@ fn plain_page(read: &Read, object: &Object) -> String {
                 .find(|r| r.object == child.id)
                 .map(|r| r.said.clone())
                 .unwrap_or_default();
+            let kind = field(child, "type").map(|t| format!("{} · ", escape(t))).unwrap_or_default();
             let _ = write!(
                 held,
-                "<li>{}<span class=\"r\">{}</span></li>\n",
+                "<li>{}<span class=\"r\">{kind}{}</span></li>\n",
                 link(read, &child.id, name_of(&child.id)),
                 escape(&said)
             );
         }
         held.push_str("</ol>\n");
-        out.push_str(&sec("holds", "", &held));
+        let title = match object.machine.as_str() {
+            "intent" => "elaborations",
+            _ => "holds",
+        };
+        out.push_str(&sec(title, "", &held));
     }
     if let Some(parent) = &object.parent {
         out.push_str(&sec("part of", "", &row("", &link(read, parent, parent))));
