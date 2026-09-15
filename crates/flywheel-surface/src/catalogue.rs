@@ -1527,6 +1527,29 @@ fn capture<S: StateStore, W: World + ?Sized>(
 ) -> Result<Outcome> {
     let text = call.text("text").unwrap_or_default();
     let source = call.text("source").unwrap_or_else(|| call.delivery.clone());
+    // A delivery already recorded is acknowledged and captures nothing again:
+    // the same delivery twice is one record (137, 111).
+    if delivered_before(store, call)? {
+        let given = format!("response/{}", call.delivery_id.as_deref().unwrap_or_default());
+        let captured = store
+            .get(&given)?
+            .and_then(|response| response.record.get("object").and_then(|v| v.as_str()).map(String::from));
+        return commands::record_call(
+            store,
+            defs,
+            &CallRecord {
+                tool: "capture",
+                decision: None,
+                object: captured.as_deref(),
+                answer: &text,
+                args: Some(Value::Object(call.args.clone().into_iter().collect())),
+                by: &call.by,
+                delivery: &call.delivery,
+                delivery_id: call.delivery_id.as_deref(),
+                proposed_by: call.proposed_by.as_deref(),
+            },
+        );
+    }
     let at = commands::now(store)?;
     // The source event's key where the caller has one; otherwise this delivery
     // is the event, which is what the page's box is (111, 19).

@@ -23,6 +23,37 @@ fn a_store() -> (FakeStore, FakeWorld, flywheel_engine::Definitions) {
     )
 }
 
+/// A caller posting the same delivery twice — a monitor's webhook retrying —
+/// captures once: the second call is acknowledged and writes nothing (137,
+/// 111).
+#[test]
+fn a_delivery_captured_twice_is_one_capture() {
+    let (mut store, mut world, defs) = a_store();
+    let finding = || {
+        Call::new("capture", "chuck", "page")
+            .arg("text", json!("synthetic monitor: the gateway's 5xx rate held at 3.1% for 10 minutes"))
+            .arg("source", json!("datadog"))
+            .delivered("datadog-4417")
+    };
+    catalogue::call(&mut store, &mut world, &defs, &finding()).expect("the first delivery");
+    let captures = |store: &FakeStore| {
+        store
+            .list_records(&flywheel_atoms::Scope::All)
+            .unwrap()
+            .into_iter()
+            .filter(|o| o.machine == "capture")
+            .map(|o| (o.id, o.record.get("source").cloned()))
+            .collect::<Vec<_>>()
+    };
+    assert_eq!(captures(&store).len(), 1, "{:?}", captures(&store));
+    assert_eq!(captures(&store)[0].1, Some(json!("datadog")));
+
+    let writes = store.writes();
+    catalogue::call(&mut store, &mut world, &defs, &finding()).expect("the same delivery again");
+    assert_eq!(captures(&store).len(), 1, "a repeated delivery captured again: {:?}", captures(&store));
+    assert_eq!(store.writes(), writes, "a repeated delivery wrote to the store");
+}
+
 /// A capture is one source event: it carries its provenance and a pointer to
 /// the raw material, it lives under the machinery's prefix in the blueprints,
 /// and capturing the same event twice yields one (111, 203).
