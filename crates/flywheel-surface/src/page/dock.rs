@@ -125,6 +125,9 @@ pub fn title(read: &Read, object: &Object) -> String {
             Some(repository) => format!("{repository}/{}", name_of(&object.id)),
             None => name_of(&object.id).to_string(),
         },
+        // An elaboration by its type and its material, never its ordinal
+        // (S226).
+        "elaboration" => super::shown_name(read, &object.id),
         _ => name_of(&object.id).to_string(),
     }
 }
@@ -733,11 +736,16 @@ fn plain_page(read: &Read, object: &Object) -> String {
                 .find(|r| r.object == child.id)
                 .map(|r| r.said.clone())
                 .unwrap_or_default();
-            let kind = field(child, "type").map(|t| format!("{} · ", escape(t))).unwrap_or_default();
+            // An elaboration's name already says its type (S226); anything else
+            // held says its type beside its name.
+            let kind = match child.machine.as_str() {
+                "elaboration" => String::new(),
+                _ => field(child, "type").map(|t| format!("{} · ", escape(t))).unwrap_or_default(),
+            };
             let _ = write!(
                 held,
                 "<li>{}<span class=\"r\">{kind}{}</span></li>\n",
-                link(read, &child.id, name_of(&child.id)),
+                link(read, &child.id, &super::shown_name(read, &child.id)),
                 escape(&said)
             );
         }

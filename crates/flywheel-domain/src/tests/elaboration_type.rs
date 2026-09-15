@@ -45,6 +45,30 @@ fn a_proposal_from_attached_material_is_self_closing() {
     assert_eq!(store.get(&untyped).unwrap().unwrap().record.get("type"), Some(&json!("self-closing")));
 }
 
+/// An elaboration is named by its type and the words of the material it was
+/// proposed from, and a corrected type renames it; the id stays the id (27,
+/// S226).
+#[test]
+fn an_elaboration_is_named_by_its_type_and_material() {
+    let defs = crate::set::load().unwrap();
+    let mut store = FakeStore::default();
+    an_open_intent(&mut store, &defs, "intent/rows");
+    let proposed = effects::propose_elaboration(&mut store, &defs, "intent/rows", "from-material", now()).unwrap();
+    let words = |signal: &str| (signal == "signal/rows-1").then(|| "the rows lose their numbers on the second page".to_string());
+
+    let held = store.get(&proposed).unwrap().unwrap();
+    assert_eq!(effects::elaboration_name(&held, words), "self-closing · rows lose their numbers");
+
+    effects::set_type(&mut store, &proposed, "type research").unwrap();
+    let held = store.get(&proposed).unwrap().unwrap();
+    assert_eq!(effects::elaboration_name(&held, words), "research · rows lose their numbers");
+    assert_eq!(held.id, proposed, "the id is unchanged");
+    assert!(held.id.ends_with("proposed-1"), "{}", held.id);
+
+    // With no words to read, the type alone names it.
+    assert_eq!(effects::elaboration_name(&held, |_| None), "research");
+}
+
 /// `type <name>` before the yes names the type the elaboration runs: the record
 /// holds the corrected name at its version, and the working state's machine is
 /// that type's, which is what its session starts under (27, `elaboration.yaml`

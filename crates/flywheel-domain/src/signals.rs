@@ -551,6 +551,20 @@ fn key_of<R: Reads + ?Sized>(files: &R, object: &str) -> String {
 /// Every signal with no standing move: what curation sees, and what the status
 /// view counts and ages by source (107, 118).
 pub fn unmoved<R: Reads + ?Sized>(files: &R) -> Vec<Signal> {
+    signals_in(files)
+        .into_iter()
+        .filter(|signal| {
+            !files
+                .read(&move_path(&signal.id))
+                .and_then(|t| rec::parse(&t).first().map(Move::from_record))
+                .is_some_and(|m| !m.target.is_empty())
+        })
+        .collect()
+}
+
+/// Every signal the material holds, moved or not, in the order a person counts
+/// them — what names a thing made from a signal the store keeps no record of.
+pub fn signals_in<R: Reads + ?Sized>(files: &R) -> Vec<Signal> {
     let mut out = Vec::new();
     let mut paths = files.list(&format!("{UNDER}/"));
     in_order(&mut paths);
@@ -565,14 +579,7 @@ pub fn unmoved<R: Reads + ?Sized>(files: &R) -> Vec<Signal> {
         let Some(record) = rec::parse(&text).first().map(Signal::from_record) else {
             continue;
         };
-        if record.id.is_empty() {
-            continue;
-        }
-        let moved = files
-            .read(&move_path(&record.id))
-            .and_then(|t| rec::parse(&t).first().map(Move::from_record))
-            .is_some_and(|m| !m.target.is_empty());
-        if !moved {
+        if !record.id.is_empty() {
             out.push(record);
         }
     }

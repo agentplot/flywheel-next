@@ -374,6 +374,38 @@ pub fn propose_elaboration<S: StateStore>(
     Ok(id)
 }
 
+/// An elaboration's name, in the operator's words: its type as it resolves,
+/// then the first words of the first material it was proposed from — a
+/// signal's words, or a finding's document path — joined by " · ", and never
+/// its ordinal or its id, which stays the id (27, S226, `intent.yaml`). It is
+/// read from the record wherever it is shown, so a corrected type renames it
+/// and an elaboration recorded before takes its name with nothing rewritten.
+pub fn elaboration_name(elaboration: &Object, words_of: impl Fn(&str) -> Option<String>) -> String {
+    let kind = elaboration
+        .record
+        .get("type")
+        .and_then(|v| v.as_str())
+        .map(str::trim)
+        .filter(|t| !t.is_empty() && *t != "from-material")
+        .unwrap_or("self-closing");
+    let material = elaboration
+        .record
+        .get("signals")
+        .and_then(|v| v.as_array())
+        .into_iter()
+        .flatten()
+        .filter_map(|v| v.as_str())
+        .find_map(|signal| words_of(signal))
+        .or_else(|| elaboration.record.get("document").and_then(|v| v.as_str()).map(String::from));
+    let words = material
+        .map(|text| crate::signals::name_from_words(&text).replace('-', " "))
+        .filter(|words| !words.is_empty() && words != "capture");
+    match words {
+        Some(words) => format!("{kind} · {words}"),
+        None => kind.to_string(),
+    }
+}
+
 /// `split_intent`: two proposed intents replace this one, its signals re-moved
 /// to each (107).
 ///

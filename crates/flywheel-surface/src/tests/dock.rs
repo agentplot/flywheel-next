@@ -314,7 +314,9 @@ fn any_other_page_is_what_it_holds_and_what_it_is_part_of() {
     let page = page_of(&crate::page::render(&read), "intent/atlas-rows");
     assert!(page.contains("<h3>elaborations</h3><ol class=\"elaborations\">"), "{page}");
     assert!(page.contains("href=\"#dock-elaboration/atlas-rows/research\""), "{page}");
-    assert!(page.contains("research · "), "each elaboration says its type: {page}");
+    // An elaboration is named by its type and its material, and one with no
+    // material by its type alone (S226).
+    assert!(page.contains(">research</a>"), "each elaboration says its type: {page}");
     assert!(page.contains("<h3>part of</h3>"), "{page}");
     assert!(page.contains("href=\"#dock-instance/willdan\""), "{page}");
     assert_no_dump(&page);

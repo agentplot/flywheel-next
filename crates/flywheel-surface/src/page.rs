@@ -75,6 +75,10 @@ pub struct Read {
     /// records, so what became of a note shows the moment its move is written
     /// (107, S28).
     pub moves: BTreeMap<String, signals::Move>,
+    /// What each signal the material holds says, by its id — its assertion,
+    /// else its excerpt — for a signal the store holds no record of, so what
+    /// is named from it reads its words (113, S226).
+    pub signal_words: BTreeMap<String, String>,
     /// What each object's sessions left behind: a file at a path, which the
     /// page links to (190, 213). Without it the operator sees that an
     /// elaboration is done and cannot read what it produced.
@@ -466,6 +470,16 @@ pub fn read<S: StateStore, W: World + ?Sized>(
     let unmoved = signals::unmoved(&files);
     let moves: BTreeMap<String, signals::Move> =
         signals::moves(&files).into_iter().map(|moved| (moved.signal.clone(), moved)).collect();
+    let signal_words: BTreeMap<String, String> = signals::signals_in(&files)
+        .into_iter()
+        .filter_map(|signal| {
+            let said = match signal.assertion.trim().is_empty() {
+                true => signal.excerpt.trim().to_string(),
+                false => signal.assertion.trim().to_string(),
+            };
+            (!said.is_empty()).then_some((signal.id, said))
+        })
+        .collect();
     let curation = curating(&objects);
     let intents: Vec<String> = objects
         .iter()
@@ -551,6 +565,7 @@ pub fn read<S: StateStore, W: World + ?Sized>(
         answered,
         unmoved,
         moves,
+        signal_words,
         curation,
         intents,
         why,
@@ -1675,7 +1690,7 @@ fn card(read: &Read, decision: &DecisionInstance) -> String {
                 pre = repository_of(&decision.object)
                     .map(|r| format!("<span class=\"pre\">{} · </span>", escape(r)))
                     .unwrap_or_default(),
-                name = escape(name_of(&decision.object)),
+                name = escape(&shown_name(read, &decision.object)),
             );
         }
     }
@@ -1739,7 +1754,7 @@ fn question_of(read: &Read, decision: &DecisionInstance) -> Option<String> {
     };
     asks::question(
         &decision.kind,
-        name_of(&decision.object),
+        &shown_name(read, &decision.object),
         &asks::Facts { units_merged, intents },
     )
 }
@@ -1757,7 +1772,9 @@ fn asks_line(read: &Read, decision: &DecisionInstance) -> String {
             .iter()
             .find(|o| o.id == decision.object)
             .and_then(|o| o.record.get("type")?.as_str().map(str::trim).filter(|t| !t.is_empty()))
-            .map(|kind| format!(" <span class=\"ty\">{} · {}</span>", escape(name_of(&decision.object)), escape(kind))),
+            // Its name begins with its type, so the name is the whole line
+            // (S226).
+            .map(|_| format!(" <span class=\"ty\">{}</span>", escape(&shown_name(read, &decision.object)))),
         _ => None,
     };
     format!("<p class=\"asks\">{}{}</p>\n", escape(&asked), typed.unwrap_or_default())
@@ -2279,7 +2296,7 @@ fn draw_on_the_board(read: &Read, row: &status::Row, lane: &[&status::Row]) -> S
         // thread to hang on, and is drawn as the bead alone: drawing it as a
         // thread of its own would say it is an intent, which is the one thing
         // 209 forbids a form to do.
-        "thread bead" => format!("<div class=\"thread\">{}</div>\n", bead(row)),
+        "thread bead" => format!("<div class=\"thread\">{}</div>\n", bead(read, row)),
         "thread" => thread(read, row, lane),
         "ledger" => ledger(read, row, lane),
         "sheet" => sheet(row),
@@ -2320,7 +2337,7 @@ fn thread(read: &Read, row: &status::Row, lane: &[&status::Row]) -> String {
         out.push_str("<div class=\"bead queued\"><span class=\"leave\">no elaboration yet</span></div>\n");
     }
     for bead in beads {
-        out.push_str(&self::bead(bead));
+        out.push_str(&self::bead(read, bead));
     }
     out.push_str("</div>\n</article>\n");
     out
@@ -2328,7 +2345,7 @@ fn thread(read: &Read, row: &status::Row, lane: &[&status::Row]) -> String {
 
 /// One elaboration, as a bead on its intent's thread. Each bead is its own
 /// target and opens that elaboration's surface (210, S13).
-fn bead(row: &status::Row) -> String {
+fn bead(read: &Read, row: &status::Row) -> String {
     format!(
         "<div class=\"bead {state}\"{attributes}>\
          <span class=\"bk\">{machine}</span>\
@@ -2338,9 +2355,25 @@ fn bead(row: &status::Row) -> String {
         attributes = board_attributes(row),
         machine = escape(&row.machine),
         object = escape(&row.object),
-        name = escape(name_of(&row.object)),
+        name = escape(&shown_name(read, &row.object)),
         said = escape(&row.said),
     )
+}
+
+/// What an object is called where it is shown: an elaboration by its type and
+/// the material it was proposed from (S226), anything else by the last segment
+/// of its id.
+pub(crate) fn shown_name(read: &Read, object: &str) -> String {
+    match read.objects.iter().find(|o| o.id == object && o.machine == "elaboration") {
+        Some(elaboration) => flywheel_domain::effects::elaboration_name(elaboration, |signal| {
+            read.objects
+                .iter()
+                .find(|o| o.id == signal)
+                .and_then(signals::text_of)
+                .or_else(|| read.signal_words.get(signal).cloned())
+        }),
+        None => name_of(object).to_string(),
+    }
 }
 
 /// What a bead looks like from its group: the mockup gives a working bead a

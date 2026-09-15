@@ -427,7 +427,8 @@ fn a_rail_card_carries_its_kind_controls() {
         "the intent cites signals and its card does not say how many: {why:?}"
     );
 
-    // An elaboration's card names its type beside the question, once, and a
+    // An elaboration's card names it beside the question, once — by its type
+    // and the material it was proposed from, never its ordinal — and a
     // gathering draws the intents it covers, each with its own drop (27, 188,
     // S226).
     let card_of = |object: &str| -> String {
@@ -442,7 +443,7 @@ fn a_rail_card_carries_its_kind_controls() {
     let single = card_of("elaboration/loop-granularity/e5");
     assert!(
         single.contains(
-            "<p class=\"asks\">Start this elaboration on loop-granularity? <span class=\"ty\">e5 · self-closing</span></p>"
+            "<p class=\"asks\">Start this elaboration on loop-granularity? <span class=\"ty\">self-closing · openspec changes intent loop</span></p>"
         ),
         "{single}"
     );
@@ -948,6 +949,81 @@ fn the_line(store: &mut FakeStore, world: &world::Files, defs: &Definitions) -> 
     let opening = "<span class=\"next\">";
     let at = html.find(opening).unwrap_or_else(|| panic!("no note's line on the board: {html}"));
     html[at + opening.len()..].split("</span>").next().expect("the line").to_string()
+}
+
+/// An elaboration is named by its type and the words of its material on its
+/// bead, its card and its dock page, never by its ordinal or its id (27, S226).
+#[test]
+fn a_bead_card_and_dock_page_name_an_elaboration_not_its_id() {
+    let (mut store, world, defs) = a_page();
+    let at = commands::now(&store).expect("a point");
+    let signal = "signal/page-1";
+    let words = [("assertion".to_string(), json!("the rows lose their numbers on the second page"))];
+    commands::put_new(&mut store, &defs, signal, "signal", Some("capture/page-1"), words.into_iter().collect(), at)
+        .expect("the signal");
+    let record = [("signals".to_string(), json!([signal]))];
+    commands::put_new(&mut store, &defs, "intent/rows", "intent", None, record.into_iter().collect(), at).expect("the intent");
+    let mut intent = Records::get(&store, "intent/rows").expect("a read").expect("the intent");
+    intent.config.insert("life".into(), "open".into());
+    flywheel_engine::initialise(&defs, &mut intent, at);
+    let base = intent.seq;
+    Records::put(&mut store, "intent/rows", &intent, base).expect("open");
+    let proposed = flywheel_domain::effects::propose_elaboration(&mut store, &defs, "intent/rows", "from-material", at)
+        .expect("the elaboration");
+    commands::rail(&mut store, &defs).expect("the rail derives");
+
+    let html = rendered(&mut store, &world, &defs);
+    let name = "self-closing · rows lose their numbers";
+    let card = html
+        .split("<article class=\"card decision")
+        .find(|card| card.contains(&format!("data-object=\"{proposed}\"")))
+        .expect("the elaboration's card");
+    assert!(card.contains(name), "the card does not name it: {card}");
+    assert!(html.contains(&format!("<a class=\"en\" href=\"#dock-{proposed}\">{name}</a>")), "the bead does not name it");
+    assert!(html.contains(&format!("<h2>{name}</h2>")), "the dock page does not name it");
+    assert!(!html.contains(">proposed-1<"), "the ordinal is shown as its name");
+
+    // A signal that arrived with others in one capture has no record in the
+    // store; its words are read from the signals folder.
+    let (mut store, mut world, defs) = a_page();
+    let at = commands::now(&store).expect("a point");
+    let key = "meeting/2026-09-02/storefront-weekly";
+    let capture = flywheel_domain::signals::Capture {
+        key: key.into(),
+        source: "meeting".into(),
+        event_at: "2026-09-02".into(),
+        captured_by: "sam".into(),
+        raw: format!("raw://{key}"),
+    };
+    flywheel_domain::signals::write_capture(&mut world, &capture).expect("the capture");
+    let signal = flywheel_domain::signals::Signal {
+        id: flywheel_domain::signals::signal_object(key, 7),
+        capture: flywheel_domain::signals::object_of(key),
+        kind: "reaction".into(),
+        asserted_by: "sam".into(),
+        assertion: "catalogue images take two seconds to paint on a mid-range phone".into(),
+        position: "cue 7".into(),
+        ..Default::default()
+    };
+    flywheel_domain::signals::write_signal(&mut world, key, 7, &signal).expect("the signal");
+    let record = [("signals".to_string(), json!([signal.id]))];
+    commands::put_new(&mut store, &defs, "intent/mobile", "intent", None, record.into_iter().collect(), at)
+        .expect("the intent");
+    let mut intent = Records::get(&store, "intent/mobile").expect("a read").expect("the intent");
+    intent.config.insert("life".into(), "open".into());
+    flywheel_engine::initialise(&defs, &mut intent, at);
+    let base = intent.seq;
+    Records::put(&mut store, "intent/mobile", &intent, base).expect("open");
+    let proposed = flywheel_domain::effects::propose_elaboration(&mut store, &defs, "intent/mobile", "from-material", at)
+        .expect("the elaboration");
+    commands::rail(&mut store, &defs).expect("the rail derives");
+
+    let html = rendered(&mut store, &world, &defs);
+    let name = "self-closing · catalogue images take two";
+    assert!(
+        html.contains(&format!("<a class=\"en\" href=\"#dock-{proposed}\">{name}")),
+        "the bead does not read the signal's words: {html}"
+    );
 }
 
 /// The line under a waiting note says who reads it next and when, read from
