@@ -995,6 +995,9 @@ pub fn router<S: StateStore + Send + 'static>(served: Served<S>) -> Router {
             "/:instance",
             get(page_of_instance::<S>).post(protocol_message::<S>),
         )
+        // The same address written as a directory, which is how a browser and
+        // an operator most often write it (205a).
+        .route("/:instance/", get(page_of_instance::<S>))
         // A file a session left behind, which the object's surface links to
         // (190, 213). It comes before the catch-all because `deliverable` is a
         // segment of the path and not the head of an object's id.

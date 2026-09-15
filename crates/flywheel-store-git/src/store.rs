@@ -1699,10 +1699,19 @@ impl GitStore {
         }
         let was = self.in_tick;
         self.in_tick = true;
+        // One commit for the described state: a commit writes the tree of the
+        // whole checkout, so a commit per object made a seed of a few thousand
+        // objects read every file a few thousand times (94, D15).
         let outcome = (|| -> Result<()> {
+            self.on_fetched_head()?;
             for object in objects {
-                self.seed_object(object)?;
+                self.write_file(&layout::object(&object.id), &envelope::write_all(std::slice::from_ref(object)))?;
             }
+            let message = match objects {
+                [one] => format!("{} seeded\n\nreason: the scenario's given state", one.id),
+                many => format!("{} objects seeded\n\nreason: the scenario's given state", many.len()),
+            };
+            self.commit_and_push(&message)?;
             Ok(())
         })();
         self.in_tick = was;

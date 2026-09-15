@@ -10,6 +10,7 @@ mod dictation;
 mod discord;
 mod dock;
 mod events;
+mod http;
 mod links;
 mod page;
 mod protocol;

@@ -38,6 +38,17 @@ impl Served {
     /// is written at stays the host's own, which is what a link on a phone
     /// opens (205a, D10a); the loopback port is what the driver reaches.
     pub fn page(store: Store, defs: Definitions, operator: &str) -> Result<Served> {
+        Served::page_over(store, flywheel_scenario::bindings::FilesWorld::new(), defs, operator)
+    }
+
+    /// The same over a world holding the blueprints' signal material, so the
+    /// tray and the lanes read what the described instance holds (111, 203).
+    pub fn page_over(
+        store: Store,
+        world: flywheel_scenario::bindings::FilesWorld,
+        defs: Definitions,
+        operator: &str,
+    ) -> Result<Served> {
         let runtime = tokio::runtime::Builder::new_multi_thread()
             .worker_threads(2)
             .enable_all()
@@ -45,7 +56,7 @@ impl Served {
             .context("a runtime for the served page")?;
         let mut served = flywheel_surface::http::Served::over(
             store,
-            Box::new(flywheel_scenario::bindings::FilesWorld::new()),
+            Box::new(world),
             defs,
             &[operator.to_string()],
             "http://flywheel.local/willdan",
@@ -222,8 +233,15 @@ pub fn tappable(tab: &Tab, selector: &str) -> Result<bool> {
 /// go back from; so what is waited for is the page saying it.
 /// Ask the browser until it answers, for at most ten seconds. The driver is
 /// where a test waits on a browser, so the test itself never sleeps (D15).
-pub fn eventually<T>(mut ask: impl FnMut() -> Option<T>) -> Option<T> {
-    let until = std::time::Instant::now() + std::time::Duration::from_secs(10);
+pub fn eventually<T>(ask: impl FnMut() -> Option<T>) -> Option<T> {
+    within(std::time::Duration::from_secs(10), ask)
+}
+
+/// The same for as long as a throttled browser may need: a page measured on a
+/// slow phone over a slow connection takes longer than ten seconds to load when
+/// it is over its budget, and what it measured is the finding (310a).
+pub fn within<T>(bound: std::time::Duration, mut ask: impl FnMut() -> Option<T>) -> Option<T> {
+    let until = std::time::Instant::now() + bound;
     while std::time::Instant::now() < until {
         if let Some(answer) = ask() {
             return Some(answer);
