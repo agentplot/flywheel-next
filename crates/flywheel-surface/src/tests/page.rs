@@ -305,6 +305,26 @@ fn rail_mockup(store: &mut FakeStore, defs: &Definitions) {
 fn a_rail_card_carries_its_kind_controls() {
     let (mut store, world, defs) = a_page();
     rail_mockup(&mut store, &defs);
+    // A gathering: one elaboration over two intents, proposed on the open one
+    // and covering both (188).
+    let at = commands::now(&store).expect("a point");
+    let gathering = [
+        ("type".to_string(), json!("self-closing")),
+        ("covers".to_string(), json!(["intent/loop-granularity", "intent/rail-derivation"])),
+    ]
+    .into_iter()
+    .collect();
+    commands::put_new(
+        &mut store,
+        &defs,
+        "elaboration/loop-granularity/gathered",
+        "elaboration",
+        Some("intent/loop-granularity"),
+        gathering,
+        at,
+    )
+    .expect("the gathering");
+    commands::rail(&mut store, &defs).expect("the rail derives");
     let read = crate::page::read(&mut store, &world, &defs, ADDRESS, "chuck").expect("the page");
     let html = crate::page::render(&read);
     assert!(
@@ -344,12 +364,25 @@ fn a_rail_card_carries_its_kind_controls() {
             card.contains(&format!("class=\"object\" href=\"{ADDRESS}/{}\"", decision.object)),
             "decision {number} does not link its object: {card}"
         );
-        // And its own answers, each one a control that posts (311, 193).
+        // And its own answers, each one a control that posts (311, 193) —
+        // those that apply to it: an elaboration of one intent has nothing to
+        // pick and no intent to take out (188, S226).
         assert!(!decision.answers.is_empty(), "decision {number} takes no answer");
+        let one_intent = decision.kind == "elaboration-proposed"
+            && !read
+                .objects
+                .iter()
+                .find(|o| o.id == decision.object)
+                .and_then(|o| o.record.get("covers")?.as_array().map(|c| c.len() > 1))
+                .unwrap_or(false);
         for answer in &decision.answers {
-            assert!(
-                card.contains(&format!("data-answer=\"{}\"", crate::page::escape(answer))),
-                "decision {number} carries no `{answer}` control: {card}"
+            let control = format!("data-answer=\"{}\"", crate::page::escape(answer));
+            let applies = !(one_intent && (answer.starts_with("pick ") || answer.ends_with(": drop")));
+            assert_eq!(
+                card.contains(&control),
+                applies,
+                "decision {number} ({}) and its `{answer}` control: {card}",
+                decision.kind
             );
         }
     }
@@ -393,6 +426,39 @@ fn a_rail_card_carries_its_kind_controls() {
         why.iter().any(|said| said.contains("signals")),
         "the intent cites signals and its card does not say how many: {why:?}"
     );
+
+    // An elaboration's card names its type beside the question, once, and a
+    // gathering draws the intents it covers, each with its own drop (27, 188,
+    // S226).
+    let card_of = |object: &str| -> String {
+        let number = read
+            .decisions
+            .iter()
+            .find(|d| d.object == object && d.kind == "elaboration-proposed")
+            .and_then(|d| d.number)
+            .unwrap_or_else(|| panic!("{object} stands on no card"));
+        rail_card(&html, number)
+    };
+    let single = card_of("elaboration/loop-granularity/e5");
+    assert!(
+        single.contains(
+            "<p class=\"asks\">Start this elaboration on loop-granularity? <span class=\"ty\">e5 · self-closing</span></p>"
+        ),
+        "{single}"
+    );
+    assert!(!single.contains("type self-closing"), "the type is said once: {single}");
+    assert!(!single.contains("class=\"gl\""), "one intent is no gathering: {single}");
+
+    let gathering = card_of("elaboration/loop-granularity/gathered");
+    assert!(gathering.contains("Start one elaboration over these 2 intents?"), "{gathering}");
+    assert_eq!(gathering.matches("<span class=\"gi\"").count(), 2, "{gathering}");
+    for intent in ["loop-granularity", "rail-derivation"] {
+        assert!(
+            gathering.contains(&format!("name=\"text\" value=\"{intent}\"")),
+            "no drop for {intent} alone: {gathering}"
+        );
+    }
+    assert!(!gathering.contains("2 covers"), "the chips say what it covers: {gathering}");
 }
 
 /// A response whose decision was gone before it arrived: one attention line,

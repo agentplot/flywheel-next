@@ -121,6 +121,9 @@ pub struct Read {
     /// wrote lands on the object it names rather than on the board (308, 205a,
     /// 209).
     pub opened: Option<String>,
+    /// The objects whose type the definitions in force do not hold, so a card
+    /// names no type for them and asks for one instead (85a, S226).
+    pub untyped: std::collections::BTreeSet<String>,
 }
 
 /// The curation session the operator runs, where one is charged: the newest
@@ -379,6 +382,7 @@ pub fn read<S: StateStore, W: World + ?Sized>(
     // answer to what a decision puts in front of the operator, so the line is
     // read from the definitions rather than invented per kind (15, 11).
     let mut why: BTreeMap<String, Vec<String>> = BTreeMap::new();
+    let mut untyped = std::collections::BTreeSet::new();
     for decision in &decisions {
         let Some(object) = objects.iter().find(|o| o.id == decision.object) else {
             continue;
@@ -390,6 +394,9 @@ pub fn read<S: StateStore, W: World + ?Sized>(
         let kind = object.record.get("type").and_then(|v| v.as_str()).map(str::trim).filter(|k| !k.is_empty());
         let undefined = decision.shows.iter().any(|name| name.ends_with(".type_defined"))
             && !flywheel_domain::blueprints::type_defined(defs, kind);
+        if undefined {
+            untyped.insert(decision.object.clone());
+        }
         for name in &decision.shows {
             if name.ends_with(".type_defined") {
                 if undefined {
@@ -401,6 +408,14 @@ pub fn read<S: StateStore, W: World + ?Sized>(
                 continue;
             }
             if undefined && name.rsplit('.').next() == Some("type") {
+                continue;
+            }
+            // An elaboration's card says its type beside the question and draws
+            // the intents a gathering covers, so neither is a line as well
+            // (S226, 188).
+            if decision.kind == "elaboration-proposed"
+                && matches!(name.rsplit('.').next(), Some("type") | Some("covers"))
+            {
                 continue;
             }
             // The model names a field of the record or an atom of the
@@ -536,6 +551,7 @@ pub fn read<S: StateStore, W: World + ?Sized>(
         tour: flywheel_domain::tour::read(store, instance_of(address)),
         refused: None,
         opened: None,
+        untyped,
     })
 }
 
@@ -689,17 +705,90 @@ pub(crate) fn row_drop(number: &str, letter: &str, label: Option<&str>) -> Strin
 }
 
 /// The answers a decision's controls offer: the model's, except that a fold of
-/// chores is answered yes or drop, as a bolt's chores are (S231, 60).
+/// chores is answered yes or drop, as a bolt's chores are (S231, 60), and an
+/// elaboration offers pick only when it gathers several intents, whose drops
+/// are on each intent's chip (188, S226).
 fn offered(read: &Read, decision: &DecisionInstance) -> Vec<String> {
-    match chores_of(&read.objects, decision) {
-        Some(_) => decision
+    if chores_of(&read.objects, decision).is_some() {
+        return decision
             .answers
             .iter()
             .filter(|answer| matches!(answer.as_str(), "yes" | "drop"))
             .cloned()
-            .collect(),
-        None => decision.answers.clone(),
+            .collect();
     }
+    if decision.kind == "elaboration-proposed" {
+        let gathering = covered(read, &decision.object).len() > 1;
+        return decision
+            .answers
+            .iter()
+            .filter(|answer| !is_per_intent_drop(answer))
+            .filter(|answer| gathering || !answer.starts_with("pick "))
+            .cloned()
+            .collect();
+    }
+    decision.answers.clone()
+}
+
+/// `<intent>: drop`: the answer that takes one intent out of a gathering.
+fn is_per_intent_drop(answer: &str) -> bool {
+    answer.starts_with('<') && answer.ends_with(": drop")
+}
+
+/// The intents an elaboration covers, by id: every one a gathering names, or
+/// else its own intent (188).
+fn covered(read: &Read, object: &str) -> Vec<String> {
+    let Some(elaboration) = read.objects.iter().find(|o| o.id == object && o.machine == "elaboration") else {
+        return vec![];
+    };
+    let covers: Vec<String> = elaboration
+        .record
+        .get("covers")
+        .and_then(|v| v.as_array())
+        .map(|held| held.iter().filter_map(|v| v.as_str().map(String::from)).collect())
+        .unwrap_or_default();
+    match covers.is_empty() {
+        true => elaboration.parent.iter().cloned().collect(),
+        false => covers,
+    }
+}
+
+/// A gathering's intents, on its card and in its dock: a chip per intent whose
+/// × takes that intent out alone (188, S226). Nothing for an elaboration of
+/// one intent.
+fn gathered(read: &Read, decision: &DecisionInstance, number: &str) -> String {
+    if decision.kind != "elaboration-proposed" {
+        return String::new();
+    }
+    let intents = covered(read, &decision.object);
+    if intents.len() < 2 {
+        return String::new();
+    }
+    let per_intent = decision.answers.iter().find(|answer| is_per_intent_drop(answer));
+    let mut out = String::from("<div class=\"gl\">");
+    for intent in &intents {
+        let name = name_of(intent);
+        let drop = per_intent
+            .map(|pattern| {
+                format!(
+                    "<form method=\"post\" action=\"/api/tools/{tool}\" class=\"answer\">\
+                     <input type=\"hidden\" name=\"decision\" value=\"{number}\">\
+                     <input type=\"hidden\" name=\"answer\" value=\"{pattern}\">\
+                     <input type=\"hidden\" name=\"text\" value=\"{name}\">\
+                     <button type=\"submit\" class=\"gx\" data-answer=\"{pattern}\" \
+                     title=\"{number} {name}: drop · {does}\" aria-label=\"take {name} out of {number}\">×</button></form>",
+                    tool = crate::catalogue::ANSWER,
+                    number = escape(number),
+                    pattern = escape(pattern),
+                    name = escape(name),
+                    does = escape(asks::does(&decision.kind, pattern).unwrap_or_default()),
+                )
+            })
+            .unwrap_or_default();
+        let _ = write!(out, "<span class=\"gi\" data-intent=\"{}\">{}{drop}</span>", escape(intent), escape(name));
+    }
+    out.push_str("</div>\n");
+    out
 }
 
 /// One thing a decision shows, as a line on its card, or nothing where the
@@ -1568,10 +1657,9 @@ fn card(read: &Read, decision: &DecisionInstance) -> String {
         out.push_str(&chore_rows(&number, &rows));
     }
     // What is being asked, as a sentence, above the controls that answer it
-    // (S220).
-    if let Some(asked) = question_of(read, decision) {
-        let _ = write!(out, "<p class=\"asks\">{}</p>\n", escape(&asked));
-    }
+    // (S220), and the intents a gathering covers (188).
+    out.push_str(&asks_line(read, decision));
+    out.push_str(&gathered(read, decision, &number));
     out.push_str("<div class=\"answers\">\n");
     let answers = offered(read, decision);
     let keys = asks::keys(&answers);
@@ -1597,11 +1685,37 @@ fn question_of(read: &Read, decision: &DecisionInstance) -> Option<String> {
         .filter(|o| o.machine == "unit" && o.parent.as_deref() == Some(decision.object.as_str()))
         .filter(|o| o.config.get("life").map(String::as_str) == Some("merged"))
         .count();
+    let intents = match decision.kind.as_str() {
+        "elaboration-proposed" => covered(read, &decision.object)
+            .iter()
+            .map(|intent| name_of(intent).to_string())
+            .collect(),
+        _ => vec![],
+    };
     asks::question(
         &decision.kind,
         name_of(&decision.object),
-        &asks::Facts { units_merged },
+        &asks::Facts { units_merged, intents },
     )
+}
+
+/// The question as the card and the dock say it: for an elaboration, with its
+/// name and its type beside it, and no type where the instance has none of
+/// that name (S220, S226, 85a).
+fn asks_line(read: &Read, decision: &DecisionInstance) -> String {
+    let Some(asked) = question_of(read, decision) else {
+        return String::new();
+    };
+    let typed = match decision.kind.as_str() {
+        "elaboration-proposed" if !read.untyped.contains(&decision.object) => read
+            .objects
+            .iter()
+            .find(|o| o.id == decision.object)
+            .and_then(|o| o.record.get("type")?.as_str().map(str::trim).filter(|t| !t.is_empty()))
+            .map(|kind| format!(" <span class=\"ty\">{} · {}</span>", escape(name_of(&decision.object)), escape(kind))),
+        _ => None,
+    };
+    format!("<p class=\"asks\">{}{}</p>\n", escape(&asked), typed.unwrap_or_default())
 }
 
 /// An answer on the rail's card. A bare answer is the one-tap control; an
@@ -2790,9 +2904,8 @@ fn dock_answers(read: &Read, object: &str) -> String {
     let mut out = String::from("<div class=\"dk-answers\" data-answerable=\"true\">\n");
     for decision in standing {
         let number = decision.number.map(|n| n.to_string()).unwrap_or_default();
-        if let Some(asked) = question_of(read, decision) {
-            let _ = write!(out, "<p class=\"asks\">{}</p>\n", escape(&asked));
-        }
+        out.push_str(&asks_line(read, decision));
+        out.push_str(&gathered(read, decision, &number));
         let _ = write!(out, "<div class=\"answers\" data-number=\"{number}\">\n");
         let answers = offered(read, decision);
         let keys = asks::keys(&answers);

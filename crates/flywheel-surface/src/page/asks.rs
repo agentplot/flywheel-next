@@ -28,6 +28,11 @@ pub fn question(kind: &str, name: &str, facts: &Facts) -> Option<String> {
         "claim-moved" => format!("A claim {name} cites moved under it."),
         "unit-claim-moved" => format!("A claim {name} cites moved under it."),
         "package-install" => format!("Install {name} on this host?"),
+        "elaboration-proposed" => match (facts.intents.len(), facts.intents.first()) {
+            (n, _) if n > 1 => format!("Start one elaboration over these {n} intents?"),
+            (_, Some(intent)) => format!("Start this elaboration on {intent}?"),
+            _ => "Start this elaboration?".to_string(),
+        },
         "app-coverage" | "app-install" | "package-secret" | "service-failed" => return None,
         _ => return None,
     })
@@ -35,9 +40,12 @@ pub fn question(kind: &str, name: &str, facts: &Facts) -> Option<String> {
 
 /// What the page knows about the object a decision stands on, as far as the
 /// question needs it.
-#[derive(Default, Clone, Copy)]
+#[derive(Default, Clone)]
 pub struct Facts {
     pub units_merged: usize,
+    /// The intents an elaboration covers, by name: its own, or every intent
+    /// a gathering covers (188).
+    pub intents: Vec<String>,
 }
 
 /// What the control says: the verb the answer performs, where the model's word
@@ -47,6 +55,7 @@ pub fn label(kind: &str, answer: &str) -> String {
         ("bolt-close", "yes") => "land it".into(),
         ("bolt-close", "hold") => "hold".into(),
         ("intent-proposed", "yes") => "open".into(),
+        ("elaboration-proposed", "yes") => "start".into(),
         ("package-install", "yes") => "install".into(),
         ("land-failed", "retry") | ("stalled", "retry") => "retry".into(),
         _ => super::said(answer),
@@ -62,6 +71,11 @@ pub fn does(kind: &str, answer: &str) -> Option<&'static str> {
         ("intent-proposed", "yes") => "open the intent and start its elaborations",
         ("intent-proposed", "drop") => "set it aside with its signals",
         ("intent-proposed", "split") => "send the signals back to curation",
+        ("elaboration-proposed", "yes") => "start its session in the intent's place",
+        ("elaboration-proposed", "drop") => "set it aside; the intent stays open",
+        ("elaboration-proposed", "type <name>") => "set the type it runs as",
+        ("elaboration-proposed", "pick <intents>") => "keep the intents you name; the rest are proposed on their own",
+        ("elaboration-proposed", "<intent>: drop") => "take this intent out; it is proposed on its own",
         ("intent-close", "close") => "close the intent; its elaborations stand",
         ("intent-close", "keep open") => "keep it open for more elaboration",
         ("stalled", "retry") => "start the session again in the same place",
@@ -79,6 +93,7 @@ pub fn short(kind: &str) -> &str {
     match kind {
         "bolt-close" => "land?",
         "intent-proposed" => "open?",
+        "elaboration-proposed" => "start?",
         "intent-close" => "close?",
         "question" => "question",
         "stalled" => "stalled",
@@ -142,8 +157,24 @@ mod tests {
     }
 
     #[test]
+    fn an_elaboration_asks_to_start_on_its_intent_or_over_its_gathering() {
+        let one = Facts { intents: vec!["loop-granularity".into()], ..Default::default() };
+        assert_eq!(
+            question("elaboration-proposed", "e5", &one).unwrap(),
+            "Start this elaboration on loop-granularity?"
+        );
+        let three = Facts { intents: vec!["a".into(), "b".into(), "c".into()], ..Default::default() };
+        assert_eq!(
+            question("elaboration-proposed", "research", &three).unwrap(),
+            "Start one elaboration over these 3 intents?"
+        );
+        assert_eq!(label("elaboration-proposed", "yes"), "start");
+        assert_eq!(label("elaboration-proposed", "pick <intents>"), "pick");
+    }
+
+    #[test]
     fn a_bolt_close_reads_as_a_question_with_its_count() {
-        let facts = Facts { units_merged: 1 };
+        let facts = Facts { units_merged: 1, ..Default::default() };
         assert_eq!(
             question("bolt-close", "readme-fix", &facts).unwrap(),
             "Its one unit is merged. Land readme-fix on main?"
