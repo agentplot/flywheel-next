@@ -273,6 +273,10 @@ pub struct Asked {
     /// page around it, which is what the drawer fetches when its object is
     /// opened (310a, S235).
     pub part: Option<String>,
+    /// With `part=list`: the list a `more` asks for, and the row it asks from
+    /// (310a, S235).
+    pub list: Option<String>,
+    pub from: Option<usize>,
 }
 
 /// `GET /api/tools`: the catalogue as the HTTP caller enumerates it.
@@ -635,6 +639,9 @@ async fn page_of_instance<S: StateStore + Send + 'static>(
     if instance != served.instance() {
         return wrong_instance(&served, &instance).into_response();
     }
+    if asked.part.as_deref() == Some("list") {
+        return listed(&served, &headers, None, &asked).await.into_response();
+    }
     rendered(&served, &headers, None, asked.refused).await.into_response()
 }
 
@@ -748,10 +755,42 @@ async fn page_of_object<S: StateStore + Send + 'static>(
             }
         }
     }
+    if asked.part.as_deref() == Some("list") {
+        return listed(&served, &headers, Some(&object), &asked).await;
+    }
     if asked.part.as_deref() == Some("dock") {
         return docked(&served, &headers, &object).await;
     }
     rendered(&served, &headers, Some(object), asked.refused).await
+}
+
+/// The next rows of one list as its `more` fetches them, from one read like the
+/// page's: the rows from where the page's stop, and the `more` under them where
+/// rows remain (310a, S235).
+async fn listed<S: StateStore + Send + 'static>(
+    served: &Served<S>,
+    headers: &axum::http::HeaderMap,
+    object: Option<&str>,
+    asked: &Asked,
+) -> (StatusCode, Html<String>) {
+    if let Err(refused) = served.admits(host_of(headers)) {
+        return (StatusCode::FORBIDDEN, Html(format!("<p class=\"refused\">{refused}</p>")));
+    }
+    let Some(list) = asked.list.as_deref() else {
+        return (StatusCode::BAD_REQUEST, Html("<p class=\"refused\">a list is named by `list`</p>".to_string()));
+    };
+    let mut store = served.store.lock().await;
+    let world = served.world.lock().await;
+    match page::read(&mut *store, &**world, &served.defs, &served.address, served.operator()) {
+        Ok(read) => match page::list_part(&read, object, list, asked.from.unwrap_or(0)) {
+            Some(rows) => (StatusCode::OK, Html(rows)),
+            None => (
+                StatusCode::NOT_FOUND,
+                Html(format!("<p class=\"refused\">there is no list `{}` here</p>", page::escape(list))),
+            ),
+        },
+        Err(refused) => (StatusCode::INTERNAL_SERVER_ERROR, Html(format!("<p class=\"refused\">{refused}</p>"))),
+    }
 }
 
 /// One dock page as the drawer fetches it: the surface alone, from one read like

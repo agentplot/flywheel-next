@@ -12,6 +12,7 @@ mod dock;
 mod events;
 mod http;
 mod links;
+mod lists;
 mod page;
 mod protocol;
 mod signals;

@@ -24,6 +24,7 @@ use flywheel_atoms::{CommitRef, StateStore, World};
 
 mod asks;
 mod dock;
+mod lists;
 pub(crate) mod hand;
 mod palette;
 pub(crate) mod tray;
@@ -1164,7 +1165,7 @@ pub fn render(read: &Read) -> String {
         .replace("{{TOUR}}", &tour(read))
         .replace("{{TOURHEAD}}", &tour_head(read));
     for ((slot, machines), (title, sub)) in LANES.iter().zip(LANE_HEADS.iter()) {
-        out = out.replace(slot, &lane(read, title, sub, machines));
+        out = out.replace(slot, &lane(read, &lane_id(slot), title, sub, machines));
     }
     out
 }
@@ -1284,11 +1285,8 @@ pub fn view(read: &Read, name: &str, object: Option<&str>) -> Result<View, Strin
 fn board_regions(read: &Read, regions: &mut BTreeMap<String, String>) {
     regions.insert("board-h".to_string(), board_header(read));
     for ((slot, machines), (title, sub)) in LANES.iter().zip(LANE_HEADS.iter()) {
-        let id = slot
-            .trim_matches(|c| c == '{' || c == '}')
-            .to_ascii_lowercase()
-            .replace('_', "-");
-        regions.insert(id, lane(read, title, sub, machines));
+        let id = lane_id(slot);
+        regions.insert(id.clone(), lane(read, &id, title, sub, machines));
     }
 }
 
@@ -1667,6 +1665,19 @@ fn several_signals(read: &Read, capture: &str) -> bool {
 /// the board is what is moving and the rail is what happened. A capture raises
 /// no decision, so this is where the operator sees it was taken (19a, S9).
 fn since(read: &Read) -> String {
+    let items = since_rows(read);
+    if items.is_empty() {
+        return String::new();
+    }
+    format!(
+        "<div class=\"grp since\"><span class=\"g\">Recently done</span></div>\n<ul class=\"since\">\n{}</ul>\n",
+        lists::page(&items, 0, None, "since", lists::Row::Li)
+    )
+}
+
+/// The lines of Recently done, newest first: every entry of today, or the last
+/// twenty when today holds fewer (S9).
+fn since_rows(read: &Read) -> Vec<String> {
     let mut rows: Vec<(chrono::DateTime<chrono::Utc>, &Object, String)> = Vec::new();
     for object in &read.objects {
         let verb = match object.machine.as_str() {
@@ -1709,7 +1720,7 @@ fn since(read: &Read) -> String {
         rows.push((at, object, verb.to_string()));
     }
     if rows.is_empty() {
-        return String::new();
+        return Vec::new();
     }
     rows.sort_by(|a, b| b.0.cmp(&a.0));
     // Today is the host's own day, where the operator is (S9).
@@ -1719,7 +1730,7 @@ fn since(read: &Read) -> String {
         .map(|(at, _, _)| at.with_timezone(&chrono::Local).date_naive())
         .collect();
     let shown = recently_done(&days, today);
-    let mut out = String::from("<div class=\"grp since\"><span class=\"g\">Recently done</span></div>\n<ul class=\"since\">\n");
+    let mut out = Vec::new();
     for (at, object, verb) in rows.iter().take(shown) {
         // A note is its signal's words, and so is the capture that holds it.
         let said = match object.machine.as_str() {
@@ -1740,8 +1751,7 @@ fn since(read: &Read) -> String {
             None => repository_of(&object.id),
         };
         let name = said.map(|s| clipped_to(&s, 56)).unwrap_or_else(|| name_of(&object.id).to_string());
-        let _ = write!(
-            out,
+        out.push(format!(
             "<li><span class=\"v {verb}\">{verb}</span><a class=\"grow\" href=\"#dock-{id}\">{pre}{name}</a><span class=\"t\">{when}</span></li>\n",
             id = escape(&object.id),
             pre = pre
@@ -1749,9 +1759,8 @@ fn since(read: &Read) -> String {
                 .unwrap_or_default(),
             name = escape(&name),
             when = escape(&at.format("%H:%M").to_string()),
-        );
+        ));
     }
-    out.push_str("</ul>\n");
     out
 }
 
@@ -2124,18 +2133,9 @@ fn board_header(read: &Read) -> String {
 /// (209, S13, S15). A child drawn inside its parent is not also a row of its
 /// own, or the board would say the same thing twice and the thread would be a
 /// list of names with nothing on it.
-fn lane(read: &Read, title: &str, sub: &str, machines: &[&str]) -> String {
+fn lane(read: &Read, id: &str, title: &str, sub: &str, machines: &[&str]) -> String {
     let mut out = String::new();
-    let mine: Vec<&status::Row> = read
-        .status
-        .rows
-        .iter()
-        .filter(|row| !OFF_THE_BOARD.contains(&row.machine.as_str()) && in_lane(&row.machine, machines))
-        // A capture of several signals — a transcript read, a folder imported —
-        // waits in the signals tray, which the counter opens; the lane draws
-        // notes and counts what it draws (S13, S225).
-        .filter(|row| !(row.machine == "capture" && several_signals(read, &row.object)))
-        .collect();
+    let mine = lane_rows(read, machines);
     let _ = write!(
         out,
         "<div class=\"lane-h\"><h2 class=\"lane-title\">{}</h2>{}<span class=\"n\">{}</span></div>\n",
@@ -2154,13 +2154,7 @@ fn lane(read: &Read, title: &str, sub: &str, machines: &[&str]) -> String {
     out.push_str("<div class=\"status-groups\">\n");
     let mut drawn = 0;
     for group in status::GROUPS {
-        let rows: Vec<&&status::Row> = mine
-            .iter()
-            .filter(|row| row.group == group && !nested_in_its_parent(read, row, &mine))
-            // A capture that is done stands in the rail's since list, with
-            // what became of it on its page; the lane is what is moving.
-            .filter(|row| !(group == "done" && row.machine == "capture"))
-            .collect();
+        let rows = group_rows(read, group, &mine);
         // A group with nothing in it keeps its heading and says nothing
         // under it: four "nothing"s down a lane read as the machine talking to
         // itself, and the grouping is what 141 asks for (141, D16).
@@ -2174,9 +2168,9 @@ fn lane(read: &Read, title: &str, sub: &str, machines: &[&str]) -> String {
                 false => "",
             },
         );
-        for row in rows {
-            out.push_str(&object_on_the_board(read, row, &mine));
-        }
+        let drawn_rows: Vec<String> = rows.iter().map(|row| object_on_the_board(read, row, &mine)).collect();
+        let list = format!("{id}.{}", group.replace(' ', "-"));
+        out.push_str(&lists::page(&drawn_rows, 0, None, &list, lists::Row::Div));
         out.push_str("</section>\n");
     }
     if drawn == 0 {
@@ -2195,6 +2189,35 @@ fn lane(read: &Read, title: &str, sub: &str, machines: &[&str]) -> String {
     }
     out.push_str("</div>\n");
     out
+}
+
+/// The rows a lane draws: the objects whose phase it is. A capture of several
+/// signals — a transcript read, a folder imported — waits in the signals tray,
+/// which the counter opens; the lane draws notes and counts what it draws (S13,
+/// S225).
+fn lane_rows<'a>(read: &'a Read, machines: &[&str]) -> Vec<&'a status::Row> {
+    read.status
+        .rows
+        .iter()
+        .filter(|row| !OFF_THE_BOARD.contains(&row.machine.as_str()) && in_lane(&row.machine, machines))
+        .filter(|row| !(row.machine == "capture" && several_signals(read, &row.object)))
+        .collect()
+}
+
+/// The rows one group of a lane draws, each object once and a part inside its
+/// whole. A capture that is done stands in the rail's since list, with what
+/// became of it on its page; the lane is what is moving.
+fn group_rows<'a>(read: &Read, group: &str, mine: &[&'a status::Row]) -> Vec<&'a status::Row> {
+    mine.iter()
+        .filter(|row| row.group == group && !nested_in_its_parent(read, row, mine))
+        .filter(|row| !(group == "done" && row.machine == "capture"))
+        .copied()
+        .collect()
+}
+
+/// A lane's id on the page, from its slot in the template.
+fn lane_id(slot: &str) -> String {
+    slot.trim_matches(|c| c == '{' || c == '}').to_ascii_lowercase().replace('_', "-")
 }
 
 /// Whether a machine's objects sit in this lane. A machine no lane names sits
@@ -2494,13 +2517,11 @@ fn thread(read: &Read, row: &status::Row, lane: &[&status::Row]) -> String {
         let _ = write!(out, "<div class=\"th-note\">{}</div>\n", escape(&note.join(" · ")));
     }
     out.push_str(&discussion(row));
-    let beads = children_of(read, row, lane);
+    let beads: Vec<String> = children_of(read, row, lane).into_iter().map(|bead| self::bead(read, bead)).collect();
     if beads.is_empty() {
         out.push_str("<div class=\"bead queued\"><span class=\"leave\">no elaboration yet</span></div>\n");
     }
-    for bead in beads {
-        out.push_str(&self::bead(read, bead));
-    }
+    out.push_str(&lists::page(&beads, 0, Some(&row.object), "beads", lists::Row::Div));
     out.push_str("</div>\n</article>\n");
     out
 }
@@ -2580,12 +2601,7 @@ fn ledger(read: &Read, row: &status::Row, lane: &[&status::Row]) -> String {
     if units.is_empty() {
         out.push_str("<span class=\"lg-unit queued\">no unit yet</span>\n");
     }
-    for (at, unit) in units.iter().enumerate() {
-        if at > 0 {
-            out.push_str("<span class=\"lg-arrow\">→</span>\n");
-        }
-        out.push_str(&lg_unit(read, unit, lane));
-    }
+    out.push_str(&lists::page(&chain(read, &units, lane), 0, Some(&row.object), "chain", lists::Row::Span));
     out.push_str("</div>\n");
     out.push_str(&discussion(row));
     // What else the bolt is doing, and who is holding it: at the foot, where
@@ -2607,6 +2623,19 @@ fn ledger(read: &Read, row: &status::Row, lane: &[&status::Row]) -> String {
     }
     out.push_str("</article>\n");
     out
+}
+
+/// A bolt's units as its chain draws them, an arrow before every one but the
+/// first (S15).
+fn chain(read: &Read, units: &[&status::Row], lane: &[&status::Row]) -> Vec<String> {
+    units
+        .iter()
+        .enumerate()
+        .map(|(at, unit)| match at {
+            0 => lg_unit(read, unit, lane),
+            _ => format!("<span class=\"lg-arrow\">→</span>\n{}", lg_unit(read, unit, lane)),
+        })
+        .collect()
 }
 
 /// One unit in a bolt's chain, in the state the chain draws it in: merged is
@@ -2912,41 +2941,53 @@ fn curator(read: &Read) -> String {
         let _ = write!(out, "<option value=\"{0}\"></option>\n", escape(intent));
     }
     out.push_str("</datalist>\n");
-    for signal in &read.unmoved {
-        let _ = write!(
-            out,
-            "<div class=\"quote\" data-signal=\"{}\"><q>{}</q>\
-             <span class=\"qm\">{} · asserted by {}</span>\n",
-            escape(&signal.id),
-            escape(&signal.excerpt),
-            escape(&signal.kind),
-            escape(&signal.asserted_by)
-        );
-        let _ = write!(
-            out,
-            "<select name=\"move.{0}\" aria-label=\"the move for {0}\">\n\
-             <option value=\"\" selected>leave unmoved</option>\n",
-            escape(&signal.id)
-        );
-        for word in signals::MOVES {
-            let _ = write!(out, "<option value=\"{word}\">{word}</option>\n");
-        }
-        out.push_str("</select>\n");
-        let _ = write!(
-            out,
-            "<input type=\"text\" class=\"cur-target\" name=\"target.{0}\" list=\"curate-intents\" \
-             aria-label=\"what the move for {0} names\" \
-             placeholder=\"the intent or claim it names\">\n",
-            escape(&signal.id)
-        );
-        out.push_str(&ask_fields(read, signal));
-        out.push_str("</div>\n");
-    }
+    out.push_str(&lists::page(&curator_rows(read), 0, Some(tray::ID), "curate", lists::Row::Div));
     out.push_str(
         "<button class=\"btn pri\" type=\"submit\" id=\"curate-go\">submit the moves</button>\n\
          </form>\n</section>\n",
     );
     out
+}
+
+/// The curator's surface's rows: each unmoved signal with the standing moves as
+/// controls, fifty at a time (110, 116, 310a, S235).
+fn curator_rows(read: &Read) -> Vec<String> {
+    read.unmoved
+        .iter()
+        .map(|signal| {
+            let mut out = String::new();
+            let _ = write!(
+                out,
+                "<div class=\"quote\" data-signal=\"{}\"><q>{}</q>\
+                 <span class=\"qm\">{} · asserted by {}</span>\n",
+                escape(&signal.id),
+                escape(&signal.excerpt),
+                escape(&signal.kind),
+                escape(&signal.asserted_by)
+            );
+            let _ = write!(
+                out,
+                "<select name=\"move.{0}\" aria-label=\"the move for {0}\">\n\
+                 <option value=\"\" selected>leave unmoved</option>\n",
+                escape(&signal.id)
+            );
+            for word in signals::MOVES {
+                let _ = write!(out, "<option value=\"{word}\">{word}</option>\n");
+            }
+            out.push_str("</select>\n");
+            let _ = write!(
+                out,
+                "<input type=\"text\" class=\"cur-target\" name=\"target.{0}\" list=\"curate-intents\" \
+                 aria-label=\"what the move for {0} names\" \
+                 placeholder=\"the intent or claim it names\">\n",
+                escape(&signal.id)
+            );
+            out.push_str(&ask_fields(read, signal));
+            out.push_str("</div>\n");
+    
+            out
+        })
+        .collect()
 }
 
 /// Where a route's ask is given on the curator's surface, shown when the move
@@ -3027,6 +3068,43 @@ fn dock(read: &Read) -> String {
         out.push_str(&page);
     }
     out
+}
+
+/// The next rows of one list from `from`, as its `more` fetches them: the page's
+/// own lists by name, a lane's group as `<lane>.<group>`, and an object's lists
+/// by the object and the list's name; `None` for a list there is not (310a,
+/// S235).
+pub fn list_part(read: &Read, object: Option<&str>, list: &str, from: usize) -> Option<String> {
+    use lists::{page, Row};
+    match (object, list) {
+        (None, "since") => Some(page(&since_rows(read), from, None, "since", Row::Li)),
+        (None, "log") => Some(page(&log_rows(read), from, None, "log", Row::Li)),
+        (None, named) => {
+            let (lane, group) = named.split_once('.')?;
+            let (_, machines) = LANES.iter().find(|(slot, _)| lane_id(slot) == lane)?;
+            let group = status::GROUPS.iter().find(|g| g.replace(' ', "-") == group)?;
+            let mine = lane_rows(read, machines);
+            let rows: Vec<String> =
+                group_rows(read, group, &mine).iter().map(|row| object_on_the_board(read, row, &mine)).collect();
+            Some(page(&rows, from, None, named, Row::Div))
+        }
+        (Some(tray::ID), "rows") => Some(tray::rows_part(read, from)),
+        (Some(tray::ID), "curate") => Some(page(&curator_rows(read), from, Some(tray::ID), "curate", Row::Div)),
+        (Some(id), "beads" | "chain") => {
+            let row = read.status.rows.iter().find(|r| r.object == id)?;
+            let (_, machines) = LANES.iter().find(|(_, machines)| in_lane(&row.machine, machines))?;
+            let mine = lane_rows(read, machines);
+            let children = children_of(read, row, &mine);
+            match list {
+                "beads" => {
+                    let beads: Vec<String> = children.iter().map(|bead| self::bead(read, bead)).collect();
+                    Some(page(&beads, from, Some(id), list, Row::Div))
+                }
+                _ => Some(page(&chain(read, &children, &mine), from, Some(id), list, Row::Span)),
+            }
+        }
+        (Some(id), other) => dock::list_part(read, id, other, from),
+    }
 }
 
 /// One object's dock page, or the signals tray's, as the drawer fetches it when
@@ -3247,23 +3325,28 @@ fn sent_list(read: &Read) -> String {
 /// Every response recorded, each one on its own, with who gave it and when
 /// (153, 154).
 fn log(read: &Read) -> String {
-    let mut out = String::new();
-    for (number, given) in &read.answered {
-        for one in given {
-            let _ = write!(
-                out,
-                "<li class=\"say\" data-decision=\"{number}\"><time>{}</time>\
-                 <span>{number} → {} · {}</span></li>\n",
-                escape(&short(&one.given_at)),
-                escape(&one.answer),
-                escape(&one.given_by)
-            );
-        }
+    let rows = log_rows(read);
+    match rows.is_empty() {
+        true => "<li class=\"say\"><span>nothing sent yet</span></li>\n".to_string(),
+        false => lists::page(&rows, 0, None, "log", lists::Row::Li),
     }
-    if out.is_empty() {
-        out.push_str("<li class=\"say\"><span>nothing sent yet</span></li>\n");
-    }
-    out
+}
+
+fn log_rows(read: &Read) -> Vec<String> {
+    read.answered
+        .iter()
+        .flat_map(|(number, given)| {
+            given.iter().map(move |one| {
+                format!(
+                    "<li class=\"say\" data-decision=\"{number}\"><time>{}</time>\
+                     <span>{number} → {} · {}</span></li>\n",
+                    escape(&short(&one.given_at)),
+                    escape(&one.answer),
+                    escape(&one.given_by)
+                )
+            })
+        })
+        .collect()
 }
 
 pub fn escape(text: &str) -> String {

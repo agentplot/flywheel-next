@@ -6,6 +6,7 @@
 //! session offered with nothing above it is a row like any other, its quote the
 //! document's path and its line the session that offered it (62, S231).
 
+use super::lists;
 use super::{curator, escape, hand, source_name, Read};
 use flywheel_domain::{cadence, signals};
 use std::collections::BTreeMap;
@@ -166,45 +167,74 @@ pub fn surface(read: &Read, opened: bool) -> String {
              curation reads it, or until you build it, make it an intent or drop it yourself.</p>\n",
         );
     }
-    for (capture, rows) in &waiting {
-        let from = match capture.source.as_str() {
-            "offer" => format!("offered by {}", capture.captured_by),
-            source => format!("from {}", source_name(source)),
-        };
-        let _ = write!(
-            out,
-            "<section class=\"sec tray-capture\" data-capture=\"{}\" data-source=\"{}\">\
-             <h3>{} · {}<span class=\"r\">{}</span></h3>\n",
-            escape(&capture.capture),
-            escape(&capture.source),
-            escape(&from),
-            escape(&when(&capture.event_at)),
-            rows.len()
-        );
-        for signal in rows {
-            let said = match signal.assertion.trim().is_empty() {
-                true => &signal.excerpt,
-                false => &signal.assertion,
-            };
-            let line = match capture.source.as_str() {
-                "offer" => format!("offer · offered by {}", signal.asserted_by),
-                _ => [signal.kind.as_str(), signal.asserted_by.as_str()]
-                    .into_iter()
-                    .filter(|part| !part.is_empty())
-                    .collect::<Vec<_>>()
-                    .join(" · "),
+    out.push_str(&rows_part(read, 0));
+    out.push_str("</div>\n</article>\n");
+    out
+}
+
+/// The tray's rows from `from`, fifty of them, under the headings of the
+/// captures they belong to, and the `more` that fetches the next fifty where
+/// rows remain; a capture whose rows run past the fifty is headed again where
+/// they carry on (310a, S235).
+pub fn rows_part(read: &Read, from: usize) -> String {
+    let waiting = waiting(read);
+    let all: Vec<(usize, &signals::Signal)> = waiting
+        .iter()
+        .enumerate()
+        .flat_map(|(at, (_, rows))| rows.iter().map(move |signal| (at, *signal)))
+        .collect();
+    let end = (from + lists::PAGE).min(all.len());
+    let mut out = String::new();
+    let mut open: Option<usize> = None;
+    for (at, signal) in all.get(from.min(end)..end).unwrap_or_default() {
+        if open != Some(*at) {
+            if open.is_some() {
+                out.push_str("</section>\n");
+            }
+            let (capture, rows) = &waiting[*at];
+            let heard = match capture.source.as_str() {
+                "offer" => format!("offered by {}", capture.captured_by),
+                source => format!("from {}", source_name(source)),
             };
             let _ = write!(
                 out,
-                "<div class=\"quote tray-row\" data-signal=\"{}\"><q>{}</q><span class=\"qm\">{}</span>{}</div>\n",
-                escape(&signal.id),
-                escape(said),
-                escape(&line),
-                hand::controls(read, &signal.id)
+                "<section class=\"sec tray-capture\" data-capture=\"{}\" data-source=\"{}\">\
+                 <h3>{} · {}<span class=\"r\">{}</span></h3>\n",
+                escape(&capture.capture),
+                escape(&capture.source),
+                escape(&heard),
+                escape(&when(&capture.event_at)),
+                rows.len()
             );
+            open = Some(*at);
         }
+        let (capture, _) = &waiting[*at];
+        let said = match signal.assertion.trim().is_empty() {
+            true => &signal.excerpt,
+            false => &signal.assertion,
+        };
+        let line = match capture.source.as_str() {
+            "offer" => format!("offer · offered by {}", signal.asserted_by),
+            _ => [signal.kind.as_str(), signal.asserted_by.as_str()]
+                .into_iter()
+                .filter(|part| !part.is_empty())
+                .collect::<Vec<_>>()
+                .join(" · "),
+        };
+        let _ = write!(
+            out,
+            "<div class=\"quote tray-row\" data-signal=\"{}\"><q>{}</q><span class=\"qm\">{}</span>{}</div>\n",
+            escape(&signal.id),
+            escape(said),
+            escape(&line),
+            hand::controls(read, &signal.id)
+        );
+    }
+    if open.is_some() {
         out.push_str("</section>\n");
     }
-    out.push_str("</div>\n</article>\n");
+    if end < all.len() {
+        out.push_str(&lists::more(end, all.len(), Some(ID), "rows", lists::Row::Div));
+    }
     out
 }

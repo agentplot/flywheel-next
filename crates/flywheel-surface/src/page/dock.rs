@@ -2,6 +2,7 @@
 //! the object opened — its words, its branch, its host, its sessions, its
 //! commits — and nothing about how the machinery works (S214).
 
+use super::lists::{self, Row};
 use super::{deliverables, discussion, escape, name_of, sec, Read};
 use flywheel_atoms::CommitRef;
 use flywheel_domain::status;
@@ -232,14 +233,10 @@ fn elaboration_page(read: &Read, elaboration: &Object, row_: Option<&status::Row
         out.push_str(&sec("gathers", "", &row("intents", &listed.join(" · "))));
     }
 
-    let sessions: Vec<&Session> = read
-        .sessions
-        .values()
-        .filter(|s| s.item == elaboration.id)
-        .collect();
+    let sessions = sessions_of(read, elaboration);
     match sessions.is_empty() {
         true => out.push_str(&sec("sessions", "", "<p class=\"none\">No session yet: one starts when it is approved.</p>\n")),
-        false => out.push_str(&sec("sessions", "", &session_rows(&sessions))),
+        false => out.push_str(&sec("sessions", "", &session_rows(&elaboration.id, &sessions))),
     }
     out
 }
@@ -350,59 +347,113 @@ fn made_from(read: &Read, intent: &str, capture: Option<&Object>, signal: &Objec
 
 // --------------------------------------------------------------------- bolt
 
-fn session_rows(sessions: &[&Session]) -> String {
-    let mut out = String::from("<div class=\"rows\">\n");
-    for s in sessions {
-        let mut bits: Vec<String> = Vec::new();
-        if let Some(agent) = &s.agent {
-            bits.push(format!("agent {}", mono(agent)));
+/// The sessions an object's page lists: a bolt's are its units' items', a
+/// unit's its items', and anything else's its own (S28).
+fn sessions_of<'a>(read: &'a Read, object: &Object) -> Vec<&'a Session> {
+    match object.machine.as_str() {
+        "bolt" => read
+            .sessions
+            .values()
+            .filter(|s| {
+                read.objects
+                    .iter()
+                    .find(|o| o.id == s.item)
+                    .and_then(|item| item.parent.clone())
+                    .and_then(|unit| read.objects.iter().find(|o| o.id == unit))
+                    .and_then(|unit| unit.parent.clone())
+                    .as_deref()
+                    == Some(object.id.as_str())
+            })
+            .collect(),
+        "unit" => {
+            let items = items_of(read, object);
+            read.sessions.values().filter(|s| items.iter().any(|i| i.id == s.item)).collect()
         }
-        if let Some(pane) = &s.pane {
-            bits.push(format!("pane {}", mono(pane)));
-        }
-        bits.push(format!("host {}", mono(&s.host)));
-        if let Some(started) = &s.started {
-            bits.push(format!("started {}", when(started)));
-        }
-        match (&s.exit, &s.exit_at) {
-            (Some(exit), Some(at)) => bits.push(format!("<b>{}</b> {}", escape(exit), when(at))),
-            (Some(exit), None) => bits.push(format!("<b>{}</b>", escape(exit))),
-            _ => bits.push("running".into()),
-        }
-        if !s.deliverables.is_empty() {
-            bits.push(format!("delivered {}", escape(&s.deliverables.join(", "))));
-        }
-        let _ = write!(
-            out,
-            "<div class=\"row\"><span class=\"st\">{}</span><span class=\"grow\">{}</span></div>\n",
-            escape(s.id.rsplit('/').nth(1).unwrap_or("session")),
-            bits.join(" · ")
-        );
-        if let Some(q) = &s.question {
-            let _ = write!(out, "<div class=\"row\"><span class=\"st\">asks</span><span class=\"grow\">{}</span></div>\n", escape(q));
-        }
+        _ => read.sessions.values().filter(|s| s.item == object.id).collect(),
     }
-    out.push_str("</div>\n");
-    out
 }
 
-fn commit_rows(commits: &[CommitRef]) -> String {
+/// A page's sessions, fifty at a time (310a, S235).
+fn session_rows(object: &str, sessions: &[&Session]) -> String {
+    format!(
+        "<div class=\"rows\">\n{}</div>\n",
+        lists::page(&session_items(sessions), 0, Some(object), "sessions", Row::Div)
+    )
+}
+
+fn session_items(sessions: &[&Session]) -> Vec<String> {
+    sessions
+        .iter()
+        .map(|s| {
+            let mut out = String::new();
+            let mut bits: Vec<String> = Vec::new();
+            if let Some(agent) = &s.agent {
+                bits.push(format!("agent {}", mono(agent)));
+            }
+            if let Some(pane) = &s.pane {
+                bits.push(format!("pane {}", mono(pane)));
+            }
+            bits.push(format!("host {}", mono(&s.host)));
+            if let Some(started) = &s.started {
+                bits.push(format!("started {}", when(started)));
+            }
+            match (&s.exit, &s.exit_at) {
+                (Some(exit), Some(at)) => bits.push(format!("<b>{}</b> {}", escape(exit), when(at))),
+                (Some(exit), None) => bits.push(format!("<b>{}</b>", escape(exit))),
+                _ => bits.push("running".into()),
+            }
+            if !s.deliverables.is_empty() {
+                bits.push(format!("delivered {}", escape(&s.deliverables.join(", "))));
+            }
+            let _ = write!(
+                out,
+                "<div class=\"row\"><span class=\"st\">{}</span><span class=\"grow\">{}</span></div>\n",
+                escape(s.id.rsplit('/').nth(1).unwrap_or("session")),
+                bits.join(" · ")
+            );
+            if let Some(q) = &s.question {
+                let _ = write!(out, "<div class=\"row\"><span class=\"st\">asks</span><span class=\"grow\">{}</span></div>\n", escape(q));
+            }
+            out
+        })
+        .collect()
+}
+
+/// The commits an object's page lists: those on its bolt's branch (185, S28).
+fn commits_of<'a>(read: &'a Read, object: &Object) -> Option<&'a Vec<CommitRef>> {
+    let bolt = match object.machine.as_str() {
+        "bolt" => object.id.clone(),
+        "unit" => object.parent.clone()?,
+        "work-item" => read.objects.iter().find(|o| Some(o.id.as_str()) == object.parent.as_deref())?.parent.clone()?,
+        _ => return None,
+    };
+    read.commits.get(&bolt)
+}
+
+/// A page's commits, fifty at a time (310a, S235).
+fn commit_rows(object: &str, commits: &[CommitRef]) -> String {
     if commits.is_empty() {
         return String::new();
     }
-    let mut out = String::from("<table class=\"deliv commits\"><thead><tr><th>commit</th><th>subject</th><th>by</th><th>when</th></tr></thead><tbody>\n");
-    for c in commits {
-        let _ = write!(
-            out,
-            "<tr><td class=\"mono\">{}</td><td>{}</td><td>{}</td><td class=\"mono\">{}</td></tr>\n",
-            escape(&c.hash),
-            escape(&c.subject),
-            escape(&c.author),
-            escape(&when(&c.at))
-        );
-    }
-    out.push_str("</tbody></table>\n");
-    out
+    format!(
+        "<table class=\"deliv commits\"><thead><tr><th>commit</th><th>subject</th><th>by</th><th>when</th></tr></thead><tbody>\n{}</tbody></table>\n",
+        lists::page(&commit_items(commits), 0, Some(object), "commits", Row::Tr(4))
+    )
+}
+
+fn commit_items(commits: &[CommitRef]) -> Vec<String> {
+    commits
+        .iter()
+        .map(|c| {
+            format!(
+                "<tr><td class=\"mono\">{}</td><td>{}</td><td>{}</td><td class=\"mono\">{}</td></tr>\n",
+                escape(&c.hash),
+                escape(&c.subject),
+                escape(&c.author),
+                escape(&when(&c.at))
+            )
+        })
+        .collect()
 }
 
 fn place_rows(read: &Read, object: &str) -> String {
@@ -455,54 +506,41 @@ fn bolt_page(read: &Read, bolt: &Object, row_: Option<&status::Row>) -> String {
 
     out.push_str(&sec("units", "", &unit_rows(read, bolt)));
 
-    let sessions: Vec<&Session> = read
-        .sessions
-        .values()
-        .filter(|s| {
-            read.objects
-                .iter()
-                .find(|o| o.id == s.item)
-                .and_then(|item| item.parent.clone())
-                .and_then(|unit| read.objects.iter().find(|o| o.id == unit))
-                .and_then(|unit| unit.parent.clone())
-                .as_deref()
-                == Some(bolt.id.as_str())
-        })
-        .collect();
+    let sessions = sessions_of(read, bolt);
     if !sessions.is_empty() {
-        out.push_str(&sec("sessions", "", &session_rows(&sessions)));
+        out.push_str(&sec("sessions", "", &session_rows(&bolt.id, &sessions)));
     }
     if let Some(commits) = read.commits.get(&bolt.id) {
-        out.push_str(&sec(commits_title(read, &bolt.id), "", &commit_rows(commits)));
+        out.push_str(&sec(commits_title(read, &bolt.id), "", &commit_rows(&bolt.id, commits)));
     }
     out
 }
 
-/// A bolt's units as rows: each one's state, name and type, opening it.
-/// Nothing where the bolt has none.
+/// A bolt's units as rows: each one's state, name and type, opening it, fifty at
+/// a time. Nothing where the bolt has none.
 fn unit_rows(read: &Read, bolt: &Object) -> String {
-    let units: Vec<&Object> = read
-        .objects
-        .iter()
-        .filter(|o| o.machine == "unit" && o.parent.as_deref() == Some(bolt.id.as_str()))
-        .collect();
+    let units = unit_items(read, bolt);
     if units.is_empty() {
         return String::new();
     }
-    let mut chain = String::from("<div class=\"rows\">\n");
-    for unit in &units {
-        let state = unit.config.get("life").cloned().unwrap_or_default();
-        let kind = field(unit, "type").unwrap_or("unit");
-        let _ = write!(
-            chain,
-            "<div class=\"row\"><span class=\"st\">{}</span><span class=\"grow\"><span class=\"nm\">{}</span> <span class=\"m\">{}</span></span></div>\n",
-            escape(&state),
-            link(read, &unit.id, name_of(&unit.id)),
-            escape(kind)
-        );
-    }
-    chain.push_str("</div>\n");
-    chain
+    format!("<div class=\"rows\">\n{}</div>\n", lists::page(&units, 0, Some(&bolt.id), "units", Row::Div))
+}
+
+fn unit_items(read: &Read, bolt: &Object) -> Vec<String> {
+    read.objects
+        .iter()
+        .filter(|o| o.machine == "unit" && o.parent.as_deref() == Some(bolt.id.as_str()))
+        .map(|unit| {
+            let state = unit.config.get("life").cloned().unwrap_or_default();
+            let kind = field(unit, "type").unwrap_or("unit");
+            format!(
+                "<div class=\"row\"><span class=\"st\">{}</span><span class=\"grow\"><span class=\"nm\">{}</span> <span class=\"m\">{}</span></span></div>\n",
+                escape(&state),
+                link(read, &unit.id, name_of(&unit.id)),
+                escape(kind)
+            )
+        })
+        .collect()
 }
 
 // -------------------------------------------------------------- landed bolt
@@ -544,7 +582,7 @@ fn landed_page(read: &Read, bolt: &Object) -> String {
         out.push_str(&sec("acceptance file", "", &row("on main", &mono(&path))));
     }
     if let Some(commits) = read.commits.get(&bolt.id) {
-        out.push_str(&sec(commits_title(read, &bolt.id), "", &commit_rows(commits)));
+        out.push_str(&sec(commits_title(read, &bolt.id), "", &commit_rows(&bolt.id, commits)));
     }
     out
 }
@@ -608,42 +646,46 @@ fn unit_page(read: &Read, unit: &Object, row_: Option<&status::Row>) -> String {
         out.push_str(&sec(&format!("{name} · chores"), each, &rows));
     }
 
-    let items: Vec<&Object> = read
-        .objects
-        .iter()
-        .filter(|o| o.machine == "work-item" && o.parent.as_deref() == Some(unit.id.as_str()))
-        .collect();
-    let mut rows = String::from("<div class=\"rows\">\n");
-    for item in &items {
-        let stage = item.config.get("life.in-type.stages").cloned().unwrap_or_default();
-        let life = item.config.get("life").cloned().unwrap_or_default();
-        let _ = write!(
-            rows,
-            "<div class=\"row\"><span class=\"st\">{}</span><span class=\"grow\">{} · {}</span></div>\n",
-            escape(&life),
-            link(read, &item.id, name_of(&item.id)),
-            match stage.is_empty() {
-                true => String::new(),
-                false => format!("stage {}", escape(&stage)),
-            }
-        );
-    }
-    rows.push_str("</div>\n");
+    let items = item_items(read, unit);
     if !items.is_empty() {
+        let rows = format!("<div class=\"rows\">\n{}</div>\n", lists::page(&items, 0, Some(&unit.id), "items", Row::Div));
         out.push_str(&sec("work items", "", &rows));
     }
-    let sessions: Vec<&Session> = read
-        .sessions
-        .values()
-        .filter(|s| items.iter().any(|i| i.id == s.item))
-        .collect();
+    let sessions = sessions_of(read, unit);
     if !sessions.is_empty() {
-        out.push_str(&sec("sessions", "", &session_rows(&sessions)));
+        out.push_str(&sec("sessions", "", &session_rows(&unit.id, &sessions)));
     }
     if let Some((bolt, commits)) = unit.parent.as_deref().and_then(|b| read.commits.get(b).map(|c| (b, c))) {
-        out.push_str(&sec(commits_title(read, bolt), "", &commit_rows(commits)));
+        out.push_str(&sec(commits_title(read, bolt), "", &commit_rows(&unit.id, commits)));
     }
     out
+}
+
+/// A unit's work items (S28).
+fn items_of<'a>(read: &'a Read, unit: &Object) -> Vec<&'a Object> {
+    read.objects
+        .iter()
+        .filter(|o| o.machine == "work-item" && o.parent.as_deref() == Some(unit.id.as_str()))
+        .collect()
+}
+
+fn item_items(read: &Read, unit: &Object) -> Vec<String> {
+    items_of(read, unit)
+        .into_iter()
+        .map(|item| {
+            let stage = item.config.get("life.in-type.stages").cloned().unwrap_or_default();
+            let life = item.config.get("life").cloned().unwrap_or_default();
+            format!(
+                "<div class=\"row\"><span class=\"st\">{}</span><span class=\"grow\">{} · {}</span></div>\n",
+                escape(&life),
+                link(read, &item.id, name_of(&item.id)),
+                match stage.is_empty() {
+                    true => String::new(),
+                    false => format!("stage {}", escape(&stage)),
+                }
+            )
+        })
+        .collect()
 }
 
 // ---------------------------------------------------------------- work item
@@ -668,9 +710,9 @@ fn item_page(read: &Read, item: &Object, row_: Option<&status::Row>) -> String {
     }
     facts.push_str(&place_rows(read, &item.id));
     out.push_str(&sec("the work item", "", &facts));
-    let sessions: Vec<&Session> = read.sessions.values().filter(|s| s.item == item.id).collect();
+    let sessions = sessions_of(read, item);
     if !sessions.is_empty() {
-        out.push_str(&sec("sessions", "", &session_rows(&sessions)));
+        out.push_str(&sec("sessions", "", &session_rows(&item.id, &sessions)));
     }
     let bolt = item
         .parent
@@ -678,7 +720,7 @@ fn item_page(read: &Read, item: &Object, row_: Option<&status::Row>) -> String {
         .and_then(|u| read.objects.iter().find(|o| o.id == u))
         .and_then(|u| u.parent.clone());
     if let Some((bolt, commits)) = bolt.as_deref().and_then(|b| read.commits.get(b).map(|c| (b, c))) {
-        out.push_str(&sec(commits_title(read, bolt), "", &commit_rows(commits)));
+        out.push_str(&sec(commits_title(read, bolt), "", &commit_rows(&item.id, commits)));
     }
     out
 }
@@ -705,30 +747,63 @@ fn plain_page(read: &Read, object: &Object) -> String {
             },
             weight.span().map(|s| format!(", {}", escape(&s))).unwrap_or_default()
         );
-        for signal in &weight.signals {
-            let said = read
-                .objects
-                .iter()
-                .find(|o| &o.id == signal)
-                .and_then(flywheel_domain::signals::text_of)
-                .unwrap_or_else(|| signal.clone());
-            let _ = write!(cited, "<li class=\"signal\">{}</li>\n", link(read, signal, &super::clipped(&said)));
-        }
+        cited.push_str(&lists::page(&cited_items(read, object), 0, Some(&object.id), "cited", Row::Li));
         cited.push_str("</ul>\n");
         out.push_str(&sec("what it cites", "", &cited));
     }
     // What it holds, in the order it was made: an intent lists its
     // elaborations in order, each with its type, and each opens its own
     // surface (210).
+    let children = held_items(read, object);
+    if !children.is_empty() {
+        let held = format!(
+            "<ol class=\"elaborations\">\n{}</ol>\n",
+            lists::page(&children, 0, Some(&object.id), "held", Row::Li)
+        );
+        let title = match object.machine.as_str() {
+            "intent" => "elaborations",
+            _ => "holds",
+        };
+        out.push_str(&sec(title, "", &held));
+    }
+    if let Some(parent) = &object.parent {
+        out.push_str(&sec("part of", "", &row("", &link(read, parent, parent))));
+    }
+    out
+}
+
+/// The signals a proposed intent cites, in their own words (109, 118).
+fn cited_items(read: &Read, object: &Object) -> Vec<String> {
+    let Some(weight) = read.weight.get(&object.id) else {
+        return Vec::new();
+    };
+    weight
+        .signals
+        .iter()
+        .map(|signal| {
+            let said = read
+                .objects
+                .iter()
+                .find(|o| &o.id == signal)
+                .and_then(flywheel_domain::signals::text_of)
+                .unwrap_or_else(|| signal.clone());
+            format!("<li class=\"signal\">{}</li>\n", link(read, signal, &super::clipped(&said)))
+        })
+        .collect()
+}
+
+/// What an object holds, in the order it was made, each with what it is doing
+/// (210).
+fn held_items(read: &Read, object: &Object) -> Vec<String> {
     let mut children: Vec<&Object> = read
         .objects
         .iter()
         .filter(|o| o.parent.as_deref() == Some(object.id.as_str()) && o.machine != "signal")
         .collect();
     children.sort_by(|a, b| flywheel_engine::rail::id_order(&a.id, &b.id));
-    if !children.is_empty() {
-        let mut held = String::from("<ol class=\"elaborations\">\n");
-        for child in &children {
+    children
+        .iter()
+        .map(|child| {
             let said = read
                 .status
                 .rows
@@ -742,22 +817,27 @@ fn plain_page(read: &Read, object: &Object) -> String {
                 "elaboration" => String::new(),
                 _ => field(child, "type").map(|t| format!("{} · ", escape(t))).unwrap_or_default(),
             };
-            let _ = write!(
-                held,
+            format!(
                 "<li>{}<span class=\"r\">{kind}{}</span></li>\n",
                 link(read, &child.id, &super::shown_name(read, &child.id)),
                 escape(&said)
-            );
-        }
-        held.push_str("</ol>\n");
-        let title = match object.machine.as_str() {
-            "intent" => "elaborations",
-            _ => "holds",
-        };
-        out.push_str(&sec(title, "", &held));
-    }
-    if let Some(parent) = &object.parent {
-        out.push_str(&sec("part of", "", &row("", &link(read, parent, parent))));
-    }
-    out
+            )
+        })
+        .collect()
+}
+
+/// The next rows of one of an object's lists from `from`, as its `more` fetches
+/// them; `None` for a list the object's page has not (310a, S235).
+pub fn list_part(read: &Read, id: &str, list: &str, from: usize) -> Option<String> {
+    let object = read.objects.iter().find(|o| o.id == id)?;
+    let (rows, row) = match list {
+        "sessions" => (session_items(&sessions_of(read, object)), Row::Div),
+        "commits" => (commit_items(commits_of(read, object)?), Row::Tr(4)),
+        "units" => (unit_items(read, object), Row::Div),
+        "items" => (item_items(read, object), Row::Div),
+        "cited" => (cited_items(read, object), Row::Li),
+        "held" => (held_items(read, object), Row::Li),
+        _ => return None,
+    };
+    Some(lists::page(&rows, from, Some(id), list, row))
 }

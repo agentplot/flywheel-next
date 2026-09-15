@@ -674,6 +674,14 @@ body:has(.dock .surface:target) .dock .surface[data-opened="true"]:not(:target){
    when it arrives, with a spinner for as long as the fetch and no longer
    (310a, S235). */
 .surface[data-loading] .dk-b .loading{display:flex;align-items:center;gap:8px;margin:14px 0;font-size:12.5px;color:var(--ink3)}
+/* A list past fifty rows shows fifty, how many there are, and more, which
+   fetches the next fifty from the host where the rows stand (310a, S235). */
+.more{display:flex;align-items:center;gap:8px;padding:6px 2px;font-size:12px;color:var(--ink3)}
+.since li.more,.log li.more{border-bottom:0}
+span.more{display:inline-flex;padding:3px 4px;margin-bottom:4px}
+tr.more td{border-bottom:0;padding-top:6px}
+tr.more td .shown{margin-right:8px}
+.more[data-fetching]{opacity:.6}
 .pal-scrim{display:none}
 .pal-scrim:target,.pal-scrim.open{display:flex}
 .log{display:none}
@@ -1351,6 +1359,21 @@ body[data-served="view"] .dk-b{overflow:visible}
     if(location.hash!=='#dock-'+object) location.hash='#dock-'+object;
     fetchDock(object);
   }
+  // A list's more fetches its next fifty rows from the host and puts them
+  // where the control stood, with the next more under them where rows remain
+  // (310a, S235).
+  function fetchMore(at){
+    if(!at || at.hasAttribute('data-fetching')) return;
+    if(client){ toast('the rest of this list is on the flywheel at its address'); return; }
+    var button=at.querySelector('button'), object=at.getAttribute('data-object');
+    at.setAttribute('data-fetching', ''); if(button) button.disabled=true; if(progress) progress.hidden=false;
+    var path='/'+INSTANCE+'/'+(object ? object.split('/').map(encodeURIComponent).join('/') : '');
+    fetch(path+'?part=list&list='+encodeURIComponent(at.getAttribute('data-list'))+'&from='+encodeURIComponent(at.getAttribute('data-from')), {credentials:'same-origin', headers:{'Accept':'text/html'}})
+      .then(function(r){ return r.ok ? r.text() : Promise.reject(r.status); })
+      .then(function(html){ at.outerHTML=html; })
+      .catch(function(){ at.removeAttribute('data-fetching'); if(button) button.disabled=false; toast('the host did not answer · try again'); })
+      .then(function(){ if(progress && !busy) progress.hidden=true; });
+  }
   addEventListener('hashchange', function(){ var m=/^#dock-(.+)$/.exec(location.hash); if(m && !client) openDock(decodeURIComponent(m[1])); });
 
   // ---- one selection: the decision in hand on the rail, and the object it
@@ -1409,6 +1432,7 @@ body[data-served="view"] .dk-b{overflow:visible}
       var away=t.closest('a[href^="http"]');
       if(away){ e.preventDefault(); client.link(away.href); return; }
     }
+    var more=t.closest('.more[data-list] button'); if(more){ e.preventDefault(); fetchMore(more.closest('.more')); return; }
     var row=t.closest('.pal-rows .pal-row'); if(row){ e.preventDefault(); if(!run(+row.getAttribute('data-row'))){ var f=input(); if(f && f.form) f.form.requestSubmit(); } return; }
     if(t.closest('#pal-open-rail,#pal-open-phone')){ e.preventDefault(); openBox(); return; }
     if(t===scrim){ closeBox(); return; }
