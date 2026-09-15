@@ -148,6 +148,12 @@ cargo run -q -- scenario run conformance/scenarios/S16.yaml --trace
 and its default, and the trace goes to `target/flywheel-trace/git-only/` (92,
 D15).
 
+The run plays every scenario and prints a line for each. Its exit is the phase
+gate: the twenty-one scenarios phase 1 accepts must pass, and none of them may
+be skipped. A scenario a later phase takes up is played too, and if it fails or
+does not validate the report says what it expected and what it got, under
+`deferred`, without failing the run (168).
+
 ## The chat on your phone
 
 Optional, and added to the walkthrough above at any point: the decisions on the

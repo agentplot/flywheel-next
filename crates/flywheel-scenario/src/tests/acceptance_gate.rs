@@ -57,6 +57,37 @@ fn a_skipped_row_fails_the_run() {
     assert_eq!(failed.exit_code(), 1);
     let invalid = report(vec![outcome("S02", Status::Invalid, ""), outcome("S18", Status::Skipped, "")]);
     assert_eq!(invalid.exit_code(), 2);
+
+    // A row the phase defers that fails or does not validate beside a passing
+    // gate is reported with what it expected and what it got, and gates nothing
+    // until its phase opens (roadmap, phase gates). The scenario names itself
+    // `S9`; the table knows it by its file.
+    let beside = report(vec![
+        outcome("S01", Status::Passed, ""),
+        Outcome {
+            scenario: "S9".into(),
+            path: PathBuf::from("conformance/scenarios/S09.yaml"),
+            status: Status::Failed,
+            failures: vec!["FAIL S9 · step 3 · decisions · 58, 103\n  expected  1\n  actual    0".into()],
+            reason: None,
+            trace: None,
+        },
+        outcome("S03", Status::Invalid, "given.sessions is not in the schema"),
+    ]);
+    let rendered = beside.render();
+    assert_eq!(beside.exit_code(), 0, "{rendered}");
+    assert!(rendered.contains("expected  1\n  actual    0"), "{rendered}");
+    assert!(rendered.contains("given.sessions is not in the schema"), "{rendered}");
+    assert!(rendered.contains("gate      1 of 1 listed rows passed\n"), "{rendered}");
+    assert!(rendered.contains("deferred  S09 failed · S03 does not validate"), "{rendered}");
+    let named: Vec<String> = beside.deferred_not_passing().iter().map(|o| o.row()).collect();
+    assert_eq!(named, ["S09", "S03"]);
+
+    // Beside them, a listed row that fails still fails the run, named.
+    let listed_failed = report(vec![outcome("S02", Status::Failed, ""), outcome("S09", Status::Failed, "")]);
+    assert_eq!(listed_failed.exit_code(), 1);
+    let rendered = listed_failed.render();
+    assert!(rendered.contains("gate      0 of 1 listed rows passed · S02 failed\n"), "{rendered}");
 }
 
 /// A row declares the mode it needs beside `profiles:`, in its own file, and

@@ -136,9 +136,10 @@ are the backstop for what nothing notified, and a test is the thing doing the
 notifying (D6, D7, 130, 231).
 
 Where the time goes, measured on the native toolchain on 2026-09-14 with the
-build warm, so a change that costs something is noticed. The system tier carries
-ten conformance rows that fail on phase-2 subjects (S8, S9, S10, S12, S25, S31,
-X2, X4, X7, X10); they failed before group 20 and are not its regressions.
+build warm, so a change that costs something is noticed. The system tier's
+acceptance driver gates on the twenty-one rows phase 1 lists; the rows a later
+phase takes up that fail (S9, S10, S12, S25, S31, X2, X4, X7, X10) or do not
+validate (S3, S27, S28, S30) are in its report and fail nothing.
 
 | tier | tests | wall time |
 |---|---|---|

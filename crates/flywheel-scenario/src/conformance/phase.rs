@@ -37,3 +37,12 @@ pub const DEFERRED: &[&str] = &[
 pub fn accepted(name: &str) -> bool {
     ACCEPTED.contains(&name)
 }
+
+/// Whether the phase defers a scenario to a later one, by the name its file
+/// has: the rows a recorded workspace cannot serve and the rows it defers for
+/// reasons of its own (proposal.md — Deferred, with the reason). Such a row is
+/// played and reported, and gates nothing until its phase opens (roadmap, phase
+/// gates).
+pub fn deferred(name: &str) -> bool {
+    REAL_WORKSPACE.contains(&name) || DEFERRED.contains(&name)
+}

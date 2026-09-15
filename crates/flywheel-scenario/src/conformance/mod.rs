@@ -159,6 +159,15 @@ pub struct Outcome {
 }
 
 impl Outcome {
+    /// The name the acceptance table knows this scenario by: its file's, or its
+    /// directory's where it is kept as one, and the name it declares where the
+    /// outcome has no file.
+    pub fn row(&self) -> String {
+        Some(row_of(&self.path))
+            .filter(|name| !name.is_empty())
+            .unwrap_or_else(|| self.scenario.clone())
+    }
+
     /// The one line the run prints for this scenario.
     pub fn line(&self) -> String {
         let mark = match self.status {
@@ -193,15 +202,18 @@ pub struct RunReport {
 impl RunReport {
     /// 0 every scenario passed and every skip was for a stated requirement; 1
     /// an assertion failed; 2 a scenario is invalid or uses a name nothing
-    /// binds; 3 the profile was refused (D15).
+    /// binds; 3 the profile was refused (D15). A row the phase defers weighs on
+    /// none of them: it is reported, and gates nothing until its phase opens
+    /// (roadmap, phase gates).
     pub fn exit_code(&self) -> i32 {
         if self.refusal.is_some() || self.outcomes.iter().any(|o| o.status == Status::Refused) {
             return 3;
         }
-        if self.outcomes.iter().any(|o| o.status == Status::Invalid) {
+        let gating = || self.outcomes.iter().filter(|o| !phase::deferred(&o.row()));
+        if gating().any(|o| o.status == Status::Invalid) {
             return 2;
         }
-        if self.outcomes.iter().any(|o| o.status == Status::Failed) {
+        if gating().any(|o| o.status == Status::Failed) {
             return 1;
         }
         // A row the acceptance table lists that this run skipped, or found not
@@ -220,13 +232,24 @@ impl RunReport {
         self.outcomes
             .iter()
             .filter(|o| !matches!(o.status, Status::Passed | Status::Failed))
-            .filter(|o| phase::accepted(&o.scenario) || phase::accepted(&file_name(&o.path)))
+            .filter(|o| phase::accepted(&o.row()))
             .map(|o| {
                 (
-                    o.scenario.clone(),
+                    o.row(),
                     format!("{:?}: {}", o.status, o.reason.clone().unwrap_or_default()),
                 )
             })
+            .collect()
+    }
+
+    /// The rows the phase defers that failed or did not validate. Each is in
+    /// the report with what it expected and what it got, and gates nothing
+    /// until its phase opens (roadmap, phase gates).
+    pub fn deferred_not_passing(&self) -> Vec<&Outcome> {
+        self.outcomes
+            .iter()
+            .filter(|o| matches!(o.status, Status::Failed | Status::Invalid))
+            .filter(|o| phase::deferred(&o.row()))
             .collect()
     }
 
@@ -278,6 +301,39 @@ impl RunReport {
                 .filter(|o| o.status == Status::NotApplicable)
                 .count()
         ));
+        // The gate is the rows the acceptance table lists; a row the phase
+        // defers that did not pass is named beside it and gates nothing
+        // (roadmap, phase gates; 93a).
+        let listed: Vec<&Outcome> = self
+            .outcomes
+            .iter()
+            .filter(|o| phase::accepted(&o.row()))
+            .collect();
+        if !listed.is_empty() {
+            let passed = listed.iter().filter(|o| o.status == Status::Passed).count();
+            out.push_str(&format!("gate      {passed} of {} listed rows passed", listed.len()));
+            for o in listed.iter().filter(|o| o.status == Status::Failed) {
+                out.push_str(&format!(" · {} failed", o.row()));
+            }
+            for (row, reason) in self.listed_but_not_run() {
+                out.push_str(&format!(" · {row} did not play ({reason})"));
+            }
+            out.push('\n');
+        }
+        let deferred = self.deferred_not_passing();
+        if !deferred.is_empty() {
+            let rows: Vec<String> = deferred
+                .iter()
+                .map(|o| match o.status {
+                    Status::Failed => format!("{} failed", o.row()),
+                    _ => format!("{} does not validate", o.row()),
+                })
+                .collect();
+            out.push_str(&format!(
+                "deferred  {} — each above with what it expected and what it got, gating nothing until its phase opens\n",
+                rows.join(" · ")
+            ));
+        }
         // What the record holds, so a reader of the run sees what a reader of
         // the record will (167, D15).
         out.push_str(&format!(
@@ -414,16 +470,7 @@ pub fn run(paths: &[PathBuf], options: &RunOptions) -> Result<RunReport> {
 /// Run one scenario. Every way it can fail is an outcome, never a panic: the
 /// run prints one line per scenario whatever happened.
 pub fn run_one(path: &Path, options: &RunOptions) -> Outcome {
-    // A scenario kept as a directory is named for the directory: `scenario` is
-    // the file's name in every one of them and names nothing.
-    let named = match path.file_name().is_some_and(|f| f == flywheel_atoms::conformance::SCENARIO_FILE) {
-        true => path.parent().unwrap_or(path),
-        false => path,
-    };
-    let name = named
-        .file_stem()
-        .map(|s| s.to_string_lossy().to_string())
-        .unwrap_or_default();
+    let name = row_of(path);
     let invalid = |reason: String| Outcome {
         scenario: name.clone(),
         path: path.to_path_buf(),
@@ -559,15 +606,24 @@ pub struct Run {
     pub read_at: std::collections::BTreeMap<String, usize>,
 }
 
-/// A scenario that runs against no configuration at all is a failure, never a
-/// silent pass (D15). The acceptance table is the caller's; this is the check
-/// it uses.
-/// A scenario file's name without its extension: how the acceptance table and
-/// this repository's tasks name a scenario.
-fn file_name(path: &Path) -> String {
-    path.file_stem().map(|s| s.to_string_lossy().to_string()).unwrap_or_default()
+/// A scenario's name as the acceptance table and this repository's tasks give
+/// it: the file's name without its extension. A scenario kept as a directory is
+/// named for the directory, `scenario` being the file's name in every one of
+/// them and naming nothing.
+fn row_of(path: &Path) -> String {
+    let named = match path.file_name().is_some_and(|f| f == flywheel_atoms::conformance::SCENARIO_FILE) {
+        true => path.parent().unwrap_or(path),
+        false => path,
+    };
+    named
+        .file_stem()
+        .map(|s| s.to_string_lossy().to_string())
+        .unwrap_or_default()
 }
 
+/// The listed rows the run did not play. A scenario that runs against no
+/// configuration at all is a failure, never a silent pass (D15). The acceptance
+/// table is the caller's; this is the check it uses.
 pub fn every_listed_scenario_ran(listed: &[String], report: &RunReport) -> Vec<String> {
     listed
         .iter()
@@ -575,7 +631,7 @@ pub fn every_listed_scenario_ran(listed: &[String], report: &RunReport) -> Vec<S
             !report
                 .ran()
                 .iter()
-                .any(|o| &&o.scenario == name || &&o.path.file_stem().map(|s| s.to_string_lossy().to_string()).unwrap_or_default() == name)
+                .any(|o| &&o.scenario == name || &&o.row() == name)
         })
         .cloned()
         .collect()
