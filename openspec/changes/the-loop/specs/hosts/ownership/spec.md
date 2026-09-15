@@ -22,6 +22,12 @@ SHALL be a decision under attention and never a silent wait (149).
 - **WHEN** an object outside a host's declaration is ready to move
 - **THEN** that host takes no lease on it and performs no effect for it (149)
 
+#### Scenario: Only a host that presents a sink takes its lease
+- **WHEN** one host's declaration covers every kind of object and presents
+  nothing, and another's presents the chat sink and has opened its channel
+- **THEN** only the second takes the chat sink's presenter lease, and the first
+  never delivers to it or reads what arrives on it (149, 148)
+
 ### Requirement: Every object is owned by at most one host, and the owner is visible
 
 Every object SHALL be owned by at most one host at a time, through a lease, and

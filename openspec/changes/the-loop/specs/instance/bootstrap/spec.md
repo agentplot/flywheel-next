@@ -35,6 +35,18 @@ advance a half-finished bootstrap (204).
 - **THEN** the instance stands at a decision under attention until the
   installation is seen, and no agent performs it (204, 207, 82)
 
+#### Scenario: Initialization names the chat sink
+- **WHEN** initialization is run naming a chat platform, its channel and the
+  name of the variable the bot's token will be read from
+- **THEN** the manifest holds the chat sink with the channel and the variable's
+  name and never the token, and the first host presents it (204, 149, 207)
+
+#### Scenario: A pasted token is refused
+- **WHEN** the value given as the variable's name could not be a variable's
+  name, or the channel's id is malformed
+- **THEN** initialization writes nothing, and its refusal does not repeat the
+  value given (204, 207)
+
 #### Scenario: The first host's address when the operator gives none
 - **WHEN** initialization is run with no host given
 - **THEN** the first host is registered at localhost, no name is derived from
@@ -44,7 +56,8 @@ advance a half-finished bootstrap (204).
 
 #### Scenario: The first host's address when the operator gives one
 - **WHEN** initialization is run with a hostname given for the first host
-- **THEN** the first host is registered at that hostname, with the instance in
+- **THEN** the first host is registered at that hostname and the port its page
+  is served on, so a link written at that address opens, with the instance in
   the path of every link written to it (204, 205a)
 
 ### Requirement: A host joins by one command and never by hand

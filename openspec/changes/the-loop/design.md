@@ -364,6 +364,16 @@ Anything else is answered with one reply naming those two shapes and a link to
 the page, and writes nothing. The machinery does not parse it, guess at it, or
 record it as a capture (194).
 
+A button is the numbered reply it stands for: a press reaches the sink as
+`412: yes` and is recorded by the grammar, never as a command of its own
+(model 5.6). Buttons carry only the answers that take no words, up to the five a
+Discord row allows; the rest stay in the line for the reply (S79). Discord wants
+a press acknowledged within three seconds and recording waits on the store, so
+the press is acknowledged privately at once and filled in when recorded; a
+numbered reply is answered with a reply (S32, 154). A rendering goes on across
+as many messages as Discord's five-decisions-and-2000-characters bound needs,
+and the last message is the delivery (S32).
+
 A tool that would assert work was done does not exist; a response that arrives
 claiming one is recorded `unapplicable` and reported under attention (4).
 
@@ -409,8 +419,9 @@ every response already committed.
 Initialization registers the first host at the hostname the operator gives, and
 at localhost when the operator gives none; it guesses no name (204, 205a). A host
 at localhost serves this computer alone, and init says so: answering from the
-phone (306) is met once the operator gives the host its hostname (204). Every
-link of 308 is written at the host's address with the instance in the path, and
+phone (306) is met once the operator gives the host its hostname (204). The
+address carries the port the page is served on, so a link written at it opens.
+Every link of 308 is written at the host's address with the instance in the path, and
 works whether that address is a localhost port of the operator's computer or a
 name on the operator's private network (308).
 
@@ -736,9 +747,18 @@ as a capture's source.
 The chat sink's behaviour is proven against the recorded channel (D9); phase 1
 also ships the wire, a Discord `Channel` beside it, so the same decision
 reaches the operator's phone by notification with a link back to the page
-(155, 309). Its token is placed by the operator in an environment variable the
-manifest names and travels nowhere else (204, 207); a sink with no token is
-reported under attention and the host runs on (217f).
+(155, 309). The manifest names the sink (`sinks.<name>: {kind, channel,
+surface, member, routes, token_from}`) and which hosts present it
+(`hosts.<host>.presents`), and only a host that presents a sink and has opened
+its channel takes its lease and hears it (149, model 5.5). Its token is placed
+by the operator in the environment variable `token_from` names and travels
+nowhere else, not even into an error, since a request's address can carry a
+press's token (217l, 204, 207); a token not placed, or one Discord refuses, is
+under attention, the host runs on, and the sink sends nothing more until another
+is placed (217l). A delivery that fails is reported with its reason and owed
+again (81, 127). Replies that arrive while no host presents wait in the channel
+and are read, applied and acknowledged once when the presenter returns (217f,
+137, 154).
 
 *Alternative considered:* leaving the page as the minimal rendering that passes
 the scenarios and taking the mockup up in phase 3 with the book. Rejected: the
