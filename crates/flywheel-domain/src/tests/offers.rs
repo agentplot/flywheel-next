@@ -121,6 +121,65 @@ fn an_offer_under_a_capture_is_that_captures_signal() {
     assert_eq!(captures, 1, "the offer made no capture of its own");
 }
 
+/// The one record a signal offer makes: a signal citing the document, of a
+/// capture of its own of source offer, and nothing left pending (62, 111).
+fn assert_the_offer_is_a_signal(store: &FakeStore, made: &[String], session: &str, document: &str) {
+    assert_eq!(made.len(), 1, "one record: {made:?}");
+    let signal = store.get(&made[0]).unwrap().expect("the signal is on record");
+    assert_eq!(signal.machine, "signal");
+    assert_eq!(signal.record.get("document"), Some(&json!(document)));
+    assert_eq!(signal.record.get("assertion"), Some(&json!(document)));
+    let capture = signal.parent.clone().expect("a signal is owned by a capture");
+    let held = store.get(&capture).unwrap().expect("the capture is on record");
+    assert_eq!(held.record.get("source"), Some(&json!(offers::SOURCE)));
+    assert!(offers::pending(store, session).unwrap().is_empty(), "nothing is left to stop the session");
+}
+
+/// A signal offered under a bolt is about neither the session's intent nor its
+/// bolt, so it is a signal and no proposed unit on the bolt; its scope is not
+/// read, so one naming no tracked repository is no refusal (58, 62, S231).
+#[test]
+fn a_signal_offered_under_a_bolt_is_a_signal() {
+    let mut store = FakeStore::default();
+    let mut world = FakeWorld::new();
+    let defs = crate::set::load().unwrap();
+    let repository = [("repository".to_string(), json!("atlas"))].into_iter().collect();
+    commands::put_new(&mut store, &defs, "bolt/atlas-rows", "bolt", None, repository, now()).unwrap();
+    commands::put_new(&mut store, &defs, "unit/atlas-rows/plan-rows", "unit", Some("bolt/atlas-rows"), Default::default(), now()).unwrap();
+    let session = "session/unit/atlas-rows/plan-rows/fix/1";
+    let document = "notes/provider-limits-elsewhere.md";
+    offer_scoped(&mut store, session, "signal", document, Some("switchboard"));
+
+    let made = offers::record(&mut store, &mut world, &defs, session, "unit/atlas-rows/plan-rows", now()).unwrap();
+    assert_the_offer_is_a_signal(&store, &made, session, document);
+    let units = store.list_records(&flywheel_atoms::Scope::Machine("unit".into())).unwrap();
+    assert_eq!(units.len(), 1, "no unit is made on the bolt: {units:?}");
+    assert!(
+        store.thread(session).unwrap().iter().all(|e| !e.fields.contains_key("refuses")),
+        "a signal's scope is not read, so nothing is refused"
+    );
+}
+
+/// A signal offered under an intent is a signal and no proposed elaboration
+/// there (58, 62, S231).
+#[test]
+fn a_signal_offered_under_an_intent_is_a_signal() {
+    let mut store = FakeStore::default();
+    let mut world = FakeWorld::new();
+    let defs = crate::set::load().unwrap();
+    commands::put_new(&mut store, &defs, "intent/atlas-provider-limits", "intent", None, Default::default(), now()).unwrap();
+    let owner = "elaboration/atlas-provider-limits/research-1";
+    commands::put_new(&mut store, &defs, owner, "elaboration", Some("intent/atlas-provider-limits"), Default::default(), now()).unwrap();
+    let session = "session/elaboration/atlas-provider-limits/research-1/1";
+    let document = "notes/billing-copy-drift.md";
+    offer(&mut store, session, "signal", document);
+
+    let made = offers::record(&mut store, &mut world, &defs, session, owner, now()).unwrap();
+    assert_the_offer_is_a_signal(&store, &made, session, document);
+    let elaborations = store.list_records(&flywheel_atoms::Scope::Machine("elaboration".into())).unwrap();
+    assert_eq!(elaborations.len(), 1, "no elaboration is made on the intent: {elaborations:?}");
+}
+
 /// A chore offered off every bolt is a proposed chore unit of the repository
 /// its scope names, folded with that repository's other shared-line chores into
 /// one decision; no capture or signal is written, and a route naming the offer

@@ -29,8 +29,9 @@ pub const SESSION_ENV: &str = "FLYWHEEL_SESSION";
 /// others (80).
 pub const EXITS: &[&str] = &["done", "blocked", "stalled"];
 
-/// What a session offers rather than exits on: the other two of 65's five.
-pub const OFFERS: &[&str] = &["finding", "chore"];
+/// What a session offers rather than exits on: the other two of 65's five, and
+/// a signal, which is what it saw about neither its intent nor its bolt (58).
+pub const OFFERS: &[&str] = &["finding", "chore", "signal"];
 
 /// One report, before it is a thread entry.
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -42,8 +43,8 @@ pub enum Report {
         question: Option<String>,
         text: Option<String>,
     },
-    /// A finding or a chore, pointing at its document; the record never holds
-    /// the text (58, 59, 62).
+    /// A finding, a chore or a signal, pointing at its document; the record
+    /// never holds the text (58, 59, 62).
     Offer {
         kind: String,
         document: String,

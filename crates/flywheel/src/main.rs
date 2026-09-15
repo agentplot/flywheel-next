@@ -200,7 +200,8 @@ enum Cmd {
         #[arg(long, default_value = "local")]
         host: String,
     },
-    /// Offer a finding or a chore, pointing at its document. A chore says
+    /// Offer a finding, a chore or a signal, pointing at its document; any
+    /// other kind is refused on the thread and exits 1 (65, 66). A chore says
     /// where its fix belongs: `bolt-line` under a bolt, or a repository the
     /// instance tracks, `blueprints` among them (60).
     Offer {

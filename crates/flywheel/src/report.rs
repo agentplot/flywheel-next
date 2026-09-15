@@ -43,8 +43,9 @@ pub fn ask<S: StateStore, W: World + ?Sized>(
     catalogue::asked(&outcome).ok_or_else(|| anyhow!("the ask was recorded and named nothing"))
 }
 
-/// `flywheel offer finding|chore --document <path> [--about <object>] [--scope bolt-line|<repository>]`:
-/// one entry on the session's thread (`sessions.yaml` commands.offer).
+/// `flywheel offer finding|chore|signal --document <path> [--about <object>] [--scope bolt-line|<repository>]`:
+/// one entry on the session's thread (`sessions.yaml` commands.offer). Any
+/// other kind is refused there, as a report outside the exits is (65, 66).
 ///
 /// A chore says where its fix belongs. One offered off every bolt that names
 /// no repository the instance tracks, and not the blueprints, is refused on the

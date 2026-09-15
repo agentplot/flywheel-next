@@ -16,9 +16,10 @@ fn reporting<'a>(session: &'a str, deliverables: &'a [String]) -> Reporting<'a> 
     }
 }
 
-/// Every session may offer a finding or a chore outside its job, so every order
-/// gives the offer's command with the manifest a chore's scope is checked
-/// against; the ask's command is a curation session's and not a chore's (58,
+/// Every session may offer a finding, a chore or a signal outside its job, so
+/// every order gives the offer's command naming the three and when each is
+/// used, with the manifest a chore's scope is checked against; the ask's
+/// command is a curation session's and not a chore's (58,
 /// 60, 62, 116, `sessions.yaml` commands.offer, commands.ask).
 #[test]
 fn every_order_gives_the_offer_command_and_curations_the_ask() {
@@ -40,8 +41,12 @@ fn every_order_gives_the_offer_command_and_curations_the_ask() {
             format!(
                 "FLYWHEEL_SESSION={session} FLYWHEEL_STATE=/hosts/laptop/scratch/flywheel-state/main \
                  FLYWHEEL_MANIFEST=/flywheel/flywheel.yaml FLYWHEEL_PAGE=http://127.0.0.1:4242 \
-                 /bin/flywheel offer finding|chore --document <path> --about <object> [--scope bolt-line|<repository>] --host laptop"
+                 /bin/flywheel offer finding|chore|signal --document <path> --about <object> [--scope bolt-line|<repository>] --host laptop"
             ),
+        );
+        assert!(
+            said.contains("a signal when what you saw is about neither your intent nor your bolt"),
+            "the order says when each offer is used: {said}"
         );
     }
     assert!(!how_to_report(&reporting(chore, &named)).contains(" ask "), "a chore's order gives the ask");

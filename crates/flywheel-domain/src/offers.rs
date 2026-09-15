@@ -1,15 +1,17 @@
 //! What a session offered, and the records the machinery makes of it
 //! (`record-derived.yaml` record_offers, 58, 59, 62).
 //!
-//! A session reports a finding or a chore through `flywheel offer`, which
-//! writes one entry on its thread pointing at a document. It is never
+//! A session reports a finding, a chore or a signal through `flywheel offer`,
+//! which writes one entry on its thread pointing at a document. It is never
 //! interrupted for it (58, I5). The machinery then makes one record per offer,
 //! holding the path and the entry it came from and never the text (62): a
 //! finding on the session's own intent is a proposed elaboration there, a
 //! finding on its own bolt a proposed unit of the fast type, and any other
-//! finding a signal citing the path. A chore is a proposed chore unit on the
-//! line its scope names — its bolt's, folding by the bolt, or a repository's
-//! shared line, folding by the repository — and never a signal (60, S231).
+//! finding a signal citing the path. A signal is a signal citing the path
+//! wherever the session stands, since it is about neither its intent nor its
+//! bolt (58). A chore is a proposed chore unit on the line its scope names —
+//! its bolt's, folding by the bolt, or a repository's shared line, folding by
+//! the repository — and never a signal (60, S231).
 
 use crate::{commands, report, signals};
 use anyhow::{bail, Result};
@@ -272,6 +274,14 @@ pub fn record<S: StateStore, W: World + ?Sized>(
             continue;
         }
 
+        // A signal is about neither the session's intent nor its bolt, so
+        // what stands above the session takes no part: it is never a proposal
+        // on its thread, and a signal's scope is not read (58, 62, S231).
+        if offer.kind == "signal" {
+            made.push(as_signal(store, world, defs, session, owner, &offer, record, at)?);
+            continue;
+        }
+
         // A finding on the session's own intent is a proposed elaboration
         // there; on its own bolt, a proposed unit of the fast type (58, 59).
         if let Some(intent) = above(store, owner, "intent")? {
@@ -353,7 +363,8 @@ fn chore<S: StateStore>(
 }
 
 /// A finding offered under neither an intent nor a bolt — a capture reader's,
-/// a curation session's — is a signal citing the path (58, 62, 113).
+/// a curation session's — is a signal citing the path, and so is an offer of
+/// kind signal wherever the session stands (58, 62, 113).
 ///
 /// A signal carries its capture (113). Under a capture it is that capture's
 /// next signal; otherwise the offer is a capture of its own, the entry its

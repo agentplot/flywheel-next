@@ -225,6 +225,52 @@ fn an_offer_off_every_bolt_naming_no_tracked_repository_is_refused() {
     assert_eq!(store.thread(SESSION).unwrap()[3].fields.get("scope"), Some(&json!("atlas")));
 }
 
+/// An offer of a kind that is none of finding, chore and signal is refused on
+/// the session's thread naming the three, exits 1 and is never pending, as a
+/// report outside the exits is; a signal is an offer, and its scope is not
+/// read (65, 66, 80, `sessions.yaml` commands.offer).
+#[test]
+fn an_offer_of_an_unknown_kind_is_refused() {
+    let mut store = a_store();
+    let out = crate::report::offer(
+        &mut store,
+        || panic!("an unknown kind reads no manifest"),
+        SESSION,
+        "chuck",
+        Utc::now(),
+        "opinion",
+        "notes/1.md",
+        None,
+        None,
+    )
+    .expect("the refusal is written");
+    assert_eq!(crate::report::exit_code(&out), 1, "{out:?}");
+    let Reported::Refused { reason, .. } = &out else {
+        unreachable!("exit 1 is a refusal");
+    };
+    assert!(reason.contains("finding, chore, signal"), "the refusal names the offers: {reason}");
+    let thread = store.thread(SESSION).unwrap();
+    assert_eq!(thread.len(), 1, "the refusal is one entry on the thread");
+    assert_eq!(thread[0].fields.get("raw"), Some(&json!("opinion")));
+    assert!(thread[0].fields.contains_key("refused"));
+    assert!(flywheel_domain::offers::pending(&store, SESSION).unwrap().is_empty(), "a refused offer is never pending");
+
+    let signal = crate::report::offer(
+        &mut store,
+        || panic!("a signal's scope is not read"),
+        SESSION,
+        "chuck",
+        Utc::now(),
+        "signal",
+        "notes/2.md",
+        Some("switchboard"),
+        None,
+    )
+    .unwrap();
+    assert_eq!(crate::report::exit_code(&signal), 0, "{signal:?}");
+    assert_eq!(flywheel_domain::offers::pending(&store, SESSION).unwrap().len(), 1);
+}
+
 /// What an offer is about is written on its entry beside the kind, the document
 /// and the scope, and nothing is derived from it: the unit a chore offer makes
 /// is the same with or without it, since where the fix lands is the scope's

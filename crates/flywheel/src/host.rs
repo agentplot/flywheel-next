@@ -2510,8 +2510,9 @@ pub(crate) struct Reporting<'a> {
 /// The order's `how to report`: the exact command for every report the session
 /// may make, from its place (65, 67, 89).
 ///
-/// Every session may offer what is outside its job — a finding, or a small
-/// necessary fix as a chore — so every order gives the offer's command, with
+/// Every session may offer what is outside its job — a finding, a small
+/// necessary fix as a chore, or a signal about neither its intent nor its bolt
+/// — so every order gives the offer's command, naming the three, with
 /// the manifest a chore's scope is checked against (58, 60, 62, `sessions.yaml`
 /// commands.offer). The ask is the curation session's and the operator's own
 /// session's, so theirs alone carry its command (116, 197, `sessions.yaml`
@@ -2535,13 +2536,14 @@ pub(crate) fn how_to_report(r: &Reporting) -> String {
         "    {env}{page} {flywheel} exit blocked --question \"<the question>\" --host {host}\n\n"
     ));
     body.push_str(
-        "To offer what is outside the job, pointing at a document you committed here: a finding, or a \
-         small necessary fix as a chore. --about names what it concerns. A chore says where its fix \
-         belongs with --scope: bolt-line, which a session under a bolt may leave off, or a repository \
-         the instance tracks, blueprints among them:\n\n",
+        "To offer what is outside the job, pointing at a document you committed here: a finding when it \
+         is about the intent or bolt you work under, a chore when it is a small necessary fix, and a \
+         signal when what you saw is about neither your intent nor your bolt. --about names what it \
+         concerns. A chore says where its fix belongs with --scope: bolt-line, which a session under a \
+         bolt may leave off, or a repository the instance tracks, blueprints among them:\n\n",
     );
     body.push_str(&format!(
-        "    {env}{manifest}{page} {flywheel} offer finding|chore --document <path> --about <object> [--scope bolt-line|<repository>] --host {host}\n\n"
+        "    {env}{manifest}{page} {flywheel} offer finding|chore|signal --document <path> --about <object> [--scope bolt-line|<repository>] --host {host}\n\n"
     ));
     if flywheel_domain::asks::granted(session) {
         body.push_str(
