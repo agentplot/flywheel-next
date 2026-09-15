@@ -110,7 +110,7 @@ one decision on the rail, with the number the register gave it (37, 39, 15):
 ```
 approve
   2   bolt/flywheel-next/readme-crates-table-lacks     1 unit
-      [ yes ]  [ no ]  [ later ]
+      [ yes ]  [ hold ]
 ```
 
 Tap `yes` — on the laptop or on the phone, the same control either way. It
@@ -134,6 +134,9 @@ session, the answer and the status projection, each a commit with the reason
 and the evidence the guard read in the message (79, 127). Nothing in either was
 written by hand.
 
+To have that decision reach your phone as a Discord notification as well, add
+the chat: [The chat on your phone](#the-chat-on-your-phone).
+
 ## The conformance suite
 
 ```sh
@@ -144,6 +147,81 @@ cargo run -q -- scenario run conformance/scenarios/S16.yaml --trace
 `--profile` names the state store binding; `git-only` is this release's only one
 and its default, and the trace goes to `target/flywheel-trace/git-only/` (92,
 D15).
+
+## The chat on your phone
+
+Optional, and added to the walkthrough above at any point: the decisions on the
+rail also arrive in a Discord channel, so your phone's own notification brings
+them, each with a link back to it on the page, and a tap or a short reply there
+answers it (152–155, 309).
+
+**A bot for the channel.** At <https://discord.com/developers/applications>,
+make an application and give it a bot. Under *Bot*, turn on *Message Content
+Intent*, which is how the bot reads a numbered reply, and copy the bot's token
+somewhere private. Under *OAuth2 → URL Generator*, tick the `bot` scope and the
+*View Channels*, *Send Messages* and *Read Message History* permissions, open
+the URL it makes, and add the bot to your server. With *Developer Mode* on
+(*User Settings → Advanced*), right-click the channel and copy its id.
+
+**Name the chat.** The same `init` as the walkthrough's, with three more flags.
+The manifest records the channel and the name of the variable the token is in,
+never the token (204, 207):
+
+```sh
+cargo run -q -- init \
+  --instance agentplot --host laptop \
+  --root ~/flywheel/hosts/laptop --git-host ~/flywheel/git-host \
+  --repository flywheel-next --workspace host --sessions herdr \
+  --manifest ~/flywheel/flywheel.yaml \
+  --chat discord --channel <the channel's id> --token-from FLYWHEEL_DISCORD_TOKEN
+```
+
+A link in the channel opens on your phone when the host's address carries the
+page's port. If `hosts.laptop.router.base` in `~/flywheel/flywheel.yaml` reads
+`http://<your-computer>.local`, add it:
+
+```yaml
+hosts:
+  laptop:
+    router:
+      base: http://<your-computer>.local:4242
+```
+
+**Place the token and restart the host.** Stop the host, put the token where
+you said it would be, and start it again with the same command:
+
+```sh
+export FLYWHEEL_DISCORD_TOKEN=<the bot's token>
+cargo run -q -- host --name laptop --manifest ~/flywheel/flywheel.yaml \
+  --serve 4242 --operator chuck
+```
+
+The host says it presents the chat. If the variable is empty, it says the chat
+is under attention and why, and serves the page as before (217f):
+
+```
+presents chat on discord
+```
+
+**The same decision, in the channel.** The standing decision arrives as one
+line — its number, its kind, the object, its answers and its link — with the
+tail since the last delivery and a link to the page after it, and a button
+beside the number for each answer:
+
+```
+#2 bolt-close · bolt/flywheel-next/readme-crates-table-lacks · yes | hold · http://<your-computer>.local:4242/agentplot/bolt/flywheel-next/readme-crates-table-lacks
+http://<your-computer>.local:4242/agentplot
+[ 2 yes ]  [ 2 hold ]
+```
+
+Tap `2 yes`, or reply `yes 2`. Either calls the same tool the page's control
+does and is recorded once, with who gave it and when: the tap's
+acknowledgement, `#2 → yes, recorded as …`, is shown to you alone, and a reply
+gets the same line as a reply in the channel (137, 153, 154, 194). `git log` on
+the state repository shows the one answer. A message forwarded into the channel
+becomes a capture pointing back at it, and anything else typed there gets one
+line back saying what the channel takes, and is not read (112, 194). The host
+hears the channel while it runs.
 
 ## What a session reports
 
