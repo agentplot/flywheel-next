@@ -6,6 +6,7 @@ mod binding;
 mod blueprints;
 mod curation;
 mod curator;
+mod elaboration_type;
 mod envelope;
 mod offers;
 mod rail_folding;

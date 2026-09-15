@@ -147,6 +147,21 @@ fn registered() -> &'static BTreeSet<String> {
     })
 }
 
+/// The newest version of a type the binary's registry holds, or none where it
+/// holds no type of that name (224, model.md 10.7).
+pub fn registered_version(name: &str) -> Option<u64> {
+    let (_, bytes) = crate::set::files().into_iter().find(|(path, _)| path == "registry.yaml")?;
+    let registry: serde_yaml::Value = serde_yaml::from_slice(bytes).ok()?;
+    registry
+        .get("types")?
+        .as_mapping()?
+        .keys()
+        .filter_map(|key| key.as_str()?.split_once('@'))
+        .filter(|(named, _)| *named == bare(name))
+        .filter_map(|(_, version)| version.parse::<u64>().ok())
+        .max()
+}
+
 /// The elaboration types the binary's registry holds, by name: what a curation
 /// session's proposal may name (188, model.md 10.7).
 pub fn elaboration_types() -> Vec<String> {

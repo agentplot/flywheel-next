@@ -278,8 +278,15 @@ pub fn set_type<S: StateStore>(store: &mut S, object: &str, kind: &str) -> Resul
         return Ok(());
     }
     let kind = kind.trim().trim_start_matches("type").trim().to_string();
+    // The version in force travels with the name, so the record holds the
+    // type it will run (27, 57, `elaboration.yaml` approved).
+    let version = crate::blueprints::registered_version(&kind);
     amend(store, object, |object| {
         object.record.insert("type".into(), json!(kind));
+        match version {
+            Some(version) => object.record.insert("type_version".into(), json!(version)),
+            None => object.record.remove("type_version"),
+        };
     })?;
     Ok(())
 }
@@ -334,9 +341,17 @@ pub fn propose_elaboration<S: StateStore>(
         None => {
             let ordinal = children(store, intent, "elaboration")?.len() + 1;
             let id = id_under(intent, "elaboration", &format!("proposed-{ordinal}"));
+            // Material names no type of its own, and a proposal that names none
+            // is self-closing until the operator's `type <name>` names another
+            // (27, `intent.yaml` material, `elaboration.yaml` proposed).
+            let kind = match kind.trim() {
+                "" | "from-material" => "self-closing",
+                named => named,
+            };
             let mut record: BTreeMap<String, Value> = BTreeMap::new();
-            if !kind.is_empty() && kind != "from-material" {
-                record.insert("type".into(), json!(kind));
+            record.insert("type".into(), json!(kind));
+            if let Some(version) = crate::blueprints::registered_version(kind) {
+                record.insert("type_version".into(), json!(version));
             }
             commands::put_new(store, defs, &id, "elaboration", Some(intent), record, at)?;
             id
