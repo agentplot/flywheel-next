@@ -220,6 +220,19 @@ pub fn tappable(tab: &Tab, selector: &str) -> Result<bool> {
 /// left the operator on the tool's JSON body. It no longer does, and a page
 /// with no script must land on a page rather than on a body the operator has to
 /// go back from; so what is waited for is the page saying it.
+/// Ask the browser until it answers, for at most ten seconds. The driver is
+/// where a test waits on a browser, so the test itself never sleeps (D15).
+pub fn eventually<T>(mut ask: impl FnMut() -> Option<T>) -> Option<T> {
+    let until = std::time::Instant::now() + std::time::Duration::from_secs(10);
+    while std::time::Instant::now() < until {
+        if let Some(answer) = ask() {
+            return Some(answer);
+        }
+        std::thread::sleep(std::time::Duration::from_millis(50));
+    }
+    None
+}
+
 pub fn wait_for_content(tab: &Tab, said: &str) -> Result<String> {
     let until = std::time::Instant::now() + std::time::Duration::from_secs(10);
     let mut last = String::new();

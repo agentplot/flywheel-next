@@ -109,17 +109,12 @@ fn in_frame(tab: &headless_chrome::Tab, expression: &str) -> Value {
 
 /// Wait until an expression over the frame's document is true.
 fn until(tab: &headless_chrome::Tab, expression: &str) {
-    let by = std::time::Instant::now() + std::time::Duration::from_secs(10);
-    while std::time::Instant::now() < by {
-        if in_frame(tab, expression) == json!(true) {
-            return;
-        }
-        std::thread::sleep(std::time::Duration::from_millis(50));
+    if crate::driver::eventually(|| (in_frame(tab, expression) == json!(true)).then_some(())).is_none() {
+        panic!(
+            "the frame never came to `{expression}`; it reads {}",
+            in_frame(tab, "doc.body.innerText")
+        );
     }
-    panic!(
-        "the frame never came to `{expression}`; it reads {}",
-        in_frame(tab, "doc.body.innerText")
-    );
 }
 
 /// The calls the view has sent through the client since the last look.
@@ -190,13 +185,8 @@ fn carry(tab: &headless_chrome::Tab, address: SocketAddr, call: &Value) -> Value
 
 /// The next call the view sends through the client.
 fn next_call(tab: &headless_chrome::Tab) -> Value {
-    for _ in 0..200 {
-        if let Some(call) = calls(tab).into_iter().next() {
-            return call;
-        }
-        std::thread::sleep(std::time::Duration::from_millis(50));
-    }
-    panic!("the view sent no call through the client");
+    crate::driver::eventually(|| calls(tab).into_iter().next())
+        .unwrap_or_else(|| panic!("the view sent no call through the client"))
 }
 
 /// A tap on an answer inside the rendered rail goes busy at once, and is sent
@@ -282,14 +272,7 @@ fn a_view_draws_the_rail_it_is_handed_in_a_browser() {
     let object = in_frame(tab, "doc.querySelector('#rail .card.decision').getAttribute('data-object')");
     let object = object.as_str().expect("the card names its object").to_string();
     assert!(in_frame(tab, "(doc.querySelector('#rail .card.decision a.object').click(), true)") == json!(true));
-    let mut asked = Vec::new();
-    for _ in 0..200 {
-        asked.extend(calls(tab));
-        if !asked.is_empty() {
-            break;
-        }
-        std::thread::sleep(std::time::Duration::from_millis(50));
-    }
+    let asked = crate::driver::eventually(|| Some(calls(tab)).filter(|sent| !sent.is_empty())).unwrap_or_default();
     assert_eq!(asked.len(), 1, "{asked:?}");
     assert_eq!(asked[0]["method"], json!("tools/call"));
     assert_eq!(asked[0]["params"]["name"], json!("object"));
