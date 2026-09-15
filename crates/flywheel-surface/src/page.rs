@@ -356,7 +356,9 @@ pub fn read<S: StateStore, W: World + ?Sized>(
     let decisions = commands::rail_read(store, defs)?;
     let at = commands::now(store)?;
     let as_of = store.read(flywheel_domain::RAIL)?.as_of;
-    let files = signals::Blueprints(world);
+    // The signal material read in one pass, which every read of it below
+    // answers from (111, 203).
+    let files = signals::snapshot(world);
     let status = status::read_with(
         store,
         defs,
@@ -1468,6 +1470,21 @@ fn rail(read: &Read) -> String {
     out
 }
 
+/// Whether a capture holds more than one signal, on record or in the material:
+/// a transcript read or a folder imported, where a note holds one (19, 114).
+fn several_signals(read: &Read, capture: &str) -> bool {
+    let mut held: std::collections::BTreeSet<&str> = read
+        .objects
+        .iter()
+        .filter(|o| o.machine == "signal" && o.parent.as_deref() == Some(capture))
+        .map(|o| o.id.as_str())
+        .collect();
+    for waiting in read.status.waiting.iter().filter(|w| w.capture == capture) {
+        held.extend(waiting.signals.iter().map(|s| s.id.as_str()));
+    }
+    held.len() > 1
+}
+
 /// What finished lately, under the decisions: a note captured, a capture built
 /// or dropped, a unit merged, a bolt landed — each with its word and when,
 /// newest first (14, S59). A finished thing leaves the lane and stands here, so
@@ -1477,6 +1494,9 @@ fn since(read: &Read) -> String {
     let mut rows: Vec<(chrono::DateTime<chrono::Utc>, &Object, String)> = Vec::new();
     for object in &read.objects {
         let verb = match object.machine.as_str() {
+            // A note taken is listed; a capture of several signals is listed in
+            // the tray instead, where they wait (S9, S225).
+            "capture" if several_signals(read, &object.id) => continue,
             "capture" => "captured",
             "signal" => match object.config.get("move").map(String::as_str) {
                 Some("routed") if dock::routes_an_ask(object) => "asked",
@@ -1932,6 +1952,10 @@ fn lane(read: &Read, title: &str, sub: &str, machines: &[&str]) -> String {
         .rows
         .iter()
         .filter(|row| !OFF_THE_BOARD.contains(&row.machine.as_str()) && in_lane(&row.machine, machines))
+        // A capture of several signals — a transcript read, a folder imported —
+        // waits in the signals tray, which the counter opens; the lane draws
+        // notes and counts what it draws (S13, S225).
+        .filter(|row| !(row.machine == "capture" && several_signals(read, &row.object)))
         .collect();
     let _ = write!(
         out,
@@ -1977,11 +2001,17 @@ fn lane(read: &Read, title: &str, sub: &str, machines: &[&str]) -> String {
         out.push_str("</section>\n");
     }
     if drawn == 0 {
-        let said = LANE_EMPTY
-            .iter()
-            .find(|(t, _)| *t == title)
-            .map(|(_, s)| *s)
-            .unwrap_or("Nothing here.");
+        let waiting = read.status.waiting.iter().any(|w| !w.signals.is_empty());
+        let said = match (machines.contains(&"signal"), waiting) {
+            // What arrived is not nothing: it waits for curation, one tap up
+            // (S214, S225).
+            (true, true) => "No notes yet. What arrived waits for curation above; type what you noticed in the box to add a note.",
+            _ => LANE_EMPTY
+                .iter()
+                .find(|(t, _)| *t == title)
+                .map(|(_, s)| *s)
+                .unwrap_or("Nothing here."),
+        };
         let _ = write!(out, "<div class=\"quiet empty\">{}</div>\n", escape(said));
     }
     out.push_str("</div>\n");

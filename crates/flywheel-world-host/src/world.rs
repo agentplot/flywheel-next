@@ -240,6 +240,16 @@ impl World for HostWorld {
         git::ls_tree(&bare, &line, under)
     }
 
+    fn read_under(&self, repository: &str, under: &str) -> Result<std::collections::BTreeMap<String, Vec<u8>>> {
+        let repo = self.repository(repository)?;
+        let line = repo.shared_line.clone();
+        let bare = Repo::at(self.bare(repository));
+        if !bare.exists() {
+            return Ok(Default::default());
+        }
+        git::read_tree(&bare, &line, under)
+    }
+
     /// One commit on the repository's shared line, refused outside the
     /// machinery's prefix unless a response asked for it (203).
     ///

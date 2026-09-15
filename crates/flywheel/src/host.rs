@@ -154,6 +154,10 @@ pub struct HostStore {
     /// The manifest the host was opened on, which a work order hands to the
     /// session commands that read it (`flywheel ask`, 183).
     pub manifest: Option<std::path::PathBuf>,
+    /// The signal material as this tick read it, in one pass: every signal's
+    /// evidence is answered from it, and it is read again at the next tick or
+    /// once an effect may have written (111, 203).
+    pub material: RefCell<Option<BTreeMap<String, String>>>,
 }
 
 impl HostStore {
@@ -172,11 +176,22 @@ impl HostStore {
             root: None,
             sessions: "operator".into(),
             manifest: None,
+            material: RefCell::new(None),
         }
     }
 
     fn saw(&self, what: &str) {
         self.trace.borrow_mut().push(what.to_string());
+    }
+
+    /// The signal material, read once and answered from until it is taken
+    /// back (111, 203).
+    pub fn material(&self) -> std::cell::Ref<'_, BTreeMap<String, String>> {
+        if self.material.borrow().is_none() {
+            let read = flywheel_domain::signals::snapshot(&*self.world);
+            *self.material.borrow_mut() = Some(read);
+        }
+        std::cell::Ref::map(self.material.borrow(), |held| held.as_ref().expect("the material was just read"))
     }
 
     pub fn since(&self) -> Vec<String> {
@@ -384,13 +399,7 @@ impl EvidenceSource for HostStore {
             })
             // The signal material, read from the blueprints under the
             // machinery's prefix (111, 107, `blueprints.yaml` evidence).
-            .or_else(|| {
-                flywheel_domain::signals::evidence(
-                    &flywheel_domain::signals::Blueprints(&*self.world),
-                    object,
-                    name,
-                )
-            })
+            .or_else(|| flywheel_domain::signals::evidence(&*self.material(), object, name))
             // The change directory behind an intent, on the same shared line
             // (A.11, 227).
             .or_else(|| {
@@ -404,13 +413,7 @@ impl EvidenceSource for HostStore {
             .or_else(|| name.starts_with("instance.").then(|| self.instance.get(name).cloned()).flatten())
             // Curation's proofs read the blueprints and the records together
             // (107, 109, 116).
-            .or_else(|| {
-                flywheel_domain::signals::proofs(
-                    &self.git,
-                    &flywheel_domain::signals::Blueprints(&*self.world),
-                    name,
-                )
-            })
+            .or_else(|| flywheel_domain::signals::proofs(&self.git, &*self.material(), name))
             // `record_refusals` and its proof, read from one comparison: every
             // refusal on the session's thread is in the run record (43, 79).
             // Pending is the complement of recorded and is answered here
@@ -1020,6 +1023,8 @@ impl Host {
         // spends, and it is what the cost contract asserts
         // (167, 169, `git-only.yaml` cost, audit 8).
         self.store.trace.borrow_mut().clear();
+        // The signal material is read afresh each tick, once (111, 203).
+        self.store.material.borrow_mut().take();
         flywheel_atoms::StateStore::begin_tick(&mut self.store.git);
         self.store.git.fetch()?;
         self.store.saw("fetch");
@@ -1553,7 +1558,7 @@ impl Host {
             now,
             Duration::minutes(5),
             Duration::minutes(30),
-            &flywheel_domain::signals::Blueprints(&*self.store.world),
+            &flywheel_domain::signals::snapshot(&*self.store.world),
         )?;
         let view = flywheel_domain::status::render(&status);
         let fresh = digest(&flywheel_store_git::store::without_the_stamp(&view.body));
@@ -1597,7 +1602,7 @@ impl Host {
             self.now(),
             Duration::minutes(5),
             Duration::minutes(30),
-            &flywheel_domain::signals::Blueprints(&*self.store.world),
+            &flywheel_domain::signals::snapshot(&*self.store.world),
         )
     }
 
@@ -1968,6 +1973,9 @@ fn performing(
     region: &str,
     effect: &PlannedEffect,
 ) -> Result<Performed> {
+    // An effect may write the signal material, so what was read of it is read
+    // again when next asked (111, 203).
+    store.material.borrow_mut().take();
     let place = place_key(object, region);
     let kind = store
         .get(object)
@@ -2229,8 +2237,7 @@ fn performing(
         // second pass changes nothing (127, 137).
         "record_moves" => {
             let HostStore { git, world, .. } = store;
-            let delivered =
-                flywheel_domain::signals::moves(&flywheel_domain::signals::Blueprints(&**world));
+            let delivered = flywheel_domain::signals::moves(&flywheel_domain::signals::snapshot(&**world));
             flywheel_domain::signals::record_moves(git, &mut **world, &delivered, now)?;
         }
         // Curation never opens an intent: what its joins make stands as a
@@ -2238,8 +2245,7 @@ fn performing(
         // response (20, 110, 5).
         "propose_intents" => {
             let HostStore { git, world, .. } = store;
-            let delivered =
-                flywheel_domain::signals::moves(&flywheel_domain::signals::Blueprints(&**world));
+            let delivered = flywheel_domain::signals::moves(&flywheel_domain::signals::snapshot(&**world));
             let proposals = flywheel_domain::signals::proposals_of(&delivered);
             flywheel_domain::signals::propose_intents(git, defs, &proposals, now)?;
         }

@@ -421,6 +421,19 @@ impl Reads for BTreeMap<String, String> {
     }
 }
 
+/// The signal material as one snapshot: every file under the machinery's
+/// prefix, read in one pass, which every read here answers from as it does from
+/// a scenario's own file map (111, 203). Read a file at a time, a folder of two
+/// hundred signals cost a pass per file.
+pub fn snapshot<W: World + ?Sized>(world: &W) -> BTreeMap<String, String> {
+    world
+        .read_under(BLUEPRINTS, &format!("{UNDER}/"))
+        .unwrap_or_default()
+        .into_iter()
+        .map(|(path, bytes)| (path, String::from_utf8_lossy(&bytes).to_string()))
+        .collect()
+}
+
 /// The blueprints as a world reports them.
 pub struct Blueprints<'a, W: World + ?Sized>(pub &'a W);
 
@@ -465,11 +478,18 @@ pub fn evidence<R: Reads + ?Sized>(files: &R, object: &str, name: &str) -> Optio
                 // the signal machine reads `none` for it (107). Reading nothing
                 // here left every unmoved signal's guards unanswered on a real
                 // host. A signal the material does not hold is answered for
-                // elsewhere.
-                return all_signals_from(files)
-                    .iter()
-                    .any(|s| s.id == object)
-                    .then(|| json!("none"));
+                // elsewhere. Only a record naming the signal is parsed, since
+                // every signal of the instance asks this on every tick.
+                let held = files
+                    .list(&format!("{UNDER}/"))
+                    .into_iter()
+                    .filter(|path| !RESERVED.contains(&path.trim_start_matches(&format!("{UNDER}/")).split('/').next().unwrap_or_default()))
+                    .filter_map(|path| files.read(&path))
+                    .any(|text| {
+                        text.contains(object)
+                            && rec::parse(&text).first().map(Signal::from_record).is_some_and(|s| s.id == object)
+                    });
+                return held.then(|| json!("none"));
             };
             match rec::parse(&text).first().map(Move::from_record) {
                 Some(moved) if !moved.target.is_empty() => json!(moved.word()),

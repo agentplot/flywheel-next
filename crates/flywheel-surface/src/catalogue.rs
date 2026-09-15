@@ -1174,14 +1174,15 @@ fn signals_named<S: StateStore, W: World + ?Sized>(
     // A signal the blueprints hold is a signal, whether or not the tick has
     // made its object yet: a person writing the records by hand is curation too
     // (110, 113).
+    let held = signals::all_signals_from(&signals::snapshot(world));
     let ids = match named.starts_with(signals::PREFIX) {
-        true => match store.get(named)?.is_some() || signals::all_signals(world)?.iter().any(|s| s.id == named) {
+        true => match store.get(named)?.is_some() || held.iter().any(|s| s.id == named) {
             true => vec![named.to_string()],
             false => bail!("`{named}` is no signal on record"),
         },
         false => {
             let mut ids = signals::of_capture(store, named)?;
-            for held in signals::all_signals(world)?.into_iter().filter(|s| s.capture == named) {
+            for held in held.into_iter().filter(|s| s.capture == named) {
                 if !ids.contains(&held.id) {
                     ids.push(held.id);
                 }
@@ -1481,7 +1482,7 @@ fn slug(name: &str) -> String {
 /// assertion or excerpt, or the signal's own where a signal is named, read from
 /// its record or else from the blueprints (19, 113).
 fn words_of<S: StateStore, W: World + ?Sized>(store: &S, world: &W, named: &str) -> Option<String> {
-    let held = signals::all_signals(world).unwrap_or_default();
+    let held = signals::all_signals_from(&signals::snapshot(world));
     let signal = match named.starts_with(signals::PREFIX) {
         true => named.to_string(),
         false => signals::of_capture(store, named)

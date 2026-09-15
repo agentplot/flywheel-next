@@ -359,6 +359,19 @@ pub trait World {
     /// Every file under a path on a repository's shared line, by path.
     fn list_files(&self, repository: &str, under: &str) -> Result<Vec<String>>;
 
+    /// Every file under a path on a repository's shared line with what it
+    /// holds, read in one pass where the world can read so; a world that
+    /// cannot reads them one at a time.
+    fn read_under(&self, repository: &str, under: &str) -> Result<BTreeMap<String, Vec<u8>>> {
+        let mut out = BTreeMap::new();
+        for path in self.list_files(repository, under)? {
+            if let Some(bytes) = self.read_file(repository, &path)? {
+                out.insert(path, bytes);
+            }
+        }
+        Ok(out)
+    }
+
     /// The last `limit` commits on a line of a repository, newest first, or
     /// none where the world keeps no such history (185, S28).
     fn line_log(&self, repository: &str, line: &str, limit: usize) -> Result<Vec<CommitRef>> {

@@ -186,6 +186,48 @@ pub fn ls_tree(repo: &Repo, line: &str, prefix: &str) -> Result<Vec<String>> {
         .collect())
 }
 
+/// Every file under a prefix at a repository's shared line with what it holds,
+/// in one pass: one open and one walk. Read one at a time, a folder of two
+/// hundred signals opened the repository two hundred times over (audit 9).
+pub fn read_tree(repo: &Repo, line: &str, prefix: &str) -> Result<std::collections::BTreeMap<String, Vec<u8>>> {
+    let mut out = std::collections::BTreeMap::new();
+    let Some(opened) = opened(repo) else {
+        return Ok(out);
+    };
+    let Some(mut tree) = tree_at(&opened, line)? else {
+        return Ok(out);
+    };
+    let under = prefix.trim_end_matches('/');
+    if under.is_empty() {
+        walk_blobs(&tree, "", &mut out)?;
+        return Ok(out);
+    }
+    if let Some(entry) = tree.peel_to_entry_by_path(under)? {
+        if entry.mode().is_tree() {
+            walk_blobs(&entry.object()?.into_tree(), under, &mut out)?;
+        }
+    }
+    Ok(out)
+}
+
+fn walk_blobs(tree: &gix::Tree<'_>, under: &str, into: &mut std::collections::BTreeMap<String, Vec<u8>>) -> Result<()> {
+    for entry in tree.iter() {
+        let entry = entry?;
+        let name = entry.filename().to_string();
+        let path = match under.is_empty() {
+            true => name,
+            false => format!("{under}/{name}"),
+        };
+        let object = entry.object()?;
+        if entry.mode().is_tree() {
+            walk_blobs(&object.into_tree(), &path, into)?;
+        } else {
+            into.insert(path, object.data.clone());
+        }
+    }
+    Ok(())
+}
+
 /// What a checkout's HEAD names, and whether it holds a file at a path.
 pub struct Head {
     pub revision: String,

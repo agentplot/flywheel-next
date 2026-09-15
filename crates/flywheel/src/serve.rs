@@ -138,6 +138,9 @@ impl World for SharedWorld {
     fn list_files(&self, repository: &str, under: &str) -> Result<Vec<String>> {
         self.with(|w| w.list_files(repository, under))
     }
+    fn read_under(&self, repository: &str, under: &str) -> Result<std::collections::BTreeMap<String, Vec<u8>>> {
+        self.with(|w| w.read_under(repository, under))
+    }
     fn line_log(&self, repository: &str, line: &str, limit: usize) -> Result<Vec<flywheel_atoms::CommitRef>> {
         self.with(|w| w.line_log(repository, line, limit))
     }

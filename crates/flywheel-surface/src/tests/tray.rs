@@ -117,6 +117,39 @@ fn the_tray_groups_unmoved_signals_by_capture_source_and_age() {
     assert!(tray_of(&html).contains("A note you type in the box above waits here"));
 }
 
+/// A capture of several signals — a folder imported, a transcript read — waits
+/// in the tray: the board draws notes, and Recently done lists the notes taken,
+/// so an import changes nothing on the page but the counter and the tray
+/// (S13, S225, S9).
+#[test]
+fn a_capture_of_several_signals_waits_in_the_tray_not_on_the_board() {
+    let defs = flywheel_domain::set::load().expect("the embedded definitions");
+    let mut store = FakeStore::default();
+    let mut world = world::Files::new();
+    let key = "signals/signals/2026-09-02-weekly";
+    read_before(&mut world, key, "wispr-flow", "2026-09-02", &["the rows lose their numbers", "who owns the export?"]);
+    let at = commands::now(&store).expect("a point");
+    let capture = signals::object_of(key);
+    let fields = [("source".to_string(), json!("wispr-flow")), ("event_key".to_string(), json!(key))];
+    commands::put_new(&mut store, &defs, &capture, "capture", None, fields.into_iter().collect(), at).expect("its object");
+    for ordinal in [1, 2] {
+        let id = signals::signal_object(key, ordinal);
+        commands::put_new(&mut store, &defs, &id, "signal", Some(&capture), Default::default(), at).expect("a signal's object");
+    }
+    let note = Call::new("capture", "chuck", "page").arg("text", json!("keep the numbers")).arg("source", json!("console"));
+    let outcome = catalogue::call(&mut store, &mut world, &defs, &note).expect("the note");
+    let noted = outcome.journal.iter().find(|n| n.kind == "capture").expect("a capture").object.clone();
+
+    let html = rendered(&mut store, &world, &defs);
+    let board = html.split("id=\"dock\"").next().expect("the page before its dock");
+    assert!(board.contains(&format!("data-hand=\"{noted}\"")), "the note is on the board");
+    assert!(!board.contains(&format!("id=\"{capture}\"")), "the import is drawn on the board");
+    let since = html.split("<ul class=\"since\">").nth(1).and_then(|s| s.split("</ul>").next()).expect("recently done");
+    assert!(since.contains(&format!("#dock-{noted}")), "the note taken is listed");
+    assert!(!since.contains(&format!("#dock-{capture}")), "the import is listed as captured");
+    assert!(tray_of(&html).contains(&format!("data-capture=\"{capture}\"")), "the import waits in the tray");
+}
+
 /// A finding a session offered with nothing above it is a row like any other:
 /// its quote the document's path, its source offer, its line the session that
 /// offered it, with the four controls and no decision; build now on it names
