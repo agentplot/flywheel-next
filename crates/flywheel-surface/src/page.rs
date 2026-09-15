@@ -25,6 +25,7 @@ mod asks;
 mod dock;
 pub(crate) mod hand;
 mod palette;
+pub(crate) mod tray;
 pub use dock::Session;
 use flywheel_domain::signals;
 use flywheel_domain::sinks;
@@ -1942,10 +1943,10 @@ fn lane(read: &Read, title: &str, sub: &str, machines: &[&str]) -> String {
         },
         mine.len()
     );
-    // The unmoved signals belong to inception, where curation reads them, and
-    // none of them is discarded (118, 110).
+    // What waits for curation belongs to inception, where curation reads it:
+    // the counter opens the tray, and none of it is discarded (118, 110, S225).
     if machines.contains(&"signal") {
-        out.push_str(&unmoved(read));
+        out.push_str(&tray::counter(read));
     }
     out.push_str("<div class=\"status-groups\">\n");
     let mut drawn = 0;
@@ -2602,44 +2603,6 @@ fn silhouette(machine: &str) -> &'static str {
     }
 }
 
-/// The signals with no move, by source and by age. Nothing here is discarded: a
-/// signal nobody has judged is one the operator has not seen yet (118).
-fn unmoved(read: &Read) -> String {
-    // What waits is on the rail, one card each (19a); this section is the
-    // curator's surface, and stands only while a curation session is charged
-    // (110, 116). Nothing here explains when one is.
-    if read.curation.is_none() {
-        return String::new();
-    }
-    let mut out = String::from(
-        "<section id=\"unmoved-signals\"><div class=\"sec-h\">unmoved signals\
-         <span class=\"r\">by source</span></div>\n",
-    );
-    if read.status.unmoved.is_empty() {
-        out.push_str("<div class=\"empty\">nothing unmoved</div>\n");
-    }
-    for source in &read.status.unmoved {
-        let age = source
-            .oldest
-            .as_deref()
-            .and_then(|at| chrono::DateTime::parse_from_rfc3339(at).ok())
-            .map(|at| (read.status.at - at.with_timezone(&chrono::Utc)).num_days())
-            .map(|days| format!(", oldest {days}d"))
-            .unwrap_or_default();
-        let _ = write!(
-            out,
-            "<p class=\"unmoved\" data-source=\"{}\" data-count=\"{}\">{} from {}{age}</p>\n",
-            escape(&source.source),
-            source.count,
-            source.count,
-            escape(&source.source)
-        );
-    }
-    out.push_str(&curator(read));
-    out.push_str("</section>\n");
-    out
-}
-
 /// The curator's surface: every unmoved signal with the standing moves as
 /// controls, and one submit that is the curation session's delivery and its
 /// exit (110, 101, 116, 93b, D16).
@@ -2785,6 +2748,8 @@ fn dock(read: &Read) -> String {
             body = reading.body,
         );
     }
+    // The signals tray, which the curation counter opens (S225).
+    out.push_str(&tray::surface(read, read.opened.as_deref() == Some(tray::ID)));
     for object in &read.objects {
         let opened = read.opened.as_deref() == Some(object.id.as_str());
         out.push_str(&surface(read, object, opened));

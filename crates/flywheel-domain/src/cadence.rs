@@ -130,3 +130,56 @@ pub fn due(cadence: &str, since: DateTime<Utc>, now: DateTime<Utc>) -> bool {
         .last_firing(now)
         .is_some_and(|fired| fired > since)
 }
+
+/// A schedule as a person says it — "weekdays at 06:00", "every day at 09:30",
+/// "every hour" — or the schedule as written where plainer words would say
+/// something else (110, S225).
+pub fn in_words(text: &str) -> String {
+    let Some(cadence) = Cadence::parse(text) else {
+        return text.to_string();
+    };
+    let one = |field: &Field| match field {
+        Field::These(values) if values.len() == 1 => Some(values[0]),
+        _ => None,
+    };
+    let days = match &cadence.weekday {
+        Field::Every => Some("every day"),
+        Field::These(values) => {
+            let mut values: Vec<u32> = values.iter().map(|day| day % 7).collect();
+            values.sort_unstable();
+            values.dedup();
+            match values.as_slice() {
+                [1, 2, 3, 4, 5] => Some("weekdays"),
+                [0, 6] => Some("weekends"),
+                _ => None,
+            }
+        }
+    };
+    let every_day_of_the_year = matches!((&cadence.day, &cadence.month), (Field::Every, Field::Every));
+    match (every_day_of_the_year, one(&cadence.minute), &cadence.hour, days) {
+        (true, Some(0), Field::Every, Some("every day")) => "every hour".to_string(),
+        (true, Some(minute), hour, Some(days)) => match one(hour) {
+            Some(hour) => format!("{days} at {hour:02}:{minute:02}"),
+            None => text.to_string(),
+        },
+        _ => text.to_string(),
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::in_words;
+
+    /// A schedule reads as a person says it where plain words say the same,
+    /// and as written where they would not (110, S225).
+    #[test]
+    fn a_schedule_reads_in_words() {
+        assert_eq!(in_words("0 6 * * 1-5"), "weekdays at 06:00");
+        assert_eq!(in_words("30 9 * * *"), "every day at 09:30");
+        assert_eq!(in_words("0 10 * * 0,6"), "weekends at 10:00");
+        assert_eq!(in_words("0 * * * *"), "every hour");
+        assert_eq!(in_words("5 4 1 * *"), "5 4 1 * *");
+        assert_eq!(in_words("0 6 * * 1,3"), "0 6 * * 1,3");
+        assert_eq!(in_words("whenever"), "whenever");
+    }
+}

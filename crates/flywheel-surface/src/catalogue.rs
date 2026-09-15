@@ -1038,7 +1038,7 @@ fn propose_unit<S: StateStore, W: World + ?Sized>(
     // capture's first words: the operator types no name (S217).
     let (named, from_words) = match call.text("bolt").map(|b| b.trim().to_string()).filter(|b| !b.is_empty()) {
         Some(named) => (named, false),
-        None => match capture.as_deref().and_then(|c| words_of(store, c)) {
+        None => match capture.as_deref().and_then(|c| words_of(store, world, c)) {
             Some(words) => (signals::name_from_words(&words), true),
             None => bail!("`propose-unit` takes the bolt's name, and the call names none"),
         },
@@ -1116,7 +1116,7 @@ fn propose_unit<S: StateStore, W: World + ?Sized>(
         .text("text")
         .map(|t| t.trim().to_string())
         .filter(|t| !t.is_empty())
-        .or_else(|| capture.as_deref().and_then(|c| words_of(store, c)));
+        .or_else(|| capture.as_deref().and_then(|c| words_of(store, world, c)));
     let mut record: BTreeMap<String, Value> = BTreeMap::new();
     record.insert("repository".into(), json!(repository));
     record.insert("type".into(), json!(kind));
@@ -1171,12 +1171,23 @@ fn signals_named<S: StateStore, W: World + ?Sized>(
     world: &W,
     named: &str,
 ) -> Result<Vec<(String, Option<signals::Move>)>> {
+    // A signal the blueprints hold is a signal, whether or not the tick has
+    // made its object yet: a person writing the records by hand is curation too
+    // (110, 113).
     let ids = match named.starts_with(signals::PREFIX) {
-        true => match store.get(named)? {
-            Some(_) => vec![named.to_string()],
-            None => bail!("`{named}` is no signal on record"),
+        true => match store.get(named)?.is_some() || signals::all_signals(world)?.iter().any(|s| s.id == named) {
+            true => vec![named.to_string()],
+            false => bail!("`{named}` is no signal on record"),
         },
-        false => signals::of_capture(store, named)?,
+        false => {
+            let mut ids = signals::of_capture(store, named)?;
+            for held in signals::all_signals(world)?.into_iter().filter(|s| s.capture == named) {
+                if !ids.contains(&held.id) {
+                    ids.push(held.id);
+                }
+            }
+            ids
+        }
     };
     ids.into_iter()
         .map(|id| {
@@ -1467,13 +1478,25 @@ fn slug(name: &str) -> String {
 }
 
 /// What a capture said, as the quote on the board shows it: its first signal's
-/// assertion or excerpt, or the signal's own where a signal is named (19, 113).
-fn words_of<S: StateStore>(store: &S, named: &str) -> Option<String> {
+/// assertion or excerpt, or the signal's own where a signal is named, read from
+/// its record or else from the blueprints (19, 113).
+fn words_of<S: StateStore, W: World + ?Sized>(store: &S, world: &W, named: &str) -> Option<String> {
+    let held = signals::all_signals(world).unwrap_or_default();
     let signal = match named.starts_with(signals::PREFIX) {
         true => named.to_string(),
-        false => signals::of_capture(store, named).ok()?.into_iter().next()?,
+        false => signals::of_capture(store, named)
+            .ok()?
+            .into_iter()
+            .next()
+            .or_else(|| held.iter().find(|s| s.capture == named).map(|s| s.id.clone()))?,
     };
-    store.get(&signal).ok().flatten().as_ref().and_then(signals::text_of)
+    if let Some(said) = store.get(&signal).ok().flatten().as_ref().and_then(signals::text_of) {
+        return Some(said);
+    }
+    held.into_iter()
+        .find(|s| s.id == signal)
+        .map(|s| if s.assertion.trim().is_empty() { s.excerpt } else { s.assertion })
+        .filter(|said| !said.trim().is_empty())
 }
 
 /// The next ordinal under a prefix. The objects are the count, so it comes from

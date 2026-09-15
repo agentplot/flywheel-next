@@ -533,7 +533,7 @@ fn key_of<R: Reads + ?Sized>(files: &R, object: &str) -> String {
 pub fn unmoved<R: Reads + ?Sized>(files: &R) -> Vec<Signal> {
     let mut out = Vec::new();
     let mut paths = files.list(&format!("{UNDER}/"));
-    paths.sort();
+    in_order(&mut paths);
     for path in paths {
         let rest = path.trim_start_matches(&format!("{UNDER}/")).to_string();
         if RESERVED.contains(&rest.split('/').next().unwrap_or_default()) {
@@ -556,6 +556,61 @@ pub fn unmoved<R: Reads + ?Sized>(files: &R) -> Vec<Signal> {
             out.push(record);
         }
     }
+    out
+}
+
+/// Paths in the order a person counts them: by directory, then by the number a
+/// signal's file is named with, so a capture's tenth signal follows its ninth.
+fn in_order(paths: &mut [String]) {
+    paths.sort_by(|a, b| {
+        let split = |path: &str| {
+            let (dir, file) = path.rsplit_once('/').unwrap_or(("", path));
+            (dir.to_string(), file.trim_end_matches(".rec").parse::<u64>().ok(), file.to_string())
+        };
+        split(a).cmp(&split(b))
+    });
+}
+
+/// One capture's signals nothing has moved, as the signals tray and the status
+/// page list them: where the capture came from, when what it holds was said,
+/// who captured it, and its unmoved signals in the order it holds them (118,
+/// 19a, S225).
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct Waiting {
+    /// The capture's object id.
+    pub capture: String,
+    pub source: String,
+    /// When what it holds was said: its event date, not when it was read (109).
+    pub event_at: String,
+    pub captured_by: String,
+    pub signals: Vec<Signal>,
+}
+
+/// Every capture holding a signal nothing has moved, grouped by capture and
+/// ordered by source and then by age, the oldest first: what curation has not
+/// read, none of it discarded (118).
+pub fn waiting<R: Reads + ?Sized>(files: &R) -> Vec<Waiting> {
+    let captures: BTreeMap<String, Capture> = captures_from(files).into_iter().map(|c| (object_of(&c.key), c)).collect();
+    let mut grouped: BTreeMap<String, Waiting> = BTreeMap::new();
+    for signal in unmoved(files) {
+        let capture = captures.get(&signal.capture);
+        grouped
+            .entry(signal.capture.clone())
+            .or_insert_with(|| Waiting {
+                capture: signal.capture.clone(),
+                source: capture
+                    .map(|c| c.source.clone())
+                    .filter(|source| !source.is_empty())
+                    .unwrap_or_else(|| "unknown".into()),
+                event_at: capture.map(|c| c.event_at.clone()).unwrap_or_default(),
+                captured_by: capture.map(|c| c.captured_by.clone()).unwrap_or_default(),
+                signals: vec![],
+            })
+            .signals
+            .push(signal);
+    }
+    let mut out: Vec<Waiting> = grouped.into_values().collect();
+    out.sort_by(|a, b| a.source.cmp(&b.source).then(a.event_at.cmp(&b.event_at)).then(a.capture.cmp(&b.capture)));
     out
 }
 

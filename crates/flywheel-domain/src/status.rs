@@ -61,6 +61,9 @@ pub struct Status {
     /// The signals with no move, by source, with the oldest one's date. They
     /// are shown here and none is discarded (118).
     pub unmoved: Vec<crate::signals::UnmovedSource>,
+    /// The same signals, grouped by capture and ordered by source and age,
+    /// each in its own words (118, 19a, S225).
+    pub waiting: Vec<crate::signals::Waiting>,
     /// When the view was read, which is what an unmoved signal's age is
     /// counted against (118).
     pub at: DateTime<Utc>,
@@ -438,6 +441,7 @@ pub fn read_with<S: Records, R: crate::signals::Reads + ?Sized>(
         as_of: as_of.clone(),
         rows,
         unmoved: crate::signals::unmoved_by_source(files),
+        waiting: crate::signals::waiting(files),
         at: now,
     })
 }
@@ -504,6 +508,35 @@ pub fn render(status: &Status) -> StatusView {
             source.count,
             escape(&source.source)
         ));
+    }
+    body.push_str("</section>\n");
+    // What waits, grouped by capture and ordered by source and age, each signal
+    // in its own words: a finding a session offered quotes its path (118, 19a,
+    // S225, S231).
+    body.push_str("<section id=\"waiting\">\n<h2>waiting for curation</h2>\n");
+    for waiting in &status.waiting {
+        let from = match waiting.source.as_str() {
+            "offer" => format!("offered by {}", waiting.captured_by),
+            source => format!("from {source}"),
+        };
+        body.push_str(&format!(
+            "<article class=\"note\" data-capture=\"{}\">\n<h3>{} · {}</h3>\n",
+            escape(&waiting.capture),
+            escape(&from),
+            escape(&waiting.event_at)
+        ));
+        for signal in &waiting.signals {
+            let said = match signal.assertion.trim().is_empty() {
+                true => &signal.excerpt,
+                false => &signal.assertion,
+            };
+            body.push_str(&format!(
+                "<blockquote data-signal=\"{}\">{}</blockquote>\n",
+                escape(&signal.id),
+                escape(said)
+            ));
+        }
+        body.push_str("</article>\n");
     }
     body.push_str("</section>\n");
     for group in GROUPS {

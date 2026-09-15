@@ -14,4 +14,5 @@ mod links;
 mod page;
 mod protocol;
 mod signals;
+mod tray;
 mod views;

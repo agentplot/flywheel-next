@@ -30,6 +30,7 @@ fn rendered(rows: Vec<Row>) -> String {
         as_of: ReadPoint { mark: "abc123".into(), seq: 1, at },
         rows,
         unmoved: vec![],
+        waiting: vec![],
         at,
     });
     view.body

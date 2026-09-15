@@ -13,3 +13,4 @@ mod set;
 mod signals;
 mod status;
 mod quiet;
+mod waiting;

@@ -719,7 +719,9 @@ async fn page_of_object<S: StateStore + Send + 'static>(
         return wrong_instance(&served, &instance);
     }
     let object = object.trim_matches('/').to_string();
-    {
+    // The signals tray is no object and opens at its own link all the same, so
+    // a phone and a chat line reach it as they reach any object (S225, 308).
+    if object != page::tray::ID {
         let store = served.store.lock().await;
         match store.get(&object) {
             Ok(Some(_)) => {}
