@@ -1,0 +1,25 @@
+{
+  "id": "1310000000000000001",
+  "channel_id": "1200000000000000000",
+  "guild_id": "900000000000000000",
+  "author": {
+    "id": "800000000000000001",
+    "username": "chuck",
+    "discriminator": "0",
+    "global_name": "Chuck",
+    "avatar": null
+  },
+  "content": "",
+  "timestamp": "2026-09-14T09:31:00.000000+00:00",
+  "edited_timestamp": null,
+  "tts": false,
+  "mention_everyone": false,
+  "mentions": [],
+  "mention_roles": [],
+  "attachments": [],
+  "embeds": [],
+  "pinned": false,
+  "type": 0,
+  "flags": 0,
+  "components": []
+}

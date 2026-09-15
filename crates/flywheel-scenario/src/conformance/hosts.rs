@@ -165,6 +165,8 @@ impl RealHosts {
             // A run's hosts are driven: the runner says when to sweep and what
             // time it is, so neither interval is ever waited out (D7, D15).
             intervals: Default::default(),
+            // A scenario's sinks are its `given:`, not the manifest's.
+            sinks: Default::default(),
             template_version: None,
         };
         for (index, host) in hosts.iter().enumerate() {
@@ -184,6 +186,7 @@ impl RealHosts {
                         base: format!("http://{}.{instance}.internal", host.name),
                     }),
                     localhost_port: first_port + index as u16 * PORTS_PER_HOST,
+                    presents: vec![],
                 },
             );
         }

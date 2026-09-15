@@ -62,6 +62,11 @@ pub struct Host {
     /// (205a, 308, D10a).
     #[serde(default = "localhost_port")]
     pub localhost_port: u16,
+    /// The sinks this host presents, by their names under `sinks:`. The host
+    /// that declares a sink is the one that takes its presenter lease and
+    /// loads its channel (148, `engine/host.yaml` declares).
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    pub presents: Vec<String>,
 }
 
 fn localhost_port() -> u16 {
@@ -136,6 +141,38 @@ impl Default for Curation {
     }
 }
 
+/// A sink the operator reads outside the page: a chat channel
+/// (`engine/sink.yaml`, 14, 82, 148, 236).
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
+pub struct Sink {
+    /// `chat`, the one kind a host presents through a channel in this release.
+    #[serde(default = "chat")]
+    pub kind: String,
+    /// The channel binding a host loads for it, by name (D8, D9): `discord`.
+    pub channel: String,
+    /// Where on the platform it is delivered: the Discord channel's id.
+    pub surface: String,
+    /// The member the sink belongs to; none for a shared channel (236).
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub member: Option<String>,
+    /// The decision kinds delivered here: every kind unless the operator says
+    /// otherwise (82).
+    #[serde(default = "every_kind")]
+    pub routes: Vec<String>,
+    /// The environment variable the operator placed the bot's token in. The
+    /// token itself appears in no configuration, no code and no record (204,
+    /// 207).
+    pub token_from: String,
+}
+
+fn chat() -> String {
+    "chat".to_string()
+}
+
+fn every_kind() -> Vec<String> {
+    vec!["all".to_string()]
+}
+
 /// How often the loop looks, in seconds. A tick is caused by a notify for one
 /// object and by a sweep over the host's scopes; the poll is what the notify
 /// falls back on when nothing told this host anything, and the sweep is what
@@ -181,6 +218,10 @@ pub struct Manifest {
     /// How often the loop looks (D6, D7).
     #[serde(default)]
     pub intervals: Intervals,
+    /// The chat sinks, by name; a host's `presents:` names the ones it
+    /// delivers to (82, 148, D8).
+    #[serde(default, skip_serializing_if = "BTreeMap::is_empty")]
+    pub sinks: BTreeMap<String, Sink>,
     /// The set version initialization used (208).
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub template_version: Option<String>,

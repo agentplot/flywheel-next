@@ -13,6 +13,7 @@
 
 pub mod catalogue;
 pub mod chat;
+pub mod discord;
 pub mod http;
 pub mod links;
 pub mod markdown;

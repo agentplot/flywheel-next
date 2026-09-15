@@ -1574,6 +1574,72 @@ impl Host {
         Ok(out)
     }
 
+    /// Load the channel of every sink this host presents, by the name the
+    /// sink's manifest entry gives it (D8, D9, 148).
+    ///
+    /// Each sink is written as the manifest describes it, its mark kept (14),
+    /// and `open` makes the channel a `discord` entry names. A sink that cannot
+    /// be opened — its token not placed, a channel this release does not bind,
+    /// a name `sinks:` does not hold — is refused with its reason under
+    /// attention, and the host runs on presenting nothing there (217f, 81).
+    /// What it did is returned in lines, for the operator watching the host
+    /// start.
+    pub fn present_sinks(
+        &mut self,
+        manifest: &Manifest,
+        mut open: impl FnMut(
+            &str,
+            &flywheel_world_host::manifest::Sink,
+        ) -> Result<Box<dyn Channel + Send>>,
+    ) -> Result<Vec<String>> {
+        let me = self.name.clone();
+        let now = self.now();
+        let defs = self.defs.clone();
+        let mut said = Vec::new();
+        for name in &manifest.host(&me)?.presents {
+            let id = flywheel_domain::sinks::id_for(name);
+            let opened = match manifest.sinks.get(name) {
+                None => Err(anyhow::anyhow!(
+                    "flywheel.yaml hosts.{me}.presents names `{name}`, which `sinks:` does not \
+                     hold (148)"
+                )),
+                Some(entry) if entry.channel != "discord" => Err(anyhow::anyhow!(
+                    "flywheel.yaml sinks.{name}.channel: `{}` — this release binds `discord` (D9)",
+                    entry.channel
+                )),
+                Some(entry) => {
+                    flywheel_domain::sinks::ensure(
+                        &mut self.store,
+                        &defs,
+                        &flywheel_domain::sinks::Spec {
+                            name: name.clone(),
+                            kind: entry.kind.clone(),
+                            member: entry.member.clone(),
+                            surface: entry.surface.clone(),
+                            routes: entry.routes.clone(),
+                            filter: "all".into(),
+                        },
+                    )?;
+                    open(name, entry).map(|channel| (channel, entry.channel.clone()))
+                }
+            };
+            match opened {
+                Ok((channel, bound)) => {
+                    self.sinks.bind(&id, channel);
+                    said.push(format!("presents {name} on {bound}"));
+                }
+                Err(e) => {
+                    let reason = format!("{e:#}");
+                    self.run.push(
+                        RunEntry::new(now, &me, "refusal", &id, &reason).with("attention", "true"),
+                    );
+                    said.push(format!("under attention: {reason}"));
+                }
+            }
+        }
+        Ok(said)
+    }
+
     /// Report a problem with the machinery. It goes in the run record and makes
     /// no work: a broken tool is not a job for the flywheel (81).
     pub fn report_problem(&mut self, about: &str, what: &str) {
@@ -2074,15 +2140,7 @@ fn performing(
         // host loaded no channel for is one it does not present, and the
         // effect's proof stays absent so another host's tick performs it (127,
         // 148).
-        "deliver_rail" => {
-            return Ok(match deliver(defs, store, sinks, host, object) {
-                true => Performed::Done,
-                // A sink this host loaded no channel for is one it does not
-                // present: the proof stays absent so another host's tick
-                // performs it, and that is not a refusal (127, 148).
-                false => Performed::Refused(String::new()),
-            })
-        }
+        "deliver_rail" => return Ok(deliver(defs, store, sinks, host, object)),
         // The status projection is the rail's own effect (D12); the tick writes
         // it after every pass, so nothing to do here.
         "render_status" => {}
@@ -2138,16 +2196,57 @@ fn deliver(
     sinks: &mut Sinks,
     host: &str,
     sink: &str,
-) -> bool {
+) -> Performed {
     let Some(channel) = sinks.channels.remove(sink) else {
         // No channel bound: this host presents nothing here, so nothing was
-        // delivered and the proof stays absent (148, 127).
-        return false;
+        // delivered and the proof stays absent for another host's tick, which
+        // is not a refusal (148, 127).
+        return Performed::Refused(String::new());
     };
     let mut chat = Chat::new(sink, host, &sinks.address, channel);
-    let delivered = matches!(chat.deliver(store, defs), Ok(Some(_)));
+    let delivered = chat.deliver(store, defs);
     sinks.channels.insert(sink.to_string(), chat.channel);
-    delivered
+    match delivered {
+        Ok(Some(_)) => Performed::Done,
+        // Another host holds the sink's lease and delivers (148).
+        Ok(None) => Performed::Refused(String::new()),
+        // The channel failed: nothing reached the platform, the mark stays
+        // where it was, and the reason is reported under attention (81, 127).
+        Err(e) => Performed::Failed(format!("{e:#}")),
+    }
+}
+
+/// The Discord channel a sink's manifest entry names (D9): its channel the
+/// entry's surface, its token read with `read` from the variable the entry
+/// names (204, 207), and its API Discord's own unless `api` says otherwise.
+///
+/// A response given there is recorded as given by the sink's member, or by the
+/// instance's operator where the sink is a shared channel's (D10, 153).
+pub fn discord_for(
+    name: &str,
+    entry: &flywheel_world_host::manifest::Sink,
+    read: &dyn Fn(&str) -> Option<String>,
+    api: Option<&str>,
+    operator: Option<&str>,
+) -> Result<flywheel_surface::discord::Discord> {
+    use flywheel_surface::discord::{Discord, Settings, Token};
+    let id = flywheel_domain::sinks::id_for(name);
+    let channel = entry.surface.trim().parse::<u64>().with_context(|| {
+        format!(
+            "flywheel.yaml sinks.{name}.surface: `{}` is no Discord channel's id",
+            entry.surface
+        )
+    })?;
+    let token = Token::from_variable(&id, &entry.token_from, read)?;
+    Discord::open(
+        Settings {
+            sink: id,
+            channel,
+            member: entry.member.clone().or_else(|| operator.map(String::from)),
+            api: api.map(String::from),
+        },
+        token,
+    )
 }
 
 /// The work order a session is given: the closed set of inputs, rendered, and

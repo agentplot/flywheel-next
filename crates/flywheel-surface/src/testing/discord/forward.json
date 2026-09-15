@@ -1,0 +1,46 @@
+{
+  "id": "1320000000000000001",
+  "channel_id": "1200000000000000000",
+  "guild_id": "900000000000000000",
+  "author": {
+    "id": "800000000000000001",
+    "username": "chuck",
+    "discriminator": "0",
+    "global_name": "Chuck",
+    "avatar": null
+  },
+  "content": "",
+  "timestamp": "2026-09-14T09:32:00.000000+00:00",
+  "edited_timestamp": null,
+  "tts": false,
+  "mention_everyone": false,
+  "mentions": [],
+  "mention_roles": [],
+  "attachments": [],
+  "embeds": [],
+  "pinned": false,
+  "type": 0,
+  "flags": 16384,
+  "components": [],
+  "message_reference": {
+    "type": 1,
+    "message_id": "1421",
+    "channel_id": "1250",
+    "guild_id": "900000000000000000"
+  },
+  "message_snapshots": [
+    {
+      "message": {
+        "type": 0,
+        "content": "rows lose their numbers on the second page",
+        "embeds": [],
+        "attachments": [],
+        "timestamp": "2026-09-13T17:02:00.000000+00:00",
+        "edited_timestamp": null,
+        "flags": 0,
+        "mentions": [],
+        "mention_roles": []
+      }
+    }
+  ]
+}

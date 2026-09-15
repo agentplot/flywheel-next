@@ -3,3 +3,6 @@
 //! and a prefix rule cannot be looser in one than in the other (D17, 203).
 
 pub use flywheel_atoms::testing::FakeWorld as Files;
+
+/// A recorded double of Discord's HTTP API, for the chat's wire (D9).
+pub mod discord;

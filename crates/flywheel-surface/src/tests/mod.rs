@@ -6,6 +6,7 @@
 mod bodies;
 mod chat;
 mod dictation;
+mod discord;
 mod links;
 mod page;
 mod signals;

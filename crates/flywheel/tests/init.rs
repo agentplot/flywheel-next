@@ -355,16 +355,46 @@ fn the_manifests_curation_threshold_reaches_the_record() {
     assert_eq!(threshold_of(&sandbox).0, 9, "the edited setting was not read");
 }
 
-/// The App's key and the token it makes are written nowhere a host writes:
-/// not the manifest, not any tracked line of the state repository — the run
-/// record under `runs/**` and the committed `status.html` included — and not
-/// the body of the page the host serves, after a tick that heartbeats (204,
-/// 207, 207a; audit 16).
+/// A bolt whose close is offered: one decision, standing, for a sink to carry
+/// (22, 39).
+fn a_decision(host: &mut flywheel::host::Host, id: &str) {
+    let now = host.now();
+    let object = flywheel_engine::Object {
+        id: id.to_string(),
+        machine: "bolt".into(),
+        parent: None,
+        config: [("life", "open"), ("life.open.close", "offered")]
+            .iter()
+            .map(|(region, state)| (region.to_string(), state.to_string()))
+            .collect(),
+        entered_at: [("life".to_string(), now), ("life.open.close".to_string(), now)]
+            .into_iter()
+            .collect(),
+        record: Default::default(),
+        counters: Default::default(),
+        applied_responses: vec![],
+        seq: 0,
+        created: 0,
+    };
+    host.store.git.seed_objects(&[object]).expect("the bolt");
+    let defs = host.defs.clone();
+    flywheel_domain::commands::rail(&mut host.store, &defs).expect("the rail numbers it");
+}
+
+/// The App's key and the token it makes, and the chat's bot token, are written
+/// nowhere a host writes: not the manifest, not any tracked line of the state
+/// repository — the run record under `runs/**` and the committed `status.html`
+/// included — and not the body of the page the host serves, after ticks that
+/// heartbeat, deliver to Discord and fail to (204, 207, 207a; audit 16, D9).
 ///
 /// The sweep is over what a real `Host` wrote, so the entries it covers are
-/// asserted present first: a sweep over an empty tree proves nothing.
+/// asserted present first: a sweep over an empty tree proves nothing. On the
+/// way, a chat sink whose token is not placed is under attention and the host
+/// runs on (217f).
 #[test]
 fn token_written_nowhere_else() {
+    use flywheel_surface::chat::Channel;
+    use flywheel_surface::testing::discord::{Double, CHANNEL};
     use flywheel_world_host::git::{ls_tree, show, Repo};
 
     let mut sandbox = Sandbox::new("nowhere");
@@ -372,6 +402,25 @@ fn token_written_nowhere_else() {
     let report = init::run(sandbox.ask()).expect("init runs");
     assert_eq!(report.state, "hosted", "{report:?}");
     let path = sandbox.dir.join("flywheel.yaml");
+
+    // The chat the operator named: a Discord channel whose bot's token they
+    // placed in a variable of their own, presented by this host (D9, 148).
+    let chat_from = "FLYWHEEL_TEST_DISCORD_TOKEN_NOWHERE";
+    let chat_token = "MTAwMDAwMDAwMDAwMDAwMDAwMA.GhYjKl.a-bot-token-the-operator-placed";
+    let mut named = flywheel_world_host::Manifest::read(&path).unwrap();
+    named.sinks.insert(
+        "chat".into(),
+        flywheel_world_host::manifest::Sink {
+            kind: "chat".into(),
+            channel: "discord".into(),
+            surface: CHANNEL.to_string(),
+            member: None,
+            routes: vec!["all".into()],
+            token_from: chat_from.into(),
+        },
+    );
+    named.hosts.get_mut("mac-mini").unwrap().presents = vec!["chat".into()];
+    named.write(&path).unwrap();
 
     // The key is where the manifest says the operator put it, and the token the
     // world mints from it is what the sweep looks for.
@@ -383,9 +432,68 @@ fn token_written_nowhere_else() {
     assert!(token.starts_with("installation:12345:"), "{token}");
     assert!(!token.contains(key), "the token does not carry the key");
 
-    // A tick that heartbeats: it declares, decides, rewrites the status view
-    // and appends its run record, and pushes the lot at the shared line.
-    host.sweep().expect("a sweep runs");
+    // The chat's token not placed yet: the sink is under attention with what to
+    // do, and the host runs on (217f).
+    let double = Double::start();
+    let api = double.address.clone();
+    let unplaced = host
+        .present_sinks(&named, |sink, entry| {
+            let discord = flywheel::host::discord_for(sink, entry, &|_| None, Some(&api), None)?;
+            Ok(Box::new(discord) as Box<dyn Channel + Send>)
+        })
+        .expect("the host presents what it can");
+    assert_eq!(unplaced.len(), 1, "{unplaced:?}");
+    assert!(
+        unplaced[0].starts_with("under attention") && unplaced[0].contains(chat_from),
+        "{unplaced:?}"
+    );
+
+    assert!(double.seen().is_empty(), "a sink with no token spoke to Discord");
+
+    // Placed: a decision is delivered through the channel with the token, by a
+    // tick that heartbeats — it declares, decides, rewrites the status view and
+    // appends its run record, and pushes the lot at the shared line...
+    let placed = host
+        .present_sinks(&named, |sink, entry| {
+            let discord = flywheel::host::discord_for(
+                sink,
+                entry,
+                &|variable| (variable == chat_from).then(|| chat_token.to_string()),
+                Some(&api),
+                Some("chuck"),
+            )?;
+            Ok(Box::new(discord) as Box<dyn Channel + Send>)
+        })
+        .expect("the host presents the sink");
+    assert_eq!(placed, ["presents chat on discord"]);
+    a_decision(&mut host, "bolt/atlas/plan-rows");
+    host.sweep().expect("a sweep delivers");
+    let posted = double.seen();
+    assert_eq!(posted.len(), 1, "the decision was not delivered: {posted:#?}");
+    assert_eq!(posted[0].authorization.as_deref(), Some(format!("Bot {chat_token}").as_str()));
+    assert!(
+        host.attention().unwrap().iter().any(|a| a == "refusal: sink/chat"),
+        "the token not placed at first was not under attention: {:?}",
+        host.attention()
+    );
+
+    // ...and one Discord refuses is reported with its reason (81, 127).
+    double.refuse();
+    host.set_now(host.now() + chrono::Duration::minutes(2));
+    a_decision(&mut host, "bolt/atlas/drop-the-tail");
+    host.sweep().expect("a failed delivery does not stop the host");
+    let failed = host
+        .store
+        .git
+        .run_record()
+        .unwrap()
+        .into_iter()
+        .filter(|e| e.reason == "deliver_rail")
+        .flat_map(|e| e.fields)
+        .find(|(field, _)| field == "failed")
+        .map(|(_, why)| why)
+        .expect("the refused delivery is in the run record");
+    assert!(failed.contains("401") && failed.contains(chat_from), "{failed}");
     let page = {
         let flywheel::host::HostStore { git, world, .. } = &mut host.store;
         let read = flywheel_surface::page::read(git, &**world, &host.defs, &host.sinks.address, "chuck")
@@ -394,11 +502,13 @@ fn token_written_nowhere_else() {
     };
     std::env::remove_var(&sandbox.key_from);
 
-    // The manifest names where the key is, never the key.
+    // The manifest names where the key and the chat's token are, never either.
     let manifest = std::fs::read_to_string(&path).unwrap();
     assert!(manifest.contains(&sandbox.key_from));
     assert!(!manifest.contains(key), "the manifest holds the key");
     assert!(!manifest.contains(&token), "the manifest holds the token");
+    assert!(manifest.contains(chat_from));
+    assert!(!manifest.contains(chat_token), "the manifest holds the chat's token");
 
     // Every tracked file on the state repository's shared line, the run record
     // and the status view among them.
@@ -410,16 +520,21 @@ fn token_written_nowhere_else() {
         "the tick wrote no run record to sweep: {paths:?}"
     );
     assert!(paths.iter().any(|p| p == "status.html"), "the tick wrote no status view to sweep: {paths:?}");
+    let mut delivered_on_record = false;
     for path in &paths {
         let text = show(&state, "main", path).unwrap().unwrap_or_default();
         assert!(!text.contains(key), "{path} holds the key");
         assert!(!text.contains(&token), "{path} holds the token");
+        assert!(!text.contains(chat_token), "{path} holds the chat's token");
+        delivered_on_record |= path.starts_with("runs/") && text.contains("401");
     }
+    assert!(delivered_on_record, "the run record on the shared line does not carry the refusal");
 
     // And the served page's body, rendered from the same state.
     assert!(page.contains("mac-mini"), "the page is rendered from the host's state");
     assert!(!page.contains(key), "the page holds the key");
     assert!(!page.contains(&token), "the page holds the token");
+    assert!(!page.contains(chat_token), "the page holds the chat's token");
 }
 
 /// A bootstrap stamps the instance at the moment it happens at, and not minutes

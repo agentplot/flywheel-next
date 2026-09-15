@@ -605,6 +605,29 @@ async fn main() -> Result<()> {
                             });
                         }
                     }
+                    // The chat sinks this host presents, each through the
+                    // channel its manifest entry names, its token read from
+                    // the variable the entry names. One whose token is not
+                    // placed is under attention and the host runs on (D8, D9,
+                    // 148, 204, 207, 217f).
+                    let read = flywheel::host::manifest_with_root(manifest, name, root.as_deref())?;
+                    let operator = operators.first().cloned();
+                    let presented = host
+                        .lock()
+                        .expect("the running host is poisoned")
+                        .present_sinks(&read, |sink, entry| {
+                            let discord = flywheel::host::discord_for(
+                                sink,
+                                entry,
+                                &|variable| std::env::var(variable).ok(),
+                                None,
+                                operator.as_deref(),
+                            )?;
+                            Ok(Box::new(discord) as Box<dyn flywheel_surface::chat::Channel + Send>)
+                        })?;
+                    for line in &presented {
+                        println!("{line}");
+                    }
                     // One long-lived process: the notify poll, and the sweep
                     // every sixty seconds whatever the poll says (D6, D7, 231).
                     let mut pass = 0usize;

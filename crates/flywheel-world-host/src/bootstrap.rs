@@ -201,6 +201,8 @@ impl Bootstrap {
                 // laptop, running four sessions at once (31, 150a).
                 bound: 4,
                 intermittent: true,
+                // No chat until the operator names one (D16).
+                presents: vec![],
             }
         });
     }

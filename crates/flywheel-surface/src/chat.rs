@@ -107,25 +107,37 @@ impl Post {
             out.push('\n');
         }
         for notice in &self.notices {
-            out.push_str(&format!("{} · {} · {}\n", notice.kind, notice.object, notice.text));
+            out.push_str(&notice_text(notice));
+            out.push('\n');
         }
         out.push_str(&self.link);
         out
     }
 }
 
+/// One notice as the channel carries it: `kind · object · what` (82).
+pub fn notice_text(notice: &sinks::Notice) -> String {
+    format!("{} · {} · {}", notice.kind, notice.object, notice.text)
+}
+
 /// The wire between the sink and the platform (D8, D9).
 ///
 /// `post` carries a rendering to the channel and hands back the delivery's own
 /// id, which the mark records beside it; `reply` answers one message the sink
-/// received. Nothing about the sink's behaviour lives behind this trait: what
-/// it posts and what it makes of what arrives are decided above it.
+/// received; `heard` hands over what arrived since the last look, for the
+/// sink to read with `Chat::receive`. Nothing about the sink's behaviour lives
+/// behind this trait: what it posts and what it makes of what arrives are
+/// decided above it.
 pub trait Channel {
     /// Post one rendering, returning the delivery's own id on the platform.
     fn post(&mut self, post: &Post) -> Result<String>;
 
     /// Answer one message that arrived, writing nothing to the store (194).
     fn reply(&mut self, to: &str, text: &str) -> Result<()>;
+
+    /// What arrived since the last look, in the order it arrived; or what
+    /// stopped the channel hearing anything, said once (81).
+    fn heard(&mut self) -> Result<Vec<Message>>;
 }
 
 /// A host loads its sinks' channels by name, like its workspace and its
@@ -139,6 +151,10 @@ impl Channel for Box<dyn Channel> {
     fn reply(&mut self, to: &str, text: &str) -> Result<()> {
         (**self).reply(to, text)
     }
+
+    fn heard(&mut self) -> Result<Vec<Message>> {
+        (**self).heard()
+    }
 }
 
 impl Channel for Box<dyn Channel + Send> {
@@ -149,6 +165,10 @@ impl Channel for Box<dyn Channel + Send> {
     fn reply(&mut self, to: &str, text: &str) -> Result<()> {
         (**self).reply(to, text)
     }
+
+    fn heard(&mut self) -> Result<Vec<Message>> {
+        (**self).heard()
+    }
 }
 
 /// The `Channel` this release carries: every post recorded, exactly as
@@ -156,12 +176,15 @@ impl Channel for Box<dyn Channel + Send> {
 ///
 /// A test and the scenario runner read what was posted; a host on the willdan
 /// week reads it in the run record. The client that speaks to Discord's servers
-/// is a second implementation of this trait and changes nothing above it.
+/// is a second implementation of this trait, `crate::discord::Discord`, and
+/// changes nothing above it.
 #[derive(Debug, Default)]
 pub struct Recorded {
     pub posts: Vec<Post>,
     /// What the sink said back, and to which message (194).
     pub replies: Vec<(String, String)>,
+    /// What arrives, as a caller puts it here; `heard` hands it over once.
+    pub inbox: Vec<Message>,
     delivered: u64,
 }
 
@@ -186,6 +209,10 @@ impl Channel for Recorded {
     fn reply(&mut self, to: &str, text: &str) -> Result<()> {
         self.replies.push((to.to_string(), text.to_string()));
         Ok(())
+    }
+
+    fn heard(&mut self) -> Result<Vec<Message>> {
+        Ok(std::mem::take(&mut self.inbox))
     }
 }
 

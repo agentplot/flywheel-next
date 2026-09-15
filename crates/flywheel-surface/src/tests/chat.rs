@@ -16,7 +16,7 @@ use std::collections::BTreeSet;
 
 /// Where the page is served from in these tests: a private-network name with
 /// the instance in the path, never a localhost port (205a, 308, D10a).
-const ADDRESS: &str = "http://studio.tailnet.ts.net/willdan";
+pub(super) const ADDRESS: &str = "http://studio.tailnet.ts.net/willdan";
 
 /// A store with a chat sink this host presents, and the definitions behind it.
 fn a_chat(name: &str) -> (FakeStore, world::Files, Definitions, Chat<Recorded>) {
@@ -35,7 +35,7 @@ fn a_chat(name: &str) -> (FakeStore, world::Files, Definitions, Chat<Recorded>) 
 }
 
 /// A bolt whose close is offered: one decision, standing (22, 39).
-fn a_decision(store: &mut FakeStore, defs: &Definitions, id: &str) {
+pub(super) fn a_decision(store: &mut FakeStore, defs: &Definitions, id: &str) {
     let at = commands::now(store).expect("a point");
     commands::put_new(
         store,
