@@ -16,13 +16,85 @@ use axum::{
     routing::{get, post},
     Json, Router,
 };
+use anyhow::Context;
 use flywheel_atoms::{StateStore, World};
 use flywheel_engine::Definitions;
-use serde::Deserialize;
+use serde::{Deserialize, Serialize};
 use serde_json::{json, Value};
 use std::collections::BTreeMap;
+use std::sync::atomic::{AtomicBool, AtomicU64, Ordering};
 use std::sync::Arc;
 use tokio::sync::Mutex;
+
+/// How long a request waits on the store before it looks again at whether the
+/// loop beside the page has its turn: a moment, so a request made during a pass
+/// is answered from the latest read, or its call kept, within the page's budget
+/// (310a, D11).
+const WAIT: std::time::Duration = std::time::Duration::from_millis(50);
+
+/// How long the store stays still before the read that follows it is made, and
+/// the longest a run of moves puts that read off: a cascade's passes are read
+/// once they settle and not between each of them (S221, 310a).
+const QUIET: std::time::Duration = std::time::Duration::from_millis(100);
+const SETTLED_WITHIN: std::time::Duration = std::time::Duration::from_secs(1);
+
+/// What a call sent while the host was busy is answered with.
+pub const KEPT: &str = "sent · it shows here once the host is free";
+
+/// The instance as it was last read (310a, S221).
+pub struct Latest {
+    pub read: page::Read,
+    /// The store's point the read was made at, which says whether the store
+    /// has moved since.
+    pub point: flywheel_atoms::ReadPoint,
+    /// The store's generation the read holds, as `/events` numbers them (S221).
+    pub generation: u64,
+}
+
+/// A call sent while a pass held the store, as the loop's next turn makes it
+/// (137, 153).
+#[derive(Debug, Serialize, Deserialize)]
+#[serde(tag = "kept", rename_all = "kebab-case")]
+enum Kept {
+    /// One call of the catalogue, under the delivery it was kept as.
+    Call { call: Call },
+    /// The header's yes all, with the numbers the control named (11).
+    YesAll { numbers: Vec<u32> },
+}
+
+/// The loop's turn at the page's store, held for one pass. While it is held a
+/// request is answered from the latest read and a call is kept for the next
+/// turn; dropping it gives the store back (310a, D11).
+pub struct Turn<S: StateStore + Send + 'static> {
+    _store: tokio::sync::OwnedMutexGuard<S>,
+    passing: Arc<AtomicBool>,
+}
+
+impl<S: StateStore + Send + 'static> Drop for Turn<S> {
+    fn drop(&mut self) {
+        self.passing.store(false, Ordering::SeqCst);
+    }
+}
+
+/// When a call came, to the nanosecond, with a count beside it so two in one
+/// instant are two; the name a kept call is written under orders it by this.
+fn stamp() -> String {
+    static COUNT: AtomicU64 = AtomicU64::new(0);
+    let nanos = std::time::SystemTime::now()
+        .duration_since(std::time::UNIX_EPOCH)
+        .map(|since| since.as_nanos())
+        .unwrap_or_default();
+    format!("{nanos:020}-{:06}", COUNT.fetch_add(1, Ordering::SeqCst))
+}
+
+/// The delivery a kept call is made as: its own where the caller named one, and
+/// one of its own otherwise, so the turn that makes it twice records it once
+/// (137).
+fn with_delivery(call: &mut Call) -> String {
+    call.delivery_id
+        .get_or_insert_with(|| format!("{}-kept-{}", call.delivery, stamp()))
+        .clone()
+}
 use tower_http::compression::predicate::{DefaultPredicate, NotForContentType, Predicate};
 use tower_http::compression::CompressionLayer;
 
@@ -64,6 +136,22 @@ pub struct Served<S: StateStore + Send + 'static> {
     /// host's, so the host binds this; a caller with no run record behind it
     /// leaves it empty.
     pub run_record: Option<fn(&mut S, &[protocol::Refused]) -> anyhow::Result<()>>,
+    /// The instance as it was last read. A request is answered from it where
+    /// the store has not moved since, and while the loop beside the page has
+    /// its turn, so no request waits on what the host is doing (310a, D11).
+    pub latest: Arc<std::sync::RwLock<Option<Arc<Latest>>>>,
+    /// The store's generation the latest read holds, sent as each read is made:
+    /// `/events` says it again then, so a page that asked while a pass held the
+    /// store and was answered from an older read asks once more (S221).
+    pub shown: Arc<tokio::sync::watch::Sender<u64>>,
+    /// Where a call sent while a pass holds the store is kept until the loop's
+    /// next turn makes it; none where no loop runs beside the page, and a call
+    /// there waits for the store (310a, 137).
+    pub kept: Option<std::path::PathBuf>,
+    /// Whether the loop beside the page has its turn at the store.
+    passing: Arc<AtomicBool>,
+    /// Whether the read that follows the store has started.
+    following: Arc<AtomicBool>,
 }
 
 impl<S: StateStore + Send + 'static> Clone for Served<S> {
@@ -78,6 +166,11 @@ impl<S: StateStore + Send + 'static> Clone for Served<S> {
             woken: self.woken.clone(),
             changed: self.changed.clone(),
             run_record: self.run_record,
+            latest: self.latest.clone(),
+            shown: self.shown.clone(),
+            kept: self.kept.clone(),
+            passing: self.passing.clone(),
+            following: self.following.clone(),
         }
     }
 }
@@ -101,7 +194,184 @@ impl<S: StateStore + Send + 'static> Served<S> {
             woken: Arc::new(tokio::sync::Notify::new()),
             changed: Arc::new(tokio::sync::watch::Sender::new(1)),
             run_record: None,
+            latest: Arc::new(std::sync::RwLock::new(None)),
+            shown: Arc::new(tokio::sync::watch::Sender::new(0)),
+            kept: None,
+            passing: Arc::new(AtomicBool::new(false)),
+            following: Arc::new(AtomicBool::new(false)),
         }
+    }
+
+    /// The store, where it can be had without waiting on a pass: at once where
+    /// nothing holds it, after the request or read holding it now, and not
+    /// while the loop beside the page has its turn (310a, D11).
+    async fn unless_passing(&self) -> Option<tokio::sync::MutexGuard<'_, S>> {
+        loop {
+            if self.passing.load(Ordering::SeqCst) {
+                return None;
+            }
+            if let Ok(store) = tokio::time::timeout(WAIT, self.store.lock()).await {
+                return Some(store);
+            }
+        }
+    }
+
+    /// The latest read as it stands, without asking the store.
+    fn last(&self) -> Option<Arc<Latest>> {
+        self.latest.read().ok().and_then(|held| held.clone())
+    }
+
+    /// The instance as a request is answered from: the latest read where the
+    /// store has not moved since it was made, a fresh read where it has, and
+    /// the latest read as it is while the loop has its turn (310a, D11, S221).
+    async fn current(&self) -> anyhow::Result<Arc<Latest>> {
+        let mut store = match self.unless_passing().await {
+            Some(store) => store,
+            None => match self.last() {
+                Some(latest) => return Ok(latest),
+                // Nothing read yet, which a turn never leaves a page with: the
+                // one wait there is.
+                None => self.store.lock().await,
+            },
+        };
+        let world = self.world.lock().await;
+        self.current_with(&mut *store, &**world)
+    }
+
+    /// The same with the store and the world held, which a call that has just
+    /// written reads under, so what it answers with holds the call (S221).
+    fn current_with<W: World + ?Sized>(&self, store: &mut S, world: &W) -> anyhow::Result<Arc<Latest>> {
+        if let Some(latest) = self.last() {
+            if store.notify(&latest.point).is_ok_and(|notice| notice.as_of == latest.point) {
+                return Ok(latest);
+            }
+        }
+        // The store's generation as this read begins, which the read holds at
+        // least.
+        let generation = *self.changed.borrow();
+        let mut read = page::read(store, world, &self.defs, &self.address, self.operator())?;
+        read.generation = generation;
+        let latest = Arc::new(Latest { point: read.status.as_of.clone(), read, generation });
+        if let Ok(mut held) = self.latest.write() {
+            *held = Some(latest.clone());
+        }
+        self.shown.send_replace(generation);
+        Ok(latest)
+    }
+
+    /// Follow the store: read the instance at the start, and again once the
+    /// loop says the store moved and the moves have settled, so a page is
+    /// answered from a read made ahead of it and every open page hears of each
+    /// (S221, 310a).
+    fn follow(&self) {
+        if self.following.swap(true, Ordering::SeqCst) {
+            return;
+        }
+        let served = self.clone();
+        tokio::spawn(async move {
+            let mut changed = served.changed.subscribe();
+            loop {
+                let store = served.store.clone().lock_owned().await;
+                let world = served.world.clone().lock_owned().await;
+                let reader = served.clone();
+                let read = tokio::task::spawn_blocking(move || {
+                    let (mut store, world) = (store, world);
+                    reader.current_with(&mut *store, &**world).map(|_| ())
+                })
+                .await;
+                if let Ok(Err(failed)) = read {
+                    eprintln!("the page could not read the instance: {failed:#}");
+                }
+                if changed.changed().await.is_err() {
+                    return;
+                }
+                let began = tokio::time::Instant::now();
+                while began.elapsed() < SETTLED_WITHIN {
+                    match tokio::time::timeout(QUIET, changed.changed()).await {
+                        Ok(Ok(())) => continue,
+                        Ok(Err(_)) => return,
+                        Err(_) => break,
+                    }
+                }
+            }
+        });
+    }
+
+    /// The loop's turn at the store, for one pass. The calls kept while the
+    /// last pass held it are made first, in the order they came; while the
+    /// turn is held a request is answered from the latest read and a call is
+    /// kept for the turn after (310a, 137, 153, D11).
+    pub async fn take_turn(&self) -> (Turn<S>, anyhow::Result<usize>) {
+        let mut store = self.store.clone().lock_owned().await;
+        let taken = {
+            let mut world = self.world.lock().await;
+            // A page is never left without a read to be answered from, however
+            // long the first pass is.
+            if self.last().is_none() {
+                if let Err(failed) = self.current_with(&mut *store, &**world) {
+                    eprintln!("the page could not read the instance: {failed:#}");
+                }
+            }
+            self.passing.store(true, Ordering::SeqCst);
+            self.take_up(&mut *store, &mut **world)
+        };
+        (Turn { _store: store, passing: self.passing.clone() }, taken)
+    }
+
+    /// Make every call kept while a pass held the store, oldest first, each as
+    /// the delivery it was kept under: one made and not let go of before the
+    /// host stopped is made again as the same delivery, which records nothing
+    /// twice (137). A refusal is the run record's, as any call's is (321, 79).
+    fn take_up<W: World + ?Sized>(&self, store: &mut S, world: &mut W) -> anyhow::Result<usize> {
+        let Some(dir) = &self.kept else {
+            return Ok(0);
+        };
+        let mut held: Vec<std::path::PathBuf> = match std::fs::read_dir(dir) {
+            Ok(entries) => entries
+                .filter_map(|entry| entry.ok().map(|entry| entry.path()))
+                .filter(|path| path.extension().is_some_and(|extension| extension == "json"))
+                .collect(),
+            Err(missing) if missing.kind() == std::io::ErrorKind::NotFound => return Ok(0),
+            Err(failed) => return Err(failed).with_context(|| format!("reading the calls kept at {}", dir.display())),
+        };
+        held.sort();
+        let mut taken = 0;
+        for path in held {
+            let Some(kept) = std::fs::read(&path).ok().and_then(|body| serde_json::from_slice::<Kept>(&body).ok()) else {
+                // Set aside where it is and said, never dropped (81).
+                let aside = path.with_extension("unread");
+                std::fs::rename(&path, &aside).with_context(|| format!("setting {} aside", path.display()))?;
+                eprintln!("a call the page kept could not be read; it is at {}", aside.display());
+                continue;
+            };
+            match &kept {
+                Kept::Call { call } => {
+                    if let Err(refused) = catalogue::call(store, world, &self.defs, call) {
+                        self.record_refusals(store, &[protocol::Refused::of(call, &refused.to_string())]);
+                    }
+                }
+                Kept::YesAll { numbers } => {
+                    let _ = yes_to_each(self, store, world, numbers);
+                }
+            }
+            std::fs::remove_file(&path).with_context(|| format!("letting {} go", path.display()))?;
+            taken += 1;
+        }
+        Ok(taken)
+    }
+
+    /// Keep a call for the loop's next turn: written whole or not at all, under
+    /// a name that orders it by when it came, and the loop woken so its next
+    /// turn comes as soon as this pass ends (130, 137).
+    fn keep(&self, kept: &Kept) -> anyhow::Result<()> {
+        let dir = self.kept.as_ref().context("no loop runs beside this page to keep a call for")?;
+        std::fs::create_dir_all(dir).with_context(|| format!("making {}", dir.display()))?;
+        let name = stamp();
+        let part = dir.join(format!("{name}.part"));
+        std::fs::write(&part, serde_json::to_vec_pretty(kept)?).with_context(|| format!("writing {}", part.display()))?;
+        std::fs::rename(&part, dir.join(format!("{name}.json"))).with_context(|| format!("keeping {}", part.display()))?;
+        self.woken.notify_one();
+        Ok(())
     }
 
     /// Write refused calls to the run record the host bound, where it bound
@@ -392,8 +662,23 @@ async fn invoke<S: StateStore + Send + 'static>(
     let mut call = Call::new(&name, served.operator(), "page");
     call.args = input.args;
     call.delivery_id = input.delivery_id;
-    let outcome = {
-        let mut store = served.store.lock().await;
+    // Made now, or kept for the loop's next turn while a pass holds the store:
+    // the caller is answered at once either way (310a, 137, D11).
+    let Some(mut store) = served.unless_passing().await else {
+        let delivery = with_delivery(&mut call);
+        return match (served.keep(&Kept::Call { call }), form) {
+            (Ok(()), true) => kept_answer(&served, &back, &asked),
+            (Ok(()), false) => (
+                StatusCode::ACCEPTED,
+                Json(json!({"recorded": false, "kept": true, "delivery_id": delivery, "said": KEPT})),
+            )
+                .into_response(),
+            (Err(failed), _) => {
+                (StatusCode::INTERNAL_SERVER_ERROR, Json(json!({"refused": format!("{failed:#}")}))).into_response()
+            }
+        };
+    };
+    let (outcome, latest) = {
         let mut world = served.world.lock().await;
         let outcome = catalogue::call(&mut *store, &mut **world, &served.defs, &call);
         // A refused control is answered where the operator is, as it always
@@ -402,8 +687,10 @@ async fn invoke<S: StateStore + Send + 'static>(
         if let Err(refused) = &outcome {
             served.record_refusals(&mut *store, &[protocol::Refused::of(&call, &refused.to_string())]);
         }
-        outcome
+        let latest = (form && updating(&asked)).then(|| served.current_with(&mut *store, &**world));
+        (outcome, latest)
     };
+    drop(store);
     // A page response is one of the three local causes, and it does not wait
     // for the poll (130, D6).
     if outcome.is_ok() {
@@ -412,7 +699,7 @@ async fn invoke<S: StateStore + Send + 'static>(
     match (outcome, form) {
         // The control the operator used sends them back to the page they were
         // on, which renders the answer they just gave (137, 310).
-        (Ok(_), true) => respond(&served, &back, &asked, None).await,
+        (Ok(_), true) => respond(&back, &asked, None, latest),
         (Ok(outcome), false) => {
             let mut answered = json!({"id": outcome.id, "recorded": catalogue::recorded(&outcome)});
             // An ask answers with the name a route move gives it (116).
@@ -421,10 +708,7 @@ async fn invoke<S: StateStore + Send + 'static>(
             }
             (StatusCode::OK, Json(answered)).into_response()
         }
-        (Err(refused), true) => {
-            let refused = refused.to_string();
-            respond(&served, &back, &asked, Some(refused)).await
-        }
+        (Err(refused), true) => respond(&back, &asked, Some(refused.to_string()), latest),
         (Err(refused), false) => (
             StatusCode::BAD_REQUEST,
             Json(json!({"refused": refused.to_string()})),
@@ -478,23 +762,32 @@ async fn answer_all<S: StateStore + Send + 'static>(
         )
             .into_response();
     }
-    let outcome = match named.is_empty() {
+    let (outcome, latest) = match named.is_empty() {
         true => {
             let reason = "the control named no decision to answer";
             let asked = Call::new(catalogue::ANSWER, served.operator(), "page");
             served.record_refusals(&mut *served.store.lock().await, &[protocol::Refused::of(&asked, reason)]);
-            Err(reason.to_string())
+            (Err(reason.to_string()), None)
         }
         false => {
-            let mut store = served.store.lock().await;
+            // Kept whole for the loop's next turn while a pass holds the store,
+            // which answers what still stands of what it named then (11, 137).
+            let Some(mut store) = served.unless_passing().await else {
+                return match served.keep(&Kept::YesAll { numbers: named }) {
+                    Ok(()) => kept_answer(&served, &back, &asked),
+                    Err(failed) => back_with(&back, &format!("{failed:#}")),
+                };
+            };
             let mut world = served.world.lock().await;
-            yes_to_each(&served, &mut *store, &mut **world, &named)
+            let outcome = yes_to_each(&served, &mut *store, &mut **world, &named);
+            let latest = updating(&asked).then(|| served.current_with(&mut *store, &**world));
+            (outcome, latest)
         }
     };
     if outcome.is_ok() {
         served.woken.notify_one();
     }
-    respond(&served, &back, &asked, outcome.err()).await
+    respond(&back, &asked, outcome.err(), latest)
 }
 
 /// One `answer` per number the control named that still stands and still takes
@@ -536,33 +829,53 @@ fn yes_to_each<S: StateStore + Send + 'static, W: World + ?Sized>(
 /// for an update, the regions that moved, with the reason where the control
 /// was refused; otherwise the page it was on, with the reason on it (310, S221,
 /// S235).
-async fn respond<S: StateStore + Send + 'static>(
-    served: &Served<S>,
+fn respond(
     back: &str,
     asked: &Asked,
     refused: Option<String>,
+    latest: Option<anyhow::Result<Arc<Latest>>>,
 ) -> Response {
-    if asked.part.as_deref() != Some("update") {
-        return match refused {
+    match latest {
+        Some(Ok(latest)) => {
+            let mut answered = update_of(&latest, asked);
+            if let Some(refused) = refused {
+                answered["refused"] = json!(refused);
+            }
+            (StatusCode::OK, Json(answered)).into_response()
+        }
+        Some(Err(failed)) => {
+            (StatusCode::INTERNAL_SERVER_ERROR, Json(json!({"refused": failed.to_string()}))).into_response()
+        }
+        None => match refused {
             Some(refused) => back_with(back, &refused),
             None => to_the_page(back),
-        };
+        },
     }
-    let mut store = served.store.lock().await;
-    let world = served.world.lock().await;
-    update_response(served, &mut *store, &**world, asked, refused)
 }
 
-/// The page's update as a response, from one read: every region whose digest
-/// the page does not hold, and the open drawer's page where it moved (S221,
-/// S235, 310a).
-fn update_response<S: StateStore + Send + 'static, W: World + ?Sized>(
-    served: &Served<S>,
-    store: &mut S,
-    world: &W,
-    asked: &Asked,
-    refused: Option<String>,
-) -> Response {
+/// Whether the page's script asked to be answered with what moved (S221).
+fn updating(asked: &Asked) -> bool {
+    asked.part.as_deref() == Some("update")
+}
+
+/// What a control sent while the host was busy is answered with: the page as
+/// the latest read has it and that the call was sent, or the page it was on
+/// where no script asked (310a, 137, S210).
+fn kept_answer<S: StateStore + Send + 'static>(served: &Served<S>, back: &str, asked: &Asked) -> Response {
+    if !updating(asked) {
+        return to_the_page(back);
+    }
+    let mut answered = match served.last() {
+        Some(latest) => update_of(&latest, asked),
+        None => json!({"regions": {}}),
+    };
+    answered["kept"] = json!(KEPT);
+    (StatusCode::OK, Json(answered)).into_response()
+}
+
+/// The page's update from one read: every region whose digest the page does
+/// not hold, and the open drawer's page where it moved (S221, S235, 310a).
+fn update_of(latest: &Latest, asked: &Asked) -> Value {
     let held: BTreeMap<String, String> = asked
         .have
         .as_deref()
@@ -572,18 +885,7 @@ fn update_response<S: StateStore + Send + 'static, W: World + ?Sized>(
         .map(|(id, digest)| (id.to_string(), digest.to_string()))
         .collect();
     let open = asked.open.as_deref().map(|open| open.rsplit_once(' ').unwrap_or((open, "")));
-    match page::read(store, world, &served.defs, &served.address, served.operator()) {
-        Ok(read) => {
-            let mut answered = page::update(&read, *served.changed.borrow(), &held, open);
-            if let Some(refused) = refused {
-                answered["refused"] = json!(refused);
-            }
-            (StatusCode::OK, Json(answered)).into_response()
-        }
-        Err(failed) => {
-            (StatusCode::INTERNAL_SERVER_ERROR, Json(json!({"refused": failed.to_string()}))).into_response()
-        }
-    }
+    page::update(&latest.read, latest.generation, &held, open)
 }
 
 /// One number's yes under the "yes all" control: its own `answer` call, as the
@@ -621,22 +923,31 @@ async fn curate<S: StateStore + Send + 'static>(
     }
     let mut call = Call::new("curate", served.operator(), "page");
     call.args = fields;
-    let refused = {
-        let mut store = served.store.lock().await;
+    let Some(mut store) = served.unless_passing().await else {
+        with_delivery(&mut call);
+        return match served.keep(&Kept::Call { call }) {
+            Ok(()) => kept_answer(&served, &back, &asked),
+            Err(failed) => back_with(&back, &format!("{failed:#}")),
+        };
+    };
+    let (refused, latest) = {
         let mut world = served.world.lock().await;
-        match catalogue::call(&mut *store, &mut **world, &served.defs, &call) {
+        let refused = match catalogue::call(&mut *store, &mut **world, &served.defs, &call) {
             Ok(_) => None,
             Err(refused) => {
                 served.record_refusals(&mut *store, &[protocol::Refused::of(&call, &refused.to_string())]);
                 Some(refused.to_string())
             }
-        }
+        };
+        let latest = updating(&asked).then(|| served.current_with(&mut *store, &**world));
+        (refused, latest)
     };
+    drop(store);
     // A session's report is a local cause too (130, D6).
     if refused.is_none() {
         served.woken.notify_one();
     }
-    respond(&served, &back, &asked, refused).await
+    respond(&back, &asked, refused, latest)
 }
 
 /// A form body's fields, by object id. Percent-encoding and `+` for a space,
@@ -718,9 +1029,7 @@ async fn page_of_instance<S: StateStore + Send + 'static>(
         if let Err(refused) = served.admits(host_of(&headers)) {
             return (StatusCode::FORBIDDEN, Json(json!({"refused": refused}))).into_response();
         }
-        let mut store = served.store.lock().await;
-        let world = served.world.lock().await;
-        return update_response(&served, &mut *store, &**world, &asked, None);
+        return respond("/", &asked, None, Some(served.current().await));
     }
     rendered(&served, &headers, None, asked.refused).await.into_response()
 }
@@ -774,7 +1083,31 @@ async fn protocol_message<S: StateStore + Send + 'static>(
         return (StatusCode::FORBIDDEN, Json(protocol::refused(&message, &refused))).into_response();
     }
     let handled = {
-        let mut store = served.store.lock().await;
+        let mut store = match served.unless_passing().await {
+            Some(store) => store,
+            // A call that writes is kept for the loop's next turn and answered
+            // at once; anything else is answered once the pass gives the store
+            // back (310a, 137, D11).
+            None => match protocol::writes(&message, served.operator()) {
+                Some(Ok(mut call)) => {
+                    let delivery = with_delivery(&mut call);
+                    return match served.keep(&Kept::Call { call }) {
+                        Ok(()) => (StatusCode::OK, Json(protocol::kept(&message, &delivery, KEPT))).into_response(),
+                        Err(failed) => (
+                            StatusCode::OK,
+                            Json(protocol::error(
+                                message.get("id").cloned().unwrap_or(Value::Null),
+                                protocol::REFUSED,
+                                &format!("{failed:#}"),
+                            )),
+                        )
+                            .into_response(),
+                    };
+                }
+                Some(Err(reply)) => return (StatusCode::OK, Json(reply)).into_response(),
+                None => served.store.lock().await,
+            },
+        };
         let mut world = served.world.lock().await;
         let mut caller = protocol::Caller {
             store: &mut *store,
@@ -815,10 +1148,9 @@ async fn page_of_object<S: StateStore + Send + 'static>(
     // The signals tray is no object and opens at its own link all the same, so
     // a phone and a chat line reach it as they reach any object (S225, 308).
     if object != page::tray::ID {
-        let store = served.store.lock().await;
-        match store.get(&object) {
-            Ok(Some(_)) => {}
-            Ok(None) => {
+        match served.current().await.map(|latest| latest.read.objects.iter().any(|held| held.id == object)) {
+            Ok(true) => {}
+            Ok(false) => {
                 return (
                     StatusCode::NOT_FOUND,
                     Html(format!(
@@ -861,10 +1193,8 @@ async fn listed<S: StateStore + Send + 'static>(
     let Some(list) = asked.list.as_deref() else {
         return (StatusCode::BAD_REQUEST, Html("<p class=\"refused\">a list is named by `list`</p>".to_string()));
     };
-    let mut store = served.store.lock().await;
-    let world = served.world.lock().await;
-    match page::read(&mut *store, &**world, &served.defs, &served.address, served.operator()) {
-        Ok(read) => match page::list_part(&read, object, list, asked.from.unwrap_or(0)) {
+    match served.current().await {
+        Ok(latest) => match page::list_part(&latest.read, object, list, asked.from.unwrap_or(0)) {
             Some(rows) => (StatusCode::OK, Html(rows)),
             None => (
                 StatusCode::NOT_FOUND,
@@ -885,10 +1215,8 @@ async fn docked<S: StateStore + Send + 'static>(
     if let Err(refused) = served.admits(host_of(headers)) {
         return (StatusCode::FORBIDDEN, Html(format!("<p class=\"refused\">{refused}</p>"))).into_response();
     }
-    let mut store = served.store.lock().await;
-    let world = served.world.lock().await;
-    match page::read(&mut *store, &**world, &served.defs, &served.address, served.operator()) {
-        Ok(read) => match page::dock_page(&read, object) {
+    match served.current().await {
+        Ok(latest) => match page::dock_page(&latest.read, object) {
             Some(page) => {
                 // Its digest beside it, which the page holds to ask whether it
                 // moved (S221, S235).
@@ -1051,21 +1379,18 @@ async fn rendered<S: StateStore + Send + 'static>(
             Html(format!("<p class=\"refused\">{refused}</p>")),
         );
     }
-    let mut store = served.store.lock().await;
-    let world = served.world.lock().await;
-    match page::read(
-        &mut *store,
-        &**world,
-        &served.defs,
-        &served.address,
-        served.operator(),
-    ) {
-        Ok(mut read) => {
-            read.opened = opened;
-            read.refused = refused;
-            read.generation = *served.changed.borrow();
-            (StatusCode::OK, Html(page::render(&read)))
-        }
+    match served.current().await {
+        // The latest read as it is, unless the request opens an object or says
+        // what was refused, which is this request's own.
+        Ok(latest) => match (opened, refused) {
+            (None, None) => (StatusCode::OK, Html(page::render(&latest.read))),
+            (opened, refused) => {
+                let mut read = latest.read.clone();
+                read.opened = opened;
+                read.refused = refused;
+                (StatusCode::OK, Html(page::render(&read)))
+            }
+        },
         Err(refused) => (
             StatusCode::INTERNAL_SERVER_ERROR,
             Html(format!("<p class=\"refused\">{refused}</p>")),
@@ -1158,21 +1483,35 @@ async fn bundle_file(Path(file): Path<String>) -> Response {
 }
 
 /// `GET /events` — the host telling every open page when its store moved
-/// (S221). One line per change carrying the generation; the page compares it
-/// with the one it was rendered at and fetches itself when they differ. A
-/// comment every twenty seconds keeps the connection through a proxy, and the
+/// (S221). One line per change carrying the generation, and the generation a
+/// read holds again as each read is made; the page compares it with the one it
+/// holds and fetches what moved when they differ, so a page answered from an
+/// older read while a pass held the store asks again once there is a newer one.
+/// A comment every twenty seconds keeps the connection through a proxy, and the
 /// browser reconnects on its own when it drops.
 async fn events<S: StateStore + Send + 'static>(
     State(served): State<Served<S>>,
 ) -> axum::response::sse::Sse<impl futures_util::Stream<Item = Result<axum::response::sse::Event, std::convert::Infallible>>> {
     use axum::response::sse::{Event, KeepAlive, Sse};
-    let receiver = served.changed.subscribe();
-    let stream = futures_util::stream::unfold((receiver, true), |(mut receiver, first)| async move {
-        if !first && receiver.changed().await.is_err() {
-            return None;
-        }
-        let generation = *receiver.borrow_and_update();
-        Some((Ok(Event::default().data(generation.to_string())), (receiver, false)))
+    let (changed, shown) = (served.changed.subscribe(), served.shown.subscribe());
+    let stream = futures_util::stream::unfold((changed, shown, true), |(mut changed, mut shown, first)| async move {
+        let generation = match first {
+            true => {
+                shown.borrow_and_update();
+                *changed.borrow_and_update()
+            }
+            false => tokio::select! {
+                moved = changed.changed() => {
+                    moved.ok()?;
+                    *changed.borrow_and_update()
+                }
+                read = shown.changed() => {
+                    read.ok()?;
+                    *shown.borrow_and_update()
+                }
+            },
+        };
+        Some((Ok(Event::default().data(generation.to_string())), (changed, shown, false)))
     });
     Sse::new(stream).keep_alive(KeepAlive::new().interval(std::time::Duration::from_secs(20)))
 }
@@ -1233,6 +1572,7 @@ pub async fn serve_on<S: StateStore + Send + 'static>(
     served: Served<S>,
     listener: tokio::net::TcpListener,
 ) -> anyhow::Result<()> {
+    served.follow();
     axum::serve(listener, router(served)).await?;
     Ok(())
 }

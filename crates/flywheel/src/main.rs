@@ -626,8 +626,10 @@ async fn main() -> Result<()> {
                     // cause now and not at the next poll.
                     let mut changed: Option<std::sync::Arc<tokio::sync::watch::Sender<u64>>> = None;
                     let mut watchers: Option<flywheel::watch::Watchers> = None;
+                    let mut page: Option<flywheel_surface::http::Served<flywheel::serve::SharedStore>> = None;
                     if let Some(port) = serve {
                         let served = flywheel::serve::page_of(&host, *port, operators);
+                        page = Some(served.clone());
                         woken = Some(served.woken.clone());
                         changed = Some(served.changed.clone());
                         // A session's report is written by another process and
@@ -712,6 +714,15 @@ async fn main() -> Result<()> {
                     loop {
                         let mut cascading = false;
                         let poll_for;
+                        // The loop's turn at the page's store: what the page
+                        // kept while the last pass held the host is made first,
+                        // and while this pass runs a page read is answered from
+                        // the latest read and a call is kept for the next turn,
+                        // so the page never waits on the pass (310a, 137, D11).
+                        let turn = match &page {
+                            Some(page) => Some(page.take_turn().await),
+                            None => None,
+                        };
                         {
                             let mut held = host.lock().expect("the running host is poisoned");
                             held.set_now(chrono::Utc::now());
@@ -724,6 +735,18 @@ async fn main() -> Result<()> {
                             // (D11, the design's "How an action runs").
                             let now = held.now();
                             let mut moved = false;
+                            match turn.as_ref().map(|(_, taken)| taken) {
+                                None | Some(Ok(0)) => {}
+                                Some(Ok(taken)) => {
+                                    println!("page: {taken} call(s) sent while the host was busy, taken up");
+                                    moved = true;
+                                }
+                                Some(Err(e)) => {
+                                    let name = held.name.clone();
+                                    held.report_problem(&format!("host/{name}"), &format!("{e:#}"));
+                                    eprintln!("the calls the page kept could not be taken up: {e:#}");
+                                }
+                            }
                             match flywheel::tour::play_due(&mut held, now) {
                                 Ok(true) => {
                                     println!("tour: an action was played");
@@ -805,6 +828,7 @@ async fn main() -> Result<()> {
                                 watchers.follow(&held.store.git);
                             }
                         }
+                        drop(turn);
                         pass += 1;
                         if passes > 0 && pass >= passes {
                             break;

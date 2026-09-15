@@ -304,7 +304,7 @@ use std::collections::BTreeMap;
 /// One invocation, whoever made it: a page control, a chat reply, the
 /// machinery's own command. The arguments are named as the tool's schema names
 /// them, by object id (193).
-#[derive(Debug, Clone)]
+#[derive(Debug, Clone, serde::Serialize, serde::Deserialize)]
 pub struct Call {
     pub tool: String,
     pub args: BTreeMap<String, Value>,

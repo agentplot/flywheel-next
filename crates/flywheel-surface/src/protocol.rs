@@ -394,7 +394,28 @@ fn call<S: StateStore, W: World + ?Sized>(
     if catalogue::query(name).is_some() {
         return Ok(looked(caller, name, arguments, handled));
     }
-    let mut invoked = Call::new(name, caller.by, DELIVERY);
+    let invoked = invoked(name, arguments, params, caller.by)?;
+    Ok(
+        match catalogue::call(caller.store, caller.world, caller.defs, &invoked) {
+            Ok(outcome) => {
+                handled.wrote |= !matches!(outcome.outcome, Received::AlreadyApplied { .. });
+                done(&invoked, &outcome)
+            }
+            // Refused: nothing is recorded as a response, and the refusal is
+            // the run record's, with who asked, the tool and the object (321,
+            // 79).
+            Err(refused) => {
+                handled.refused.push(Refused::of(&invoked, &refused.to_string()));
+                refusal(&refused.to_string())
+            }
+        },
+    )
+}
+
+/// The call a `tools/call` makes of the catalogue, under the delivery its
+/// `_meta` names where it names one (323, 137).
+fn invoked(name: &str, arguments: Map<String, Value>, params: &Value, by: &str) -> Result<Call, (i64, String)> {
+    let mut invoked = Call::new(name, by, DELIVERY);
     invoked.args = arguments.into_iter().collect();
     match params.get("_meta").and_then(|meta| meta.get(DELIVERY_META)) {
         None | Some(Value::Null) => {}
@@ -411,21 +432,44 @@ fn call<S: StateStore, W: World + ?Sized>(
             }
         },
     }
-    Ok(
-        match catalogue::call(caller.store, caller.world, caller.defs, &invoked) {
-            Ok(outcome) => {
-                handled.wrote |= !matches!(outcome.outcome, Received::AlreadyApplied { .. });
-                done(&invoked, &outcome)
-            }
-            // Refused: nothing is recorded as a response, and the refusal is
-            // the run record's, with who asked, the tool and the object (321,
-            // 79).
-            Err(refused) => {
-                handled.refused.push(Refused::of(&invoked, &refused.to_string()));
-                refusal(&refused.to_string())
-            }
+    Ok(invoked)
+}
+
+/// The call a message makes that writes, where it is one request calling one
+/// tool that is not a query: what the transport keeps for the loop's next turn
+/// while a pass holds the store, or the error the message is answered with
+/// where the call is malformed. Anything else waits for the store (310a, 137).
+pub fn writes(message: &Value, by: &str) -> Option<Result<Call, Value>> {
+    let fields = message.as_object()?;
+    if fields.get("jsonrpc") != Some(&json!("2.0")) || fields.get("method").and_then(Value::as_str) != Some("tools/call") {
+        return None;
+    }
+    let id = fields.get("id")?.clone();
+    let params = fields.get("params").cloned().unwrap_or_else(|| json!({}));
+    let name = params.get("name").and_then(Value::as_str)?;
+    if catalogue::query(name).is_some() {
+        return None;
+    }
+    let arguments = match params.get("arguments") {
+        None | Some(Value::Null) => Map::new(),
+        Some(Value::Object(arguments)) => arguments.clone(),
+        Some(_) => return None,
+    };
+    Some(invoked(name, arguments, &params, by).map_err(|(code, said)| error(id, code, &said)))
+}
+
+/// The reply to a call kept for the loop's next turn: nothing is recorded yet,
+/// and the delivery it will be recorded as, once (137).
+pub fn kept(message: &Value, delivery: &str, said: &str) -> Value {
+    json!({
+        "jsonrpc": "2.0",
+        "id": message.get("id").cloned().unwrap_or(Value::Null),
+        "result": {
+            "content": [{"type": "text", "text": format!("{said}; kept as {delivery}, recorded once when the host takes it up")}],
+            "structuredContent": {"version": VERSION, "recorded": false, "kept": true, "delivery_id": delivery},
+            "isError": false,
         },
-    )
+    })
 }
 
 /// The id a delivery a client names is recorded under: `client-` and the name.

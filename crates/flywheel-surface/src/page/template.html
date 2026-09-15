@@ -1625,6 +1625,9 @@ body[data-served="view"] .dk-b{overflow:visible}
   // back, so nothing is navigated and the hand stays where it was; a browser
   // without fetch posts the form as a form.
   function settle(form){ busy=false; if(progress) progress.hidden=true; form.classList.remove('busy'); form.querySelectorAll('button,input[type=submit]').forEach(function(b){ b.disabled=false; }); }
+  // Sent while the host was busy: the control stays spent until what it sent
+  // comes back in an update, which draws it afresh.
+  function sent(form){ busy=false; if(progress) progress.hidden=true; }
   document.addEventListener('submit', function(e){
     var form=e.target; if(!form || form.tagName!=='FORM') return;
     // The box posts a capture as it is; a command or a number is the palette's
@@ -1649,8 +1652,10 @@ body[data-served="view"] .dk-b{overflow:visible}
       .then(function(r){ return r.json(); })
       .then(function(moved){
         if(!applyUpdate(moved)) { location.reload(); return; }
+        var box=form.id==='pal-open' || form.id==='capture-box';
         if(moved.refused) toast(moved.refused);
-        else if(form.id==='pal-open' || form.id==='capture-box'){ form.reset(); closeBox(); }
+        else if(box){ form.reset(); closeBox(); }
+        if(moved.kept){ toast(moved.kept); if(!box){ sent(form); return; } }
         settle(form);
         if(again){ again=false; refresh(); }
       })

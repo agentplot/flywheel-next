@@ -195,6 +195,91 @@ async fn posted(address: std::net::SocketAddr, path: &str, body: &str) -> Vec<u8
     reply
 }
 
+/// A JSON body posted the way a client posts one, and the reply as it came.
+async fn sent_json(address: std::net::SocketAddr, path: &str, body: &str) -> Vec<u8> {
+    let mut socket = tokio::net::TcpStream::connect(address).await.unwrap();
+    let request = format!(
+        "POST {path} HTTP/1.1\r\nHost: localhost:4242\r\nConnection: close\r\n\
+         Content-Type: application/json\r\nContent-Length: {}\r\n\r\n{body}",
+        body.len()
+    );
+    socket.write_all(request.as_bytes()).await.unwrap();
+    let mut reply = Vec::new();
+    socket.read_to_end(&mut reply).await.unwrap();
+    reply
+}
+
+/// While the loop beside the page has its turn at the store, the page is
+/// answered from the latest read and a call is kept and answered at once; the
+/// next turn makes each call once, and a kept call made a second time is the
+/// same delivery and records nothing twice (310a, 137, D11).
+#[test]
+fn a_call_sent_while_a_pass_holds_the_store_is_made_once_on_the_next_turn() {
+    use flywheel_atoms::{Records, Scope};
+    use serde_json::Value;
+    in_a_runtime(async {
+        let kept = std::env::temp_dir().join(format!("flywheel-kept-{}-{:?}", std::process::id(), std::thread::current().id()));
+        let _ = std::fs::remove_dir_all(&kept);
+        let defs = flywheel_domain::set::load().expect("the embedded definitions");
+        let mut served = Served::over(
+            FakeStore::default(),
+            Box::new(FakeWorld::new()),
+            defs,
+            &["chuck".to_string()],
+            "http://studio.tailnet.ts.net/willdan",
+        );
+        served.kept = Some(kept.clone());
+        let listener = tokio::net::TcpListener::bind("127.0.0.1:0").await.unwrap();
+        let address = listener.local_addr().unwrap();
+        tokio::spawn(crate::http::serve_on(served.clone(), listener));
+        let (_, before) = split(&asked(address, "/willdan/", "").await);
+
+        let (turn, taken) = served.take_turn().await;
+        assert_eq!(taken.expect("the kept calls"), 0);
+        let began = std::time::Instant::now();
+        let (head, during) = split(&asked(address, "/willdan/", "").await);
+        assert!(head.starts_with("http/1.1 200"), "{head}");
+        assert!(during == before, "the page is not the latest read while the pass holds the store");
+        let (head, body) = split(
+            &sent_json(address, "/api/tools/capture", r#"{"args": {"text": "the rows lose their numbers", "source": "page"}}"#).await,
+        );
+        assert!(head.starts_with("http/1.1 202"), "a client's call is not kept: {head}");
+        let said: Value = serde_json::from_slice(&body).expect("an answer");
+        assert_eq!(said["kept"], serde_json::json!(true), "{said}");
+        let (head, body) =
+            split(&posted(address, "/api/tools/capture?part=update&have=", "text=the+second+page+drops+them&source=page").await);
+        assert!(head.starts_with("http/1.1 200"), "{head}");
+        let moved: Value = serde_json::from_slice(&body).expect("an update");
+        assert_eq!(moved["kept"], serde_json::json!(crate::http::KEPT), "the page's control is not told it was sent: {moved}");
+        assert!(began.elapsed() < std::time::Duration::from_millis(1500), "the page waited {:?} on the pass", began.elapsed());
+        let mut held: Vec<std::path::PathBuf> = std::fs::read_dir(&kept).unwrap().map(|entry| entry.unwrap().path()).collect();
+        held.sort();
+        assert_eq!(held.len(), 2, "{held:?}");
+        let first = (held[0].clone(), std::fs::read(&held[0]).unwrap());
+        drop(turn);
+
+        let (turn, taken) = served.take_turn().await;
+        assert_eq!(taken.expect("the kept calls"), 2);
+        drop(turn);
+        let captures = served.store.lock().await.list_records(&Scope::Machine("capture".into())).unwrap().len();
+        assert_eq!(captures, 2, "each kept call is one capture");
+
+        // A turn that made a call and stopped before letting it go makes it
+        // again, as the same delivery.
+        std::fs::write(&first.0, &first.1).unwrap();
+        let (turn, taken) = served.take_turn().await;
+        assert_eq!(taken.expect("the kept call"), 1);
+        drop(turn);
+        let captures = served.store.lock().await.list_records(&Scope::Machine("capture".into())).unwrap().len();
+        assert_eq!(captures, 2, "a kept call made twice captured twice");
+
+        let (_, tray) = split(&asked(address, "/willdan/tray?part=dock", "").await);
+        let tray = String::from_utf8_lossy(&tray).to_string();
+        assert!(tray.contains("the rows lose their numbers"), "the page does not show what was kept once it is made");
+        let _ = std::fs::remove_dir_all(&kept);
+    });
+}
+
 /// What the page holds, as it asks for an update: every region's digest.
 fn holding(digests: &std::collections::BTreeMap<String, String>) -> String {
     let pairs: Vec<String> = digests.iter().map(|(id, digest)| format!("{id}:{digest}")).collect();

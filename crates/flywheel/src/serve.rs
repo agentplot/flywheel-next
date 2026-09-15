@@ -169,9 +169,13 @@ impl World for SharedWorld {
 
 /// The page this host serves: its own store, its own world, its own address.
 pub fn page_of(host: &Shared, port: u16, operators: &[String]) -> Served<SharedStore> {
-    let (defs, address) = {
+    let (defs, address, kept) = {
         let held = host.lock().expect("the running host is poisoned");
-        (held.defs.clone(), held.sinks.address.clone())
+        // A call sent while a pass holds the host is kept beside the state
+        // checkout, outside what it tracks, until the loop's next turn makes
+        // it (310a, 137).
+        let kept = held.store.git.repo.dir.join(".git").join("flywheel-kept");
+        (held.defs.clone(), held.sinks.address.clone(), kept)
     };
     let mut served = Served::over(
         SharedStore(host.clone()),
@@ -181,6 +185,7 @@ pub fn page_of(host: &Shared, port: u16, operators: &[String]) -> Served<SharedS
         &address,
     );
     served.localhost_port = port;
+    served.kept = Some(kept);
     served.run_record = Some(
         |shared: &mut SharedStore, refused: &[flywheel_surface::protocol::Refused]| {
             shared.write_refusals(refused)

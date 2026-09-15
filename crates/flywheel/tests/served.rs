@@ -1364,3 +1364,168 @@ fn the_record_after_a_client_session_holds_calls_and_nothing_else() {
     }
     let _ = std::fs::remove_dir_all(&serving.dir);
 }
+
+/// A form field's value, percent-encoded the way a browser sends one.
+fn encode(text: &str) -> String {
+    text.chars()
+        .map(|c| match c {
+            'a'..='z' | 'A'..='Z' | '0'..='9' | '-' | '_' | '.' | '~' | '/' => c.to_string(),
+            ' ' => "+".to_string(),
+            other => format!("%{:02X}", other as u32),
+        })
+        .collect()
+}
+
+/// A page read, a dock page's fetch and a capture's post are each answered
+/// within the first press's bound while a pass records a curator's delivery,
+/// and the capture is recorded once, on the turn after, where the page shows it
+/// (310a, 13, 137, 153, D11).
+#[test]
+fn a_page_read_is_answered_while_a_pass_records_a_delivery() {
+    const FIRST_PRESS: std::time::Duration = std::time::Duration::from_millis(1500);
+    const NOTE: &str = "a note sent while the host was busy";
+    let dir = base("while-a-pass");
+    let now = at(0);
+    let git = sandbox(&dir, "mac-mini", now).unwrap();
+    let mut host = Host::over(
+        "mac-mini",
+        "willdan",
+        flywheel_domain::set::load().unwrap(),
+        git,
+        Bindings { world: "host".into(), workspace: "recorded".into(), sessions: "operator".into() },
+        Declaration { repositories: vec!["atlas".into()], types: vec![], kinds: vec!["all".into()] },
+        now,
+    );
+    host.sinks.address = "http://mac-mini.example/willdan".into();
+    // Curation, charged once two captures stand unmoved (`curation.yaml`
+    // record.threshold, 110).
+    let defs = host.defs.clone();
+    flywheel_domain::commands::put_new(
+        &mut host.store,
+        &defs,
+        "curation/willdan",
+        "curation",
+        None,
+        [
+            ("threshold".to_string(), json!(2)),
+            ("cadence".to_string(), json!(flywheel_domain::cadence::DEFAULT)),
+        ]
+        .into_iter()
+        .collect(),
+        now,
+    )
+    .unwrap();
+    let host = Arc::new(Mutex::new(host));
+    let runtime = tokio::runtime::Builder::new_multi_thread().enable_all().build().unwrap();
+    let served = flywheel::serve::page_of(&host, 4242, &["chuck".to_string()]);
+    let address = runtime.block_on(async {
+        let listener = tokio::net::TcpListener::bind("127.0.0.1:0").await.unwrap();
+        let address = listener.local_addr().unwrap();
+        tokio::spawn(flywheel_surface::http::serve_on(served.clone(), listener));
+        address
+    });
+    // One pass as the loop takes it: its turn at the page's store first, then
+    // the host; what the turn took up is returned.
+    let pass = |minute: i64| -> usize {
+        let (turn, taken) = runtime.block_on(served.take_turn());
+        let mut held = host.lock().unwrap();
+        held.set_now(at(minute));
+        held.sweep().unwrap();
+        drop(held);
+        drop(turn);
+        taken.unwrap()
+    };
+    let asked = |method: &str, path: &str, body: &str| {
+        let began = std::time::Instant::now();
+        let reply = speak_whole(
+            address,
+            &format!(
+                "{method} {path} HTTP/1.1\r\nHost: mac-mini.example\r\nConnection: close\r\n\
+                 Content-Type: application/json\r\nContent-Length: {}\r\n\r\n{body}",
+                body.len()
+            ),
+        );
+        (reply, began.elapsed())
+    };
+    let form = |path: &str, body: &str| {
+        speak_whole(
+            address,
+            &format!(
+                "POST {path} HTTP/1.1\r\nHost: mac-mini.example\r\nConnection: close\r\n\
+                 Referer: http://mac-mini.example/willdan/\r\n\
+                 Content-Type: application/x-www-form-urlencoded\r\nContent-Length: {}\r\n\r\n{body}",
+                body.len()
+            ),
+        )
+    };
+
+    // Two captures through the box, and the passes that charge curation.
+    for text in ["the rows lose their numbers on the second page", "the second page drops the row numbers again"] {
+        let answered = form("/api/tools/capture", &format!("text={}&source=page", encode(text)));
+        assert!(answered.starts_with("HTTP/1.1 303"), "{answered}");
+    }
+    pass(1);
+    pass(2);
+    // The curator's delivery: both signals joined into one intent (93b, 116).
+    let signals: Vec<String> = host.lock().unwrap().store.with_world(|_, world| {
+        flywheel_domain::signals::unmoved(&flywheel_domain::signals::Blueprints(world))
+            .into_iter()
+            .map(|signal| signal.id)
+            .collect()
+    });
+    assert_eq!(signals.len(), 2, "the box wrote one signal per capture (19)");
+    let delivery = signals
+        .iter()
+        .map(|signal| format!("move.{0}=join&target.{0}={1}", encode(signal), encode("intent/rows-lose-numbers")))
+        .collect::<Vec<_>>()
+        .join("&");
+    let answered = form("/api/curate", &delivery);
+    assert!(answered.starts_with("HTTP/1.1 303") && !answered.contains("refused="), "{answered}");
+
+    // A pass on that delivery, holding the host while the page is asked.
+    let (holding, held) = std::sync::mpsc::channel::<()>();
+    let (answered, done) = std::sync::mpsc::channel::<()>();
+    let passing = std::thread::spawn({
+        let (served, host, runtime) = (served.clone(), host.clone(), runtime.handle().clone());
+        move || {
+            let (turn, taken) = runtime.block_on(served.take_turn());
+            taken.unwrap();
+            let mut pass = host.lock().unwrap();
+            holding.send(()).unwrap();
+            pass.set_now(at(3));
+            pass.sweep().unwrap();
+            done.recv().unwrap();
+            drop(pass);
+            drop(turn);
+        }
+    });
+    held.recv().unwrap();
+    let (page, took) = asked("GET", "/willdan/", "");
+    assert!(page.starts_with("HTTP/1.1 200") && page.contains("id=\"rail\""), "the page is not answered during a pass: {page}");
+    assert!(took < FIRST_PRESS, "the page waited {took:?} on the pass");
+    let (tray, took) = asked("GET", "/willdan/tray?part=dock", "");
+    assert!(tray.starts_with("HTTP/1.1 200"), "the tray's page is not answered during a pass: {tray}");
+    assert!(took < FIRST_PRESS, "the tray's page waited {took:?} on the pass");
+    let (sent, took) = asked("POST", "/api/tools/capture", &json!({"args": {"text": NOTE, "source": "page"}}).to_string());
+    assert!(sent.starts_with("HTTP/1.1 202") && sent.contains("\"kept\":true"), "the capture is not kept during a pass: {sent}");
+    assert!(took < FIRST_PRESS, "the capture waited {took:?} on the pass");
+    answered.send(()).unwrap();
+    passing.join().unwrap();
+
+    // The turn after makes it, once, and the page shows it.
+    assert_eq!(pass(4), 1, "the turn after took up nothing");
+    assert_eq!(pass(5), 0, "a kept call was taken up twice");
+    let captured = host
+        .lock()
+        .unwrap()
+        .store
+        .list_records(&Scope::Machine("capture".into()))
+        .unwrap()
+        .into_iter()
+        .filter(|capture| capture.record.get("raw") == Some(&json!(NOTE)))
+        .count();
+    assert_eq!(captured, 1, "the kept capture is recorded {captured} times");
+    let (tray, _) = asked("GET", "/willdan/tray?part=dock", "");
+    assert!(tray.contains(NOTE), "the page does not show the capture once it is made");
+    let _ = std::fs::remove_dir_all(&dir);
+}

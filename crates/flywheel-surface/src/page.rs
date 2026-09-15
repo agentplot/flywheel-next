@@ -151,6 +151,7 @@ pub(crate) fn compact(document: &str) -> String {
 
 /// What one request read. Everything the page shows comes from here, so the
 /// whole page is one read and a reload shows what is recorded (310).
+#[derive(Clone)]
 pub struct Read {
     pub decisions: Vec<DecisionInstance>,
     pub status: status::Status,
