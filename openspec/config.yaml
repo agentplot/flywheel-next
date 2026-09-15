@@ -30,3 +30,11 @@ schema: spec-driven
 #     archive:
 #       guidance:
 #         - Summarize the archive outcome before finishing
+
+operations:
+  apply:
+    guidance:
+      - "Where a task leaves a detail open, decide it the way a careful engineer would from the design, the specs, the mockup and the code, hold similar things to the same rule, and name each choice in your summary. An open detail is not a reason to pause."
+      - "Pause only when the same test still fails after two attempts, or when passing would mean changing a test, a spec, or anything under definitions/, conformance/ or instructions/ that the task does not tell you to change."
+      - "Build anything on a page to the mockup in the blueprints' design/flywheel-next/mockups/ (its README.md says which file is which): layout, spacing, type, components, and what its script does on a click or a key. Where the design documents describe something differently, the documents win. A page task is complete once a screenshot of the built page matches the same part of the mockup."
+      - "A check that asks for a person to look, such as a browser walk or what a session wrote, is complete once its screenshots or file paths are in your summary."
