@@ -9,10 +9,16 @@
 //! the HTTP binding in `http.rs` — written over nothing but the store, the
 //! world and the definitions a call already takes.
 //!
+//! The page's own views are carried here too: each read-only tool names its
+//! view's resource on its declaration, the four views are listed among the
+//! resources, and every address reads the page's bundle, which draws the
+//! regions a result carries (293a, 322, 326, S230).
+//!
 //! A client is a caller and never a host: nothing here takes a lease or runs a
 //! tick, and nothing a conversation around a call said is kept (324, 325).
 
 use crate::catalogue::{self, Call, Outcome};
+use crate::page::{self, VERSION, VIEWS};
 use flywheel_atoms::{Received, StateStore, World};
 use flywheel_engine::Definitions;
 use serde_json::{json, Map, Value};
@@ -47,8 +53,15 @@ pub struct Caller<'a, S, W: ?Sized> {
     pub store: &'a mut S,
     pub world: &'a mut W,
     pub defs: &'a Definitions,
+    /// The host's address, which every link a view draws is written at (205a,
+    /// 308).
+    pub address: &'a str,
     pub by: &'a str,
 }
+
+/// The media type every view's resource is read with: HTML the protocol's
+/// user-interface extension renders (S230, D18).
+pub const VIEW_MEDIA_TYPE: &str = "text/html;profile=mcp-app";
 
 /// What one message came to: the reply the protocol owes, where it owes one,
 /// and whether a call wrote anything, so the transport wakes the loop at once
@@ -138,15 +151,9 @@ fn answer<S: StateStore, W: World + ?Sized>(
         "ping" => Ok(json!({})),
         "tools/list" => Ok(json!({"tools": tools()})),
         "tools/call" => call(caller, &params, wrote),
-        "resources/list" => Ok(json!({"resources": []})),
+        "resources/list" => Ok(json!({"resources": resources()})),
         "resources/templates/list" => Ok(json!({"resourceTemplates": []})),
-        "resources/read" => Err((
-            RESOURCE_NOT_FOUND,
-            format!(
-                "this server holds no resource `{}`",
-                params.get("uri").and_then(Value::as_str).unwrap_or_default()
-            ),
-        )),
+        "resources/read" => read_resource(&params),
         other => Err((METHOD_NOT_FOUND, format!("this server answers no `{other}`"))),
     };
     Some(match answered {
@@ -168,21 +175,101 @@ fn initialize(params: &Value) -> Value {
             "tools": {"listChanged": false},
             "resources": {"subscribe": false, "listChanged": false},
         },
-        "serverInfo": {"name": "flywheel", "title": "flywheel", "version": crate::page::VERSION},
-        "instructions": "Every operation of this flywheel is a tool here. A numbered decision \
-                         is answered with `answer`, naming its number and the answer; what you \
-                         noticed is kept with `capture`.",
+        "serverInfo": {"name": "flywheel", "title": "flywheel", "version": VERSION},
+        "instructions": "Every operation of this flywheel is a tool here. `rail` shows the \
+                         decisions standing now; a numbered decision is answered with `answer`, \
+                         naming its number and the answer; what you noticed is kept with \
+                         `capture`.",
     })
 }
 
-/// The catalogue, as the protocol declares it: the same tools, in the same
-/// order, with the same arguments the in-process and HTTP callers enumerate
-/// (193).
+/// The catalogue, as the protocol declares it: the same tools and the same
+/// read-only tools, in the same order, with the same arguments the in-process
+/// and HTTP callers enumerate (193).
 pub fn tools() -> Vec<Value> {
     catalogue::catalogue()
         .iter()
+        .chain(catalogue::queries())
         .map(catalogue::Tool::declaration)
         .collect()
+}
+
+/// The page's own views, listed among the resources so a client can read one
+/// before it has called any tool (322, S230). None declares an origin to fetch
+/// from or asks the client's sandbox for a permission (307, 310, 204).
+pub fn resources() -> Vec<Value> {
+    VIEWS
+        .iter()
+        .map(|view| {
+            json!({
+                "uri": catalogue::view_address(view),
+                "name": view,
+                "title": match *view {
+                    "rail" => "Decisions",
+                    "board" => "Board",
+                    "status" => "Status",
+                    _ => "Detail",
+                },
+                "description": catalogue::query(view).map(|tool| tool.doc).unwrap_or_default(),
+                "mimeType": VIEW_MEDIA_TYPE,
+            })
+        })
+        .collect()
+}
+
+/// `resources/read`: a view's address answers the page's own bundle. An
+/// address under another version is not this binary's to answer, and the
+/// refusal names the addresses it serves, so a client holding an older one
+/// fetches again (326, S230).
+fn read_resource(params: &Value) -> Result<Value, (i64, String)> {
+    let uri = params.get("uri").and_then(Value::as_str).unwrap_or_default();
+    if VIEWS.iter().any(|view| catalogue::view_address(view) == uri) {
+        return Ok(json!({
+            "contents": [{"uri": uri, "mimeType": VIEW_MEDIA_TYPE, "text": page::bundle()}],
+        }));
+    }
+    let served: Vec<String> = VIEWS.iter().map(|view| catalogue::view_address(view)).collect();
+    Err((
+        RESOURCE_NOT_FOUND,
+        match uri.starts_with("ui://flywheel/") {
+            true => format!(
+                "`{uri}` is not a view of this binary, which is version {VERSION}; its views are \
+                 at {}",
+                served.join(", ")
+            ),
+            false => format!("this server holds no resource `{uri}`"),
+        },
+    ))
+}
+
+/// A read-only tool's call: the view it names, drawn from one read, in words
+/// and as the regions the view's bundle draws, with nothing recorded (193, 310,
+/// 322).
+fn looked<S: StateStore, W: World + ?Sized>(
+    caller: &mut Caller<'_, S, W>,
+    name: &str,
+    arguments: Map<String, Value>,
+) -> Value {
+    let mut asked = Call::new(name, caller.by, DELIVERY);
+    asked.args = arguments.into_iter().collect();
+    match catalogue::view(caller.store, &*caller.world, caller.defs, caller.address, &asked) {
+        Ok(view) => json!({
+            "content": [{"type": "text", "text": view.said}],
+            "structuredContent": view.handed(),
+            "isError": false,
+        }),
+        Err(refused) => refusal(&refused.to_string()),
+    }
+}
+
+/// A call the catalogue refused, as the protocol answers a tool that failed:
+/// the reason in words, and the version it was answered under (326).
+fn refusal(reason: &str) -> Value {
+    json!({
+        "content": [{"type": "text", "text": reason}],
+        "structuredContent": {"version": VERSION, "refused": reason},
+        "isError": true,
+    })
 }
 
 /// `tools/call`: one call of the catalogue, under the caller's identity.
@@ -208,6 +295,9 @@ fn call<S: StateStore, W: World + ?Sized>(
             ))
         }
     };
+    if catalogue::query(name).is_some() {
+        return Ok(looked(caller, name, arguments));
+    }
     let mut invoked = Call::new(name, caller.by, DELIVERY);
     invoked.args = arguments.into_iter().collect();
     match params.get("_meta").and_then(|meta| meta.get(DELIVERY_META)) {
@@ -231,11 +321,7 @@ fn call<S: StateStore, W: World + ?Sized>(
                 *wrote |= !matches!(outcome.outcome, Received::AlreadyApplied { .. });
                 done(&invoked, &outcome)
             }
-            Err(refused) => json!({
-                "content": [{"type": "text", "text": refused.to_string()}],
-                "structuredContent": {"refused": refused.to_string()},
-                "isError": true,
-            }),
+            Err(refused) => refusal(&refused.to_string()),
         },
     )
 }
@@ -274,7 +360,11 @@ fn done(invoked: &Call, outcome: &Outcome) -> Value {
             .filter(|noted| noted.kind != "create")
             .map(|noted| format!("{} {}: {}", noted.kind, noted.object, noted.text)),
     );
-    let mut structured = json!({"id": outcome.id, "recorded": catalogue::recorded(outcome)});
+    let mut structured = json!({
+        "version": VERSION,
+        "id": outcome.id,
+        "recorded": catalogue::recorded(outcome),
+    });
     if let Some(ask) = catalogue::asked(outcome) {
         structured["ask"] = json!(ask);
     }

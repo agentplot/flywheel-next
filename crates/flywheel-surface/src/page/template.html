@@ -899,9 +899,31 @@ button#yesall[disabled],form.yesall-form:has(> button[disabled]){display:none}
 .dk-h .dk-answers .answers{margin-bottom:4px}
 .dk-answers.none:empty{display:none}
 .dk-answers .answers button{min-height:36px;border-color:var(--line);color:var(--ink)}
+
+/* ---- a view in a member's client (293a, 322, S230). The same bundle, handed
+   one tool's result by the client that fetched it: it draws that view's
+   regions and nothing of the page around them, at the width the client gives
+   it, and grows to its content so the client sizes its frame to fit. */
+body[data-served="view"]{height:auto;overflow:visible;display:block;background:var(--surface)}
+html:has(> body[data-served="view"]){height:auto}
+body[data-served="view"] .top,body[data-served="view"] .hosts,body[data-served="view"] .tabs,body[data-served="view"] .log,body[data-served="view"] .pal-scrim,body[data-served="view"] #dk-h,body[data-served="view"] #dk-f{display:none}
+body[data-served="view"] .wrap{display:block;margin:0}
+body[data-served="view"] #decisions,body[data-served="view"] #board{display:none}
+body[data-served="view"][data-view="rail"] #decisions{display:block}
+body[data-served="view"] .rail{overflow:visible;border-right:0;padding:10px 14px 14px}
+body[data-served="view"][data-view="board"] #board,body[data-served="view"][data-view="status"] #board{display:flex;overflow:visible}
+body[data-served="view"][data-view="status"] .hosts{display:flex}
+body[data-served="view"] .lanes{overflow:visible;grid-template-columns:repeat(auto-fit,minmax(240px,1fr))}
+body[data-served="view"] .lane{overflow:visible;padding-bottom:14px}
+body[data-served="view"][data-view="object"] #board{display:block;overflow:visible}
+body[data-served="view"][data-view="object"] .board-h,body[data-served="view"][data-view="object"] .lanes{display:none}
+body[data-served="view"] .dock{position:static;width:auto;box-shadow:none;border:0;z-index:auto}
+body[data-served="view"]:not([data-view="object"]) .dock{display:none}
+body[data-served="view"] .dk-b{overflow:visible}
+.view-stale{margin:0;padding:18px 16px;font-size:13.5px;color:var(--ink2);background:var(--surface)}
 </style>
 </head>
-<body data-gen="{{GEN}}">
+<body data-gen="{{GEN}}" data-served="{{SERVED}}">
 <!-- The top. Everything on it is read from the one request's read: the
      instance, the point the read is as of, and how many decisions stand. -->
 <header class="top">
@@ -929,6 +951,9 @@ button#yesall[disabled],form.yesall-form:has(> button[disabled]){display:none}
      and empty while nothing is wrong. Every host is reported under the status
      view; this is the attention, not a fixture (141, 143, 146, 79). -->
 <div class="hosts" id="hosts">{{HOSTS}}</div>
+<!-- A view in a member's client handed a result of another version than its
+     own draws none of it, and says so here (326, S230). -->
+<p class="view-stale" id="view-stale" hidden>this view is out of date · fetch it again</p>
 <main class="wrap">
   <section class="tab-panel" id="decisions">
     <aside class="rail" id="rail" aria-label="Decisions">{{RAIL}}</aside>
@@ -1237,10 +1262,18 @@ button#yesall[disabled],form.yesall-form:has(> button[disabled]){display:none}
     }
     control.click();
   }
-  function openFocused(){ var c=focused(); if(!c) return; var a=c.querySelector('a.object'); if(a) location.hash='#dock-'+a.getAttribute('data-object'); }
+  function openFocused(){ var c=focused(); if(!c) return; var a=c.querySelector('a.object'); if(!a) return; if(client){ client.open(a.getAttribute('data-object')); return; } location.hash='#dock-'+a.getAttribute('data-object'); }
 
   document.addEventListener('click', function(e){
     var t=e.target; if(!t.closest) return;
+    // In a member's client an object opens as its own view, and a link to
+    // anywhere else is the client's to open (293a, S230).
+    if(client){
+      var to=t.closest('a[href^="#dock-"],a.object[data-object]');
+      if(to){ e.preventDefault(); client.open(to.getAttribute('data-object') || decodeURIComponent(to.getAttribute('href').slice(6))); return; }
+      var away=t.closest('a[href^="http"]');
+      if(away){ e.preventDefault(); client.link(away.href); return; }
+    }
     var row=t.closest('.pal-rows .pal-row'); if(row){ e.preventDefault(); if(!run(+row.getAttribute('data-row'))){ var f=input(); if(f && f.form) f.form.requestSubmit(); } return; }
     if(t.closest('#pal-open-rail,#pal-open-phone')){ e.preventDefault(); openBox(); return; }
     if(t===scrim){ closeBox(); return; }
@@ -1274,6 +1307,61 @@ button#yesall[disabled],form.yesall-form:has(> button[disabled]){display:none}
     if(/^[a-z]$/.test(k)){ e.preventDefault(); answer(k); }
   });
 
+  // ---- a view in a member's client (293a, 322, 323, 326, S230). The bundle
+  // is each view's resource: the client that fetched it hands it a tool's
+  // result, and it draws the regions that result carries into the places the
+  // page has for them. A result of another version than the bundle's draws
+  // none of the state. An object opens as its own view, asked for through the
+  // client; nothing is kept between renders and nothing is fetched (310).
+  var client=document.body.getAttribute('data-served')==='view' ? bridge() : null;
+  function bridge(){
+    var VERSION=(document.querySelector('meta[name="flywheel-version"]')||{}).content||'';
+    var REGIONED=['rail','hosts','board-h','lane-inception','lane-plan','lane-construction','lane-operation','dk-b'];
+    var stale=document.getElementById('view-stale');
+    var next=0, waiting={}, shown=null, told=0;
+    function send(m){ window.parent.postMessage(m, '*'); }
+    function ask(method, params){ return new Promise(function(ok, no){ var id='flywheel-'+(++next); waiting[id]={ok:ok, no:no}; send({jsonrpc:'2.0', id:id, method:method, params:params||{}}); }); }
+    function tell(method, params){ send({jsonrpc:'2.0', method:method, params:params||{}}); }
+    // The height the view needs, said once per change: the client sizing its
+    // frame to it resizes the view, and saying the same height again would
+    // start that over.
+    function size(){ var height=Math.ceil(document.body.getBoundingClientRect().height); if(height===told) return; told=height; tell('ui/notifications/size-changed', {width:document.documentElement.scrollWidth, height:height}); }
+    function theme(context){ if(context && (context.theme==='dark' || context.theme==='light')) document.documentElement.setAttribute('data-theme', context.theme); }
+    function words(result){ return ((result && result.content)||[]).filter(function(c){ return c.type==='text'; }).map(function(c){ return c.text; }).join(' '); }
+    function draw(result){
+      var handed=result && result.structuredContent;
+      if(!handed || !handed.view) return;
+      if(handed.version!==VERSION){
+        REGIONED.forEach(function(id){ var el=document.getElementById(id); if(el) el.innerHTML=''; });
+        document.body.removeAttribute('data-view'); shown=null;
+        if(stale) stale.hidden=false;
+        size(); return;
+      }
+      if(stale) stale.hidden=true;
+      REGIONED.forEach(function(id){ var el=document.getElementById(id); if(el) el.innerHTML=(handed.regions && handed.regions[id]) || ''; });
+      document.body.setAttribute('data-view', handed.view);
+      shown={name:handed.view, arguments:handed.object ? {object:handed.object} : {}};
+      at=-1; focusCard(0, true); size();
+    }
+    function look(name, args){ return ask('tools/call', {name:name, arguments:args||{}}).then(function(result){ if(result && result.isError) throw new Error(words(result) || 'the flywheel refused it'); draw(result); }); }
+    addEventListener('message', function(e){
+      if(e.source!==window.parent) return;
+      var m=e.data; if(!m || m.jsonrpc!=='2.0') return;
+      if(m.method===undefined){ var w=waiting[m.id]; if(w){ delete waiting[m.id]; if(m.error) w.no(new Error(m.error.message || 'the client did not send it')); else w.ok(m.result); } return; }
+      if(m.method==='ui/notifications/tool-result') draw(m.params);
+      else if(m.method==='ui/notifications/host-context-changed') theme(m.params);
+      else if(m.method==='ui/resource-teardown' && m.id!==undefined) send({jsonrpc:'2.0', id:m.id, result:{}});
+      else if(m.id!==undefined) send({jsonrpc:'2.0', id:m.id, error:{code:-32601, message:'this view answers no '+m.method}});
+    });
+    if(window.ResizeObserver) new ResizeObserver(size).observe(document.body);
+    ask('ui/initialize', {protocolVersion:'2026-01-26', appInfo:{name:'flywheel', version:VERSION}, appCapabilities:{}})
+      .then(function(answer){ theme(answer && answer.hostContext); tell('ui/notifications/initialized'); }, function(){});
+    return {
+      open:function(object){ return look('object', {object:object}).catch(function(err){ toast(err.message); }); },
+      link:function(url){ return ask('ui/open-link', {url:url}).catch(function(){}); }
+    };
+  }
+
   // ---- the page keeps itself current (S221): the host says when its store
   // moved, and the page fetches itself and swaps the regions that differ,
   // keeping the decision in hand, the drawer and where each column was
@@ -1297,6 +1385,7 @@ button#yesall[disabled],form.yesall-form:has(> button[disabled]){display:none}
   }
   var refreshing=false, again=false, busy=false;
   function refresh(){
+    if(client) return;
     if(refreshing){ again=true; return; }
     if(busy){ again=true; return; }
     refreshing=true;
@@ -1336,7 +1425,7 @@ button#yesall[disabled],form.yesall-form:has(> button[disabled]){display:none}
       .catch(function(){ settle(form); toast('the host did not answer · try again'); });
   });
   addEventListener('pageshow', function(){ busy=false; if(progress) progress.hidden=true; document.querySelectorAll('form.busy').forEach(settle); });
-  if(window.EventSource){
+  if(window.EventSource && !client){
     var es=new EventSource('/events');
     es.onmessage=function(ev){ if(ev.data && ev.data!==document.body.getAttribute('data-gen')) refresh(); };
   }

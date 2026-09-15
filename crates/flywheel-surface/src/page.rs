@@ -666,6 +666,7 @@ pub fn render(read: &Read) -> String {
     let sent: usize = read.answered.values().map(Vec::len).sum();
     let mut out = TEMPLATE
         .replace("{{VERSION}}", VERSION)
+        .replace("{{SERVED}}", "page")
         .replace("{{GEN}}", &read.generation.to_string())
         .replace("{{FONTS}}", fonts_css())
         .replace("{{INSTANCE}}", &escape(instance))
@@ -686,6 +687,252 @@ pub fn render(read: &Read) -> String {
         .replace("{{TOURHEAD}}", &tour_head(read));
     for ((slot, machines), (title, sub)) in LANES.iter().zip(LANE_HEADS.iter()) {
         out = out.replace(slot, &lane(read, title, sub, machines));
+    }
+    out
+}
+
+/// The bundle with nothing of the state in it: its stylesheet, its faces, its
+/// script, the palette's commands and every region empty (307, 310).
+///
+/// The page the host serves is this, rendered from one read; and it is what a
+/// member's client is handed as the resource of every view, which draws the
+/// regions a tool's result carries into the same places (293a, 322, S230). So
+/// there is one page and never a second implementation of it.
+pub fn bundle() -> String {
+    let mut out = String::with_capacity(TEMPLATE.len());
+    let mut rest = TEMPLATE;
+    while let Some(open) = rest.find("{{") {
+        let Some(close) = rest[open..].find("}}").map(|at| open + at) else {
+            break;
+        };
+        out.push_str(&rest[..open]);
+        match &rest[open + 2..close] {
+            "VERSION" => out.push_str(VERSION),
+            "FONTS" => out.push_str(fonts_css()),
+            "SERVED" => out.push_str("view"),
+            // The catalogue as the page may invoke it, which is not state (193).
+            "PALCOMMANDS" => out.push_str(&palette::template()),
+            _ => {}
+        }
+        rest = &rest[close + 2..];
+    }
+    out.push_str(rest);
+    out
+}
+
+/// The page's own views, which a member's client may render: the rail, the
+/// board, the status view and one object's detail, which is the dock (322,
+/// 307, S230).
+pub const VIEWS: [&str; 4] = ["rail", "board", "status", "object"];
+
+/// One view as a member's client is handed it: the regions of the page it
+/// draws, by the id each has on the page, and the same in words for a client
+/// that draws nothing (311, 322, S230).
+#[derive(Debug, Clone)]
+pub struct View {
+    pub name: &'static str,
+    /// The object an `object` view is the detail of.
+    pub object: Option<String>,
+    pub regions: BTreeMap<String, String>,
+    pub said: String,
+}
+
+impl View {
+    /// What the bundle is handed to draw: the version this was rendered under,
+    /// which view it is and its regions (310, 326).
+    pub fn handed(&self) -> serde_json::Value {
+        let mut out = serde_json::json!({"version": VERSION, "view": self.name, "regions": self.regions});
+        if let Some(object) = &self.object {
+            out["object"] = serde_json::json!(object);
+        }
+        out
+    }
+}
+
+/// Draw one of the page's views from one read, as the page draws the same
+/// regions (310, 322).
+pub fn view(read: &Read, name: &str, object: Option<&str>) -> Result<View, String> {
+    let mut regions = BTreeMap::new();
+    let (name, said) = match name {
+        "rail" => {
+            regions.insert("rail".to_string(), rail(read));
+            ("rail", said_rail(read))
+        }
+        "board" => {
+            board_regions(read, &mut regions);
+            ("board", said_board(read))
+        }
+        "status" => {
+            regions.insert("hosts".to_string(), hosts(read));
+            board_regions(read, &mut regions);
+            ("status", said_status(read))
+        }
+        "object" => {
+            let Some(id) = object.map(str::trim).filter(|id| !id.is_empty()) else {
+                return Err("`object` takes the id of the object to show".to_string());
+            };
+            let Some(held) = read.objects.iter().find(|o| o.id == id) else {
+                return Err(format!("the instance holds no object `{id}`"));
+            };
+            regions.insert("dk-b".to_string(), surface(read, held, true));
+            return Ok(View {
+                name: "object",
+                object: Some(id.to_string()),
+                regions,
+                said: said_object(read, held),
+            });
+        }
+        other => {
+            return Err(format!(
+                "the page has no view `{other}`; its views are {}",
+                VIEWS.join(", ")
+            ))
+        }
+    };
+    Ok(View {
+        name,
+        object: None,
+        regions,
+        said,
+    })
+}
+
+/// The board's regions: its header and its four lanes, by their ids.
+fn board_regions(read: &Read, regions: &mut BTreeMap<String, String>) {
+    regions.insert("board-h".to_string(), board_header(read));
+    for ((slot, machines), (title, sub)) in LANES.iter().zip(LANE_HEADS.iter()) {
+        let id = slot
+            .trim_matches(|c| c == '{' || c == '}')
+            .to_ascii_lowercase()
+            .replace('_', "-");
+        regions.insert(id, lane(read, title, sub, machines));
+    }
+}
+
+/// The rail in words: every standing decision in the order the rail reads, its
+/// number, what it is about, what it asks and the answers `answer` takes for it
+/// (15, 311, 322).
+fn said_rail(read: &Read) -> String {
+    if read.decisions.is_empty() {
+        return "Nothing to decide.".to_string();
+    }
+    let mut out = String::new();
+    let mut group = String::new();
+    for decision in flywheel_engine::rail::in_reading_order(&read.decisions) {
+        if decision.group != group {
+            group = decision.group.clone();
+            let _ = writeln!(out, "{group}");
+        }
+        let number = decision.number.map(|n| n.to_string()).unwrap_or_else(|| "–".into());
+        let _ = write!(out, "  {number} · {} · {}", decision.kind, decision.object);
+        if let Some(words) = read
+            .objects
+            .iter()
+            .find(|o| o.id == decision.object && o.machine == "signal")
+            .and_then(signals::text_of)
+        {
+            let _ = write!(out, " “{}”", clipped(&words));
+        }
+        if let Some(asked) = question_of(read, decision) {
+            let _ = write!(out, " — {asked}");
+        }
+        if let Some(why) = read.why.get(&decision.id).filter(|why| !why.is_empty()) {
+            let _ = write!(out, " ({})", why.join(" · "));
+        }
+        let _ = writeln!(out, "\n     answers: {}", decision.answers.join(" | "));
+        for given in decision.number.and_then(|n| read.answered.get(&n)).into_iter().flatten() {
+            let _ = writeln!(out, "     answered: {}", given.said());
+        }
+    }
+    out.trim_end().to_string()
+}
+
+/// One object of the status view in words: what it is, the group it is in,
+/// what it is doing, and the host that holds it and runs it (141, 143).
+fn said_row(row: &status::Row) -> String {
+    let mut said = format!("{} · {} · {}", row.object, row.group, row.said);
+    if let Some(holder) = &row.holder {
+        let _ = write!(said, " · held by {holder}");
+        if let Some(liveness) = &row.liveness {
+            let _ = write!(said, " ({liveness})");
+        }
+    }
+    if let Some(runner) = &row.runner {
+        let _ = write!(said, " · run by {runner}");
+    }
+    said
+}
+
+/// The board in words: each lane with the objects in it (209, S10).
+fn said_board(read: &Read) -> String {
+    let mut out = String::new();
+    for ((_, machines), (title, _)) in LANES.iter().zip(LANE_HEADS.iter()) {
+        let rows: Vec<&status::Row> = read
+            .status
+            .rows
+            .iter()
+            .filter(|row| !OFF_THE_BOARD.contains(&row.machine.as_str()) && in_lane(&row.machine, machines))
+            .collect();
+        let _ = writeln!(out, "{title} · {}", rows.len());
+        if rows.is_empty() {
+            let empty = LANE_EMPTY.iter().find(|(t, _)| t == title).map(|(_, s)| *s).unwrap_or("Nothing here.");
+            let _ = writeln!(out, "  {empty}");
+        }
+        for row in rows {
+            let _ = writeln!(out, "  {}", said_row(row));
+        }
+    }
+    out.trim_end().to_string()
+}
+
+/// The status view in words: what it is as of, every host with whether it is
+/// heard from, and every object grouped by state (141, 143, 146).
+fn said_status(read: &Read) -> String {
+    let mut out = format!(
+        "as of commit {} · {}\n",
+        short_mark(&read.status.as_of.mark),
+        read.status.as_of.at.format("%H:%M UTC")
+    );
+    let chips = host_chips(read);
+    if chips.is_empty() {
+        out.push_str("no host has been heard from yet\n");
+    }
+    for chip in &chips {
+        let _ = writeln!(out, "host {} · {} · {}", chip.name, chip.liveness, chip.said);
+    }
+    for group in status::GROUPS {
+        let rows: Vec<&status::Row> = read
+            .status
+            .rows
+            .iter()
+            .filter(|row| row.group == group && !OFF_THE_BOARD.contains(&row.machine.as_str()))
+            .collect();
+        let _ = writeln!(out, "{group} · {}", rows.len());
+        for row in rows {
+            let _ = writeln!(out, "  {}", said_row(row));
+        }
+    }
+    out.trim_end().to_string()
+}
+
+/// One object in words: what it is and is doing, and each decision standing on
+/// it with the answers `answer` takes (209, 308, 311).
+fn said_object(read: &Read, object: &Object) -> String {
+    let mut out = match read.status.rows.iter().find(|r| r.object == object.id) {
+        Some(row) => format!("{} ({})", said_row(row), object.machine),
+        None => format!("{} ({})", object.id, object.machine),
+    };
+    let standing: Vec<&DecisionInstance> = read.decisions.iter().filter(|d| d.object == object.id).collect();
+    if standing.is_empty() {
+        out.push_str("\nnothing to decide on it");
+    }
+    for decision in standing {
+        let number = decision.number.map(|n| n.to_string()).unwrap_or_else(|| "–".into());
+        let _ = write!(out, "\ndecision {number} · {}", decision.kind);
+        if let Some(asked) = question_of(read, decision) {
+            let _ = write!(out, " — {asked}");
+        }
+        let _ = write!(out, "\n  answers: {}", decision.answers.join(" | "));
     }
     out
 }
@@ -780,6 +1027,44 @@ fn hosts(read: &Read) -> String {
     // Every host the instance has, as a chip: its name, a dot for whether it
     // is heard from, and what it is running. A host past its stale window
     // carries that on the chip (141, 143, 146, 150a).
+    let chips = host_chips(read);
+    let mut out = String::new();
+    if !chips.is_empty() {
+        out.push_str("<span class=\"lab\">hosts</span>");
+    }
+    for chip in &chips {
+        let _ = write!(
+            out,
+            "<span class=\"host{gone}\" data-host=\"{h}\" data-liveness=\"{l}\">\
+             <span class=\"dot {l}\"></span><b class=\"hn\">{h}</b><span class=\"hm\">{said}</span></span>",
+            gone = match chip.liveness.as_str() {
+                "alive" => "",
+                _ => " gone",
+            },
+            h = escape(&chip.name),
+            l = escape(&chip.liveness),
+            said = escape(&chip.said),
+        );
+    }
+    if !read.repositories.is_empty() {
+        out.push_str("<span class=\"lab\">repos</span>");
+        for repository in &read.repositories {
+            let _ = write!(out, "<span class=\"repo\">{}</span>", escape(repository));
+        }
+    }
+    out
+}
+
+/// One host as its chip says it: its name, whether it is heard from, and what
+/// it is running, or since when it has been away (141, 146, 150a).
+struct HostChip {
+    name: String,
+    liveness: String,
+    said: String,
+}
+
+/// Every host the instance has, each as its chip says it.
+fn host_chips(read: &Read) -> Vec<HostChip> {
     let mut names: Vec<String> = read
         .objects
         .iter()
@@ -794,10 +1079,7 @@ fn hosts(read: &Read) -> String {
         }
     }
     names.sort();
-    let mut out = String::new();
-    if !names.is_empty() {
-        out.push_str("<span class=\"lab\">hosts</span>");
-    }
+    let mut chips = Vec::new();
     for host in &names {
         let liveness = read
             .status
@@ -825,26 +1107,13 @@ fn hosts(read: &Read) -> String {
             ("alive", n) => format!("{n} sessions"),
             (other, _) => format!("{other}{since}"),
         };
-        let _ = write!(
-            out,
-            "<span class=\"host{gone}\" data-host=\"{h}\" data-liveness=\"{l}\">\
-             <span class=\"dot {l}\"></span><b class=\"hn\">{h}</b><span class=\"hm\">{said}</span></span>",
-            gone = match liveness.as_str() {
-                "alive" => "",
-                _ => " gone",
-            },
-            h = escape(host),
-            l = escape(&liveness),
-            said = escape(&said),
-        );
+        chips.push(HostChip {
+            name: host.clone(),
+            liveness,
+            said,
+        });
     }
-    if !read.repositories.is_empty() {
-        out.push_str("<span class=\"lab\">repos</span>");
-        for repository in &read.repositories {
-            let _ = write!(out, "<span class=\"repo\">{}</span>", escape(repository));
-        }
-    }
-    out
+    chips
 }
 
 /// The rail: every standing decision with its number and its answers, one tap
@@ -2107,23 +2376,31 @@ fn dock(read: &Read) -> String {
         );
     }
     for object in &read.objects {
-        let kind = match object.machine.as_str() {
-            m if KINDS.contains(&m) => m,
-            other => other,
-        };
-        let row = read.status.rows.iter().find(|r| r.object == object.id);
-        let _ = write!(
-            out,
-            "<article class=\"surface form-{kind}\" id=\"dock-{}\" data-kind=\"{kind}\" \
-             data-answerable=\"{answerable}\" data-opened=\"{opened}\">\n",
-            escape(&object.id),
-            answerable = read.decisions.iter().any(|d| d.object == object.id),
-            opened = read.opened.as_deref() == Some(object.id.as_str()),
-        );
-        out.push_str(&dock_head(read, object, row));
-        out.push_str(&dock::body(read, object, row));
-        out.push_str("</article>\n");
+        let opened = read.opened.as_deref() == Some(object.id.as_str());
+        out.push_str(&surface(read, object, opened));
     }
+    out
+}
+
+/// One object's surface in the dock: its header in the form of the object, its
+/// body and its answers (S27, S28).
+fn surface(read: &Read, object: &Object, opened: bool) -> String {
+    let mut out = String::new();
+    let kind = match object.machine.as_str() {
+        m if KINDS.contains(&m) => m,
+        other => other,
+    };
+    let row = read.status.rows.iter().find(|r| r.object == object.id);
+    let _ = write!(
+        out,
+        "<article class=\"surface form-{kind}\" id=\"dock-{}\" data-kind=\"{kind}\" \
+         data-answerable=\"{answerable}\" data-opened=\"{opened}\">\n",
+        escape(&object.id),
+        answerable = read.decisions.iter().any(|d| d.object == object.id),
+    );
+    out.push_str(&dock_head(read, object, row));
+    out.push_str(&dock::body(read, object, row));
+    out.push_str("</article>\n");
     out
 }
 

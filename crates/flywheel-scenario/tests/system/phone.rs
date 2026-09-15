@@ -21,7 +21,7 @@ fn root() -> PathBuf {
 }
 
 /// A run with a decision standing, and the number the register gave it.
-fn a_standing_decision() -> (flywheel_scenario::Runtime, u32) {
+pub(super) fn a_standing_decision() -> (flywheel_scenario::Runtime, u32) {
     let path = root().join("conformance/scenarios/S01.yaml");
     let (scenario, _) = flywheel_atoms::conformance::load(&path).expect("S01 loads");
     let suite = Suite::for_scenario(&path).expect("the suite opens");

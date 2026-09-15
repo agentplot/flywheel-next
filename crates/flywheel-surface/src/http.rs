@@ -300,6 +300,26 @@ async fn invoke<S: StateStore + Send + 'static>(
             false => (StatusCode::FORBIDDEN, Json(json!({"refused": refused}))).into_response(),
         };
     }
+    // A query answers with the view it names and records nothing, as it does
+    // for every other caller (193, 322).
+    if catalogue::query(&name).is_some() {
+        let mut asked = Call::new(&name, served.operator(), "page");
+        asked.args = input.args;
+        let mut store = served.store.lock().await;
+        let world = served.world.lock().await;
+        return match catalogue::view(&mut *store, &**world, &served.defs, &served.address, &asked) {
+            Ok(view) => {
+                let mut answered = view.handed();
+                answered["said"] = json!(view.said);
+                (StatusCode::OK, Json(answered)).into_response()
+            }
+            Err(refused) => (
+                StatusCode::BAD_REQUEST,
+                Json(json!({"refused": refused.to_string(), "version": page::VERSION})),
+            )
+                .into_response(),
+        };
+    }
     let mut call = Call::new(&name, served.operator(), "page");
     call.args = input.args;
     call.delivery_id = input.delivery_id;
@@ -574,6 +594,7 @@ async fn protocol_message<S: StateStore + Send + 'static>(
             store: &mut *store,
             world: &mut **world,
             defs: &served.defs,
+            address: &served.address,
             by: served.operator(),
         };
         protocol::handle(&mut caller, &message)

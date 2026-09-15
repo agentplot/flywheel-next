@@ -14,7 +14,13 @@ fn defs() -> flywheel_engine::Definitions {
 /// One message, answered for the operator `chuck`.
 fn send(store: &mut FakeStore, world: &mut world::Files, message: Value) -> protocol::Handled {
     let defs = defs();
-    let mut caller = Caller { store, world, defs: &defs, by: "chuck" };
+    let mut caller = Caller {
+        store,
+        world,
+        defs: &defs,
+        address: "http://studio.tailnet.ts.net/willdan",
+        by: "chuck",
+    };
     protocol::handle(&mut caller, &message)
 }
 
@@ -77,14 +83,16 @@ fn initialized_again() -> Value {
     json!({"jsonrpc": "2.0", "method": "notifications/initialized"})
 }
 
-/// The tool listing is the catalogue, in its order, each tool's arguments the
-/// properties of its input schema and its doc its description (193).
+/// The tool listing is the catalogue and its read-only tools, in their order,
+/// each tool's arguments the properties of its input schema and its doc its
+/// description (193).
 #[test]
 fn the_tool_listing_declares_the_catalogue() {
     let (mut store, mut world) = (FakeStore::default(), world::Files::new());
     let reply = send(&mut store, &mut world, request(1, "tools/list", json!({}))).reply.expect("answered");
     let listed = reply["result"]["tools"].as_array().expect("a list of tools").clone();
-    let catalogue = crate::catalogue::catalogue();
+    let catalogue: Vec<&crate::catalogue::Tool> =
+        crate::catalogue::catalogue().iter().chain(crate::catalogue::queries()).collect();
     assert_eq!(listed.len(), catalogue.len());
     for (declared, tool) in listed.iter().zip(catalogue) {
         assert_eq!(declared["name"], json!(tool.name));

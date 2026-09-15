@@ -41,12 +41,66 @@ impl Tool {
             .iter()
             .map(|arg| (arg.to_string(), argument(arg)))
             .collect();
-        json!({
+        let mut declared = json!({
             "name": self.name,
             "description": self.doc,
             "inputSchema": {"type": "object", "properties": properties},
-        })
+        });
+        // A tool whose result is one of the page's views names the view's
+        // resource here, where the client reads it before it calls, and never
+        // on a result (293a, S230, D18).
+        if query(self.name).is_some() {
+            declared["annotations"] = json!({"readOnlyHint": true});
+            declared["_meta"] = json!({"ui": {"resourceUri": view_address(self.name)}});
+        }
+        declared
     }
+}
+
+/// The read-only tools. Each answers with one of the page's own views, read on
+/// the call, and writes nothing and records nothing (193, 322, `surfaces.yaml`
+/// tools.queries). A member's client that renders such resources draws the
+/// view, and one that does not reads the same in words (311, S230).
+pub const QUERIES: &[Tool] = &[
+    Tool {
+        name: "rail",
+        args: &[],
+        doc: "the decisions standing now, each with its number and the answers it takes; \
+              `answer` answers one (15, 311, 322)",
+    },
+    Tool {
+        name: "board",
+        args: &[],
+        doc: "the board: every object in its phase, grouped by what it is waiting on (209, 322, S10)",
+    },
+    Tool {
+        name: "status",
+        args: &[],
+        doc: "the status view: every host and whether it is heard from, and every object \
+              grouped by state, as of the last commit (141, 143, 322)",
+    },
+    Tool {
+        name: "object",
+        args: &["object"],
+        doc: "one object's detail: what it is doing, the decision standing on it and its \
+              answers (209, 308, 322)",
+    },
+];
+
+/// The read-only tools, in the order they are served.
+pub fn queries() -> &'static [Tool] {
+    QUERIES
+}
+
+/// One read-only tool by name.
+pub fn query(name: &str) -> Option<&'static Tool> {
+    QUERIES.iter().find(|t| t.name == name)
+}
+
+/// The address of a view's resource, which carries the version of the binary
+/// that serves it, so a newer binary names a newer address (326, S230).
+pub fn view_address(view: &str) -> String {
+    format!("ui://flywheel/{}/{view}", crate::page::VERSION)
 }
 
 /// What one argument holds, as an input schema says it: a decision is the
@@ -205,7 +259,10 @@ pub fn tool(name: &str) -> Option<&'static Tool> {
 /// the HTTP route writes it, and the protocol declares the same tools from the
 /// same list, so a further transport adds a client and not an operation (193).
 pub fn enumerate() -> Value {
-    json!({"tools": CATALOGUE.iter().map(Tool::schema).collect::<Vec<_>>()})
+    json!({
+        "tools": CATALOGUE.iter().map(Tool::schema).collect::<Vec<_>>(),
+        "queries": QUERIES.iter().map(Tool::schema).collect::<Vec<_>>(),
+    })
 }
 
 // ---------------------------------------------------------------- the bodies
@@ -385,6 +442,22 @@ pub fn call<S: StateStore, W: World + ?Sized>(
             dictate(store, defs, call, tool, &object)
         }
     }
+}
+
+/// A query of the catalogue: the view it names, read from the store on this call
+/// and stored nowhere, with nothing recorded (15, 193, 310, 322).
+pub fn view<S: StateStore, W: World + ?Sized>(
+    store: &mut S,
+    world: &W,
+    defs: &Definitions,
+    address: &str,
+    call: &Call,
+) -> Result<crate::page::View> {
+    let Some(tool) = query(&call.tool) else {
+        bail!("`{}` is no view of the page", call.tool);
+    };
+    let read = crate::page::read(store, world, defs, address, &call.by)?;
+    crate::page::view(&read, tool.name, call.text("object").as_deref()).map_err(|refused| anyhow::anyhow!(refused))
 }
 
 /// A refusal of a session's call, on the session's own thread: the operation,

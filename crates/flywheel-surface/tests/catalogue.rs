@@ -37,7 +37,16 @@ fn catalogue_is_identical_across_callers() {
     assert_eq!(status, 200, "{listed:?}");
     let listed = listed.expect("a listing");
     let declared = listed["result"]["tools"].as_array().expect("a list of tools");
-    let enumerated = in_process["tools"].as_array().expect("tools is a list");
+    // The protocol has one list of tools, and it is the operations and then
+    // the read-only tools, as the other two callers enumerate them (193, 322).
+    let enumerated: Vec<Value> = in_process["tools"]
+        .as_array()
+        .expect("tools is a list")
+        .iter()
+        .chain(in_process["queries"].as_array().expect("queries is a list"))
+        .cloned()
+        .collect();
+    let enumerated = &enumerated;
     let named = |tools: &[Value], key: &str| -> Vec<Value> { tools.iter().map(|t| t[key].clone()).collect() };
     assert_eq!(
         named(declared, "name"),

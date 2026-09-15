@@ -12,3 +12,4 @@ mod links;
 mod page;
 mod protocol;
 mod signals;
+mod views;

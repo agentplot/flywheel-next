@@ -12,6 +12,7 @@ mod driver;
 mod phase;
 
 mod acceptance_sets;
+mod client_view;
 mod phone;
 mod real_hosts;
 mod scripted;
