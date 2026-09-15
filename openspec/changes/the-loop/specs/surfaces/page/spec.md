@@ -205,7 +205,8 @@ over one event stream; the page SHALL fetch itself from the same host and swap
 the regions that differ, keeping the decision in hand, the open dock and where
 each column was scrolled (S221, 310). Every form SHALL be sent the same way, so
 an answer or a capture never navigates (S221). No session SHALL call an address
-to wake the loop: the loop SHALL listen to the multiplexer's own events, so on a
+to wake the loop, and the machinery SHALL build no wake API of its own: the loop
+SHALL listen to the multiplexer's own events, so on a
 host bound to Herdr an agent's change of state, and with it a session's report,
 note, offer or refusal, SHALL be a cause at once; the poll SHALL stay the floor
 (S221, 130).

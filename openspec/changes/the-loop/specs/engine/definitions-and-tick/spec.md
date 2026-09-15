@@ -33,15 +33,22 @@ existing predicate and effect atoms SHALL require no code change and no rebuilt
 host (57, 85). An object SHALL record the version of the extensible machine it
 runs under, and a type change SHALL NOT move an object already in flight (57,
 224). An elaboration or a unit whose type has no definition where it runs SHALL
-take a null default — a type with no stages and no session, under which the
-object moves on — and SHALL NOT stall or break; what a null type delivers is
-open (85a).
+never reach working: its approval SHALL be refused with the missing type named,
+it SHALL stand in proposed, and its decision SHALL name the type it lacks and
+offer `type <name>`; nothing SHALL move on with no stages and no session (85a,
+S6).
 
-#### Scenario: An undefined type takes the null default
-- **WHEN** an elaboration or a unit is approved under a type with no definition
-  on the host that runs it
-- **THEN** it moves on under the null default with no session started, and
-  nothing stalls and nothing is reported broken (85a)
+#### Scenario: An undefined type waits for the operator to set one
+- **WHEN** the operator approves an elaboration or a unit whose type has no
+  definition on the host that runs it
+- **THEN** the approval is refused naming the missing type, the object stands in
+  proposed with no session started, and its decision names the type and offers
+  `type <name>` (85a)
+
+#### Scenario: Setting a type lets the approval through
+- **WHEN** the operator answers that decision with `type <name>` naming a
+  defined type and approves again
+- **THEN** the object reaches working under that type (85a)
 
 #### Scenario: A type added with no code change
 - **WHEN** the operator commits a new unit type file composed only of existing

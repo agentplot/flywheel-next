@@ -37,8 +37,10 @@ advance a half-finished bootstrap (204).
 
 #### Scenario: The first host's address when the operator gives none
 - **WHEN** initialization is run with no host given
-- **THEN** the first host is registered at localhost, and no name is derived
-  from the computer or its network (204, 205a)
+- **THEN** the first host is registered at localhost, no name is derived from
+  the computer or its network, and init says the host serves this computer
+  alone until the operator gives it a hostname, which is when answering from
+  the phone is met (204, 205a, 306)
 
 #### Scenario: The first host's address when the operator gives one
 - **WHEN** initialization is run with a hostname given for the first host

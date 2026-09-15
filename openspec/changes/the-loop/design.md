@@ -111,9 +111,9 @@ Two sources, one rule each:
 - The instance's own unit and elaboration types are read from the blueprints
   repository at the shared line, so a type composed of existing atoms is added
   with no code change and no host is rebuilt for one (57, 85). An elaboration
-  or a unit whose type has no definition where it runs takes a null default, a
-  type with no stages and no session under which the object moves on, rather
-  than stalling or breaking; what a null type delivers is open (85a). Packages are
+  or a unit whose type has no definition where it runs never reaches working:
+  its approval is refused naming the missing type, it stands in proposed, and
+  its decision offers `type <name>` for the operator to set one (85a, S6). Packages are
   A.28 and phase 3; phase 1 installs none, and the loader reads the type files
   only (228).
 
@@ -252,7 +252,8 @@ immediately and do not wait for the poll: a page response or a chat message in
 process, and, on a host bound to Herdr, the multiplexer's own events — an agent
 going idle, blocked or done, which is how the loop learns at once of a
 session's report, note, offer or refusal. No session calls an address to wake
-the loop (130, S221). Each of these also raises the generation every open page
+the loop, and the machinery builds no wake API of its own, because the
+multiplexer's events already carry what the loop needs (130, S221). Each of these also raises the generation every open page
 listens for on `GET /events` (S221).
 
 Notification only shortens the wait: a host that is never notified still
@@ -406,7 +407,9 @@ every response already committed.
 ### D10a. The host's address is the one the operator gives, and localhost when none is given
 
 Initialization registers the first host at the hostname the operator gives, and
-at localhost when the operator gives none; it guesses no name (204, 205a). Every
+at localhost when the operator gives none; it guesses no name (204, 205a). A host
+at localhost serves this computer alone, and init says so: answering from the
+phone (306) is met once the operator gives the host its hostname (204). Every
 link of 308 is written at the host's address with the instance in the path, and
 works whether that address is a localhost port of the operator's computer or a
 name on the operator's private network (308).
@@ -429,7 +432,8 @@ network (46).
 chat. Rejected — publishing an address beyond the private network is the
 operator's choice and never the machinery's (46), and the tailnet name needs no
 such publication. Derive the computer's own `<hostname>.local` when no host is
-given. Rejected — initialization guesses no name (204).
+given. Rejected — initialization guesses no name, and a derived `.local` name
+need not resolve on the operator's network: it does not on a tailnet (204).
 
 ### D11. The page is one bundle, phone-first, rendered from state on every request
 
