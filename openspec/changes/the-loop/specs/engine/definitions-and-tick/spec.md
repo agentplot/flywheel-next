@@ -32,7 +32,16 @@ from the blueprints repository at the shared line, and a type composed only of
 existing predicate and effect atoms SHALL require no code change and no rebuilt
 host (57, 85). An object SHALL record the version of the extensible machine it
 runs under, and a type change SHALL NOT move an object already in flight (57,
-224).
+224). An elaboration or a unit whose type has no definition where it runs SHALL
+take a null default — a type with no stages and no session, under which the
+object moves on — and SHALL NOT stall or break; what a null type delivers is
+open (85a).
+
+#### Scenario: An undefined type takes the null default
+- **WHEN** an elaboration or a unit is approved under a type with no definition
+  on the host that runs it
+- **THEN** it moves on under the null default with no session started, and
+  nothing stalls and nothing is reported broken (85a)
 
 #### Scenario: A type added with no code change
 - **WHEN** the operator commits a new unit type file composed only of existing

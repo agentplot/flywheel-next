@@ -110,7 +110,10 @@ Two sources, one rule each:
   set it ran.
 - The instance's own unit and elaboration types are read from the blueprints
   repository at the shared line, so a type composed of existing atoms is added
-  with no code change and no host is rebuilt for one (57, 85). Packages are
+  with no code change and no host is rebuilt for one (57, 85). An elaboration
+  or a unit whose type has no definition where it runs takes a null default, a
+  type with no stages and no session under which the object moves on, rather
+  than stalling or breaking; what a null type delivers is open (85a). Packages are
   A.28 and phase 3; phase 1 installs none, and the loader reads the type files
   only (228).
 
@@ -246,11 +249,11 @@ host's push webhook to a host's `/hook` is faster and is the operator's choice,
 because it needs an address reachable from outside the private network, and
 publishing one is never the machinery's decision (46, 191). Local causes notify
 immediately and do not wait for the poll: a page response or a chat message in
-process; a session's `flywheel exit`, `note`, `offer` or `refuse` over
-`POST /api/wake` at the page address its work order carries (`FLYWHEEL_PAGE`);
-and, on a host bound to Herdr, an agent going idle, blocked or done, through one
-`herdr agent wait` per live agent (130, S221). Each of these also raises the
-generation every open page listens for on `GET /events` (S221).
+process, and, on a host bound to Herdr, the multiplexer's own events — an agent
+going idle, blocked or done, which is how the loop learns at once of a
+session's report, note, offer or refusal. No session calls an address to wake
+the loop (130, S221). Each of these also raises the generation every open page
+listens for on `GET /events` (S221).
 
 Notification only shortens the wait: a host that is never notified still
 converges by reading (130).
@@ -400,36 +403,33 @@ a single entry, on the operator's private network alone (155), and
 Rejected — 153 is a phase-1 clause, and retrofitting the field would rewrite
 every response already committed.
 
-### D10a. The host's address is its private-network name, not a localhost port
+### D10a. The host's address is the one the operator gives, and localhost when none is given
+
+Initialization registers the first host at the hostname the operator gives, and
+at localhost when the operator gives none; it guesses no name (204, 205a). Every
+link of 308 is written at the host's address with the instance in the path, and
+works whether that address is a localhost port of the operator's computer or a
+name on the operator's private network (308).
 
 The phone is the surface every decision must be answerable on (306), and it
 reaches the page by the link every chat rendering and notification carries (308,
-309). A link to `http://localhost:4242/<instance>/…` opens nothing on a phone, so a
-laptop serving only a localhost port fails 306 and 309 for every decision of the
-willdan week.
-
-Phase 1 therefore binds the host's address (205a) to the private-network router
-191 names — the host's tailnet hostname, `flywheel.yaml hosts.<host>.router:
-{kind: tailnet}` — and the page is served there, on the operator's private
-network as 155 requires. Every link of 308 is written at that address with the
-instance in the path. The localhost port stays available to the operator
-sitting at the laptop, which is what 245 permits rather than requires; it is
-never what a link names.
+309). A link to `http://localhost:4242/<instance>/…` opens nothing on a phone, so
+the willdan week runs on a host given its name on the operator's private
+network: the private-network router 191 names, the host's tailnet hostname,
+`flywheel.yaml hosts.<host>.router: {kind: tailnet}`, with the page served there
+as 155 requires. The localhost port stays available to the operator sitting at
+the laptop (245).
 
 The routers of 191 bind a *place's* services, and phase 1 has no place serving
 anything (D8), so this is the same manifest key doing the other half of its job:
 naming the host on the operator's network. Nothing is published beyond that
 network (46).
 
-When the operator gives `flywheel init` no address, the first host is registered
-at this computer's name on its own network, `http://<hostname>.local`, which a
-phone on that network reaches with no router configured; it is never localhost
-or a port (204, 191, 205a).
-
-*Alternative considered:* keep the localhost port and put a public URL in the
+*Alternatives considered:* keep the localhost port and put a public URL in the
 chat. Rejected — publishing an address beyond the private network is the
 operator's choice and never the machinery's (46), and the tailnet name needs no
-such publication.
+such publication. Derive the computer's own `<hostname>.local` when no host is
+given. Rejected — initialization guesses no name (204).
 
 ### D11. The page is one bundle, phone-first, rendered from state on every request
 
@@ -452,7 +452,7 @@ such publication.
   form; every other kind keeps the form the status view gives it (209), and an
   elaboration is a surface of its own reached from its intent (210).
 - Every chat line, notification and rail line carries a link at the host's
-  address — its private-network name, D10a — with the instance in the path,
+  address (D10a) with the instance in the path,
   opening that object in the dock with its answer controls in reach (308, 205a).
   A link to a host that is away says so rather than failing silently (308,
   150a); with one host there is nothing left to serve that message, so phase 1

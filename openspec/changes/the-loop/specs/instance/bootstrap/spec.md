@@ -36,9 +36,14 @@ advance a half-finished bootstrap (204).
   installation is seen, and no agent performs it (204, 207, 82)
 
 #### Scenario: The first host's address when the operator gives none
-- **WHEN** initialization is run with no address for the first host
-- **THEN** the host is registered at this computer's name on its own network,
-  `http://<name>.local`, and never at localhost or a port (204, 191, 205a)
+- **WHEN** initialization is run with no host given
+- **THEN** the first host is registered at localhost, and no name is derived
+  from the computer or its network (204, 205a)
+
+#### Scenario: The first host's address when the operator gives one
+- **WHEN** initialization is run with a hostname given for the first host
+- **THEN** the first host is registered at that hostname, with the instance in
+  the path of every link written to it (204, 205a)
 
 ### Requirement: A host joins by one command and never by hand
 

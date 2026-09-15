@@ -126,27 +126,30 @@ page submission SHALL be the delivery, recorded once like any response (19).
   beginning and its source, its whole face opening it in the dock, and its
   signal is not a second line (S215, S216)
 
-### Requirement: The page is served at the host's private-network address
+### Requirement: The page is served at the address the host was given
 
-The page SHALL be served on the operator's private network and SHALL work on a
-phone (155). The manifest SHALL name the router per host, and this phase's host
-address SHALL be the private-network router's name for the host (191, 205a). The
-host SHALL have one address with the instance in the path, a link SHALL name
-the instance it opens, and a link SHALL never name a localhost port (205a,
-308). Nothing SHALL be published beyond the operator's private network unless
-the operator says so (46).
+The host's address SHALL be the hostname the operator gave, or localhost when
+none was given, and never a name the machinery derived (204, 205a). The manifest
+SHALL name the router per host (191). The host SHALL have one address with the
+instance in the path, and every link SHALL be written at that address and name
+the instance it opens, whether the address is a localhost port of the
+operator's computer or a name on the operator's private network (205a, 308).
+Served on the private network, the page SHALL work on a phone (155). Nothing
+SHALL be published beyond the operator's private network unless the operator
+says so (46).
 
 #### Scenario: A link from a phone opens the object
-- **WHEN** the operator taps a link carried by a chat rendering or a
-  notification, from a phone on the operator's private network
+- **WHEN** the host was given its name on the operator's private network and the
+  operator taps a link carried by a chat rendering or a notification, from a
+  phone on that network
 - **THEN** the page opens that object in the dock with its answer controls in
   reach (308, 205a, 155)
 
-#### Scenario: The host binds two addresses and no more
+#### Scenario: The host binds what it was given and no more
 - **WHEN** the host is serving
-- **THEN** it is bound to its private-network address and to a localhost port
-  for the operator at the machine, to no other address, and the manifest names
-  no publication (46, 155, 191, 245)
+- **THEN** it is bound to the address it was given and to a localhost port for
+  the operator at the machine, to no other address, and the manifest names no
+  publication (46, 155, 191, 245)
 
 ### Requirement: Every control answers at once, and a key is shown where it presses
 
@@ -201,10 +204,17 @@ The host SHALL raise a generation when its store moved and tell every open page
 over one event stream; the page SHALL fetch itself from the same host and swap
 the regions that differ, keeping the decision in hand, the open dock and where
 each column was scrolled (S221, 310). Every form SHALL be sent the same way, so
-an answer or a capture never navigates (S221). A session's report, note, offer
-or refusal SHALL wake the loop the moment it is written, a host bound to Herdr
-SHALL take an agent's change of state as a cause at once, and the poll SHALL
-stay the floor (S221, 130).
+an answer or a capture never navigates (S221). No session SHALL call an address
+to wake the loop: the loop SHALL listen to the multiplexer's own events, so on a
+host bound to Herdr an agent's change of state, and with it a session's report,
+note, offer or refusal, SHALL be a cause at once; the poll SHALL stay the floor
+(S221, 130).
+
+#### Scenario: A session's report is a cause with no address called
+- **WHEN** a session in a Herdr pane runs `flywheel exit done`
+- **THEN** the loop takes the report up on the agent's change of state before
+  the next poll, and neither the work order nor the session's environment
+  carries an address of the page (S221, 130)
 
 #### Scenario: A capture made elsewhere appears
 - **WHEN** a capture is posted to the host while the page is open with a
