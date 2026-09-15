@@ -97,6 +97,15 @@ kbd{font:11px var(--mono);border:1px solid var(--line);border-bottom-width:2px;b
 .pal-drop{position:absolute;top:calc(100% + 6px);left:-1px;right:-1px;background:var(--surface);border:1px solid var(--line);border-radius:10px;box-shadow:var(--shadow);z-index:40;overflow:hidden;text-align:left;cursor:default}
 .pal-drop .pal-body{max-height:40vh;overflow:auto}
 .pal-drop .pal-foot{display:flex;gap:14px;padding:6px 12px;border-top:1px solid var(--line2);font-size:11.5px;color:var(--ink3)}
+/* What a slash or a number lists, under the line saying what will be sent;
+   at rest the box shows what was sent lately instead (19, S30, S31, S63). */
+.pal-rows{max-height:40vh;overflow:auto;padding:2px 0 6px}
+.pal-rows .pal-row:hover{background:var(--surface2)}
+.pal-rows .pal-row .o{margin-left:auto}
+.pal-will{overflow-wrap:anywhere}
+.pal,.capture{min-width:0;max-width:100%}
+.pal-will[hidden],.pal-rows[hidden],.pal-body[hidden]{display:none}
+@media (max-width:760px){.pal-rows .pal-row .o{display:none}.pal-rows{max-height:none}}
 /* A control that was used says so at once and takes no second press: the
    form goes busy, its controls dim, and a bar runs at the top until the page
    comes back (311). */
@@ -897,8 +906,10 @@ button#yesall[disabled],form.yesall-form:has(> button[disabled]){display:none}
     <input type="text" id="capture-text" name="text" placeholder="Capture what you noticed" autocomplete="off" spellcheck="false">
     <kbd>⌘K</kbd>
     <div class="pal-drop" id="pal-drop" hidden>
+      <div class="pal-will" aria-live="polite" hidden></div>
+      <div class="pal-rows" hidden></div>
       <div class="pal-body">{{SENTLIST}}</div>
-      <div class="pal-foot"><span class="hint"><kbd>↵</kbd> capture</span><span class="hint"><kbd>esc</kbd> close</span></div>
+      <div class="pal-foot"><span class="hint"><kbd>↵</kbd> send</span><span class="hint"><kbd>/</kbd> command</span><span class="hint">a number answers</span><span class="hint"><kbd>↑</kbd><kbd>↓</kbd> move</span><span class="hint"><kbd>esc</kbd> close</span></div>
     </div>
   </form>
   <div class="count"><b id="count">{{COUNT}}</b><span>decisions</span></div>
@@ -944,10 +955,11 @@ button#yesall[disabled],form.yesall-form:has(> button[disabled]){display:none}
   <a class="tab" role="tab" id="tab-decisions" href="#decisions">Decisions<span class="bd" id="bd-plan">{{COUNT}}</span></a>
   <a class="tab" role="tab" id="tab-board" href="#board">Board<span class="bd" id="bd-board">{{OBJECTS}}</span></a>
 </nav>
-<!-- The capture box, which is the mockup's palette: one typed input, captured
-     whole and never a word read out of the text (19, 194). Nothing beside the
-     field is a judgment about the text: a capture becomes work by the `unit`
-     control on the capture itself (34, 12). -->
+<!-- The capture box on a phone, which is the mockup's palette over the page:
+     the same one typed input as the header's, in the same grammar. Plain text
+     is captured whole and never a word read out of it; a leading `/` names a
+     command and a number answers a decision (19, 194, S63). A capture becomes
+     work by the control on the capture itself (34, 12). -->
 <div class="pal-scrim" id="pal-scrim">
   <div class="pal" id="pal" role="dialog" aria-modal="true" aria-label="capture">
     <form class="capture" id="capture-box" method="post" action="/api/tools/capture">
@@ -957,6 +969,8 @@ button#yesall[disabled],form.yesall-form:has(> button[disabled]){display:none}
         <input type="text" id="pal-q" name="text" autocomplete="off" spellcheck="false" placeholder="Capture what you noticed">
         <a class="x" id="pal-close" href="#decisions" aria-label="close">×</a>
       </div>
+      <div class="pal-will" aria-live="polite" hidden></div>
+      <div class="pal-rows" hidden></div>
       <div class="pal-body" id="pal-dyn">{{SENTLIST}}</div>
       <div class="pal-foot">
         <button class="btn pri" type="submit" id="pal-go">capture</button>
@@ -965,6 +979,9 @@ button#yesall[disabled],form.yesall-form:has(> button[disabled]){display:none}
     </form>
   </div>
 </div>
+<!-- The commands a leading `/` lists: the catalogue as this page may invoke
+     it, which the script lists from and never holds as state (193, 310). -->
+{{PALCOMMANDS}}
 <!-- Every response recorded, each one on its own, with who gave it and when
      (153, 154). -->
 <aside class="log" id="log"><h3>Responses sent <span>each one on its own, the moment it was given</span></h3><ol id="loglist">{{LOG}}</ol></aside>
@@ -987,11 +1004,188 @@ button#yesall[disabled],form.yesall-form:has(> button[disabled]){display:none}
   function toast(text){ if(!toasts) return; var d=document.createElement('div'); d.className='toast'; d.textContent=text; toasts.appendChild(d); setTimeout(function(){ d.remove(); }, 2600); }
   function clearHash(){ if(location.hash && location.hash!=='#') location.replace(location.pathname+location.search+'#'); }
 
-  // ---- the capture box: one box, opened under itself while it has the cursor
-  function openBox(){ if(shown(box)){ box.focus(); box.select(); if(drop) drop.hidden=false; } else if(scrim){ scrim.classList.add('open'); if(palq) palq.focus(); } }
+  // ---- the capture box: one box, opened under itself while it has the cursor,
+  // and over the page on a phone
+  function openBox(seed){
+    if(shown(box)){ if(seed!==undefined) box.value=seed; box.focus(); if(seed===undefined) box.select(); if(drop) drop.hidden=false; }
+    else if(scrim){ scrim.classList.add('open'); if(palq){ if(seed!==undefined) palq.value=seed; palq.focus(); } }
+    sel=0; update();
+  }
   function closeBox(){ if(drop) drop.hidden=true; if(box && document.activeElement===box) box.blur(); if(scrim){ scrim.classList.remove('open'); } if(location.hash==='#pal-scrim') clearHash(); }
   function boxOpen(){ return (drop && !drop.hidden) || (scrim && (scrim.classList.contains('open') || location.hash==='#pal-scrim')); }
-  if(box){ box.addEventListener('focus', function(){ if(drop) drop.hidden=false; }); }
+  if(box){ box.addEventListener('focus', function(){ if(drop) drop.hidden=false; update(); }); }
+  [box, palq].forEach(function(f){ if(f) f.addEventListener('input', function(){ sel=0; update(); }); });
+
+  // ---- the palette: the box is one typed input in the chat's grammar (19,
+  // S30, S31, S63). Plain text is a capture, sent as it was typed. A leading
+  // `/` names a command of the catalogue, listed from the page's own template;
+  // a leading number lists that decision's answers off its card, and
+  // `412 yes` or `412: <words>` sends at once. The slash and the number choose
+  // a tool; nothing here reads the words for meaning, and every call is shown
+  // before it is sent, so the send is the confirmation.
+  var COMMANDS=document.querySelector('template.pal-commands');
+  var sel=0, sending=false;
+  function esc(s){ return String(s).replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/"/g,'&quot;'); }
+  function onPhone(){ return !!(scrim && scrim.classList.contains('open')); }
+  function input(){ return onPhone() ? palq : box; }
+  function panel(){ return onPhone() ? document.getElementById('capture-box') : drop; }
+  function grammar(text){
+    var t=text.replace(/^\s+/, '');
+    if(t.charAt(0)==='/'){ var m=/^\/(\S*)(\s*)([\s\S]*)$/.exec(t); return {mode:'command', name:m[1].toLowerCase(), spaced:!!m[2], rest:m[3].replace(/\s+$/, '')}; }
+    var n=/^#?(\d+)\s*(:?)\s*([\s\S]*)$/.exec(t);
+    if(n) return {mode:'number', number:n[1], colon:n[2]===':', rest:n[3].replace(/\s+$/, '')};
+    return {mode:t ? 'text' : 'rest'};
+  }
+  function fuzzy(needle, hay){
+    if(!needle) return 0;
+    var i=0, s=0, last=-1;
+    for(var k=0;k<needle.length;k++){ var found=hay.indexOf(needle.charAt(k), i); if(found<0) return null; s+=(found===last+1)?0:(found-i)+1; last=found; i=found+1; }
+    return s+(hay.indexOf(needle)===0 ? -20 : 0);
+  }
+  function commandRows(g){
+    if(!COMMANDS) return [];
+    var all=Array.prototype.slice.call(COMMANDS.content.querySelectorAll('.pal-row'));
+    if(g.spaced) return all.filter(function(r){ return r.getAttribute('data-tool')===g.name; }).map(function(r){ return r.cloneNode(true); });
+    return all.map(function(r){ var a=fuzzy(g.name, r.getAttribute('data-tool')), b=fuzzy(g.name, r.querySelector('.w').textContent.toLowerCase()); return {r:r, s:a!==null ? a : (b!==null ? b+40 : null)}; })
+      .filter(function(x){ return x.s!==null; })
+      .sort(function(x,y){ return x.s-y.s; })
+      .map(function(x){ return x.r.cloneNode(true); });
+  }
+  // What is in hand: the object the dock has open, else the decision the rail
+  // holds (S219).
+  function inHand(){
+    var open=document.querySelector('.dock .surface[data-opened=true]');
+    var hashed=/^#dock-(.+)$/.exec(location.hash);
+    var object=open && open.id!=='dock-deliverable' ? open.id.replace(/^dock-/, '') : (hashed ? decodeURIComponent(hashed[1]) : null);
+    var card=object ? cards().filter(function(c){ return c.getAttribute('data-object')===object; })[0] : focused();
+    if(!object && card) object=card.getAttribute('data-object');
+    return object ? {object:object, number:card ? card.getAttribute('data-number') : null} : null;
+  }
+  // The one call a command row makes of what is typed after it and what is in
+  // hand; or what is still to be typed, or what it lacks.
+  function callOf(row, g){
+    var tool=row.getAttribute('data-tool'), takes=row.getAttribute('data-takes'), arg=row.getAttribute('data-arg'), arg2=row.getAttribute('data-arg2');
+    var rest=g.spaced ? g.rest : '', hand=inHand(), fields={};
+    if(takes==='words'){
+      if(!rest) return {seed:'/'+tool+' ', said:'type the words after /'+tool};
+      fields[arg]=rest; if(tool==='capture') fields.source='console';
+    } else if(takes==='answer'){
+      var m=/^#?(\d+)\s*:?\s*([\s\S]*)$/.exec(rest);
+      if(!m) return {seed:'/answer ', said:'type the decision’s number, then the answer'};
+      if(!m[2]) return {seed:m[1]+' ', said:'type the answer after '+m[1]};
+      fields.decision=m[1]; fields.answer=m[2];
+    } else if(takes==='decision'){
+      var n=rest.replace(/^#/, '') || (hand && hand.number);
+      if(!n) return {missing:'/'+tool+' needs a decision in hand · j and k walk the rail, or type its number after /'+tool};
+      fields[arg]=n;
+    } else if(takes==='object'){
+      var o=rest || (hand && hand.object);
+      if(!o) return {missing:'/'+tool+' needs something in hand · j and k walk the rail, or type what it acts on after /'+tool};
+      fields[arg]=o;
+    } else if(takes==='object-words'){
+      if(!hand) return {missing:'/'+tool+' needs something in hand · open it, then type the '+arg2};
+      if(!rest) return {seed:'/'+tool+' ', said:'type the '+arg2+' after /'+tool};
+      fields[arg]=hand.object; fields[arg2]=rest;
+    }
+    return {tool:tool, fields:fields};
+  }
+  function shownCall(call){ return call.tool+'('+Object.keys(call.fields).filter(function(k){ return k!=='source'; }).map(function(k){ return call.fields[k]; }).join(', ')+')'; }
+  function cardNumbered(n){ return cards().filter(function(c){ return c.getAttribute('data-number')===String(n); })[0]||null; }
+  function answersOf(card){ return Array.prototype.slice.call(card.querySelectorAll('.answers [data-answer]')); }
+  function labelOf(control){ var t=control.firstChild; return ((t && t.nodeType===3) ? t.textContent : control.textContent).replace(/…\s*$/, '').trim(); }
+  function answerRows(card){
+    var n=card.getAttribute('data-number');
+    return answersOf(card).map(function(control){
+      var said=control.getAttribute('data-answer'), head=said.replace(/\s*:?\s*<[^>]*>\s*/, '');
+      var row=document.createElement('button'); row.type='button'; row.className='pal-row'; row.setAttribute('data-answer', said);
+      row.innerHTML='<span class="c"></span><span class="w"></span><span class="o"></span>';
+      var words=control.getAttribute('title') || labelOf(control);
+      row.querySelector('.c').textContent=n+' '+(head || labelOf(control));
+      row.querySelector('.w').textContent=(words===head) ? '' : words;
+      row.querySelector('.o').textContent=said.indexOf('<')>=0 ? 'then your words' : 'one response';
+      return row;
+    });
+  }
+  // What the box would send as it stands: the line above the rows, and the rows.
+  function read(g){
+    var out={rows:[], said:''};
+    if(g.mode==='text'){ out.said='will send: <b class="send">capture</b> · ↵ sends it'; return out; }
+    if(g.mode==='command'){
+      out.rows=commandRows(g);
+      if(!out.rows.length){ out.said='<b>No command by that name.</b> Delete the slash to capture it as a note.'; return out; }
+      var call=callOf(out.rows[Math.min(sel, out.rows.length-1)], g);
+      out.said=call.tool ? 'will send: <b class="send">'+esc(shownCall(call))+'</b> · ↵ sends it' : esc(call.missing || call.said || '');
+      return out;
+    }
+    if(g.mode==='number'){
+      var card=cardNumbered(g.number);
+      if(!card){ out.said='<b>'+esc(g.number)+'</b> is not on the rail · /capture keeps it as a note'; return out; }
+      if(g.colon){ out.said=g.rest ? 'will send: <b class="send">answer('+esc(g.number)+', “'+esc(g.rest)+'”)</b> · ↵ sends it' : 'type your answer to <b>'+esc(g.number)+'</b> after the colon'; return out; }
+      var rows=answerRows(card);
+      if(g.rest){
+        out.rows=rows.filter(function(r){ return r.getAttribute('data-answer')===g.rest; });
+        out.said=out.rows.length ? 'will send: <b class="send">answer('+esc(g.number)+', '+esc(g.rest)+')</b> · ↵ sends it'
+          : '<b>'+esc(g.number)+'</b> · no “'+esc(g.rest)+'” here · '+answersOf(card).map(function(c){ return esc(labelOf(c)); }).join(' · ');
+        return out;
+      }
+      var title=card.querySelector('.title');
+      out.rows=rows; out.said='<b>'+esc(g.number)+'</b> · '+esc(title ? title.textContent.trim() : '')+' · ↵ sends the one lit';
+    }
+    return out;
+  }
+  function update(){
+    var field=input(), p=panel(); if(!field || !p) return;
+    var will=p.querySelector('.pal-will'), list=p.querySelector('.pal-rows'), body=p.querySelector('.pal-body'), go=p.querySelector('#pal-go');
+    var g=grammar(field.value), now=read(g);
+    sel=Math.max(0, Math.min(sel, now.rows.length-1));
+    if(list){ list.innerHTML=''; now.rows.forEach(function(r, i){ r.classList.toggle('on', i===sel); r.setAttribute('data-row', i); list.appendChild(r); }); list.hidden=!now.rows.length; }
+    if(will){ will.innerHTML=now.said; will.hidden=!now.said; }
+    if(body) body.hidden=g.mode!=='rest';
+    if(go) go.textContent=(g.mode==='text' || g.mode==='rest') ? 'capture' : 'send';
+  }
+  function move(by){
+    var p=panel(), list=p && p.querySelector('.pal-rows'); if(!list || list.hidden || !list.children.length) return false;
+    var n=list.children.length; sel=(sel+by+n)%n; update();
+    var on=list.querySelector('.on'); if(on) on.scrollIntoView({block:'nearest'});
+    return true;
+  }
+  function post(call){
+    sending=true;
+    var form=document.createElement('form'); form.method='post'; form.action='/api/tools/'+call.tool; form.hidden=true; form.setAttribute('data-palette', '');
+    Object.keys(call.fields).forEach(function(name){ var f=document.createElement('input'); f.type='hidden'; f.name=name; f.value=call.fields[name]; form.appendChild(f); });
+    document.body.appendChild(form);
+    var field=input(); closeBox(); if(field) field.value='';
+    if(form.requestSubmit) form.requestSubmit(); else form.submit();
+  }
+  // Send what the box holds, or the row picked. False where the box's own form
+  // posts it as it is: plain text is a capture.
+  function run(at){
+    var field=input(); if(!field) return true;
+    var g=grammar(field.value);
+    if(g.mode==='text') return false;
+    if(g.mode==='rest' || sending) return true;
+    var pick=(at===undefined) ? sel : at;
+    if(g.mode==='command'){
+      var row=commandRows(g)[pick];
+      if(!row){ toast('no command by that name · delete the slash to capture it as a note'); return true; }
+      var call=callOf(row, g);
+      if(call.seed!==undefined){ field.value=call.seed; sel=0; update(); field.focus(); return true; }
+      if(call.missing){ toast(call.missing); return true; }
+      post(call); return true;
+    }
+    var card=cardNumbered(g.number);
+    if(!card){ toast(g.number+' is not on the rail · /capture keeps it as a note'); return true; }
+    if(g.colon){ if(g.rest) post({tool:'answer', fields:{decision:g.number, answer:g.rest}}); return true; }
+    var controls=answersOf(card), control;
+    if(g.rest){
+      control=controls.filter(function(c){ return c.getAttribute('data-answer')===g.rest; })[0];
+      if(!control){ toast(g.number+' · no “'+g.rest+'” here · '+controls.map(labelOf).join(' · ')); return true; }
+    } else control=controls[pick];
+    if(!control) return true;
+    var said=control.getAttribute('data-answer');
+    if(said.indexOf('<')>=0){ field.value=g.number+': '+said.replace(/<[^>]*>\s*$/, ''); sel=0; update(); field.focus(); return true; }
+    closeBox(); field.value=''; control.click(); return true;
+  }
 
   // ---- the dock: Esc closes it whether a link or the request opened it
   function dockOpen(){ return /^#dock-/.test(location.hash) || !!document.querySelector('.dock .surface[data-opened=true]'); }
@@ -1035,6 +1229,7 @@ button#yesall[disabled],form.yesall-form:has(> button[disabled]){display:none}
 
   document.addEventListener('click', function(e){
     var t=e.target; if(!t.closest) return;
+    var row=t.closest('.pal-rows .pal-row'); if(row){ e.preventDefault(); if(!run(+row.getAttribute('data-row'))){ var f=input(); if(f && f.form) f.form.requestSubmit(); } return; }
     if(t.closest('#pal-open-rail,#pal-open-phone')){ e.preventDefault(); openBox(); return; }
     if(t===scrim){ closeBox(); return; }
     if(t.closest('#pal-close,#pal-cancel')){ e.preventDefault(); closeBox(); return; }
@@ -1048,15 +1243,19 @@ button#yesall[disabled],form.yesall-form:has(> button[disabled]){display:none}
     var t=e.target;
     if((e.metaKey||e.ctrlKey)&&(e.key==='k'||e.key==='K')){ e.preventDefault(); boxOpen()?closeBox():openBox(); return; }
     if(e.key==='Escape'){
-      if(boxOpen()){ e.preventDefault(); closeBox(); if(box) box.value=''; return; }
+      if(boxOpen()){ e.preventDefault(); closeBox(); if(box) box.value=''; if(palq) palq.value=''; return; }
       if(typing(t)){ t.blur(); return; }
       if(dockOpen()){ e.preventDefault(); closeDock(); return; }
       if(location.hash==='#log'){ clearHash(); return; }
       return;
     }
+    // While the box is open its list is the one axis and the rail stays put
+    // (S57).
+    if((t===box || t===palq) && (e.key==='ArrowDown' || e.key==='ArrowUp')){ if(move(e.key==='ArrowDown' ? 1 : -1)) e.preventDefault(); return; }
     if(typing(t)||e.metaKey||e.ctrlKey||e.altKey) return;
     var k=e.key;
-    if(k==='/'){ e.preventDefault(); openBox(); return; }
+    // `/` opens the box with the commands already listed (S56).
+    if(k==='/'){ e.preventDefault(); openBox('/'); return; }
     if(k==='j'||k==='ArrowDown'){ e.preventDefault(); focusCard(at+1); return; }
     if(k==='k'||k==='ArrowUp'){ e.preventDefault(); focusCard(at-1); return; }
     if(k==='Enter'||k==='o'){ e.preventDefault(); openFocused(); return; }
@@ -1080,6 +1279,8 @@ button#yesall[disabled],form.yesall-form:has(> button[disabled]){display:none}
     document.body.setAttribute('data-gen', doc.body.getAttribute('data-gen')||'');
     document.querySelectorAll('#rail,#board,#lanes,.lane,#dk-b').forEach(function(el,i){ if(scrolled[i]!==undefined) el.scrollTop=scrolled[i]; });
     if(!(number!==null && focusNumber(number))){ if(litId && document.getElementById(litId)) focusObject(litId); else focusCard(Math.max(0, at), true); }
+    // A number's answers are read off its card, which may just have changed.
+    if(boxOpen()) update();
     return true;
   }
   var refreshing=false, again=false, busy=false;
@@ -1101,6 +1302,9 @@ button#yesall[disabled],form.yesall-form:has(> button[disabled]){display:none}
   function settle(form){ busy=false; if(progress) progress.hidden=true; form.classList.remove('busy'); form.querySelectorAll('button,input[type=submit]').forEach(function(b){ b.disabled=false; }); }
   document.addEventListener('submit', function(e){
     var form=e.target; if(!form || form.tagName!=='FORM') return;
+    // The box posts a capture as it is; a command or a number is the palette's
+    // to send (S63).
+    if((form.id==='pal-open' || form.id==='capture-box') && run()){ e.preventDefault(); return; }
     if(form.classList.contains('busy')){ e.preventDefault(); return; }
     form.classList.add('busy'); busy=true;
     if(progress) progress.hidden=false;

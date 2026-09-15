@@ -23,6 +23,7 @@ use flywheel_atoms::{CommitRef, StateStore, World};
 
 mod asks;
 mod dock;
+mod palette;
 pub use dock::Session;
 use flywheel_domain::signals;
 use flywheel_domain::sinks;
@@ -674,6 +675,7 @@ pub fn render(read: &Read) -> String {
         .replace("{{BOARDH}}", &board_header(read))
         .replace("{{DOCK}}", &dock(read))
         .replace("{{SENTLIST}}", &sent_list(read))
+        .replace("{{PALCOMMANDS}}", &palette::template())
         .replace("{{LOG}}", &log(read))
         .replace("{{TOUR}}", &tour(read))
         .replace("{{TOURHEAD}}", &tour_head(read));

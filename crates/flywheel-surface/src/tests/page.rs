@@ -79,7 +79,7 @@ const HEADER: [(&str, &str); 11] = [
     (
         "pal-drop",
         "the same box opened under itself while it has the cursor: what was sent lately, \
-         and the two keys (19, 311)",
+         what a `/` or a number lists, what will be sent, and the keys (19, 311, S63)",
     ),
     (
         "orgname",
