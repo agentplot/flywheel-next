@@ -1,4 +1,6 @@
-//! The catalogue's one transport in this phase (193, D9).
+//! The catalogue's HTTP transport: the page's routes, and the model context
+//! protocol a member's own client speaks at the instance's address (193, 293,
+//! D9, D18).
 //!
 //! The routes here hold no operation of their own: each one reads or writes
 //! through the same catalogue function the in-process caller uses, so a further
@@ -6,6 +8,7 @@
 
 use crate::catalogue::{self, Call};
 use crate::page;
+use crate::protocol;
 use axum::{
     extract::{Path, Query, State},
     http::StatusCode,
@@ -502,11 +505,87 @@ async fn page_of_instance<S: StateStore + Send + 'static>(
     Path(instance): Path<String>,
     Query(asked): Query<Asked>,
     headers: axum::http::HeaderMap,
-) -> impl IntoResponse {
-    if instance != served.instance() {
-        return wrong_instance(&served, &instance);
+) -> Response {
+    // The same address is the one a member adds to their own client (319). A
+    // client of the protocol may ask it for a stream of what the server would
+    // say unasked; this server says nothing unasked, and says so rather than
+    // handing it the page (D18).
+    if wants_a_stream(&headers) {
+        return (
+            StatusCode::METHOD_NOT_ALLOWED,
+            [(axum::http::header::ALLOW, "POST")],
+        )
+            .into_response();
     }
-    rendered(&served, &headers, None, asked.refused).await
+    if instance != served.instance() {
+        return wrong_instance(&served, &instance).into_response();
+    }
+    rendered(&served, &headers, None, asked.refused).await.into_response()
+}
+
+/// Whether a request asks for an event stream and not for a page.
+fn wants_a_stream(headers: &axum::http::HeaderMap) -> bool {
+    let accept = headers
+        .get(axum::http::header::ACCEPT)
+        .and_then(|v| v.to_str().ok())
+        .unwrap_or_default();
+    accept.contains("text/event-stream") && !accept.contains("text/html")
+}
+
+/// `POST /<instance>` — the catalogue as a remote server of the model context
+/// protocol, at the host's address with the instance in the path, which is the
+/// one address a member adds to their own client (293, 319, 320, D18).
+///
+/// One JSON-RPC message a request, answered in the body; a notification is
+/// accepted with nothing to say. A client is admitted by the rule every caller
+/// is — in this phase, unsigned-in while the operators list holds one entry and
+/// the request reached the host's own address (253a) — and every call it makes
+/// records that entry as who gave it (153, 236a).
+async fn protocol_message<S: StateStore + Send + 'static>(
+    State(served): State<Served<S>>,
+    Path(instance): Path<String>,
+    headers: axum::http::HeaderMap,
+    body: axum::body::Bytes,
+) -> Response {
+    let message: Value = match serde_json::from_slice(&body) {
+        Ok(message) => message,
+        Err(unreadable) => {
+            return (
+                StatusCode::BAD_REQUEST,
+                Json(protocol::error(Value::Null, protocol::PARSE_ERROR, &unreadable.to_string())),
+            )
+                .into_response()
+        }
+    };
+    if instance != served.instance() {
+        let reason = format!(
+            "this host serves the instance `{}`, not `{instance}` (205a)",
+            served.instance()
+        );
+        return (StatusCode::NOT_FOUND, Json(protocol::refused(&message, &reason))).into_response();
+    }
+    if let Err(refused) = served.admits(host_of(&headers)) {
+        return (StatusCode::FORBIDDEN, Json(protocol::refused(&message, &refused))).into_response();
+    }
+    let handled = {
+        let mut store = served.store.lock().await;
+        let mut world = served.world.lock().await;
+        let mut caller = protocol::Caller {
+            store: &mut *store,
+            world: &mut **world,
+            defs: &served.defs,
+            by: served.operator(),
+        };
+        protocol::handle(&mut caller, &message)
+    };
+    // A call from a client is a local cause like a page response (130, D6).
+    if handled.wrote {
+        served.woken.notify_one();
+    }
+    match handled.reply {
+        Some(reply) => (StatusCode::OK, Json(reply)).into_response(),
+        None => StatusCode::ACCEPTED.into_response(),
+    }
 }
 
 /// `GET /<instance>/<object>` — the link `links::to_object` writes, fetched.
@@ -801,8 +880,12 @@ pub fn router<S: StateStore + Send + 'static>(served: Served<S>) -> Router {
         .route("/api/curate", post(curate::<S>))
         // The address every link the machinery writes is built on has the
         // instance in its path, so the link it wrote is a path this router
-        // serves (205a, 308).
-        .route("/:instance", get(page_of_instance::<S>))
+        // serves (205a, 308); and it is the address a member's own client is
+        // added at, which speaks the protocol to it (319, D18).
+        .route(
+            "/:instance",
+            get(page_of_instance::<S>).post(protocol_message::<S>),
+        )
         // A file a session left behind, which the object's surface links to
         // (190, 213). It comes before the catch-all because `deliverable` is a
         // segment of the path and not the head of an object's id.

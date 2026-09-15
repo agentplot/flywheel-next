@@ -6,9 +6,10 @@ use flywheel_surface::testing as world;
 
 use serde_json::{json, Value};
 
-/// The in-process caller and the HTTP caller each enumerate the catalogue, and
-/// they list the same tools with the same schemas — so a further transport adds
-/// a client and not an operation (193).
+/// The in-process caller, the HTTP caller and a member's client over the model
+/// context protocol each enumerate the catalogue, and they list the same tools
+/// with the same schemas — so a further transport adds a client and not an
+/// operation (193, 293).
 #[test]
 fn catalogue_is_identical_across_callers() {
     let sandbox = store::Sandbox::new("catalogue");
@@ -23,6 +24,39 @@ fn catalogue_is_identical_across_callers() {
         in_process, over_http,
         "the HTTP caller enumerated a different catalogue from the in-process caller"
     );
+
+    // The third caller: a client at the instance's own address, which says
+    // hello and then asks what it holds (319, D18).
+    let (status, hello) = page.protocol(json!({
+        "jsonrpc": "2.0", "id": 1, "method": "initialize",
+        "params": {"protocolVersion": "2025-06-18", "capabilities": {}, "clientInfo": {"name": "a client", "version": "1"}}
+    }));
+    assert_eq!(status, 200, "{hello:?}");
+    assert_eq!(hello.expect("a hello back")["result"]["serverInfo"]["name"], json!("flywheel"));
+    let (status, listed) = page.protocol(json!({"jsonrpc": "2.0", "id": 2, "method": "tools/list"}));
+    assert_eq!(status, 200, "{listed:?}");
+    let listed = listed.expect("a listing");
+    let declared = listed["result"]["tools"].as_array().expect("a list of tools");
+    let enumerated = in_process["tools"].as_array().expect("tools is a list");
+    let named = |tools: &[Value], key: &str| -> Vec<Value> { tools.iter().map(|t| t[key].clone()).collect() };
+    assert_eq!(
+        named(declared, "name"),
+        named(enumerated, "name"),
+        "the protocol declared other tools, or in another order"
+    );
+    for (declared, enumerated) in declared.iter().zip(enumerated) {
+        assert_eq!(declared["description"], enumerated["doc"]);
+        let mut properties: Vec<String> = declared["inputSchema"]["properties"]
+            .as_object()
+            .unwrap_or_else(|| panic!("{} declares no input schema", declared["name"]))
+            .keys()
+            .cloned()
+            .collect();
+        let mut args: Vec<String> = serde_json::from_value(enumerated["args"].clone()).expect("args");
+        properties.sort();
+        args.sort();
+        assert_eq!(properties, args, "{} declares other arguments over the protocol", declared["name"]);
+    }
 
     // And it is a catalogue, not an empty list that would make the equality
     // above vacuous.
@@ -104,6 +138,50 @@ fn http_call_writes_the_same_record() {
     );
     assert_eq!(over_http.machine, in_process.machine);
     assert_eq!(over_http.config, in_process.config);
+}
+
+/// A call from a member's client over the protocol is admitted by the rule the
+/// page is, and recorded once: one response record, carrying the tool, the
+/// object, who gave it and when, and nothing more for the same delivery again
+/// (153, 193, 248, 249, 253a, 137).
+#[test]
+fn a_call_over_the_protocol_is_recorded_once() {
+    let sandbox = store::Sandbox::new("protocol-once");
+    let page = caller::Server::start(
+        sandbox.store(),
+        flywheel_domain::set::load().expect("the embedded definitions"),
+        "chuck",
+    );
+    let drop = json!({
+        "jsonrpc": "2.0", "id": 7, "method": "tools/call",
+        "params": {"name": "drop", "arguments": {"object": "unit/atlas/u"}, "_meta": {"flywheel/delivery": "tap-1b2c"}}
+    });
+    let (status, reply) = page.protocol(drop.clone());
+    assert_eq!(status, 200, "{reply:?}");
+    let reply = reply.expect("a call is answered");
+    assert_eq!(reply["id"], json!(7));
+    assert_eq!(reply["result"]["isError"], json!(false), "{reply}");
+    assert_eq!(reply["result"]["structuredContent"]["recorded"], json!(true), "{reply}");
+
+    let (_, again) = page.protocol(drop);
+    assert_eq!(again.expect("answered")["result"]["structuredContent"]["recorded"], json!(false));
+
+    let responses = page.with_store(|store| {
+        flywheel_atoms::Records::list_records(store, &flywheel_atoms::Scope::Machine("response".into()))
+            .expect("a read")
+    });
+    assert_eq!(responses.len(), 1, "one call, delivered twice, is one record: {responses:?}");
+    let record = &responses[0];
+    assert_eq!(record.id, "response/client-tap-1b2c");
+    assert_eq!(record.record.get("tool"), Some(&json!("drop")));
+    assert_eq!(record.record.get("object"), Some(&json!("unit/atlas/u")));
+    assert_eq!(record.record.get("given_by"), Some(&json!("chuck")));
+    assert_eq!(record.record.get("delivery"), Some(&json!("client")));
+    assert!(record.record.contains_key("given_at"));
+
+    // A notification is accepted with nothing to say.
+    let (status, nothing) = page.protocol(json!({"jsonrpc": "2.0", "method": "notifications/initialized"}));
+    assert_eq!((status, nothing), (202, None));
 }
 
 /// A tool the catalogue lacks is refused at the transport with what it was, and

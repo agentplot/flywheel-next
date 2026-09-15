@@ -10,4 +10,5 @@ mod dictation;
 mod discord;
 mod links;
 mod page;
+mod protocol;
 mod signals;

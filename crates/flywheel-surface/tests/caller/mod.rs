@@ -84,6 +84,32 @@ impl Server {
         self.request("POST", path, Some(body))
     }
 
+    /// One message of the model context protocol, sent the way a member's
+    /// client sends it: posted at the instance's own address, accepting a JSON
+    /// reply (319, D18). The status comes back with the reply, which is nothing
+    /// where the protocol owes none.
+    pub fn protocol(&self, message: Value) -> (u16, Option<Value>) {
+        let instance = self.served.instance().to_string();
+        let payload = message.to_string();
+        let mut socket = TcpStream::connect(self.address).expect("the served address");
+        let head = format!(
+            "POST /{instance} HTTP/1.1\r\nHost: {}\r\nConnection: close\r\n\
+             Content-Type: application/json\r\nAccept: application/json, text/event-stream\r\n\
+             Content-Length: {}\r\n\r\n",
+            self.host,
+            payload.len()
+        );
+        socket.write_all(head.as_bytes()).expect("the request");
+        socket.write_all(payload.as_bytes()).expect("the body");
+        let mut answer = String::new();
+        socket.read_to_string(&mut answer).expect("the response");
+        let posted = Posted::read(&answer);
+        let body = posted.body.trim();
+        let reply = (!body.is_empty())
+            .then(|| serde_json::from_str(body).unwrap_or_else(|e| panic!("the reply {body:?}: {e}")));
+        (posted.status, reply)
+    }
+
     /// The page's own controls: a plain form, sent as a form, with no script
     /// running and nothing fetched from anywhere else (310, 311).
     ///

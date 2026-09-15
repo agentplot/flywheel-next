@@ -4,8 +4,10 @@
 //! id. The page's controls, the chat and the machinery's own commands call
 //! these functions and nothing else, so no caller has an operation the others
 //! lack (193). The transport is a transport: this phase serves the catalogue
-//! over HTTP for the page and calls it in-process for the machinery, and both
-//! enumerate the same list from `CATALOGUE` (193; proposal, What must not be
+//! over HTTP for the page, calls it in-process for the machinery, and serves it
+//! at the host's address as a remote server of the model context protocol for
+//! a member's own client (`protocol.rs`), and every one of them enumerates the
+//! same list from `CATALOGUE` (193, 293; proposal, What must not be
 //! foreclosed).
 //!
 //! The names and the argument lists are `profiles/surfaces.yaml` `tools:`
@@ -25,9 +27,36 @@ pub struct Tool {
 }
 
 impl Tool {
-    /// The tool's schema, as either caller serves it.
+    /// The tool's schema, as the in-process and HTTP callers serve it.
     pub fn schema(&self) -> Value {
         json!({"name": self.name, "args": self.args, "doc": self.doc})
+    }
+
+    /// The same tool as the model context protocol declares it to a member's
+    /// client: its name, what it does, and its arguments as the input schema,
+    /// each named as the schema names it (193, 293).
+    pub fn declaration(&self) -> Value {
+        let properties: serde_json::Map<String, Value> = self
+            .args
+            .iter()
+            .map(|arg| (arg.to_string(), argument(arg)))
+            .collect();
+        json!({
+            "name": self.name,
+            "description": self.doc,
+            "inputSchema": {"type": "object", "properties": properties},
+        })
+    }
+}
+
+/// What one argument holds, as an input schema says it: a decision is the
+/// number the register gave it, the curator's moves are a list, and every other
+/// argument is an object id or words (15, 193).
+fn argument(name: &str) -> Value {
+    match name {
+        "decision" => json!({"type": "integer"}),
+        "moves" => json!({"type": "array", "items": {"type": "object"}}),
+        _ => json!({"type": "string"}),
     }
 }
 
@@ -172,9 +201,9 @@ pub fn tool(name: &str) -> Option<&'static Tool> {
     CATALOGUE.iter().find(|t| t.name == name)
 }
 
-/// The enumeration both callers serve. The in-process caller reads this value
-/// and the HTTP route writes this value, so a further transport adds a client
-/// and not an operation (193).
+/// The enumeration every caller serves. The in-process caller reads this value,
+/// the HTTP route writes it, and the protocol declares the same tools from the
+/// same list, so a further transport adds a client and not an operation (193).
 pub fn enumerate() -> Value {
     json!({"tools": CATALOGUE.iter().map(Tool::schema).collect::<Vec<_>>()})
 }

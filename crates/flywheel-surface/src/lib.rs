@@ -4,8 +4,10 @@
 //! operation the operator may invoke is one tool with a schema naming its
 //! arguments by object id, and the page, the chat and the machinery's own
 //! commands call the same functions. The transport is a transport — this phase
-//! serves the catalogue over HTTP for the page and calls it in-process for the
-//! machinery — and never a second write path (193, D9).
+//! serves the catalogue over HTTP for the page, calls it in-process for the
+//! machinery, and serves it as a remote server of the model context protocol
+//! for a member's own client — and never a second write path (193, 293, D9,
+//! D18).
 //!
 //! Everything here is written over `StateStore` and the commands of
 //! `flywheel-domain`, so it holds no store of its own and reaches no field of
@@ -18,6 +20,7 @@ pub mod http;
 pub mod links;
 pub mod markdown;
 pub mod page;
+pub mod protocol;
 
 pub use catalogue::{catalogue, enumerate, tool, Tool, CATALOGUE};
 
