@@ -148,8 +148,16 @@ pub fn surface(read: &Read, opened: bool) -> String {
     }
     out.push_str("</div>\n<div class=\"dk-b\">\n");
     // Where the operator is the curation session, its moves are made here too
-    // (93b).
-    if read.curation.is_some() {
+    // (93b); where an agent runs it, the tray shows it working and asks nothing
+    // (S225).
+    let operator_runs = read.curation.as_ref().is_some_and(|session| {
+        read.objects
+            .iter()
+            .find(|o| o.id == format!("fact/session/{session}"))
+            .and_then(|fact| fact.record.get("runner").and_then(|v| v.as_str()))
+            .is_none_or(|runner| runner == "operator")
+    });
+    if operator_runs {
         out.push_str(&curator(read));
     }
     if waiting.is_empty() {
