@@ -166,7 +166,19 @@ that check SHALL be refused there by `record_offers` with `refuses: <entry>`,
 so it holds no session and nothing is made of it (60, 62; sessions.yaml
 `commands.offer`, `record-derived.yaml`). The command SHALL find the session's
 object from the session id alone, as the longest prefix of the id on record,
-and nothing SHALL be read from `--about` (sessions.yaml `commands.offer`).
+and nothing SHALL be read from `--about` (sessions.yaml `commands.offer`). An
+offer of kind signal, which a session makes when what it saw is about neither
+its intent nor its bolt, SHALL be recorded by the path a finding with nothing
+above the session takes, wherever the session stands, and SHALL NOT be a
+proposal on its thread (58, 62). Every offer's entry SHALL name the place's
+revision at the offer, and an offer whose document that revision does not hold
+SHALL be refused on the session's thread naming the path, exit 1 and never be
+pending; a unit made of a finding or a chore SHALL keep the document's path and
+that revision (62; sessions.yaml `commands.offer`, `unit.yaml` record). A
+chore's session SHALL be handed the document as its job in its work order, read
+at the yes from the offering session's repository at that revision (62, 89;
+chore@2 `params.job`, host.yaml `prepare_place`). A chore whose offering place
+was removed without merging before the yes SHALL be withdrawn (62).
 
 #### Scenario: A curation session's finding reaches its exit
 - **WHEN** a curation session offers a finding and exits done
@@ -186,6 +198,28 @@ and nothing SHALL be read from `--about` (sessions.yaml `commands.offer`).
   no capture or signal is written, and the rail shows it in one decision headed
   by the repository's name with its other proposed shared-line chores (60, 62,
   S231)
+
+#### Scenario: A signal offered under a bolt is a signal
+- **WHEN** a session working under a bolt offers a signal
+- **THEN** a signal is written as for a finding with nothing above the session,
+  no unit is made on the bolt, and the session reaches its exit (58, 62)
+
+#### Scenario: An offer of a document not committed is refused
+- **WHEN** a session offers a document its place's head does not hold
+- **THEN** the command exits 1, the refusal on the session's thread names the
+  path, and nothing is pending (62)
+
+#### Scenario: A chore's session reads the chore in its order
+- **WHEN** the operator says yes to a flywheel-next chore a curation session
+  offered from its place on the blueprints
+- **THEN** the chore's work order carries the document's text as it stood at the
+  offer's revision, and the session on flywheel-next's shared line needs nothing
+  from the curation session's place (62, 89)
+
+#### Scenario: A chore offered from a place removed unmerged is withdrawn
+- **WHEN** the place a chore was offered from is removed without merging before
+  the operator answers the chore
+- **THEN** the chore is withdrawn and its decision leaves the rail (62)
 
 #### Scenario: A chore of the blueprints stands under the instance
 - **WHEN** a session under no bolt offers a chore with `--scope blueprints`

@@ -323,12 +323,20 @@ The rail's list of what finished SHALL be titled in words that say what it holds
 "Recently done", and never "since" (S9). It SHALL hold today's entries, or the
 last twenty when today holds fewer, and what falls off it SHALL stay on record
 (S9). A capture SHALL enter it as captured, dated when the capture was put and
-reading its words (S224, S9).
+reading its words (S224, S9). A line for an object named by its id — a merged
+or dropped unit, a landed bolt — SHALL carry its repository greyed before the
+name, as a slip and a chores card's title do, and a capture or signal SHALL
+read as its own words (S9, S14, S231).
 
 #### Scenario: A note enters Recently done
 - **WHEN** the operator types a note on the page
 - **THEN** the newest entry under "Recently done" reads captured with the note's
   first words, dated when the capture was put (S224, S9)
+
+#### Scenario: Two shared lines' chores read apart
+- **WHEN** flywheel-next's `chore-1` and the blueprints' `chore-1` both merge
+- **THEN** Recently done reads "flywheel-next · chore-1" and "blueprints ·
+  chore-1" (S9)
 
 #### Scenario: A quiet day
 - **WHEN** twenty-five things finished yesterday and none today
@@ -339,7 +347,12 @@ reading its words (S224, S9).
 
 Any fold of proposed chores, a bolt's or a repository's shared line's, SHALL be
 one decision of kind chores, headed "<repository or bolt> · N chores", subtitled
-with the session that offered them, and answered yes or drop (11, S231). The
+with the session that offered them, its chores listed as lettered rows (11,
+S231). Yes and drop SHALL answer every row still standing, and when the fold
+holds more than one chore each row SHALL carry its own drop, since each row is
+the chore's own decision; a row dropped first SHALL be out of the fold before
+the yes, a letter SHALL stay with its chore, and no chore SHALL be answered by
+`pick` (11, 60, S232). The
 unit's page SHALL list every chore of the fold by its document and SHALL show a
 bolt only when a bolt stands above it (S231, S28). A proposed chore on no ledger
 SHALL be a slip naming its repository before its name, so two shared lines'
@@ -354,6 +367,12 @@ per repository, and never as a bolt (S15, 60).
   two and one headed blueprints with a count of one, each naming the session
   that offered it and answering yes or drop, and the storefront unit's page
   lists both documents and shows no bolt (S231)
+
+#### Scenario: Some chores of a fold
+- **WHEN** a storefront fold holds three chores and the operator presses drop on
+  its second row, then yes on the card
+- **THEN** the second chore is dropped, the first and third are accepted, and
+  the remaining rows kept their letters a and c (S232)
 
 #### Scenario: Slips read apart by repository
 - **WHEN** storefront and the blueprints each hold a proposed `chore-1` on no

@@ -104,7 +104,10 @@ the type, and the machinery's own sessions, curation among them, SHALL be the
 operator's under the same rule (93b, 25, 110). A session SHALL be given one job,
 one place and a bounded goal, and its only outputs to the machinery SHALL be the
 fixed exits — done with deliverables, blocked on a question, offering a finding,
-offering a chore, stalled — with anything else refused (65, 66).
+offering a chore, stalled — with anything else refused (65, 66). Every session's
+work order SHALL give, under how to report, the exact command for each of its
+exits and for an offer, with everything the command reads filled in, and the
+ask's command only where the ask is granted (67, 89, 116).
 
 #### Scenario: An approved elaboration is the operator's to run
 - **WHEN** an elaboration is approved on a host whose manifest names the
@@ -113,6 +116,13 @@ offering a chore, stalled — with anything else refused (65, 66).
   names its place and work order, the rail shows it as the operator's to run, no
   agent process is started, and the session reads present and working until the
   operator reports (93b, 89)
+
+#### Scenario: Every work order gives the offer command
+- **WHEN** a work order is rendered for a session under a bolt and for a
+  curation session
+- **THEN** each carries the exact `flywheel offer` command beside its exits with
+  the session, the state and the manifest filled in, and only the curation
+  session's carries `flywheel ask` (67, 89, 116)
 
 #### Scenario: The operator's exit is a session's exit
 - **WHEN** the operator runs the exit command with deliverables for that session

@@ -592,8 +592,17 @@ with the repository and the words (S28, S9).
 
 A session's offer is a source event too, when nothing above the session takes
 it. Every offer is recorded on the pass that finds it, so none holds a session
-from its exit (62). A finding offered under neither an intent nor a bolt — a
-curation session's, a capture reader's — is a signal: the next of the capture
+from its exit (62). `flywheel offer finding|chore|signal` writes one entry
+naming the kind, the document, what it is about, its scope and the place's head
+at the offer, which must hold the document or the command refuses on the thread
+naming the path (62, 67; sessions.yaml `commands.offer`). Every session's work
+order gives that command under how to report beside its exits, everything it
+reads filled in, and the ask's command only where the ask is granted (67, 89,
+116). A finding offered under neither an intent nor a bolt — a curation
+session's, a capture reader's — is a signal, and so is an offer of kind
+`signal`, which a session makes when what it saw is about neither its intent
+nor its bolt, wherever the session stands and never as a proposal on its
+thread (58, 62). Either is the next of the capture
 the session was reading, or else the one signal of a capture of its own, source
 `offer`, keyed `offer/<session>/<entry>`, captured by the session at the
 offer's moment, its raw material the document, both written under
@@ -621,10 +630,21 @@ one that reached the thread without that check is refused there by
 `record_offers` with `refuses: <entry>`, so it holds no session and nothing is
 made of it (sessions.yaml `commands.offer`, `record-derived.yaml`). Nothing is
 read from `--about`, which says what the chore concerns and not where its fix
-lands. On the rail any fold of proposed chores, a bolt's or a repository's, is
-one card headed by its name and count and the session that offered them,
-answered yes or drop, and a proposed chore on no ledger is a slip naming its
-repository (11, S231, S14).
+lands. The unit keeps the document's path and the offer's revision, and a
+chore's session is handed the document as its job, read at the yes from the
+offering session's repository at that revision, since a chore has no change
+directory and a session on another repository's line cannot reach the offering
+place; a chore whose offering place was removed without merging before the yes
+is withdrawn (62, 89; chore@2 `params.job`, host.yaml `prepare_place`). On the
+rail any fold of proposed chores, a bolt's or a repository's, is one card headed
+by its name and count and the session that offered them, its chores lettered
+rows. Yes and drop answer what stands, each row carries its own drop when the
+fold holds more than one, and in chat a row is named by the fold's number and
+its letter, `drop 415b`, taking any answer the fold takes: each chore is a unit
+with a decision of its own and the fold is how the rail shows them, so there is
+no `pick` (11, S231, S232). A proposed chore on no ledger is a slip naming its
+repository, and a line under Recently done for an object named by its id names
+its repository the same way (S14, S9).
 
 The pull-request and issue-tracker adapters of 215 read the git host's issues and
 reviews, which C.2 forbids the machinery doing; they belong to the tracker
