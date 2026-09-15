@@ -115,7 +115,7 @@ pub fn title(read: &Read, object: &Object) -> String {
             let (capture, signal) = capture_and_signal(read, object);
             let said = signal
                 .and_then(flywheel_domain::signals::text_of)
-                .or_else(|| capture.and_then(|c| field(c, "raw").map(String::from)))
+                .or_else(|| capture.and_then(|c| field(c, "raw").map(super::pointed)))
                 .unwrap_or_else(|| name_of(&object.id).to_string());
             format!("“{}”", super::clipped(&said))
         }

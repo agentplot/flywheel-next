@@ -1055,6 +1055,12 @@ fn a_capture_being_read_carries_the_readers_chip() {
         .find(|quote| quote.contains(&format!("<q><a href=\"#dock-{id}\">")))
         .unwrap_or_else(|| panic!("no quote for the capture: {html}"));
     assert!(quote.contains(chip), "the capture being read carries no reader's chip: {quote}");
+    // It is called by the file it points at, wherever it is named.
+    let file = "2026-09-03-viewpoint-sds-connector-design.txt";
+    assert!(quote.contains(&format!("<q><a href=\"#dock-{id}\">{file}</a></q>")), "the quote names no file: {quote}");
+    assert!(html.contains(&format!("href=\"#dock-{id}\">{file}</a>")), "Recently done names no file");
+    assert!(html.contains(&format!("“{file}”")), "the capture's page names no file");
+    assert!(!html.contains(">folder-drops-5f1d2c3b4a596877<"), "the capture is named by its id");
 
     let mut capture = Records::get(&store, id).expect("a read").expect("the capture");
     capture.config.retain(|region, _| !region.starts_with("reading."));

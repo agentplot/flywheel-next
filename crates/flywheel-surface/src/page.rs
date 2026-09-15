@@ -1567,7 +1567,8 @@ fn since(read: &Read) -> String {
                 .objects
                 .iter()
                 .find(|o| o.machine == "signal" && o.parent.as_deref() == Some(object.id.as_str()))
-                .and_then(signals::text_of),
+                .and_then(signals::text_of)
+                .or_else(|| object.record.get("raw").and_then(|v| v.as_str()).map(pointed)),
             _ => None,
         };
         // An object named by its id says which repository it is in, greyed, as
@@ -2572,12 +2573,6 @@ fn slip(read: &Read, row: &status::Row, lane: &[&status::Row]) -> String {
 /// 116). Where it carries neither, its id stands in.
 fn quote(read: &Read, row: &status::Row) -> String {
     let record = read.objects.iter().find(|o| o.id == row.object).map(|o| &o.record);
-    // A capture with no words of its own points at its material, and a path is
-    // named by its file (111).
-    let pointed = |raw: &str| match raw.starts_with('/') {
-        true => raw.rsplit('/').next().unwrap_or(raw).to_string(),
-        false => raw.to_string(),
-    };
     let said = record
         .and_then(|r| {
             r.get("assertion")
@@ -2628,6 +2623,15 @@ fn quote(read: &Read, row: &status::Row) -> String {
         object = escape(&row.object),
         said = escape(&said),
     )
+}
+
+/// What a capture with no words of its own is called: the material it points
+/// at, and a path by its file (111).
+pub(crate) fn pointed(raw: &str) -> String {
+    match raw.starts_with('/') {
+        true => raw.rsplit('/').next().unwrap_or(raw).to_string(),
+        false => raw.to_string(),
+    }
 }
 
 /// The chip a capture carries while its reader reads it, as a session's chip
