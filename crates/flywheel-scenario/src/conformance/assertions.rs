@@ -261,11 +261,7 @@ pub fn check(scenario: &Scenario, run: &Run, suite: &Suite) -> Vec<Failure> {
             }
         }
         if let Some(n) = want.count {
-            // `count` is the rail's own count, the one the console prints: the
-            // decisions a person works through. A line under attention is not
-            // one of them, which is what lets X05 say
-            // `present: [uncovered], count: 0` (15, 82, 149).
-            let counted = standing.iter().filter(|d| d.group != "attention").count();
+            let counted = rail_count(&standing, &want.present);
             if counted != n {
                 failures.push(Failure {
                     clause: "decisions".into(),
@@ -593,6 +589,29 @@ pub fn check(scenario: &Scenario, run: &Run, suite: &Suite) -> Vec<Failure> {
 
 /// The binding the run's profile stands for, folded with everything it
 /// inherits. A profile the set does not carry has none.
+/// What a `decisions:` clause's `count` counts (D15.13).
+///
+/// It counts the decisions of the kinds `present:` names and says nothing
+/// about the others, so S8 can count its two proposed intents while the open
+/// intent's new material stands beside them as its own proposal (21). It
+/// counts on the rail alone: a line under attention is not a decision a
+/// person works through, and a clause naming only attention kinds, or none,
+/// counts the whole rail — which is what lets X05 say
+/// `present: [uncovered], count: 0` (15, 82, 149).
+pub fn rail_count(standing: &[crate::runner::DecisionRecord], present: &[String]) -> usize {
+    let on_the_rail: Vec<&crate::runner::DecisionRecord> =
+        standing.iter().filter(|d| d.group != "attention").collect();
+    let named: Vec<&str> = present
+        .iter()
+        .map(String::as_str)
+        .filter(|kind| on_the_rail.iter().any(|d| d.kind == *kind))
+        .collect();
+    match named.is_empty() {
+        true => on_the_rail.len(),
+        false => on_the_rail.iter().filter(|d| named.contains(&d.kind.as_str())).count(),
+    }
+}
+
 fn bound(run: &Run) -> Option<flywheel_domain::profile::Binding> {
     flywheel_domain::profile::bind(&flywheel_domain::profile::Embedded, run.profile).ok()
 }

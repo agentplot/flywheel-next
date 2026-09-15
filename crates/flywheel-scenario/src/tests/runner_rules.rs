@@ -332,3 +332,36 @@ fn the_registry_is_not_a_scenario() {
         "and the scenarios are still found"
     );
 }
+
+/// `count` counts the kinds `present:` names, on the rail, and the whole rail
+/// when it names none there (D15.13).
+#[test]
+fn a_count_counts_the_kinds_present_names() {
+    let decision = |kind: &str, group: &str| crate::runner::DecisionRecord {
+        id: format!("x/{kind}"),
+        object: "x".into(),
+        kind: kind.into(),
+        group: group.into(),
+        number: None,
+    };
+    let kinds = |names: &[&str]| names.iter().map(|s| s.to_string()).collect::<Vec<_>>();
+
+    // S8: two proposed intents, and the open intent's material proposed beside
+    // them; the clause is about the intents.
+    let s8 = vec![
+        decision("intent-proposed", "approve"),
+        decision("intent-proposed", "approve"),
+        decision("elaboration-proposed", "approve"),
+    ];
+    assert_eq!(assertions::rail_count(&s8, &kinds(&["intent-proposed", "intent-proposed"])), 2);
+    assert_eq!(assertions::rail_count(&s8, &[]), 3, "with no kind named it is the whole rail");
+
+    // X05: a line under attention is on no rail, and naming it counts the rail.
+    let x05 = vec![decision("uncovered", "attention")];
+    assert_eq!(assertions::rail_count(&x05, &kinds(&["uncovered"])), 0);
+
+    // present-receive: the unapplicable response is attention, and the lamp
+    // still waiting is the rail's one.
+    let receive = vec![decision("response-unapplicable", "attention"), decision("lamp-off", "decide")];
+    assert_eq!(assertions::rail_count(&receive, &kinds(&["response-unapplicable"])), 1);
+}
