@@ -470,7 +470,7 @@ pub fn read<S: StateStore, W: World + ?Sized>(
     let unmoved = signals::unmoved(&files);
     let moves: BTreeMap<String, signals::Move> =
         signals::moves(&files).into_iter().map(|moved| (moved.signal.clone(), moved)).collect();
-    let signal_words: BTreeMap<String, String> = signals::signals_in(&files)
+    let signal_words: BTreeMap<String, String> = signals::all_signals_from(&files)
         .into_iter()
         .filter_map(|signal| {
             let said = match signal.assertion.trim().is_empty() {

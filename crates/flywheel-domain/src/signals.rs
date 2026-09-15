@@ -576,7 +576,7 @@ fn key_of<R: Reads + ?Sized>(files: &R, object: &str) -> String {
 /// Every signal with no standing move: what curation sees, and what the status
 /// view counts and ages by source (107, 118).
 pub fn unmoved<R: Reads + ?Sized>(files: &R) -> Vec<Signal> {
-    signals_in(files)
+    all_signals_from(files)
         .into_iter()
         .filter(|signal| {
             !files
@@ -585,30 +585,6 @@ pub fn unmoved<R: Reads + ?Sized>(files: &R) -> Vec<Signal> {
                 .is_some_and(|m| !m.target.is_empty())
         })
         .collect()
-}
-
-/// Every signal the material holds, moved or not, in the order a person counts
-/// them — what names a thing made from a signal the store keeps no record of.
-pub fn signals_in<R: Reads + ?Sized>(files: &R) -> Vec<Signal> {
-    let mut out = Vec::new();
-    let mut paths = files.list(&format!("{UNDER}/"));
-    in_order(&mut paths);
-    for path in paths {
-        let rest = path.trim_start_matches(&format!("{UNDER}/")).to_string();
-        if RESERVED.contains(&rest.split('/').next().unwrap_or_default()) {
-            continue;
-        }
-        let Some(text) = files.read(&path) else {
-            continue;
-        };
-        let Some(record) = rec::parse(&text).first().map(Signal::from_record) else {
-            continue;
-        };
-        if !record.id.is_empty() {
-            out.push(record);
-        }
-    }
-    out
 }
 
 /// Paths in the order a person counts them: by directory, then by the number a
@@ -1232,11 +1208,12 @@ pub fn captures_from<R: Reads + ?Sized>(files: &R) -> Vec<Capture> {
     out
 }
 
-/// Every signal record the material holds, read through `Reads`.
+/// Every signal record the material holds, read through `Reads`, in the order
+/// a person counts them.
 pub fn all_signals_from<R: Reads + ?Sized>(files: &R) -> Vec<Signal> {
     let mut out = Vec::new();
     let mut paths = files.list(&format!("{UNDER}/"));
-    paths.sort();
+    in_order(&mut paths);
     for path in paths {
         let rest = path.trim_start_matches(&format!("{UNDER}/")).to_string();
         if RESERVED.contains(&rest.split('/').next().unwrap_or_default()) {
