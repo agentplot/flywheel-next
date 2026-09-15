@@ -192,11 +192,11 @@ impl Bootstrap {
                 workspace: "recorded".into(),
                 sessions: "operator".into(),
                 covers: vec![],
-                // This host's one address, as the operator gave it: its name
-                // on their private network, never a localhost port, so a link
-                // a delivery carries opens on a phone (191, 205a, D10a).
+                // This host's one address with its page's port: the name the
+                // operator gave it on their private network, or localhost
+                // when it serves this computer alone (191, 205a, D10a).
                 router: Some(router),
-                localhost_port: 4242,
+                localhost_port: crate::manifest::LOCALHOST_PORT,
                 // What the first host is until the operator says otherwise: a
                 // laptop, running four sessions at once (31, 150a).
                 bound: 4,

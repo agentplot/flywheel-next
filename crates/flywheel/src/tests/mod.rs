@@ -4,6 +4,7 @@
 
 mod boundaries;
 mod console;
+mod init;
 mod render_order;
 mod report;
 mod seeding;

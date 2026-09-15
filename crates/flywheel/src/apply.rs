@@ -149,7 +149,7 @@ pub fn make_instance(
         // into the process's own environment, which is one table for the whole
         // process (207a).
         app_key: Some("the operator placed this".into()),
-        address: format!("http://{host}.local"),
+        address: Some(format!("http://{host}.local")),
         manifest: instance.manifest.clone(),
         // The repositories the scenario names, tracked by the instance before
         // anything is seeded into it. A seed that put an object naming a

@@ -89,10 +89,11 @@ enum Cmd {
         /// The environment variable the operator put the App's key in.
         #[arg(long, default_value = "FLYWHEEL_APP_KEY")]
         app_key_from: String,
-        /// This host's one address: what this computer is called on the
-        /// operator's private network, never a localhost port, because every
-        /// link a delivery carries is written at it. Left out, it is this
-        /// computer's own name with `.local` (191, 205a, D10a).
+        /// This host's name on the operator's private network — its `.local`
+        /// name or its tailnet name — recorded with the page's port, so a link
+        /// in the chat opens on a phone. Left out, the host is registered at
+        /// localhost and serves this computer alone; init guesses no name
+        /// (191, 205a, 306, D10a).
         #[arg(long)]
         address: Option<String>,
         /// Where the manifest is written.
@@ -469,7 +470,7 @@ async fn main() -> Result<()> {
                 // The command line reads it from where the operator placed it
                 // (207a).
                 app_key: None,
-                address: address.clone().unwrap_or_else(own_address),
+                address: address.clone(),
                 manifest: manifest.clone(),
                 repositories: repositories.clone(),
                 // What curation is charged on is the manifest's; a first run
@@ -1003,18 +1004,4 @@ async fn main() -> Result<()> {
         }
     }
     Ok(())
-}
-
-/// This computer's name on its own network, as `http://<name>.local`: what a
-/// host is called when the operator gives no address. It is never a localhost
-/// port, which a host refuses (191, 205a, D10a).
-fn own_address() -> String {
-    let name = std::process::Command::new("hostname")
-        .arg("-s")
-        .output()
-        .ok()
-        .map(|o| String::from_utf8_lossy(&o.stdout).trim().to_string())
-        .filter(|s| !s.is_empty())
-        .unwrap_or_else(|| "this-computer".into());
-    format!("http://{name}.local")
 }

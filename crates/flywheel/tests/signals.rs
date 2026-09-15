@@ -51,7 +51,7 @@ impl Instance {
             app: "12345".into(),
             app_key_from: key_from.clone(),
             app_key: Some("the operator placed this".into()),
-            address: "http://laptop.example".into(),
+            address: Some("http://laptop.example".into()),
             manifest: dir.join("flywheel.yaml"),
             repositories: vec![],
         curation: None,

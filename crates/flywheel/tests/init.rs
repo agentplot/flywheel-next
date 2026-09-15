@@ -40,7 +40,7 @@ impl Sandbox {
             app: "12345".into(),
             app_key_from: self.key_from.clone(),
             app_key: self.placed.clone(),
-            address: "http://laptop.example".into(),
+            address: Some("http://laptop.example".into()),
             manifest: self.dir.join("flywheel.yaml"),
             repositories: vec![],
             curation: None,
@@ -108,6 +108,75 @@ fn init_twice_writes_nothing() {
         manifest,
         std::fs::read_to_string(sandbox.dir.join("flywheel.yaml")).unwrap(),
         "and writes nothing"
+    );
+}
+
+/// The router base the manifest holds for the sandbox's host.
+fn base_of(sandbox: &Sandbox) -> Option<String> {
+    let manifest = flywheel_world_host::Manifest::read(&sandbox.dir.join("flywheel.yaml")).unwrap();
+    manifest.hosts.get("mac-mini")?.router.as_ref().map(|r| r.base.clone())
+}
+
+/// Given no hostname, the first host is registered at localhost at its page's
+/// port and init says it serves this computer alone; no name is derived from
+/// the computer or its network. The same init given the name later moves the
+/// host there (204, 205a, 306, D10a).
+#[test]
+fn init_with_no_host_registers_localhost_and_says_so() {
+    let mut sandbox = Sandbox::new("localhost");
+    sandbox.place_the_key();
+    let mut ask = sandbox.ask();
+    ask.address = None;
+    let report = init::run(ask).expect("init runs");
+    assert_eq!(report.state, "hosted", "{report:?}");
+    assert_eq!(base_of(&sandbox).as_deref(), Some("http://localhost:4242"));
+    assert!(
+        report
+            .lines
+            .iter()
+            .any(|l| l.contains("http://localhost:4242") && l.contains("serves this computer alone")),
+        "init says the host serves this computer alone: {report:?}"
+    );
+
+    let mut named = sandbox.ask();
+    named.address = Some("mac-mini.tailnet.example".into());
+    let report = init::run(named).expect("init runs again with the name");
+    assert_eq!(base_of(&sandbox).as_deref(), Some("http://mac-mini.tailnet.example:4242"));
+    assert!(
+        !report.lines.iter().any(|l| l.contains("serves this computer alone")),
+        "a host given its name is not said to serve this computer alone: {report:?}"
+    );
+}
+
+/// Given a hostname, the first host is registered at it and the port its page
+/// is served on, and a link written at that address names the instance; a run
+/// given no name afterwards takes nothing back (204, 205a, 308).
+#[test]
+fn init_registers_the_hostname_given() {
+    let mut sandbox = Sandbox::new("hostname");
+    sandbox.place_the_key();
+    let mut ask = sandbox.ask();
+    ask.address = Some("mac-mini.tailnet.example".into());
+    let report = init::run(ask).expect("init runs");
+    assert_eq!(report.state, "hosted", "{report:?}");
+    assert_eq!(base_of(&sandbox).as_deref(), Some("http://mac-mini.tailnet.example:4242"));
+    assert!(
+        report.lines.iter().any(|l| l == "host mac-mini at http://mac-mini.tailnet.example:4242"),
+        "{report:?}"
+    );
+
+    let mut unnamed = sandbox.ask();
+    unnamed.address = None;
+    init::run(unnamed).expect("init runs again with no name");
+    assert_eq!(base_of(&sandbox).as_deref(), Some("http://mac-mini.tailnet.example:4242"));
+
+    let world = flywheel_world_host::HostWorld::open(
+        flywheel_world_host::Manifest::read(&sandbox.dir.join("flywheel.yaml")).unwrap(),
+        "mac-mini",
+    );
+    assert_eq!(
+        world.map(|w| w.address_of("mac-mini").unwrap()).ok().as_deref(),
+        Some("http://mac-mini.tailnet.example:4242/willdan")
     );
 }
 

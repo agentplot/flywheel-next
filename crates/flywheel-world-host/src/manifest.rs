@@ -70,8 +70,12 @@ pub struct Host {
     pub presents: Vec<String>,
 }
 
+/// The port a host's page is served on for the operator at the machine when
+/// the manifest names no other (245).
+pub const LOCALHOST_PORT: u16 = 4242;
+
 fn localhost_port() -> u16 {
-    4242
+    LOCALHOST_PORT
 }
 
 fn four() -> u32 {

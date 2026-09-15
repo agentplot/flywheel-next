@@ -16,7 +16,7 @@ pub fn is_localhost(base: &str) -> bool {
 
 /// Whether an address names its port: `http://localhost:4242` does,
 /// `http://localhost` and `http://[::1]` do not.
-fn names_a_port(base: &str) -> bool {
+pub fn names_a_port(base: &str) -> bool {
     let rest = base.split_once("//").map(|(_, r)| r).unwrap_or(base);
     let authority = rest.split('/').next().unwrap_or_default();
     let after_ipv6 = authority.rsplit_once(']').map(|(_, r)| r).unwrap_or(authority);

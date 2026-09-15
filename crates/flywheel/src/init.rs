@@ -29,10 +29,12 @@ pub struct Init {
     /// operator put it. With none it is read from the environment the manifest
     /// names, which is what the command line does (207, 207a).
     pub app_key: Option<String>,
-    /// This host's one address: its name on the operator's private network,
-    /// never a localhost port, because every link a delivery carries is
-    /// written at it (191, 205a, D10a).
-    pub address: String,
+    /// The name the operator gave this host on their private network, if they
+    /// gave one. Given none, the first host is registered at localhost and
+    /// serves this computer alone; init guesses no name, since a derived
+    /// `<hostname>.local` need not resolve on the operator's network (204,
+    /// 205a, D10a).
+    pub address: Option<String>,
     pub manifest: PathBuf,
     /// The built repositories this instance tracks (199, 205, 206).
     ///
@@ -139,6 +141,15 @@ pub fn run(ask: Init) -> Result<Report> {
         console::put_new(&mut store, &defs, &id, "instance", None, record, at)?;
     }
 
+    // The address the first host is registered at: the name the operator gave,
+    // or localhost, at the port its page is served on (205a, 308, D10a).
+    let port = manifest
+        .hosts
+        .get(&ask.host)
+        .map(|h| h.localhost_port)
+        .unwrap_or(flywheel_world_host::manifest::LOCALHOST_PORT);
+    let address = address_of(ask.address.as_deref(), port);
+
     let mut report = Report::default();
     let mut runtime = Runtime::new(defs, store);
     // The machines that declare one object per instance get theirs. `curation`
@@ -209,7 +220,7 @@ pub fn run(ask: Init) -> Result<Report> {
                 &ask.root,
                 &ask.app,
                 &ask.app_key_from,
-                &ask.address,
+                &address,
             )?;
             if did {
                 report.performed.push(effect.name.clone());
@@ -275,6 +286,29 @@ pub fn run(ask: Init) -> Result<Report> {
         report.lines.push(format!("repository {repository}: made"));
     }
 
+    // A hostname given once the host is registered is its address from then on:
+    // the same init with `--address` is how the operator gives a host at
+    // localhost its name. Given none, what the manifest holds stands, so a
+    // second run never takes a name back (204, 205a).
+    if let (Some(_), Some(registered)) = (&ask.address, manifest.hosts.get_mut(&ask.host)) {
+        let router = registered.router.get_or_insert_with(Default::default);
+        if router.base != address {
+            router.base = address.clone();
+            report.lines.push(format!("host {}: now at {address}", ask.host));
+        }
+    }
+    if let Some(registered) = manifest.hosts.get(&ask.host) {
+        let base = registered.router.as_ref().unwrap_or(&manifest.router).base.clone();
+        report.lines.push(match flywheel_world_host::world::is_localhost(&base) {
+            true => format!(
+                "host {} at {base} serves this computer alone: a link will not open on your \
+                 phone until you give the host its name on your network with --address (205a, 306)",
+                ask.host
+            ),
+            false => format!("host {} at {base}", ask.host),
+        });
+    }
+
     manifest
         .template_version
         .get_or_insert_with(|| flywheel_domain::set::SET_VERSION.to_string());
@@ -295,6 +329,25 @@ pub fn run(ask: Init) -> Result<Report> {
         ));
     }
     Ok(report)
+}
+
+/// The address a host is registered at: the name the operator gave, or
+/// localhost when they gave none, carrying the port its page is served on so a
+/// link written at it opens (205a, 308, D10a). A bare name is taken as
+/// `http://<name>`, and a port the operator named is kept.
+pub fn address_of(given: Option<&str>, port: u16) -> String {
+    let given = given
+        .map(|g| g.trim().trim_end_matches('/'))
+        .filter(|g| !g.is_empty())
+        .unwrap_or("localhost");
+    let base = match given.contains("://") {
+        true => given.to_string(),
+        false => format!("http://{given}"),
+    };
+    match flywheel_world_host::world::names_a_port(&base) {
+        true => base,
+        false => format!("{base}:{port}"),
+    }
 }
 
 /// Every machine that declares one object per instance, other than the

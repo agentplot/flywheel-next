@@ -35,10 +35,10 @@ export FLYWHEEL_APP_KEY=local
 
 # The instance, the repository it tracks, and its first host. A place is a
 # worktree of that repository (`--workspace host`) and a session is an agent in
-# a pane of Herdr (`--sessions herdr`). The host's address is this computer's
-# own name unless `--address` says otherwise, and never a localhost port,
-# because every link a delivery carries is written at it (205a, D10a). Every
-# step proves itself, so running this again changes nothing (204).
+# a pane of Herdr (`--sessions herdr`). The host is at localhost, serving this
+# computer alone, until `--address` gives it the name your phone reaches this
+# computer at; init guesses no name, and says so (205a, D10a). Every step
+# proves itself, so running this again changes nothing (204).
 cargo run -q -- init \
   --instance agentplot --host laptop \
   --root ~/flywheel/hosts/laptop --git-host ~/flywheel/git-host \
@@ -67,11 +67,13 @@ client at http://127.0.0.1:4242/agentplot · no sign-in: the operators list hold
 rendered from the state on every request: the rail of decisions, the capture
 box, the four lanes of the board and the dock (307, D11).
 
-**On your phone, on the same network.** The host binds its private-network name
-and the localhost port, and nothing else (46, 155, 245). Where the name is one
-this computer answers at, the page is at `http://<your-computer>.local:4242/`
-from the phone; where it is not, the host says so and serves the localhost port
-alone (253a).
+**On your phone, on the same network.** Run the same `init` with
+`--address <your-computer>.local`, or the computer's tailnet name: init records
+it with the page's port, and the host binds that name and the localhost port,
+and nothing else (46, 155, 205a, 245). The page is then at
+`http://<your-computer>.local:4242/` from the phone; where the name is not one
+this computer answers at, the host says so and serves the localhost port alone
+(253a).
 
 **A capture.** In the box at the top of the page, type what you noticed —
 `README's crates table lacks a row for flywheel-workspace-host`, say — and
@@ -197,9 +199,11 @@ somewhere private. Under *OAuth2 → URL Generator*, tick the `bot` scope and th
 the URL it makes, and add the bot to your server. With *Developer Mode* on
 (*User Settings → Advanced*), right-click the channel and copy its id.
 
-**Name the chat.** The same `init` as the walkthrough's, with three more flags.
-The manifest records the channel and the name of the variable the token is in,
-never the token (204, 207):
+**Name the chat.** The same `init` as the walkthrough's, with four more flags.
+`--address` is the name your phone reaches this computer at, so a link in the
+channel opens there; init records it with the page's port. The manifest records
+the channel and the name of the variable the token is in, never the token (204,
+205a, 207):
 
 ```sh
 cargo run -q -- init \
@@ -207,18 +211,8 @@ cargo run -q -- init \
   --root ~/flywheel/hosts/laptop --git-host ~/flywheel/git-host \
   --repository flywheel-next --workspace host --sessions herdr \
   --manifest ~/flywheel/flywheel.yaml \
+  --address <your-computer>.local \
   --chat discord --channel <the channel's id> --token-from FLYWHEEL_DISCORD_TOKEN
-```
-
-A link in the channel opens on your phone when the host's address carries the
-page's port. If `hosts.laptop.router.base` in `~/flywheel/flywheel.yaml` reads
-`http://<your-computer>.local`, add it:
-
-```yaml
-hosts:
-  laptop:
-    router:
-      base: http://<your-computer>.local:4242
 ```
 
 **Place the token and restart the host.** Stop the host, put the token where
