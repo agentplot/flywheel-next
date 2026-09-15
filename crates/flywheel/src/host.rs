@@ -2495,11 +2495,11 @@ pub(crate) fn work_order(
             .and_then(|u| u.record.get(name))
             .and_then(|v| v.as_str().map(String::from))
     };
-    // A chore a session offered carries no words of its own: its job is the
-    // document the offer pointed at, as it stood at the offer's revision (62,
-    // 89; chore@2 params.job).
+    // A unit made from an offer — a chore, or a finding's fast unit — carries
+    // no words of its own: its job is the document the offer pointed at, as it
+    // stood at the offer's revision (62, 89; chore@2 params.job).
     let offered = match unit.as_ref().or(held.as_ref()) {
-        Some(chore) => offered_document(store, chore)?,
+        Some(made) => offered_document(store, made)?,
         None => None,
     };
     let job = offered
@@ -2723,23 +2723,24 @@ pub(crate) fn work_order(
     })
 }
 
-/// The document a chore was offered with, as it stood at the offer's revision,
-/// or none for anything that is not a chore made of an offer.
+/// The document a unit made from an offer was offered with — a chore's, or a
+/// finding's fast unit's — as it stood at the offer's revision, or none for
+/// anything that is not a unit made of an offer.
 ///
 /// It is read from the git host's pin in the repository the offer was made in
-/// — the offering session's place's, found through the entry the chore came
-/// from — since a chore has no change directory and its session may stand on
-/// another repository's line or another host (62, 89, 232; `host.yaml`
-/// prepare_place).
-fn offered_document(store: &HostStore, chore: &Object) -> Result<Option<String>> {
-    let text = |name: &str| chore.record.get(name).and_then(|v| v.as_str());
-    if text("type") != Some("chore") {
+/// — the offering session's place's, found through the entry the unit came
+/// from — since such a unit has no change directory and its session may stand
+/// on another repository's line or another host (62, 89, 232; `host.yaml`
+/// prepare_place, `unit.yaml` revision).
+fn offered_document(store: &HostStore, unit: &Object) -> Result<Option<String>> {
+    let text = |name: &str| unit.record.get(name).and_then(|v| v.as_str());
+    if unit.machine != "unit" {
         return Ok(None);
     }
     let (Some(document), Some(revision)) = (text("document"), text("revision")) else {
         return Ok(None);
     };
-    let Some(entry) = chore
+    let Some(entry) = unit
         .record
         .get("sources")
         .and_then(|v| v.as_array())
