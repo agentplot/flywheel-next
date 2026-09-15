@@ -15,10 +15,12 @@
    (214), the load panel, the artifact views (213) and the account item are the
    parts phase 1 does not have, and their rules are not here.
 
-   Nothing below this point reaches outside the document: the mockup's two
-   faces, Manrope and JetBrains Mono, are embedded here as data rather than
-   linked, because the bundle fetches nothing from anywhere else (310;
-   `page/fonts/NOTICE`). */
+   Nothing below this point reaches past the host: the mockup's two faces,
+   Manrope and JetBrains Mono, are fetched from the host that served the page,
+   once, under a name carrying the binary's version. The bundle a member's
+   client frames reaches no address of the host, so it carries them as data in
+   a stylesheet of its own after this one, which takes their place (310, 310a,
+   S230, S235; `page/fonts/NOTICE`). */
 {{FONTS}}
 :root{
   --bg:#EEF1F4; --surface:#FFFFFF; --surface2:#F6F8FA; --ink:#16202A; --ink2:#4A5763; --ink3:#7A8794;
@@ -985,6 +987,7 @@ body[data-served="view"]:not([data-view="object"]) .dock{display:none}
 body[data-served="view"] .dk-b{overflow:visible}
 .view-stale{margin:0;padding:18px 16px;font-size:13.5px;color:var(--ink2);background:var(--surface)}
 </style>
+{{VIEWFACES}}
 </head>
 <body data-gen="{{GEN}}" data-served="{{SERVED}}">
 <!-- The top. Everything on it is read from the one request's read: the

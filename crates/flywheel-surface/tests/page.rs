@@ -237,6 +237,26 @@ fn bundle_has_no_external_fetch() {
         );
         assert!(!flywheel_surface::links::is_localhost(link), "{link}");
     }
+    // The two faces are fetched past the document, and from the page's own
+    // host alone, under a name carrying the binary's version (310a, S235, 291).
+    let style = html
+        .split("<style>")
+        .nth(1)
+        .and_then(|rest| rest.split("</style>").next())
+        .expect("the page carries its own stylesheet");
+    let fetched: Vec<&str> = style
+        .match_indices("url(")
+        .map(|(at, _)| {
+            let rest = &style[at + 4..];
+            &rest[..rest.find(')').unwrap_or(0)]
+        })
+        .collect();
+    assert_eq!(fetched.len(), flywheel_surface::page::FONTS.len(), "the stylesheet fetches {fetched:?}");
+    for (name, ..) in flywheel_surface::page::FONTS {
+        let own = flywheel_surface::page::font_address(name);
+        assert!(fetched.contains(&own.as_str()), "{name} is not fetched from the host: {fetched:?}");
+        assert!(own.starts_with("/fonts/") && own.contains(flywheel_surface::page::VERSION), "{own}");
+    }
     // No client state a reload loses, and nothing fetched from elsewhere: the
     // one script the page carries is its keys and its own refresh, which
     // fetches this page from this host and keeps nothing (310, 311, S221).

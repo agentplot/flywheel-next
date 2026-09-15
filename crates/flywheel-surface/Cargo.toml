@@ -14,6 +14,9 @@ serde_json.workspace = true
 anyhow.workspace = true
 axum.workspace = true
 futures-util.workspace = true
+# Every response compressed with the best encoding the request accepts, br
+# then gzip, the fonts excepted (310a, S235).
+tower-http.workspace = true
 tokio.workspace = true
 chrono.workspace = true
 # The chat's wire: Discord, through `serenity` (D9, D16). The REST client and
@@ -33,6 +36,9 @@ flywheel-surface = { path = ".", features = ["testing"] }
 flywheel-store-git = { path = "../flywheel-store-git" }
 flywheel-atoms = { path = "../flywheel-atoms", features = ["testing"] }
 serde_yaml.workspace = true
+# A compressed response read back as the browser reads it (310a).
+brotli = "8"
+flate2 = "1"
 
 # No doctests: `cargo test` would otherwise pay a rustdoc compile per crate
 # for zero tests (AGENTS.md, Gates).

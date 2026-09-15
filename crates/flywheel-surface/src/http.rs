@@ -23,6 +23,8 @@ use serde_json::{json, Value};
 use std::collections::BTreeMap;
 use std::sync::Arc;
 use tokio::sync::Mutex;
+use tower_http::compression::predicate::{DefaultPredicate, NotForContentType, Predicate};
+use tower_http::compression::CompressionLayer;
 
 /// What the transport holds: the store every call writes through, the
 /// definitions it ticks against, and the identity every response records as
@@ -957,6 +959,26 @@ async fn tour_next<S: StateStore + Send + 'static>(
     }
 }
 
+/// `GET /fonts/<name>.<version>.woff2` — one of the page's two faces, under the
+/// name of the build that serves it and cached for a year: a new build names
+/// new addresses, so a face held in a cache is never another build's (291,
+/// 310a, S235). A face is no state of the instance's, so it is served to any
+/// request that names one.
+async fn font(Path(file): Path<String>) -> Response {
+    match page::font_named(&file) {
+        Some(bytes) => (
+            StatusCode::OK,
+            [
+                (axum::http::header::CONTENT_TYPE, "font/woff2"),
+                (axum::http::header::CACHE_CONTROL, "public, max-age=31536000, immutable"),
+            ],
+            bytes,
+        )
+            .into_response(),
+        None => StatusCode::NOT_FOUND.into_response(),
+    }
+}
+
 /// `GET /events` — the host telling every open page when its store moved
 /// (S221). One line per change carrying the generation; the page compares it
 /// with the one it was rendered at and fetches itself when they differ. A
@@ -982,6 +1004,7 @@ pub fn router<S: StateStore + Send + 'static>(served: Served<S>) -> Router {
     Router::new()
         .route("/", get(page::<S>))
         .route("/events", get(events::<S>))
+        .route("/fonts/:file", get(font))
         .route("/tour/next", post(tour_next::<S>))
         .route("/api/tools", get(tools::<S>))
         .route("/api/tools/:name", post(invoke::<S>))
@@ -1004,6 +1027,15 @@ pub fn router<S: StateStore + Send + 'static>(served: Served<S>) -> Router {
         .route("/:instance/deliverable/*named", get(deliverable::<S>))
         .route("/:instance/*object", get(page_of_object::<S>))
         .with_state(served)
+        // Every response compressed with the best encoding the request accepts,
+        // br before gzip at the same weight. A face is woff2 and compressed
+        // already, and the event stream is written as it happens (310a, S235).
+        .layer(
+            CompressionLayer::new()
+                .br(true)
+                .gzip(true)
+                .compress_when(DefaultPredicate::new().and(NotForContentType::const_new("font/"))),
+        )
 }
 
 /// Serve the router at an address, until the process ends.

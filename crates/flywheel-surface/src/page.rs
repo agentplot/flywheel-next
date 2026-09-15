@@ -951,22 +951,72 @@ fn instance_of(address: &str) -> &str {
     address.trim_end_matches('/').rsplit('/').next().unwrap_or_default()
 }
 
-/// The two faces the mockup names, as `@font-face` rules over data: the
-/// latin variable-weight files, embedded so the bundle fetches nothing from
-/// anywhere else (310, D16; `page/fonts/NOTICE`). Encoded once per process.
-fn fonts_css() -> &'static str {
+/// The two faces the mockup names, as the binary carries them: the latin
+/// variable-weight files, by name, family and weights (D16;
+/// `page/fonts/NOTICE`).
+pub const FONTS: [(&str, &str, &str, &[u8]); 2] = [
+    ("manrope-latin", "Manrope", "200 800", include_bytes!("page/fonts/manrope-latin.woff2")),
+    (
+        "jetbrains-mono-latin",
+        "JetBrains Mono",
+        "100 800",
+        include_bytes!("page/fonts/jetbrains-mono-latin.woff2"),
+    ),
+];
+
+/// Where the page asks its own host for one face: a name carrying the binary's
+/// version, so a face cached for a year is never a face of another build
+/// (291, 310a, S235).
+pub fn font_address(name: &str) -> String {
+    format!("/fonts/{name}.{VERSION}.woff2")
+}
+
+/// The face a request names, where it names one of this build's.
+pub fn font_named(file: &str) -> Option<&'static [u8]> {
+    FONTS
+        .iter()
+        .find(|(name, ..)| file == format!("{name}.{VERSION}.woff2"))
+        .map(|(.., bytes)| *bytes)
+}
+
+/// The faces as `@font-face` rules at the host's own address: fetched once and
+/// cached, so no load after the first carries them (310, 310a, S235).
+fn fonts_at_the_host() -> &'static str {
+    static CSS: std::sync::OnceLock<String> = std::sync::OnceLock::new();
+    CSS.get_or_init(|| {
+        FONTS
+            .iter()
+            .map(|(name, family, weights, _)| {
+                format!(
+                    "@font-face{{font-family:\"{family}\";font-style:normal;font-weight:{weights};\
+                     font-display:swap;src:url({}) format(\"woff2\")}}\n",
+                    font_address(name)
+                )
+            })
+            .collect()
+    })
+}
+
+/// The same faces as data, in a stylesheet of their own after the page's, for
+/// the bundle a member's client frames: a view is drawn inside the client and
+/// reaches no address of the host, so what it needs is in the resource it read,
+/// and a face declared later takes the place of the one at the host's address,
+/// which is then never asked for (310, S230). Encoded once per process.
+fn fonts_embedded() -> &'static str {
     static CSS: std::sync::OnceLock<String> = std::sync::OnceLock::new();
     CSS.get_or_init(|| {
         use base64::Engine;
-        let face = |family: &str, weights: &str, bytes: &[u8]| {
-            format!(
-                "@font-face{{font-family:\"{family}\";font-style:normal;font-weight:{weights};\
-                 font-display:swap;src:url(data:font/woff2;base64,{}) format(\"woff2\")}}\n",
-                base64::engine::general_purpose::STANDARD.encode(bytes)
-            )
-        };
-        face("Manrope", "200 800", include_bytes!("page/fonts/manrope-latin.woff2"))
-            + &face("JetBrains Mono", "100 800", include_bytes!("page/fonts/jetbrains-mono-latin.woff2"))
+        let faces: String = FONTS
+            .iter()
+            .map(|(_, family, weights, bytes)| {
+                format!(
+                    "@font-face{{font-family:\"{family}\";font-style:normal;font-weight:{weights};\
+                     font-display:swap;src:url(data:font/woff2;base64,{}) format(\"woff2\")}}\n",
+                    base64::engine::general_purpose::STANDARD.encode(bytes)
+                )
+            })
+            .collect();
+        format!("<style class=\"view-faces\">\n{faces}</style>")
     })
 }
 
@@ -985,7 +1035,8 @@ pub fn render(read: &Read) -> String {
         .replace("{{VERSION}}", VERSION)
         .replace("{{SERVED}}", "page")
         .replace("{{GEN}}", &read.generation.to_string())
-        .replace("{{FONTS}}", fonts_css())
+        .replace("{{FONTS}}", fonts_at_the_host())
+        .replace("{{VIEWFACES}}", "")
         .replace("{{INSTANCE}}", &escape(instance))
         .replace("{{OPERATOR}}", &escape(&read.operator))
         .replace("{{CLOCK}}", &escape(&read.status.at.format("%H:%M").to_string()))
@@ -1025,7 +1076,8 @@ pub fn bundle() -> String {
         out.push_str(&rest[..open]);
         match &rest[open + 2..close] {
             "VERSION" => out.push_str(VERSION),
-            "FONTS" => out.push_str(fonts_css()),
+            "FONTS" => out.push_str(fonts_at_the_host()),
+            "VIEWFACES" => out.push_str(fonts_embedded()),
             "SERVED" => out.push_str("view"),
             // The catalogue as the page may invoke it, which is not state (193).
             "PALCOMMANDS" => out.push_str(&palette::template()),
