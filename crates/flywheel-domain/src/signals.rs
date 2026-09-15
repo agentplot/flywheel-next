@@ -899,16 +899,19 @@ pub fn name_from_words(text: &str) -> String {
     }
 }
 
-/// What a signal said: its assertion, else its excerpt (113).
+/// What a signal said: its assertion, else its excerpt (113). A blank
+/// assertion says nothing, so the excerpt is read in its place.
 pub fn text_of(signal: &flywheel_atoms::Object) -> Option<String> {
-    signal
-        .record
-        .get("assertion")
-        .or_else(|| signal.record.get("excerpt"))
-        .and_then(|v| v.as_str())
-        .map(str::trim)
-        .filter(|s| !s.is_empty())
-        .map(String::from)
+    let said = |name: &str| {
+        signal
+            .record
+            .get(name)
+            .and_then(|v| v.as_str())
+            .map(str::trim)
+            .filter(|s| !s.is_empty())
+            .map(String::from)
+    };
+    said("assertion").or_else(|| said("excerpt"))
 }
 
 /// `record_moves`: every judged signal gets its one standing move (107, 116).

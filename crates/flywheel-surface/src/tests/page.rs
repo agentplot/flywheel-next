@@ -1233,3 +1233,69 @@ fn a_merged_chore_under_since_names_its_repository() {
         assert!(listed.contains(&line), "no merged line names {repository}: {listed}");
     }
 }
+
+/// What finished lately is listed under the decisions with its word and a link
+/// to it in the dock, newest first; what is still moving is not (14, S9).
+#[test]
+fn what_finished_is_listed_newest_first_with_its_word() {
+    let (mut store, world, defs) = a_page();
+    let at = commands::now(&store).expect("a point");
+    for (id, machine, life, minutes) in [
+        ("unit/atlas/rows", "unit", "merged", 1),
+        ("unit/atlas/columns", "unit", "dropped", 2),
+        ("bolt/atlas/rows", "bolt", "landed", 3),
+        ("bolt/atlas/open", "bolt", "open", 4),
+    ] {
+        let record = [("repository".to_string(), json!("atlas"))].into_iter().collect();
+        commands::put_new(&mut store, &defs, id, machine, None, record, at).expect("the object");
+        let mut held = Records::get(&store, id).expect("a read").expect("the object");
+        held.config.retain(|region, _| !region.starts_with("life."));
+        held.config.insert("life".into(), life.into());
+        held.entered_at.insert("life".into(), at + chrono::Duration::minutes(minutes));
+        let base = held.seq;
+        Records::put(&mut store, id, &held, base).expect("the object moved");
+    }
+
+    let html = rendered(&mut store, &world, &defs);
+    let listed = html
+        .split("<ul class=\"since\">")
+        .nth(1)
+        .and_then(|rest| rest.split("</ul>").next())
+        .expect("what finished is listed");
+    let words: Vec<&str> = listed
+        .split("<li>")
+        .skip(1)
+        .filter_map(|line| line.split("class=\"v ").nth(1)?.split('"').next())
+        .collect();
+    assert_eq!(words, ["landed", "dropped", "merged"], "{listed}");
+    assert!(listed.contains("href=\"#dock-bolt/atlas/rows\""), "a line opens its object: {listed}");
+    assert!(!listed.contains("bolt/atlas/open"), "an open bolt is still moving: {listed}");
+}
+
+/// A decision on an object the board does not draw lights the nearest parent
+/// it does, so a signal's lights the capture the operator typed; an object the
+/// board draws, or one with no drawn parent, lights itself (S219).
+#[test]
+fn a_decision_lights_the_nearest_object_the_board_draws() {
+    let (mut store, mut world, defs) = a_page();
+    let call = crate::catalogue::Call::new("capture", "chuck", "page")
+        .arg("text", json!("the rows lose their numbers on the second page"))
+        .arg("source", json!("console"));
+    crate::catalogue::call(&mut store, &mut world, &defs, &call).expect("the capture is taken");
+    a_decision(&mut store, &defs, "bolt/atlas/plan-rows");
+    let read = crate::page::read(&mut store, &world, &defs, ADDRESS, "chuck").expect("the page reads");
+    let id_of = |machine: &str| {
+        read.objects
+            .iter()
+            .find(|o| o.machine == machine)
+            .unwrap_or_else(|| panic!("no {machine}"))
+            .id
+            .clone()
+    };
+    let (capture, signal) = (id_of("capture"), id_of("signal"));
+
+    assert_eq!(crate::page::board_object(&read, &signal), capture);
+    assert_eq!(crate::page::board_object(&read, &capture), capture);
+    assert_eq!(crate::page::board_object(&read, "bolt/atlas/plan-rows"), "bolt/atlas/plan-rows");
+    assert_eq!(crate::page::board_object(&read, "unit/atlas/never-made"), "unit/atlas/never-made");
+}

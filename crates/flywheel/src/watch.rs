@@ -12,11 +12,25 @@ pub struct Watchers {
     watching: Arc<Mutex<HashSet<String>>>,
     woken: Arc<tokio::sync::Notify>,
     changed: Arc<tokio::sync::watch::Sender<u64>>,
+    herdr: flywheel_sessions_herdr::Herdr,
+    /// How long a wait that failed stands before its agent may be waited on
+    /// again.
+    retry: std::time::Duration,
 }
 
 impl Watchers {
     pub fn new(woken: Arc<tokio::sync::Notify>, changed: Arc<tokio::sync::watch::Sender<u64>>) -> Self {
-        Watchers { watching: Arc::new(Mutex::new(HashSet::new())), woken, changed }
+        Watchers::over(flywheel_sessions_herdr::Herdr::default(), std::time::Duration::from_secs(30), woken, changed)
+    }
+
+    /// The same over a Herdr of the caller's.
+    pub fn over(
+        herdr: flywheel_sessions_herdr::Herdr,
+        retry: std::time::Duration,
+        woken: Arc<tokio::sync::Notify>,
+        changed: Arc<tokio::sync::watch::Sender<u64>>,
+    ) -> Self {
+        Watchers { watching: Arc::new(Mutex::new(HashSet::new())), woken, changed, herdr, retry }
     }
 
     /// Start a wait on every live agent this store names that is not already
@@ -34,8 +48,9 @@ impl Watchers {
             let watching = self.watching.clone();
             let woken = self.woken.clone();
             let changed = self.changed.clone();
+            let herdr = self.herdr.clone();
+            let retry = self.retry;
             tokio::task::spawn_blocking(move || {
-                let herdr = flywheel_sessions_herdr::Herdr::default();
                 let mut current = herdr.status(&agent).unwrap_or_else(|_| "absent".into());
                 loop {
                     match herdr.wait_change(&agent, &current, 60_000) {
@@ -50,7 +65,7 @@ impl Watchers {
                         // for half a minute so a gone agent is not asked for
                         // every pass.
                         Err(_) => {
-                            std::thread::sleep(std::time::Duration::from_secs(30));
+                            std::thread::sleep(retry);
                             break;
                         }
                     }

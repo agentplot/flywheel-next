@@ -1990,7 +1990,7 @@ fn discussion(row: &status::Row) -> String {
 /// The board object a decision lights: the object itself where the board
 /// draws it, else the nearest parent it draws — a signal's decision lights its
 /// capture, which is the card the operator typed (S219).
-fn board_object<'a>(read: &'a Read, object: &'a str) -> &'a str {
+pub(crate) fn board_object<'a>(read: &'a Read, object: &'a str) -> &'a str {
     let drawn = |id: &str| {
         read.status
             .rows

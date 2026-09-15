@@ -74,7 +74,10 @@ pub fn first_prompt() -> String {
 }
 
 impl Herdr {
-    fn run(&self, args: &[&str]) -> Result<Value> {
+    /// One call: its JSON answer, or what Herdr said when it refused. The
+    /// refusal is Herdr's words alone, so a caller reading it for "not found"
+    /// or "timed out" is not reading its own arguments back.
+    fn call(&self, args: &[&str]) -> Result<std::result::Result<Value, String>> {
         let out = Command::new(&self.binary)
             .args(args)
             .output()
@@ -87,9 +90,16 @@ impl Herdr {
                 .ok()
                 .and_then(|v| v.pointer("/error/message").and_then(|m| m.as_str()).map(String::from))
                 .unwrap_or_else(|| format!("{}{}", text.trim(), err.trim()));
-            bail!("herdr {}: {said}", args.join(" "));
+            return Ok(Err(said));
         }
-        Ok(serde_json::from_str(text.trim()).unwrap_or(Value::Null))
+        Ok(Ok(serde_json::from_str(text.trim()).unwrap_or(Value::Null)))
+    }
+
+    fn run(&self, args: &[&str]) -> Result<Value> {
+        match self.call(args)? {
+            Ok(answer) => Ok(answer),
+            Err(said) => bail!("herdr {}: {said}", args.join(" ")),
+        }
     }
 
     /// Whether Herdr answers at all: the one check a host makes before
@@ -135,10 +145,10 @@ impl Herdr {
 
     /// The agent by name, or none when Herdr lists no such agent.
     pub fn agent(&self, name: &str) -> Result<Option<Value>> {
-        match self.run(&["agent", "get", name]) {
+        match self.call(&["agent", "get", name])? {
             Ok(v) => Ok(Some(v.pointer("/result/agent").cloned().unwrap_or(v))),
-            Err(e) if e.to_string().contains("not found") => Ok(None),
-            Err(e) => Err(e),
+            Err(said) if said.contains("not found") => Ok(None),
+            Err(said) => bail!("herdr agent get {name}: {said}"),
         }
     }
 
@@ -198,7 +208,7 @@ impl Herdr {
         args.push("--timeout".into());
         args.push(timeout_ms.to_string());
         let borrowed: Vec<&str> = args.iter().map(String::as_str).collect();
-        match self.run(&borrowed) {
+        match self.call(&borrowed)? {
             Ok(v) => {
                 let status = ["/result/agent/agent_status", "/result/agent_status", "/result/status"]
                     .iter()
@@ -208,8 +218,8 @@ impl Herdr {
                     None => Ok(Some(self.status(name)?)),
                 }
             }
-            Err(e) if e.to_string().contains("timed out") || e.to_string().contains("timeout") => Ok(None),
-            Err(e) => Err(e),
+            Err(said) if said.contains("timed out") || said.contains("timeout") => Ok(None),
+            Err(said) => bail!("herdr agent wait {name}: {said}"),
         }
     }
 
@@ -220,6 +230,11 @@ impl Herdr {
     /// (72, 196, 197). What Herdr shows is evidence, so a pane showing nothing
     /// of the kind is left alone.
     pub fn clear_the_way(&self, name: &str) -> Result<bool> {
+        self.clear_the_way_every(name, std::time::Duration::from_millis(1000))
+    }
+
+    /// The same, looking at the pane once per `pause`, thirty times at most.
+    pub fn clear_the_way_every(&self, name: &str, pause: std::time::Duration) -> Result<bool> {
         let mut answered = false;
         for _ in 0..30 {
             match self.status(name)?.as_str() {
@@ -233,7 +248,7 @@ impl Herdr {
                 }
                 _ => {}
             }
-            std::thread::sleep(std::time::Duration::from_millis(1000));
+            std::thread::sleep(pause);
         }
         Ok(answered)
     }
@@ -483,5 +498,141 @@ mod tests {
         .unwrap();
         assert_eq!(evidence(&store, &herdr, "unit/atlas/u/fix/1", "session.pane"), Some(json!("absent")));
         assert_eq!(evidence(&store, &herdr, "unit/atlas/u/fix/1", "session.exit"), Some(json!("done")));
+    }
+
+    /// A `herdr` of the test's own: a script in a directory of its own that
+    /// writes every call it is given to `calls` and answers from `body`.
+    struct Fake {
+        dir: std::path::PathBuf,
+        herdr: Herdr,
+    }
+
+    impl Fake {
+        fn new(name: &str, body: &str) -> Fake {
+            use std::os::unix::fs::PermissionsExt;
+            let dir = std::env::temp_dir().join(format!(
+                "flywheel-herdr-{name}-{}-{:?}",
+                std::process::id(),
+                std::thread::current().id()
+            ));
+            let _ = std::fs::remove_dir_all(&dir);
+            std::fs::create_dir_all(&dir).unwrap();
+            let script = dir.join("herdr");
+            std::fs::write(
+                &script,
+                format!("#!/bin/sh\nD=\"{}\"\necho \"$@\" >> \"$D/calls\"\n{body}\n", dir.display()),
+            )
+            .unwrap();
+            std::fs::set_permissions(&script, std::fs::Permissions::from_mode(0o755)).unwrap();
+            let herdr = Herdr { binary: script.display().to_string() };
+            Fake { dir, herdr }
+        }
+
+        fn calls(&self) -> String {
+            std::fs::read_to_string(self.dir.join("calls")).unwrap_or_default()
+        }
+    }
+
+    impl Drop for Fake {
+        fn drop(&mut self) {
+            let _ = std::fs::remove_dir_all(&self.dir);
+        }
+    }
+
+    /// A wait asks Herdr for every status but the one the agent stands at, and
+    /// returns the one it changed to (S221).
+    #[test]
+    fn a_wait_returns_the_status_the_agent_changed_to() {
+        let fake = Fake::new(
+            "wait",
+            r#"echo '{"result":{"agent":{"agent_status":"idle"}}}'"#,
+        );
+        assert_eq!(fake.herdr.wait_change("u-fix-1", "working", 500).unwrap().as_deref(), Some("idle"));
+        let calls = fake.calls();
+        assert!(
+            calls.contains("agent wait u-fix-1 --until idle --until blocked --until done --until unknown --timeout 500"),
+            "{calls}"
+        );
+        assert!(!calls.contains("--until working"), "the status it stands at is not waited for: {calls}");
+    }
+
+    /// A wait that runs out with nothing changed is none; a wait on an agent
+    /// Herdr no longer lists is an error, which frees its watcher (S221).
+    #[test]
+    fn a_wait_that_runs_out_is_none_and_one_on_a_gone_agent_is_an_error() {
+        let fake = Fake::new(
+            "timeout",
+            r#"if [ "$3" = gone ]; then echo '{"error":{"message":"agent gone not found"}}' >&2; exit 1; fi
+echo '{"error":{"message":"timed out after 500ms"}}' >&2; exit 1"#,
+        );
+        assert_eq!(fake.herdr.wait_change("u-fix-1", "working", 500).unwrap(), None);
+        assert!(fake.herdr.wait_change("gone", "working", 500).is_err());
+    }
+
+    /// The agents a host watches are the running sessions this binding started
+    /// in Herdr: not one that ended, not one that reported done, and not one
+    /// the operator runs (72, 150, S221).
+    #[test]
+    fn the_live_agents_are_the_running_sessions_started_in_herdr() {
+        let mut store = FakeStore::default();
+        let started = ("started_at", json!("2026-09-14T12:00:00Z"));
+        for (session, fields) in [
+            ("unit/atlas/a/fix/1", vec![started.clone(), ("ended_at", Value::Null), ("herdr_agent", json!("a-fix-1"))]),
+            ("unit/atlas/b/fix/1", vec![started.clone(), ("ended_at", Value::Null)]),
+            ("unit/atlas/c/fix/1", vec![started.clone(), ("ended_at", json!("2026-09-14T12:10:00Z")), ("herdr_agent", json!("c-fix-1"))]),
+            ("unit/atlas/d/fix/1", vec![started.clone(), ("ended_at", Value::Null), ("herdr_agent", json!("d-fix-1"))]),
+        ] {
+            operator::set(&mut store, session, &fields).unwrap();
+        }
+        flywheel_domain::report::write_report(
+            &mut store,
+            "unit/atlas/d/fix/1",
+            "d-fix-1",
+            chrono::Utc::now(),
+            &flywheel_domain::report::Report::Exit { kind: "done".into(), deliverables: vec![], question: None, text: None },
+        )
+        .unwrap();
+
+        assert_eq!(live_agents(&store), vec![("unit/atlas/a/fix/1".to_string(), "a-fix-1".to_string())]);
+    }
+
+    /// Claude Code's question whether the folder is trusted is answered from
+    /// what the pane shows, and the way is clear once the agent is at its
+    /// prompt (72, 196, 197).
+    #[test]
+    fn the_trust_question_is_answered_and_the_way_waits_for_the_prompt() {
+        let fake = Fake::new(
+            "trust",
+            r#"case "$1 $2" in
+  "agent get") if [ -e "$D/answered" ]; then s=idle; else s=blocked; fi
+    echo "{\"result\":{\"agent\":{\"agent_status\":\"$s\"}}}" ;;
+  "agent read") echo 'Do you trust the files in this folder?' ;;
+  "agent send-keys") touch "$D/answered" ;;
+esac"#,
+        );
+        assert!(fake.herdr.clear_the_way_every("u-fix-1", std::time::Duration::ZERO).unwrap());
+        assert!(fake.calls().contains("agent send-keys u-fix-1 down enter"), "{}", fake.calls());
+    }
+
+    /// A pane at its prompt, or asking something else, is left alone: what
+    /// Herdr shows is evidence, and no key is pressed on a guess (196).
+    #[test]
+    fn a_pane_not_asking_for_trust_is_left_alone() {
+        let idle = Fake::new(
+            "idle",
+            r#"echo '{"result":{"agent":{"agent_status":"idle"}}}'"#,
+        );
+        assert!(!idle.herdr.clear_the_way_every("u-fix-1", std::time::Duration::ZERO).unwrap());
+        assert!(!idle.calls().contains("send-keys"), "{}", idle.calls());
+
+        let asking = Fake::new(
+            "asking",
+            r#"case "$1 $2" in
+  "agent get") echo '{"result":{"agent":{"agent_status":"blocked"}}}' ;;
+  "agent read") echo 'Which file should I change first?' ;;
+esac"#,
+        );
+        assert!(!asking.herdr.clear_the_way_every("u-fix-1", std::time::Duration::ZERO).unwrap());
+        assert!(!asking.calls().contains("send-keys"), "{}", asking.calls());
     }
 }

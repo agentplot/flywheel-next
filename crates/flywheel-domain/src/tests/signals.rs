@@ -345,3 +345,40 @@ fn challenge_records_claim_only() {
         .unwrap()
         .is_empty());
 }
+
+/// A capture's name is its first words that carry meaning, at most four, with
+/// the filler a person types around a thought left out; the operator types no
+/// name (19a, S217).
+#[test]
+fn a_name_is_the_first_words_that_carry_meaning() {
+    assert_eq!(
+        signals::name_from_words("I think the README's crates table lacks a row for flywheel-workspace-host"),
+        "readme-crates-table-lacks"
+    );
+    assert_eq!(signals::name_from_words("Rows lose their numbers on page 2"), "rows-lose-their-numbers");
+}
+
+/// Words that are all filler are still the words, and words that are nothing
+/// at all name a capture (19a).
+#[test]
+fn a_name_of_filler_alone_keeps_its_words_and_of_nothing_is_capture() {
+    assert_eq!(signals::name_from_words("is it the"), "is-it-the");
+    assert_eq!(signals::name_from_words("a b"), "a-b");
+    assert_eq!(signals::name_from_words("  ?! … "), "capture");
+}
+
+/// What a signal said is its assertion, trimmed, and its excerpt where the
+/// assertion says nothing (113).
+#[test]
+fn what_a_signal_said_is_its_assertion_else_its_excerpt() {
+    let signal = |record: serde_json::Value| -> flywheel_atoms::Object {
+        serde_json::from_value(json!({"id": "signal/atlas/1", "machine": "signal", "record": record}))
+            .expect("a signal")
+    };
+    let said = |record| signals::text_of(&signal(record));
+    assert_eq!(said(json!({"assertion": "  rows lose numbers ", "excerpt": "we saw it"})).as_deref(), Some("rows lose numbers"));
+    assert_eq!(said(json!({"assertion": "   ", "excerpt": "we saw it"})).as_deref(), Some("we saw it"));
+    assert_eq!(said(json!({"excerpt": "we saw it"})).as_deref(), Some("we saw it"));
+    assert_eq!(said(json!({"assertion": 3})), None);
+    assert_eq!(said(json!({})), None);
+}

@@ -8,6 +8,8 @@ mod bodies;
 mod chat;
 mod dictation;
 mod discord;
+mod dock;
+mod events;
 mod links;
 mod page;
 mod protocol;

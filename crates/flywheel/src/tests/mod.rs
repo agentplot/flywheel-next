@@ -8,4 +8,5 @@ mod init;
 mod render_order;
 mod report;
 mod seeding;
+mod watch;
 mod work_order;
