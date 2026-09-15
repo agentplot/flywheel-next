@@ -20,8 +20,10 @@
 use crate::catalogue::{self, Call, Outcome};
 use crate::page::{self, VERSION, VIEWS};
 use flywheel_atoms::{Received, StateStore, World};
+use flywheel_domain::records::RunEntry;
 use flywheel_engine::Definitions;
 use serde_json::{json, Map, Value};
+use std::collections::BTreeMap;
 
 /// The versions of the protocol this server speaks, newest first. A client
 /// asking for one of them is answered in it; one asking for any other is
@@ -63,13 +65,40 @@ pub struct Caller<'a, S, W: ?Sized> {
 /// user-interface extension renders (S230, D18).
 pub const VIEW_MEDIA_TYPE: &str = "text/html;profile=mcp-app";
 
-/// What one message came to: the reply the protocol owes, where it owes one,
-/// and whether a call wrote anything, so the transport wakes the loop at once
-/// rather than leaving it to the poll (130, D6).
+/// What one message came to: the reply the protocol owes, where it owes one;
+/// whether a call wrote anything, so the transport wakes the loop at once
+/// rather than leaving it to the poll (130, D6); and every call refused, for
+/// the run record (321, 79).
 #[derive(Debug, Default)]
 pub struct Handled {
     pub reply: Option<Value>,
     pub wrote: bool,
+    pub refused: Vec<Refused>,
+}
+
+/// Who a call the transport refused before it was admitted is recorded as:
+/// nobody signed in, which is all such a caller presented (253a).
+pub const UNSIGNED_IN: &str = "unsigned-in";
+
+/// A call the flywheel refused, as the run record keeps it: who asked, the
+/// tool, the object it named, and why (321, 79).
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct Refused {
+    pub identity: String,
+    pub tool: String,
+    pub object: String,
+    pub reason: String,
+}
+
+impl Refused {
+    /// The run record's entry for it, on the host that refused it and at the
+    /// moment it did (79).
+    pub fn entry(&self, host: &str, at: chrono::DateTime<chrono::Utc>) -> RunEntry {
+        RunEntry::new(at, host, "refusal", &self.object, &self.reason)
+            .with("identity", &self.identity)
+            .with("operation", &self.tool)
+            .with("delivery", DELIVERY)
+    }
 }
 
 /// Answer one message of the protocol, or a batch of them.
@@ -82,7 +111,7 @@ pub fn handle<S: StateStore, W: World + ?Sized>(
     message: &Value,
 ) -> Handled {
     let mut handled = Handled::default();
-    handled.reply = match message {
+    let reply = match message {
         Value::Array(batch) if batch.is_empty() => Some(error(
             Value::Null,
             INVALID_REQUEST,
@@ -91,13 +120,61 @@ pub fn handle<S: StateStore, W: World + ?Sized>(
         Value::Array(batch) => {
             let replies: Vec<Value> = batch
                 .iter()
-                .filter_map(|one| answer(caller, one, &mut handled.wrote))
+                .filter_map(|one| answer(caller, one, &mut handled))
                 .collect();
             (!replies.is_empty()).then(|| Value::Array(replies))
         }
-        one => answer(caller, one, &mut handled.wrote),
+        one => answer(caller, one, &mut handled),
     };
+    handled.reply = reply;
     handled
+}
+
+/// The calls in a message the transport refused whole, before any was
+/// answered — the caller not admitted — each as the run record keeps it (321,
+/// 79, 253a).
+pub fn refused_calls(message: &Value, identity: &str, reason: &str) -> Vec<Refused> {
+    let one = |message: &Value| {
+        (message.get("method").and_then(Value::as_str) == Some("tools/call")).then(|| {
+            let params = message.get("params").cloned().unwrap_or_else(|| json!({}));
+            let arguments: BTreeMap<String, Value> = params
+                .get("arguments")
+                .and_then(Value::as_object)
+                .map(|fields| fields.clone().into_iter().collect())
+                .unwrap_or_default();
+            Refused {
+                identity: identity.to_string(),
+                tool: params.get("name").and_then(Value::as_str).unwrap_or_default().to_string(),
+                object: object_named(&arguments),
+                reason: reason.to_string(),
+            }
+        })
+    };
+    match message {
+        Value::Array(batch) => batch.iter().filter_map(one).collect(),
+        single => one(single).into_iter().collect(),
+    }
+}
+
+/// The object a call names, as its refusal records it: whichever argument names
+/// an object, a decision by its number, or that it named none (79).
+fn object_named(arguments: &BTreeMap<String, Value>) -> String {
+    let named = [
+        "object", "decision", "session", "unit", "elaboration", "bolt", "signal", "line", "host",
+        "service", "instance", "repository",
+    ];
+    for name in named {
+        let said = match arguments.get(name) {
+            Some(Value::String(said)) if !said.trim().is_empty() => said.trim().to_string(),
+            Some(Value::Number(number)) => number.to_string(),
+            _ => continue,
+        };
+        return match name {
+            "decision" => format!("decision {said}"),
+            _ => said,
+        };
+    }
+    "none named".to_string()
 }
 
 /// A JSON-RPC error reply.
@@ -117,7 +194,7 @@ pub fn refused(message: &Value, reason: &str) -> Value {
 fn answer<S: StateStore, W: World + ?Sized>(
     caller: &mut Caller<'_, S, W>,
     message: &Value,
-    wrote: &mut bool,
+    handled: &mut Handled,
 ) -> Option<Value> {
     let Some(fields) = message
         .as_object()
@@ -150,7 +227,7 @@ fn answer<S: StateStore, W: World + ?Sized>(
         "initialize" => Ok(initialize(&params)),
         "ping" => Ok(json!({})),
         "tools/list" => Ok(json!({"tools": tools()})),
-        "tools/call" => call(caller, &params, wrote),
+        "tools/call" => call(caller, &params, handled),
         "resources/list" => Ok(json!({"resources": resources()})),
         "resources/templates/list" => Ok(json!({"resourceTemplates": []})),
         "resources/read" => read_resource(&params),
@@ -249,6 +326,7 @@ fn looked<S: StateStore, W: World + ?Sized>(
     caller: &mut Caller<'_, S, W>,
     name: &str,
     arguments: Map<String, Value>,
+    handled: &mut Handled,
 ) -> Value {
     let mut asked = Call::new(name, caller.by, DELIVERY);
     asked.args = arguments.into_iter().collect();
@@ -258,7 +336,15 @@ fn looked<S: StateStore, W: World + ?Sized>(
             "structuredContent": view.handed(),
             "isError": false,
         }),
-        Err(refused) => refusal(&refused.to_string()),
+        Err(refused) => {
+            handled.refused.push(Refused {
+                identity: caller.by.to_string(),
+                tool: name.to_string(),
+                object: object_named(&asked.args),
+                reason: refused.to_string(),
+            });
+            refusal(&refused.to_string())
+        }
     }
 }
 
@@ -280,7 +366,7 @@ fn refusal(reason: &str) -> Value {
 fn call<S: StateStore, W: World + ?Sized>(
     caller: &mut Caller<'_, S, W>,
     params: &Value,
-    wrote: &mut bool,
+    handled: &mut Handled,
 ) -> Result<Value, (i64, String)> {
     let Some(name) = params.get("name").and_then(Value::as_str) else {
         return Err((INVALID_PARAMS, "a call names the tool it calls".into()));
@@ -296,7 +382,7 @@ fn call<S: StateStore, W: World + ?Sized>(
         }
     };
     if catalogue::query(name).is_some() {
-        return Ok(looked(caller, name, arguments));
+        return Ok(looked(caller, name, arguments, handled));
     }
     let mut invoked = Call::new(name, caller.by, DELIVERY);
     invoked.args = arguments.into_iter().collect();
@@ -318,10 +404,21 @@ fn call<S: StateStore, W: World + ?Sized>(
     Ok(
         match catalogue::call(caller.store, caller.world, caller.defs, &invoked) {
             Ok(outcome) => {
-                *wrote |= !matches!(outcome.outcome, Received::AlreadyApplied { .. });
+                handled.wrote |= !matches!(outcome.outcome, Received::AlreadyApplied { .. });
                 done(&invoked, &outcome)
             }
-            Err(refused) => refusal(&refused.to_string()),
+            // Refused: nothing is recorded as a response, and the refusal is
+            // the run record's, with who asked, the tool and the object (321,
+            // 79).
+            Err(refused) => {
+                handled.refused.push(Refused {
+                    identity: caller.by.to_string(),
+                    tool: name.to_string(),
+                    object: object_named(&invoked.args),
+                    reason: refused.to_string(),
+                });
+                refusal(&refused.to_string())
+            }
         },
     )
 }

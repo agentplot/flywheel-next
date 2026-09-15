@@ -1311,8 +1311,9 @@ body[data-served="view"] .dk-b{overflow:visible}
   // is each view's resource: the client that fetched it hands it a tool's
   // result, and it draws the regions that result carries into the places the
   // page has for them. A result of another version than the bundle's draws
-  // none of the state. An object opens as its own view, asked for through the
-  // client; nothing is kept between renders and nothing is fetched (310).
+  // none of the state. Every control is sent as a call through the client on
+  // the tool and object its form names, and an object opens as its own view
+  // the same way; nothing is kept between renders and nothing is fetched (310).
   var client=document.body.getAttribute('data-served')==='view' ? bridge() : null;
   function bridge(){
     var VERSION=(document.querySelector('meta[name="flywheel-version"]')||{}).content||'';
@@ -1344,6 +1345,32 @@ body[data-served="view"] .dk-b{overflow:visible}
       at=-1; focusCard(0, true); size();
     }
     function look(name, args){ return ask('tools/call', {name:name, arguments:args||{}}).then(function(result){ if(result && result.isError) throw new Error(words(result) || 'the flywheel refused it'); draw(result); }); }
+    // One tap is one delivery, named once, so a client that sends it twice has
+    // it taken once (323, 137).
+    function delivery(){ var bytes=new Uint8Array(8); crypto.getRandomValues(bytes); return 'tap-'+Array.prototype.map.call(bytes, function(b){ return (b<16?'0':'')+b.toString(16); }).join(''); }
+    function call(name, args){
+      return ask('tools/call', {name:name, arguments:args, _meta:{'flywheel/delivery':delivery()}}).then(function(result){
+        if(result && result.isError) throw new Error(words(result) || 'the flywheel refused it');
+        return result;
+      });
+    }
+    // The call a form would post: a tool's own route names the tool, the
+    // curator's surface is `curate`, and "yes all" is one `answer` per number
+    // it names, in order, never a batch (193, S7). The view is drawn again
+    // from what the flywheel holds once the calls are made.
+    function submit(form, submitter){
+      var action=form.getAttribute('action')||'', fields={};
+      new FormData(form).forEach(function(value, name){ fields[name]=value; });
+      if(submitter && submitter.name) fields[submitter.name]=submitter.value;
+      if(fields.decision!==undefined && /^\d+$/.test(fields.decision)) fields.decision=+fields.decision;
+      var calls, tool=/^\/api\/tools\/([^\/?#]+)$/.exec(action);
+      if(tool) calls=[[decodeURIComponent(tool[1]), fields]];
+      else if(action==='/api/curate') calls=[['curate', fields]];
+      else if(action==='/api/answer-all') calls=String(fields.numbers||'').split(/\s+/).filter(Boolean).map(function(n){ return ['answer', {decision:+n, answer:'yes'}]; });
+      else return Promise.reject(new Error('that control is the page’s own · open the flywheel at its address'));
+      return calls.reduce(function(done, c){ return done.then(function(){ return call(c[0], c[1]); }); }, Promise.resolve())
+        .then(function(){ if(shown) return look(shown.name, shown.arguments); });
+    }
     addEventListener('message', function(e){
       if(e.source!==window.parent) return;
       var m=e.data; if(!m || m.jsonrpc!=='2.0') return;
@@ -1357,6 +1384,7 @@ body[data-served="view"] .dk-b{overflow:visible}
     ask('ui/initialize', {protocolVersion:'2026-01-26', appInfo:{name:'flywheel', version:VERSION}, appCapabilities:{}})
       .then(function(answer){ theme(answer && answer.hostContext); tell('ui/notifications/initialized'); }, function(){});
     return {
+      submit:submit,
       open:function(object){ return look('object', {object:object}).catch(function(err){ toast(err.message); }); },
       link:function(url){ return ask('ui/open-link', {url:url}).catch(function(){}); }
     };
@@ -1410,6 +1438,12 @@ body[data-served="view"] .dk-b{overflow:visible}
     form.classList.add('busy'); busy=true;
     if(progress) progress.hidden=false;
     setTimeout(function(){ form.querySelectorAll('button,input[type=submit]').forEach(function(b){ b.disabled=true; }); }, 0);
+    // In a member's client the control is a call through that client (323).
+    if(client){
+      e.preventDefault();
+      client.submit(form, e.submitter).then(function(){ settle(form); }, function(err){ settle(form); toast((err && err.message) || 'the client did not send it · try again'); });
+      return;
+    }
     if(!window.fetch || !window.DOMParser) return;
     e.preventDefault();
     var body=new URLSearchParams(new FormData(form));

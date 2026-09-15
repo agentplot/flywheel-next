@@ -37,6 +37,15 @@ impl SharedStore {
         let mut host = self.0.lock().expect("the running host is poisoned");
         act(&mut host.store)
     }
+
+    /// Calls a member's client made and the host refused, written to this
+    /// host's run record with the identity, the tool and the object (321, 79).
+    pub fn write_refusals(&mut self, refused: &[flywheel_surface::protocol::Refused]) -> Result<()> {
+        let mut host = self.0.lock().expect("the running host is poisoned");
+        let (name, now) = (host.name.clone(), host.now());
+        let entries: Vec<_> = refused.iter().map(|r| r.entry(&name, now)).collect();
+        host.store.git.append_run(&entries)
+    }
 }
 
 impl Records for SharedStore {
@@ -156,6 +165,11 @@ pub fn page_of(host: &Shared, port: u16, operators: &[String]) -> Served<SharedS
         &address,
     );
     served.localhost_port = port;
+    served.run_record = Some(
+        |shared: &mut SharedStore, refused: &[flywheel_surface::protocol::Refused]| {
+            shared.write_refusals(refused)
+        },
+    );
     served
 }
 

@@ -155,6 +155,30 @@ fn a_refused_call_says_why_and_writes_nothing() {
     let no_number = request(1, "tools/call", json!({"name": "answer", "arguments": {"answer": "yes"}}));
     let handled = send(&mut store, &mut world, no_number);
     assert!(!handled.wrote);
+    // The refusal is handed on for the run record: who asked, the tool, what it
+    // named and why (321, 79).
+    assert_eq!(handled.refused.len(), 1, "{:?}", handled.refused);
+    assert_eq!(handled.refused[0].identity, "chuck");
+    assert_eq!(handled.refused[0].tool, "answer");
+    assert_eq!(handled.refused[0].object, "none named");
+    let untracked = request(3, "tools/call", json!({"name": "ask", "arguments": {"repository": "nowhere", "text": "rows"}}));
+    let asked = send(&mut store, &mut world, untracked);
+    assert_eq!(asked.refused[0].object, "nowhere");
+    let entry = asked.refused[0].entry("laptop", chrono::Utc::now());
+    assert_eq!(entry.kind, "refusal");
+    assert_eq!(entry.host, "laptop");
+    assert!(entry.fields.contains(&("identity".to_string(), "chuck".to_string())));
+    assert!(entry.fields.contains(&("operation".to_string(), "ask".to_string())));
+    assert!(entry.fields.contains(&("delivery".to_string(), "client".to_string())));
+    // A message refused at the door names its calls for the run record too.
+    let door = protocol::refused_calls(
+        &json!({"jsonrpc": "2.0", "id": 4, "method": "tools/call", "params": {"name": "later", "arguments": {"decision": 412}}}),
+        protocol::UNSIGNED_IN,
+        "not served here",
+    );
+    assert_eq!(door.len(), 1);
+    assert_eq!((door[0].identity.as_str(), door[0].tool.as_str(), door[0].object.as_str()), ("unsigned-in", "later", "decision 412"));
+    assert!(protocol::refused_calls(&json!({"jsonrpc": "2.0", "id": 5, "method": "tools/list"}), "x", "y").is_empty());
     let result = &handled.reply.expect("answered")["result"];
     assert_eq!(result["isError"], json!(true));
     assert!(

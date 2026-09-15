@@ -56,6 +56,11 @@ pub struct Served<S: StateStore + Send + 'static> {
     /// store moved, and what `/events` tells every open page, so a page fetches
     /// itself the moment there is something new and not on a timer (S221).
     pub changed: Arc<tokio::sync::watch::Sender<u64>>,
+    /// Where a call a member's client made and the flywheel refused is written:
+    /// the run record of the host serving it, with the identity, the tool and
+    /// the object (321, 79). The run record is the host's, so the host binds
+    /// this; a caller with no run record behind it leaves it empty.
+    pub run_record: Option<fn(&mut S, &[protocol::Refused]) -> anyhow::Result<()>>,
 }
 
 impl<S: StateStore + Send + 'static> Clone for Served<S> {
@@ -69,6 +74,7 @@ impl<S: StateStore + Send + 'static> Clone for Served<S> {
             localhost_port: self.localhost_port,
             woken: self.woken.clone(),
             changed: self.changed.clone(),
+            run_record: self.run_record,
         }
     }
 }
@@ -91,6 +97,19 @@ impl<S: StateStore + Send + 'static> Served<S> {
             localhost_port: 4242,
             woken: Arc::new(tokio::sync::Notify::new()),
             changed: Arc::new(tokio::sync::watch::Sender::new(1)),
+            run_record: None,
+        }
+    }
+
+    /// Write refused calls to the run record the host bound, where it bound
+    /// one. A run record that does not take them is said on the host's own
+    /// output and does not change what the caller is answered (79, 81).
+    fn record_refusals(&self, store: &mut S, refused: &[protocol::Refused]) {
+        let Some(write) = self.run_record.filter(|_| !refused.is_empty()) else {
+            return;
+        };
+        if let Err(failed) = write(store, refused) {
+            eprintln!("the run record did not take {} refused call(s): {failed:#}", refused.len());
         }
     }
 
@@ -585,6 +604,10 @@ async fn protocol_message<S: StateStore + Send + 'static>(
         return (StatusCode::NOT_FOUND, Json(protocol::refused(&message, &reason))).into_response();
     }
     if let Err(refused) = served.admits(host_of(&headers)) {
+        // A call refused at the door is refused all the same, and the run
+        // record says so (321, 79).
+        let calls = protocol::refused_calls(&message, protocol::UNSIGNED_IN, &refused);
+        served.record_refusals(&mut *served.store.lock().await, &calls);
         return (StatusCode::FORBIDDEN, Json(protocol::refused(&message, &refused))).into_response();
     }
     let handled = {
@@ -597,7 +620,9 @@ async fn protocol_message<S: StateStore + Send + 'static>(
             address: &served.address,
             by: served.operator(),
         };
-        protocol::handle(&mut caller, &message)
+        let handled = protocol::handle(&mut caller, &message);
+        served.record_refusals(&mut *store, &handled.refused);
+        handled
     };
     // A call from a client is a local cause like a page response (130, D6).
     if handled.wrote {

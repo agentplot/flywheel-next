@@ -179,6 +179,74 @@ fn a_view_of_another_version_shows_it_is_out_of_date_in_a_browser() {
     assert!(object.contains("card decision"), "the result did carry the rail: {object}");
 }
 
+/// Carry one call the view sent to the served protocol and hand the reply back
+/// to the view, as the client does.
+fn carry(tab: &headless_chrome::Tab, address: SocketAddr, call: &Value) -> Value {
+    let reply = protocol(address, json!({"jsonrpc": "2.0", "id": 9, "method": "tools/call", "params": call["params"]}));
+    let script = format!("window.reply({}, {})", call["id"], reply["result"]);
+    tab.evaluate(&script, false).expect("the reply is handed back");
+    reply["result"].clone()
+}
+
+/// The next call the view sends through the client.
+fn next_call(tab: &headless_chrome::Tab) -> Value {
+    for _ in 0..200 {
+        if let Some(call) = calls(tab).into_iter().next() {
+            return call;
+        }
+        std::thread::sleep(std::time::Duration::from_millis(50));
+    }
+    panic!("the view sent no call through the client");
+}
+
+/// A tap on an answer inside the rendered rail goes busy at once, and is sent
+/// through the client as the call its form names with a delivery of its own;
+/// the view then asks for the rail again and shows the answer given (311, 321,
+/// 323, 137, S230).
+#[test]
+fn a_tap_in_a_view_is_a_call_through_the_client_in_a_browser() {
+    if !driver::available() {
+        eprintln!("skipped: no browser to drive; the client's frame needs a Chromium or Chrome installed (D15)");
+        return;
+    }
+    let (_served, address) = a_served_rail();
+    let version = flywheel_surface::page::VERSION;
+    let rail = protocol(address, request("tools/call", json!({"name": "rail"})))["result"].clone();
+    let read = protocol(address, request("resources/read", json!({"uri": format!("ui://flywheel/{version}/rail")})));
+    let bundle = read["result"]["contents"][0]["text"].as_str().expect("the bundle").to_string();
+
+    let browser = driver::Driver::open().expect("a browser");
+    let tab = browser.visit(&serve(harness(&bundle, &rail)), driver::DESKTOP).expect("the client");
+    until(tab, "doc.querySelector('#rail .card.decision form.answer button') !== null");
+    let number = in_frame(tab, "doc.querySelector('#rail .card.decision').getAttribute('data-number')");
+    let number: u64 = number.as_str().and_then(|n| n.parse().ok()).expect("the card's number");
+    let answer = in_frame(tab, "doc.querySelector('#rail .card.decision form.answer button').getAttribute('data-answer')");
+    in_frame(tab, "(doc.querySelector('#rail .card.decision form.answer button').click(), true)");
+
+    // The tap, sent through the client, and the control busy while it goes.
+    let tap = next_call(tab);
+    assert_eq!(in_frame(tab, "doc.querySelector('#rail form.busy') !== null"), json!(true), "the control did not answer at once");
+    assert_eq!(tap["method"], json!("tools/call"));
+    assert_eq!(tap["params"]["name"], json!("answer"));
+    assert_eq!(tap["params"]["arguments"]["decision"], json!(number));
+    assert_eq!(tap["params"]["arguments"]["answer"], answer);
+    let delivery = tap["params"]["_meta"]["flywheel/delivery"].as_str().expect("a delivery of its own");
+    assert!(delivery.starts_with("tap-"), "{delivery}");
+    let done = carry(tab, address, &tap);
+    assert_eq!(done["structuredContent"]["recorded"], json!(true), "{done}");
+
+    // The view asks for the rail again, and draws the answer given.
+    let again = next_call(tab);
+    assert_eq!(again["params"]["name"], json!("rail"));
+    carry(tab, address, &again);
+    until(tab, &format!("doc.querySelector('#rail .card.decision[data-number=\"{number}\"]').textContent.includes('chuck')"));
+    assert_eq!(in_frame(tab, "doc.querySelector('#rail form.busy') === null"), json!(true));
+
+    // Delivered twice by the client, it is taken once (137).
+    let twice = protocol(address, json!({"jsonrpc": "2.0", "id": 10, "method": "tools/call", "params": tap["params"]}));
+    assert_eq!(twice["result"]["structuredContent"]["recorded"], json!(false), "{twice}");
+}
+
 /// The same result in this binary's bundle draws the rail the page draws, and
 /// an object tapped in it opens as its own view, asked for through the client
 /// (293a, 308, 322, S230).

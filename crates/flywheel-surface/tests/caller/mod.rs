@@ -51,7 +51,13 @@ impl Server {
             .enable_all()
             .build()
             .expect("a runtime");
-        let served = Served::over(store, a_world(), defs, operators, address);
+        let mut served = Served::over(store, a_world(), defs, operators, address);
+        // The run record a host binds, over this test's own state repository
+        // (321, 79).
+        served.run_record = Some(|git: &mut GitStore, refused: &[flywheel_surface::protocol::Refused]| {
+            let entries: Vec<_> = refused.iter().map(|r| r.entry(&git.host, git.now)).collect();
+            git.append_run(&entries)
+        });
         let (address, task) = runtime.block_on({
             let served = served.clone();
             async move {
