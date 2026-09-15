@@ -646,12 +646,15 @@ async fn main() -> Result<()> {
                                 served.changed.clone(),
                             ));
                         }
-                        // What a member's own client signs in against here (320).
-                        println!("client sign-in: {}", served.authority());
                         for listener in flywheel::serve::listeners(&served, *port).await? {
                             println!("page at http://{}/", listener.local_addr()?);
-                            // The one address a member adds to their client (319, 320).
-                            println!("client at {}", served.client_address(&listener.local_addr()?.to_string()));
+                            // The one address a member adds to their own client,
+                            // and what they sign in against there (319, 320).
+                            println!(
+                                "client at {} · {}",
+                                served.client_address(&listener.local_addr()?.to_string()),
+                                served.authority()
+                            );
                             let served = served.clone();
                             tokio::spawn(async move {
                                 if let Err(e) =

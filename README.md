@@ -60,6 +60,7 @@ The host says what it bound:
 ```
 host laptop · instance agentplot · world host · workspace host · sessions herdr
 page at http://127.0.0.1:4242/
+client at http://127.0.0.1:4242/agentplot · no sign-in: the operators list holds one entry, chuck, and every call is given by it (253a)
 ```
 
 **At this machine.** Open <http://localhost:4242/>. The page is one bundle,
@@ -79,9 +80,36 @@ as a capture with one signal of kind ask, and the signal stands on the rail
 as decision 1, in your own words, with three answers: build, intent, drop
 (19, 19a, 111, 193, 194).
 
-**Build.** Tap `build`, or press `b` with the card in hand. That one answer
-makes a chore unit on a bolt named from the capture's first words — no name
-to type — and approves it: the bolt's line is a branch of `flywheel-next` on
+**From your own client.** The host printed the one address to add to the
+client you already talk to, and that it asks no sign-in while you are its one
+operator (319, 320, 253a). With Claude Code, for one:
+
+```sh
+claude mcp add --transport http agentplot http://localhost:4242/agentplot
+```
+
+Ask it what needs you. It calls `rail`, and a client that renders the
+flywheel's views shows the rail inline: the page's own cards, numbers and
+controls, drawn by the bundle the host serves (293a, 322). Tap `build` there
+and your client sends it back as the same `answer` the page's control posts,
+recorded once with who gave it and when (321, 323). A client that renders no
+views reads the rail in words and makes the same call (311). By hand, those
+are two calls at that address; the first prints the capture's number, which
+the second names:
+
+```sh
+curl -s --json '{"jsonrpc":"2.0","id":1,"method":"tools/call","params":{"name":"rail"}}' http://localhost:4242/agentplot
+curl -s --json '{"jsonrpc":"2.0","id":2,"method":"tools/call","params":{"name":"answer","arguments":{"decision":<number>,"answer":"build"}}}' http://localhost:4242/agentplot
+```
+
+The answer is a commit in the state repository —
+`git -C ~/flywheel/git-host/agentplot-state.git log --oneline --grep 'response client-'`
+shows it as `response client-1 by chuck` — and nothing you said to your client
+is in there: the conversation stays your client's (324).
+
+**Build.** Tapped on the page, pressed as `b` with the card in hand, or sent
+from your client, that one answer makes a chore unit on a bolt named from the
+capture's first words — no name to type — and approves it: the bolt's line is a branch of `flywheel-next` on
 the git host, the unit's one work item has a place, a worktree of that line
 under the host's root, and the Construction lane shows the bolt with its unit
 and the session under it (19a, 34, 42, 44, 12).
@@ -261,7 +289,7 @@ and `--state` say the same thing by hand.
 | `flywheel-workspace-host` | `Workspace` over git, on the clones a host keeps: a line is a branch, a place is a worktree, a landing pushes the shared line |
 | `flywheel-sessions-operator` | `Sessions` with the operator as the session (93b) |
 | `flywheel-sessions-herdr` | `Sessions` over Herdr, one `herdr agent start` in a pane at the place (196) |
-| `flywheel-surface` | the page, the chat sink, the tool catalogue and its HTTP server |
+| `flywheel-surface` | the page, the chat sink, the tool catalogue, its HTTP server and the protocol server a member's own client reaches |
 | `flywheel-scenario` | the conformance runner, the scripted sessions, the trace renderer |
 | `flywheel` | the binary: `init`, `host`, `scenario`, `capture`, `exit`, `offer`, `note`, `refuse` |
 
