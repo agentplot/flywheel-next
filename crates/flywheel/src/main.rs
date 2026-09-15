@@ -278,7 +278,6 @@ fn do_report(cli: &Cli, host: &str, session: &str, report: &Report) -> Result<i3
     let by = std::env::var("USER").unwrap_or_else(|_| "operator".into());
     let at = chrono::Utc::now();
     let outcome = report::write_report(&mut store, session, &by, at, report)?;
-    wake_page();
     Ok(said(session, &outcome))
 }
 
@@ -293,35 +292,6 @@ fn said(session: &str, outcome: &Reported) -> i32 {
         }
     }
     report::exit_code(outcome)
-}
-
-/// A report is a cause the loop should act on now (130, D6, S221): the order
-/// names where the host's page is, and one request there wakes the loop. A
-/// page that does not answer costs a second and changes nothing; the poll is
-/// the floor.
-fn wake_page() {
-    use std::io::Write;
-    let Ok(page) = std::env::var("FLYWHEEL_PAGE") else {
-        return;
-    };
-    let Some(at) = page.strip_prefix("http://") else {
-        return;
-    };
-    let at = at.trim_end_matches('/').to_string();
-    let Ok(stream) = std::net::TcpStream::connect_timeout(
-        &match at.parse::<std::net::SocketAddr>() {
-            Ok(address) => address,
-            Err(_) => return,
-        },
-        std::time::Duration::from_secs(1),
-    ) else {
-        return;
-    };
-    let mut stream = stream;
-    let _ = stream.set_write_timeout(Some(std::time::Duration::from_secs(1)));
-    let _ = stream.write_all(
-        format!("POST /api/wake HTTP/1.0\r\nHost: {at}\r\nContent-Length: 0\r\n\r\n").as_bytes(),
-    );
 }
 
 /// What a host is asked to do. Group 5 fills these in; the binding rule they
@@ -658,10 +628,10 @@ async fn main() -> Result<()> {
                         let served = flywheel::serve::page_of(&host, *port, operators);
                         woken = Some(served.woken.clone());
                         changed = Some(served.changed.clone());
-                        // A session's report is written by another process;
-                        // the order tells it where this page is so it can wake
-                        // the loop when it has written (S221).
-                        std::env::set_var("FLYWHEEL_PAGE", format!("http://127.0.0.1:{port}"));
+                        // A session's report is written by another process and
+                        // calls nothing: on a host bound to Herdr the agent's
+                        // change of state as it reports is what wakes the loop,
+                        // and the poll is the floor (S221, 130, D6).
                         if host.lock().expect("the running host is poisoned").bindings.sessions == "herdr" {
                             watchers = Some(flywheel::watch::Watchers::new(
                                 served.woken.clone(),
@@ -892,7 +862,6 @@ async fn main() -> Result<()> {
             // names (62).
             let place = std::env::current_dir()?;
             let outcome = report::offer(&mut store, tracked, &place, session, &by, chrono::Utc::now(), kind, document, scope.as_deref(), about.as_deref())?;
-            wake_page();
             std::process::exit(said(session, &outcome));
         }
         Cmd::Note { text, session, host } => {
@@ -912,7 +881,6 @@ async fn main() -> Result<()> {
             let mut world = flywheel_world_host::HostWorld::open(read, host)?;
             let defs = flywheel_domain::set::load()?;
             let asked = report::ask(&mut store, &mut world, &defs, session, repository, &text.join(" "));
-            wake_page();
             match asked {
                 Ok(name) => println!("{name}"),
                 Err(refused) => {

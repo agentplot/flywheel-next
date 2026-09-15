@@ -115,7 +115,6 @@ fn reporting<'a>(session: &'a str, deliverables: &'a [String]) -> Reporting<'a> 
         session,
         state: "/hosts/laptop/scratch/flywheel-state/main",
         manifest: Some(Path::new("/flywheel/flywheel.yaml")),
-        page: Some("http://127.0.0.1:4242"),
         flywheel: "/bin/flywheel",
         host: "laptop",
         deliverables,
@@ -146,7 +145,7 @@ fn every_order_gives_the_offer_command_and_curations_the_ask() {
             offer.trim(),
             format!(
                 "FLYWHEEL_SESSION={session} FLYWHEEL_STATE=/hosts/laptop/scratch/flywheel-state/main \
-                 FLYWHEEL_MANIFEST=/flywheel/flywheel.yaml FLYWHEEL_PAGE=http://127.0.0.1:4242 \
+                 FLYWHEEL_MANIFEST=/flywheel/flywheel.yaml \
                  /bin/flywheel offer finding|chore|signal --document <path> --about <object> [--scope bolt-line|<repository>] --host laptop"
             ),
         );

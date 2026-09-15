@@ -2501,9 +2501,6 @@ pub(crate) fn work_order(
         .ok()
         .map(|p| p.display().to_string())
         .unwrap_or_else(|| "flywheel".into());
-    // Where this host's page is, so the report wakes the loop the moment it is
-    // written (S221); a host serving no page leaves it out.
-    let page = std::env::var("FLYWHEEL_PAGE").ok();
     let manifest = store
         .manifest
         .as_ref()
@@ -2512,7 +2509,6 @@ pub(crate) fn work_order(
         session,
         state: &state,
         manifest: manifest.as_deref(),
-        page: page.as_deref(),
         flywheel: &flywheel,
         host: &host,
         deliverables: &named,
@@ -2582,7 +2578,6 @@ pub(crate) struct Reporting<'a> {
     pub session: &'a str,
     pub state: &'a str,
     pub manifest: Option<&'a Path>,
-    pub page: Option<&'a str>,
     pub flywheel: &'a str,
     pub host: &'a str,
     pub deliverables: &'a [String],
@@ -2601,7 +2596,6 @@ pub(crate) struct Reporting<'a> {
 pub(crate) fn how_to_report(r: &Reporting) -> String {
     let Reporting { session, state, flywheel, host, .. } = r;
     let env = format!("FLYWHEEL_SESSION={session} FLYWHEEL_STATE={state}");
-    let page = r.page.map(|page| format!(" FLYWHEEL_PAGE={page}")).unwrap_or_default();
     let manifest = r
         .manifest
         .map(|m| format!(" FLYWHEEL_MANIFEST={}", m.display()))
@@ -2609,12 +2603,12 @@ pub(crate) fn how_to_report(r: &Reporting) -> String {
     let mut body = String::from("\n## how to report\n\n");
     body.push_str("When the work is done, from this directory:\n\n");
     body.push_str(&format!(
-        "    {env}{page} {flywheel} exit done{} --host {host}\n\n",
+        "    {env} {flywheel} exit done{} --host {host}\n\n",
         r.deliverables.iter().map(|d| format!(" --deliverable {d}")).collect::<String>()
     ));
     body.push_str("When you cannot go on without the operator's answer:\n\n");
     body.push_str(&format!(
-        "    {env}{page} {flywheel} exit blocked --question \"<the question>\" --host {host}\n\n"
+        "    {env} {flywheel} exit blocked --question \"<the question>\" --host {host}\n\n"
     ));
     body.push_str(
         "To offer what is outside the job, pointing at a document you committed here: a finding when it \
@@ -2624,7 +2618,7 @@ pub(crate) fn how_to_report(r: &Reporting) -> String {
          bolt may leave off, or a repository the instance tracks, blueprints among them:\n\n",
     );
     body.push_str(&format!(
-        "    {env}{manifest}{page} {flywheel} offer finding|chore|signal --document <path> --about <object> [--scope bolt-line|<repository>] --host {host}\n\n"
+        "    {env}{manifest} {flywheel} offer finding|chore|signal --document <path> --about <object> [--scope bolt-line|<repository>] --host {host}\n\n"
     ));
     if flywheel_domain::asks::granted(session) {
         body.push_str(
@@ -2632,7 +2626,7 @@ pub(crate) fn how_to_report(r: &Reporting) -> String {
              signal's route move names:\n\n",
         );
         body.push_str(&format!(
-            "    {env}{manifest}{page} {flywheel} ask <repository> \"<the words>\" --host {host}\n\n"
+            "    {env}{manifest} {flywheel} ask <repository> \"<the words>\" --host {host}\n\n"
         ));
     }
     body.push_str("The machinery reads the report and nothing else you leave here; what you leave here is your work (66, 67).\n");

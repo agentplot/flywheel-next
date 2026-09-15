@@ -975,20 +975,11 @@ async fn events<S: StateStore + Send + 'static>(
     Sse::new(stream).keep_alive(KeepAlive::new().interval(std::time::Duration::from_secs(20)))
 }
 
-/// `POST /api/wake` — a session's report, written to the state repository by
-/// another process on this machine, telling the loop to look now rather than
-/// at its next poll (130, D6, S221). Nothing is read from the request.
-async fn wake<S: StateStore + Send + 'static>(State(served): State<Served<S>>) -> StatusCode {
-    served.woken.notify_waiters();
-    StatusCode::NO_CONTENT
-}
-
 /// The router the page and the chat are served by.
 pub fn router<S: StateStore + Send + 'static>(served: Served<S>) -> Router {
     Router::new()
         .route("/", get(page::<S>))
         .route("/events", get(events::<S>))
-        .route("/api/wake", post(wake::<S>))
         .route("/tour/next", post(tour_next::<S>))
         .route("/api/tools", get(tools::<S>))
         .route("/api/tools/:name", post(invoke::<S>))
