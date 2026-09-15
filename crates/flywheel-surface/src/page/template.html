@@ -132,7 +132,7 @@ form.busy .btn.pri{opacity:.85}
 .hosts{flex:none;min-height:var(--hosts);display:flex;flex-wrap:wrap;align-items:center;gap:4px 8px;padding:4px 14px;border-bottom:1px solid var(--line);background:var(--surface2)}
 @media (max-width:1700px){.hosts .note{display:none}}
 .hosts .lab{font-size:11px;letter-spacing:.08em;text-transform:uppercase;color:var(--ink3);font-weight:700;margin-right:4px;white-space:nowrap}
-.host{display:inline-flex;align-items:center;gap:8px;border:1px solid var(--line);background:var(--surface);border-radius:999px;padding:3px 10px 3px 6px;font-size:12px;white-space:nowrap}
+.host{display:inline-flex;align-items:center;gap:8px;border:1px solid var(--line);background:var(--surface);border-radius:999px;padding:3px 10px 3px 6px;font-size:12px;white-space:nowrap;cursor:pointer}
 .host .hn{font:600 12px var(--mono)}
 .host .dot{width:8px;height:8px;border-radius:50%;background:var(--ink3);flex:none}
 .host .dot.alive{background:var(--ok)} .host .dot.stale{background:var(--warn)} .host .dot.gone{background:var(--crit)}
@@ -391,7 +391,7 @@ label.chore .f{margin-left:auto;font:11px var(--mono);color:var(--ink3)}
 .ledger .lg-unit.queued{border-style:dashed;color:var(--ink2)}
 .ledger .lg-arrow{color:var(--ink3);font:11px var(--mono);padding:3px 4px;margin-bottom:4px}
 .ledger .lg-sess{display:flex;flex-direction:column;gap:3px;margin-top:5px;padding-top:5px;border-top:1px dashed var(--line)}
-.ledger .lg-sess .it{display:flex;align-items:center;gap:4px;flex-wrap:wrap;min-width:0}
+.ledger .lg-sess .it{display:flex;align-items:center;gap:4px;flex-wrap:wrap;min-width:0;cursor:pointer}
 .ledger .lg-sess .sc{font-size:9.5px;max-width:100%}
 .ledger .lg-sess .sc>*{padding:2px 4px}
 .ledger .lg-mach{display:flex;align-items:center;gap:8px;flex-wrap:wrap;padding:4px 9px;border-top:1px dashed var(--ink3);font:11px var(--mono);color:var(--ink3)}
@@ -1297,8 +1297,24 @@ body[data-served="view"] .dk-b{overflow:visible}
     if(drop && !drop.hidden && !t.closest('#pal-open')){ drop.hidden=true; }
     var mark=t.closest('#board .marks .mark'); if(mark){ e.preventDefault(); focusNumber(mark.getAttribute('data-mark')); return; }
     var card=t.closest('#rail .card.decision'); if(card && !t.closest('a,button,input,label')){ focusCard(cards().indexOf(card)); return; }
-    var obj=t.closest('#board [data-machine]'); if(obj && obj.id && !t.closest('a,button,input,label,form,.dock')){ focusObject(obj.id); return; }
+    // A click anywhere on a board object opens it in the dock and makes it the
+    // selection: its decision in hand where it has one, lit alone where it has
+    // none. A link inside it to another object opens that one; a button or a
+    // form inside it does its own thing (S216, S219).
+    var obj=t.closest('#board [data-machine]');
+    if(obj && obj.id && !t.closest('button,input,label,form,select,textarea')){
+      var link=t.closest('a[href^="#dock-"]'); var target=obj.id;
+      if(link && obj.contains(link)) target=decodeURIComponent(link.getAttribute('href').slice(6));
+      e.preventDefault(); openObject(target); return;
+    }
+    var chip=t.closest('#hosts .host[data-host]');
+    if(chip){ e.preventDefault(); openObject('host/'+chip.getAttribute('data-host')); return; }
   });
+  function openObject(object){
+    focusObject(object);
+    if(client){ client.open(object); return; }
+    if(document.getElementById('dock-'+object)) location.hash='#dock-'+object;
+  }
 
   document.addEventListener('keydown', function(e){
     var t=e.target;

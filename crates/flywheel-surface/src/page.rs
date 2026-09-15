@@ -2394,10 +2394,13 @@ fn lg_unit(read: &Read, row: &status::Row, lane: &[&status::Row]) -> String {
     if !items.is_empty() {
         out.push_str("<span class=\"lg-sess\">");
         for item in items {
+            // Each work item is a board object of its own, so a click on it
+            // opens the item and not the unit around it (S219).
             let _ = write!(
                 out,
-                "<span class=\"it\"><span class=\"wi\">{name}</span>\
+                "<span class=\"it\"{attributes}><span class=\"wi\">{name}</span>\
                  <span class=\"sc\"><span>{said}</span></span></span>",
+                attributes = board_attributes(item),
                 name = escape(name_of(&item.object)),
                 said = escape(&item.said),
             );
@@ -2457,7 +2460,8 @@ fn slip(read: &Read, row: &status::Row, lane: &[&status::Row]) -> String {
     for item in items {
         let _ = write!(
             out,
-            "<span class=\"sl-to\"><span class=\"arrow\">→</span> {name} · {said}</span>\n",
+            "<span class=\"sl-to\"{attributes}><span class=\"arrow\">→</span> {name} · {said}</span>\n",
+            attributes = board_attributes(item),
             name = escape(name_of(&item.object)),
             said = escape(&item.said),
         );
