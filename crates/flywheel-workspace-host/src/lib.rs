@@ -133,10 +133,21 @@ impl<'a, S: Records> HostWorkspace<'a, S> {
         let mut at = object.strip_suffix("#own").unwrap_or(object).to_string();
         for _ in 0..8 {
             let Some(held) = self.store.get(&at)? else {
+                // A chore of a repository's shared line stands under the
+                // repository, which the state holds no record of: its line is
+                // that repository's own (60, `unit.yaml` parent).
+                if at.starts_with("repository/") {
+                    return Ok(String::new());
+                }
                 bail!("`{object}`: no record for `{at}`, so its line is unknown");
             };
             if matches!(held.machine.as_str(), "bolt" | "intent") {
                 return Ok(at);
+            }
+            // The instance and a repository own only the chores of a shared
+            // line, which work off that line and merge there (60, 123).
+            if matches!(held.machine.as_str(), "repository" | "instance") {
+                return Ok(String::new());
             }
             match held.parent {
                 Some(parent) => at = parent,

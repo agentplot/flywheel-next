@@ -229,6 +229,7 @@ fn an_offer_is_pending_only_until_a_record_points_at_it() {
             &flywheel_domain::report::Report::Offer {
                 kind: "finding".into(),
                 document: document.into(),
+                scope: None,
             },
         )
         .unwrap();

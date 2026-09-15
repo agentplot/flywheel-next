@@ -44,7 +44,14 @@ impl Declaration {
         if matches!(object.machine.as_str(), "rail" | "sink" | "host" | "fact") {
             return true;
         }
-        let repository = object.record.get("repository").and_then(|v| v.as_str());
+        // The blueprints are every host's: each clones them, and nothing on the
+        // design side names a repository at all (205). A chore of the
+        // blueprints' shared line names them, and is covered alike (123).
+        let repository = object
+            .record
+            .get("repository")
+            .and_then(|v| v.as_str())
+            .filter(|repository| *repository != crate::offers::BLUEPRINTS);
         if let Some(repository) = repository {
             if !self.repositories.iter().any(|r| r == repository || r == "all") {
                 return false;

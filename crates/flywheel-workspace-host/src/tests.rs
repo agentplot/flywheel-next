@@ -200,6 +200,10 @@ fn the_repository_and_the_line_are_found_from_the_object_and_its_parents() {
     a_bolt(&mut store);
     store.seed(object("intent/declines", "intent", None, &[]));
     store.seed(object("elaboration/declines/1", "elaboration", Some("intent/declines"), &[]));
+    store.seed(object("instance/storefront", "instance", None, &[]));
+    store.seed(object("unit/storefront/chore-1", "unit", Some("repository/storefront"), &[("repository", serde_json::json!("storefront"))]));
+    store.seed(object("unit/storefront/chore-1/wi-1", "work-item", Some("unit/storefront/chore-1"), &[]));
+    store.seed(object("unit/blueprints/chore-1", "unit", Some("instance/storefront"), &[("repository", serde_json::json!("blueprints"))]));
     let ws = HostWorkspace::new(&mut store, "/nowhere");
     assert_eq!(ws.repository_of("work-item/storefront/plan-rows/wi-1").unwrap(), "storefront");
     assert_eq!(ws.line_of("work-item/storefront/plan-rows/wi-1#own").unwrap(), "bolt/storefront/plan-rows");
@@ -209,4 +213,10 @@ fn the_repository_and_the_line_are_found_from_the_object_and_its_parents() {
     assert_eq!(ws.repository_of("elaboration/declines/1").unwrap(), BLUEPRINTS);
     assert_eq!(ws.line_of("elaboration/declines/1").unwrap(), "intent/declines");
     assert!(ws.repository_of("unit/nowhere/x").is_err());
+    // A chore off every bolt works off its repository's shared line, and a
+    // chore of the blueprints off theirs (60, 123).
+    assert_eq!(ws.repository_of("unit/storefront/chore-1/wi-1").unwrap(), "storefront");
+    assert_eq!(ws.line_of("unit/storefront/chore-1/wi-1").unwrap(), "", "the shared line");
+    assert_eq!(ws.repository_of("unit/blueprints/chore-1").unwrap(), BLUEPRINTS);
+    assert_eq!(ws.line_of("unit/blueprints/chore-1").unwrap(), "", "the blueprints' shared line");
 }

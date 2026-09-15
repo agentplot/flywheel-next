@@ -684,6 +684,7 @@ fn delivered(
             &flywheel_domain::report::Report::Offer {
                 kind: offer.kind.clone(),
                 document: offer.document.clone(),
+                scope: offer.scope.clone(),
             },
         )?;
     }

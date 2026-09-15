@@ -129,6 +129,9 @@ pub struct ScriptEntry {
 pub struct Offer {
     pub kind: String,
     pub document: String,
+    /// Where a chore's fix belongs: `bolt-line`, or a repository's name (60).
+    #[serde(default)]
+    pub scope: Option<String>,
 }
 
 /// One service declaration a repository carries. `fails: true` scripts a

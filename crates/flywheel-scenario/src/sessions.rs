@@ -148,16 +148,17 @@ impl ScriptedSessions {
             self.run(&host, session, &args)?;
         }
         for offer in &entry.offers {
-            self.run(
-                &host,
-                session,
-                &[
-                    "offer".to_string(),
-                    offer.kind.clone(),
-                    "--document".to_string(),
-                    offer.document.clone(),
-                ],
-            )?;
+            let mut args = vec![
+                "offer".to_string(),
+                offer.kind.clone(),
+                "--document".to_string(),
+                offer.document.clone(),
+            ];
+            if let Some(scope) = &offer.scope {
+                args.push("--scope".into());
+                args.push(scope.clone());
+            }
+            self.run(&host, session, &args)?;
         }
         if let Some(reason) = &entry.refusal {
             self.run(&host, session, &["refuse".to_string(), reason.clone()])?;

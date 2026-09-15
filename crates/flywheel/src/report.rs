@@ -8,7 +8,8 @@
 //! is the only path a session has to a tool (67, 197).
 
 use anyhow::{anyhow, bail, Result};
-use flywheel_atoms::{StateStore, World};
+use chrono::{DateTime, Utc};
+use flywheel_atoms::{Records, StateStore, World};
 use flywheel_engine::Definitions;
 use flywheel_surface::catalogue::{self, Call};
 use serde_json::json;
@@ -40,4 +41,46 @@ pub fn ask<S: StateStore, W: World + ?Sized>(
         .arg("text", json!(text));
     let outcome = catalogue::call(store, world, defs, &call)?;
     catalogue::asked(&outcome).ok_or_else(|| anyhow!("the ask was recorded and named nothing"))
+}
+
+/// `flywheel offer finding|chore --document <path> [--scope bolt-line|<repository>]`:
+/// one entry on the session's thread (`sessions.yaml` commands.offer).
+///
+/// A chore says where its fix belongs. One offered off every bolt that names
+/// no repository the instance tracks, and not the blueprints, is refused on the
+/// thread with the names it could have given and is never pending. The tracked
+/// names are read from the manifest only when the scope needs them, as the ask
+/// reads them (60, 67).
+#[allow(clippy::too_many_arguments)]
+pub fn offer<S: Records>(
+    store: &mut S,
+    tracked: impl FnOnce() -> Result<Vec<String>>,
+    session: &str,
+    by: &str,
+    at: DateTime<Utc>,
+    kind: &str,
+    document: &str,
+    scope: Option<&str>,
+) -> Result<Reported> {
+    let report = Report::Offer {
+        kind: kind.to_string(),
+        document: document.to_string(),
+        scope: scope.map(String::from),
+    };
+    if kind == "chore" && !session.is_empty() {
+        let owner = flywheel_domain::offers::owner_of(&*store, session)?;
+        if let Some(reason) = flywheel_domain::offers::chore_refused(&*store, owner.as_deref(), scope, tracked)? {
+            return flywheel_domain::report::refuse_offer(store, session, by, at, &report, None, &reason);
+        }
+    }
+    write_report(store, session, by, at, &report)
+}
+
+/// The code a report exits with: nought when it is recorded, one when it is
+/// refused and the refusal recorded (66, 80).
+pub fn exit_code(reported: &Reported) -> i32 {
+    match reported {
+        Reported::Accepted(_) => 0,
+        Reported::Refused { .. } => 1,
+    }
 }

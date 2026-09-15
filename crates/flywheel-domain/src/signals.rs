@@ -741,8 +741,14 @@ pub fn apply_move<S: StateStore, W: World + ?Sized>(
             applied.claim_version = version;
             applied.target = Some(named);
         }
-        // What settled it, and what was offered for it (116).
+        // What settled it, and what was offered for it (116). A route naming a
+        // session's offer names what the machinery made of it: the chore unit
+        // it became (62, 116).
         "answered" | "route" if !named.is_empty() => {
+            let named = match moved.word() {
+                "route" => crate::offers::made_of(store, &named)?.unwrap_or(named),
+                _ => named,
+            };
             set(store, &moved.signal, moved.word(), json!(named.clone()))?;
             applied.target = Some(named);
         }

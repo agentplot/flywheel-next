@@ -404,6 +404,21 @@ pub fn read<S: StateStore, W: World + ?Sized>(
                 said.push(line);
             }
         }
+        // A fold of chores says who offered them; what they are is its
+        // heading (S231, 11).
+        if let Some((_, chores)) = chores_of(&objects, decision) {
+            let mut offered_by: Vec<&str> = chores
+                .iter()
+                .filter_map(|chore| chore.record.get("sources")?.as_array()?.first()?.as_str())
+                .filter_map(|entry| entry.split_once('#').map(|(session, _)| session))
+                .collect();
+            offered_by.sort_unstable();
+            offered_by.dedup();
+            said.clear();
+            if !offered_by.is_empty() {
+                said.push(format!("offered by {}", offered_by.join(", ")));
+            }
+        }
         if let Some(age) = age(at, decision.since) {
             said.push(age);
         }
@@ -510,6 +525,48 @@ pub fn read<S: StateStore, W: World + ?Sized>(
         refused: None,
         opened: None,
     })
+}
+
+/// The chores one decision stands for, where it is a fold of proposed chore
+/// units — a bolt's, or a repository's shared line's — with the name it is
+/// headed by: the bolt's, or the repository's (11, 60, S231). `None` for any
+/// other decision.
+pub(crate) fn chores_of<'a>(objects: &'a [Object], decision: &DecisionInstance) -> Option<(String, Vec<&'a Object>)> {
+    if decision.kind != "unit-proposed" {
+        return None;
+    }
+    let ids: Vec<&str> = match decision.folds.is_empty() {
+        true => vec![decision.object.as_str()],
+        false => decision.folds.iter().map(String::as_str).collect(),
+    };
+    let chores: Vec<&Object> = ids
+        .iter()
+        .filter_map(|id| objects.iter().find(|o| o.id == *id))
+        .filter(|o| o.record.get("type").and_then(|v| v.as_str()) == Some("chore"))
+        .collect();
+    if chores.is_empty() || chores.len() != ids.len() {
+        return None;
+    }
+    let batch = chores[0].record.get("batch").and_then(|v| v.as_str())?;
+    let name = match batch.starts_with("bolt/") {
+        true => name_of(batch).to_string(),
+        false => batch.to_string(),
+    };
+    Some((name, chores))
+}
+
+/// The answers a decision's controls offer: the model's, except that a fold of
+/// chores is answered yes or drop, as a bolt's chores are (S231, 60).
+fn offered(read: &Read, decision: &DecisionInstance) -> Vec<String> {
+    match chores_of(&read.objects, decision) {
+        Some(_) => decision
+            .answers
+            .iter()
+            .filter(|answer| matches!(answer.as_str(), "yes" | "drop"))
+            .cloned()
+            .collect(),
+        None => decision.answers.clone(),
+    }
 }
 
 /// One thing a decision shows, as a line on its card, or nothing where the
@@ -856,7 +913,7 @@ fn said_rail(read: &Read) -> String {
         if let Some(why) = read.why.get(&decision.id).filter(|why| !why.is_empty()) {
             let _ = write!(out, " ({})", why.join(" · "));
         }
-        let _ = writeln!(out, "\n     answers: {}", decision.answers.join(" | "));
+        let _ = writeln!(out, "\n     answers: {}", offered(read, decision).join(" | "));
         for given in decision.number.and_then(|n| read.answered.get(&n)).into_iter().flatten() {
             let _ = writeln!(out, "     answered: {}", given.said());
         }
@@ -949,7 +1006,7 @@ fn said_object(read: &Read, object: &Object) -> String {
         if let Some(asked) = question_of(read, decision) {
             let _ = write!(out, " — {asked}");
         }
-        let _ = write!(out, "\n  answers: {}", decision.answers.join(" | "));
+        let _ = write!(out, "\n  answers: {}", offered(read, decision).join(" | "));
     }
     out
 }
@@ -1279,6 +1336,7 @@ fn card(read: &Read, decision: &DecisionInstance) -> String {
     // What it is, and where it is: the kind is the object's own machine, and
     // the phase is the lane it sits in on the board. The group is the heading
     // the card is filed under and is not repeated here (209, D16).
+    let chores = chores_of(&read.objects, decision);
     let machine = read
         .objects
         .iter()
@@ -1290,9 +1348,10 @@ fn card(read: &Read, decision: &DecisionInstance) -> String {
         "<div class=\"ch\"><span class=\"n number\">{number}</span>\
          <span class=\"kind\">{kind}</span>\
          <span class=\"ph\" data-phase=\"{phase}\">{phase}</span></div>\n",
-        kind = escape(match machine {
-            "signal" => "capture",
-            other => other,
+        kind = escape(match (machine, &chores) {
+            (_, Some(_)) => "chores",
+            ("signal", _) => "capture",
+            (other, _) => other,
         }),
         phase = escape(&phase_of(machine).to_lowercase()),
     );
@@ -1307,8 +1366,21 @@ fn card(read: &Read, decision: &DecisionInstance) -> String {
         .iter()
         .find(|o| o.id == decision.object && o.machine == "signal")
         .and_then(flywheel_domain::signals::text_of);
-    match captured {
-        Some(said) => {
+    match (captured, &chores) {
+        // A fold of chores is headed by the name it folds by, the bolt's or
+        // the repository's, and how many it holds (S231).
+        (_, Some((name, held))) => {
+            let _ = write!(
+                out,
+                "<div class=\"title\"><a class=\"object\" href=\"{link}\" data-object=\"{object}\">{name} · {n} {chores}</a></div>\n",
+                link = escape(&link),
+                object = escape(&decision.object),
+                name = escape(name),
+                n = held.len(),
+                chores = counted("chores", held.len()),
+            );
+        }
+        (Some(said), None) => {
             let _ = write!(
                 out,
                 "<div class=\"title\"><a class=\"object said\" href=\"{link}\" data-object=\"{object}\">“{said}”</a></div>\n",
@@ -1317,7 +1389,7 @@ fn card(read: &Read, decision: &DecisionInstance) -> String {
                 said = escape(&clipped(&said)),
             );
         }
-        None => {
+        (None, None) => {
             let _ = write!(
                 out,
                 "<div class=\"title\"><a class=\"object\" href=\"{link}\" data-object=\"{object}\">{pre}{name}</a></div>\n",
@@ -1353,8 +1425,9 @@ fn card(read: &Read, decision: &DecisionInstance) -> String {
         let _ = write!(out, "<p class=\"asks\">{}</p>\n", escape(&asked));
     }
     out.push_str("<div class=\"answers\">\n");
-    let keys = asks::keys(&decision.answers);
-    for (answer, key) in decision.answers.iter().zip(keys) {
+    let answers = offered(read, decision);
+    let keys = asks::keys(&answers);
+    for (answer, key) in answers.iter().zip(keys) {
         out.push_str(&card_control(&number, answer, &decision.object, &decision.kind, key));
     }
     out.push_str("</div>\n");
@@ -2103,13 +2176,19 @@ fn sheet(row: &status::Row) -> String {
 fn slip(read: &Read, row: &status::Row, lane: &[&status::Row]) -> String {
     let mut out = String::new();
     let _ = write!(out, "<div class=\"slip\"{}>\n", board_attributes(row));
+    // A slip hangs off no ledger, so it says which repository it is in, greyed,
+    // as a card's title does: two chores of two shared lines are both
+    // `chore-1` by name (209, S231).
     let _ = write!(
         out,
         "<span class=\"sl-k\">{machine}</span>\
-         <a class=\"sl-n\" href=\"#dock-{object}\">{name}</a>\
+         <a class=\"sl-n\" href=\"#dock-{object}\">{pre}{name}</a>\
          <span class=\"sl-to\">{said}</span>\n",
         machine = escape(&row.machine),
         object = escape(&row.object),
+        pre = repository_of(&row.object)
+            .map(|r| format!("<span class=\"pre\">{} · </span>", escape(r)))
+            .unwrap_or_default(),
         name = escape(name_of(&row.object)),
         said = escape(&row.said),
     );
@@ -2567,8 +2646,9 @@ fn dock_answers(read: &Read, object: &str) -> String {
             let _ = write!(out, "<p class=\"asks\">{}</p>\n", escape(&asked));
         }
         let _ = write!(out, "<div class=\"answers\" data-number=\"{number}\">\n");
-        let keys = asks::keys(&decision.answers);
-        for (answer, key) in decision.answers.iter().zip(keys) {
+        let answers = offered(read, decision);
+        let keys = asks::keys(&answers);
+        for (answer, key) in answers.iter().zip(keys) {
             out.push_str(&control(&number, answer, &decision.kind, key));
         }
         out.push_str("</div>\n");

@@ -449,7 +449,7 @@ fn unit_page(read: &Read, unit: &Object, row_: Option<&status::Row>) -> String {
     if let Some(kind) = field(unit, "type") {
         facts.push_str(&row("type", &escape(kind)));
     }
-    if let Some(bolt) = unit.parent.as_deref() {
+    if let Some(bolt) = unit.parent.as_deref().filter(|parent| parent.starts_with("bolt/")) {
         facts.push_str(&row("bolt", &link(read, bolt, bolt)));
     }
     if let Some(repository) = field(unit, "repository") {
@@ -462,6 +462,26 @@ fn unit_page(read: &Read, unit: &Object, row_: Option<&status::Row>) -> String {
         facts.push_str(&row("from", &link(read, document, document)));
     }
     out.push_str(&sec("the unit", "", &facts));
+    // A chore proposed with others is one decision with them, and its page
+    // lists every chore of the fold by the document it points at (S231, 11).
+    let fold = read
+        .decisions
+        .iter()
+        .filter(|d| d.folds.iter().any(|folded| *folded == unit.id))
+        .find_map(|d| super::chores_of(&read.objects, d));
+    if let Some((name, chores)) = fold {
+        let mut rows = String::from("<div class=\"rows\">\n");
+        for chore in &chores {
+            let document = field(chore, "document").unwrap_or_else(|| name_of(&chore.id));
+            let _ = write!(
+                rows,
+                "<div class=\"row\"><span class=\"st\">chore</span><span class=\"grow\">{}</span></div>\n",
+                link(read, &chore.id, document)
+            );
+        }
+        rows.push_str("</div>\n");
+        out.push_str(&sec(&format!("{name} · chores"), "", &rows));
+    }
 
     let items: Vec<&Object> = read
         .objects

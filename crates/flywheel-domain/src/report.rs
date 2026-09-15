@@ -44,7 +44,13 @@ pub enum Report {
     },
     /// A finding or a chore, pointing at its document; the record never holds
     /// the text (58, 59, 62).
-    Offer { kind: String, document: String },
+    Offer {
+        kind: String,
+        document: String,
+        /// Where a chore's fix belongs: `bolt-line`, or a repository's
+        /// manifest name (60).
+        scope: Option<String>,
+    },
     /// Something said on the thread that is not an exit.
     Note { text: String },
     /// The session refused the work it was given (43).
@@ -131,10 +137,13 @@ pub fn write_report(
                 }
             }
         }
-        Report::Offer { kind, document } => {
+        Report::Offer { kind, document, scope } => {
             if OFFERS.contains(&kind.as_str()) {
                 fields.insert("offer".into(), json!(kind));
                 fields.insert("document".into(), json!(document));
+                if let Some(scope) = scope {
+                    fields.insert("scope".into(), json!(scope));
+                }
                 Reported::Accepted(entry(at, "offer", by, fields))
             } else {
                 let reason = format!("`{kind}` is not an offer; the offers are {}", OFFERS.join(", "));
@@ -156,6 +165,46 @@ pub fn write_report(
         }
     };
     // One report, one entry, whatever it was (67).
+    store.append(session, reported.entry())?;
+    Ok(reported)
+}
+
+/// An offer refused for where it would land: one entry on the session's thread
+/// with the reason, never an offer and never pending, as an offer of a kind
+/// that is none is (60, 80). `refuses` names an offer already on the thread
+/// that the refusal takes back, where the entry was written before it was
+/// judged.
+pub fn refuse_offer(
+    store: &mut impl Records,
+    session: &str,
+    by: &str,
+    at: DateTime<Utc>,
+    report: &Report,
+    refuses: Option<&str>,
+    reason: &str,
+) -> Result<Reported> {
+    if session.is_empty() {
+        return Err(anyhow!(
+            "no session: pass --session or set {SESSION_ENV}, which the work order names"
+        ));
+    }
+    let Report::Offer { kind, document, scope } = report else {
+        return Err(anyhow!("only an offer is refused for where it would land"));
+    };
+    let mut fields: BTreeMap<String, Value> = BTreeMap::new();
+    fields.insert("raw".into(), json!(kind));
+    fields.insert("document".into(), json!(document));
+    if let Some(scope) = scope {
+        fields.insert("scope".into(), json!(scope));
+    }
+    if let Some(refuses) = refuses {
+        fields.insert("refuses".into(), json!(refuses));
+    }
+    fields.insert("refused".into(), json!(reason));
+    let reported = Reported::Refused {
+        entry: entry(at, "offer", by, fields),
+        reason: reason.to_string(),
+    };
     store.append(session, reported.entry())?;
     Ok(reported)
 }

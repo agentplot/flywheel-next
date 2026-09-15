@@ -1002,3 +1002,67 @@ fn the_board_reads_an_object_by_its_name_its_repository_and_its_state() {
     assert_eq!(state_and_rest("proposed"), ("proposed", ""));
     assert_eq!(state_and_rest(""), ("", ""));
 }
+
+/// Proposed chores of one repository's shared line fold into one decision
+/// headed by the repository's name and answered yes or drop; the blueprints'
+/// fold apart under their own name; and the fold's page lists every chore by
+/// the document it points at (60, 11, S231).
+#[test]
+fn shared_line_chores_fold_by_repository() {
+    let (mut store, world, defs) = a_page();
+    let at = commands::now(&store).expect("a point");
+    commands::put_new(&mut store, &defs, "instance/willdan", "instance", None, Default::default(), at).expect("the instance");
+    for (id, parent, repository, document, entry) in [
+        ("unit/atlas/chore-1", "repository/atlas", "atlas", "flywheel/curation/chores/agents-md.md", "curation/willdan/main/1#3"),
+        ("unit/atlas/chore-2", "repository/atlas", "atlas", "flywheel/curation/chores/rename-ref.md", "curation/willdan/main/1#4"),
+        ("unit/blueprints/chore-1", "instance/willdan", "blueprints", "flywheel/curation/chores/skill-typo.md", "curation/willdan/main/1#5"),
+    ] {
+        let record = [
+            ("type", json!("chore")),
+            ("type_version", json!(2)),
+            ("batch", json!(repository)),
+            ("repository", json!(repository)),
+            ("document", json!(document)),
+            ("sources", json!([entry])),
+        ]
+        .into_iter()
+        .map(|(k, v)| (k.to_string(), v))
+        .collect();
+        commands::put_new(&mut store, &defs, id, "unit", Some(parent), record, at).expect("the chore");
+    }
+    commands::rail(&mut store, &defs).expect("the rail derives");
+    let mut read = crate::page::read(&mut store, &world, &defs, ADDRESS, "chuck").expect("the page reads");
+    let chores: Vec<_> = read.decisions.iter().filter(|d| d.kind == "unit-proposed").cloned().collect();
+    assert_eq!(chores.len(), 2, "one decision per repository: {chores:?}");
+    let atlas = chores
+        .iter()
+        .find(|d| d.folds.iter().any(|f| f == "unit/atlas/chore-1"))
+        .expect("atlas's fold");
+    assert!(atlas.folds.iter().any(|f| f == "unit/atlas/chore-2"), "atlas's chores are one decision: {:?}", atlas.folds);
+
+    let html = crate::page::render(&read);
+    let card = |number: Option<u32>| -> String {
+        let label = format!("aria-label=\"decision {}\"", number.expect("numbered"));
+        let start = html.find(&label).unwrap_or_else(|| panic!("no card {label}"));
+        let rest = &html[start..];
+        rest[..rest.find("</article>").expect("the card closes")].to_string()
+    };
+    let held = card(atlas.number);
+    assert!(held.contains(">atlas · 2 chores<"), "headed by its repository: {held}");
+    assert!(held.contains(">chores<"), "{held}");
+    assert!(held.contains("offered by curation/willdan/main/1"), "{held}");
+    assert!(held.contains("data-answer=\"yes\"") && held.contains("data-answer=\"drop\""), "{held}");
+    assert_eq!(held.matches("data-answer=").count(), 2, "answered yes or drop and nothing else: {held}");
+    let blueprints = chores.iter().find(|d| d.object == "unit/blueprints/chore-1").expect("the blueprints' fold");
+    assert!(card(blueprints.number).contains(">blueprints · 1 chore<"));
+    // On the board, each chore says which repository it is in: both are
+    // `chore-1` by name.
+    assert!(html.contains("<span class=\"pre\">blueprints · </span>chore-1"), "the blueprints' chore is not told apart on the board");
+
+    read.opened = Some("unit/atlas/chore-2".into());
+    let docked = crate::page::render(&read);
+    for document in ["flywheel/curation/chores/agents-md.md", "flywheel/curation/chores/rename-ref.md"] {
+        assert!(docked.contains(document), "the fold's page does not list {document}");
+    }
+    assert!(docked.contains("atlas · chores"));
+}

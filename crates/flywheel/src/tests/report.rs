@@ -71,6 +71,7 @@ fn exit_writes_one_thread_entry() {
         &Report::Offer {
             kind: "finding".into(),
             document: "findings/1.md".into(),
+            scope: None,
         },
     );
     write(
@@ -78,6 +79,7 @@ fn exit_writes_one_thread_entry() {
         &Report::Offer {
             kind: "chore".into(),
             document: "chores/1.md".into(),
+            scope: None,
         },
     );
     write(&mut store, &Report::Note { text: "halfway".into() });
@@ -146,6 +148,7 @@ fn exit_outside_the_five_is_refused() {
         &Report::Offer {
             kind: "opinion".into(),
             document: "d.md".into(),
+            scope: None,
         },
     );
     assert!(matches!(out, Reported::Refused { .. }));
@@ -164,4 +167,56 @@ fn a_report_with_no_session_is_an_error() {
     )
     .expect_err("a report with no session names nothing to write on");
     assert!(err.to_string().contains("FLYWHEEL_SESSION"));
+}
+
+/// A chore offered off every bolt that names no repository the instance tracks
+/// is refused on the session's thread with the names it could have given,
+/// exits 1 and is never pending; one naming a tracked repository or the
+/// blueprints is an offer (60, `sessions.yaml` commands.offer).
+#[test]
+fn an_offer_off_every_bolt_naming_no_tracked_repository_is_refused() {
+    let mut store = a_store();
+    let tracked = || Ok(vec!["atlas".to_string()]);
+    let offer = |store: &mut Store, document: &str, scope: Option<&str>| {
+        crate::report::offer(store, tracked, SESSION, "chuck", Utc::now(), "chore", document, scope)
+            .expect("the offer is written")
+    };
+
+    for scope in [None, Some("bolt-line"), Some("switchboard")] {
+        let out = offer(&mut store, "chores/1.md", scope);
+        assert_eq!(crate::report::exit_code(&out), 1, "{scope:?} was not refused: {out:?}");
+        let Reported::Refused { reason, .. } = &out else {
+            unreachable!("exit 1 is a refusal");
+        };
+        assert!(reason.contains("atlas, blueprints"), "the refusal names what may be named: {reason}");
+    }
+    let thread = store.thread(SESSION).unwrap();
+    assert_eq!(thread.len(), 3, "each refusal is one entry on the thread");
+    assert!(thread.iter().all(|e| e.kind == "offer" && e.fields.contains_key("refused")));
+    assert!(thread[2]
+        .fields
+        .get("refused")
+        .and_then(|v| v.as_str())
+        .is_some_and(|r| r.contains("`switchboard`")));
+    assert!(
+        flywheel_domain::offers::pending(&store, SESSION).unwrap().is_empty(),
+        "a refused offer is never pending"
+    );
+
+    let atlas = offer(&mut store, "chores/1.md", Some("atlas"));
+    assert_eq!(crate::report::exit_code(&atlas), 0);
+    let blueprints = crate::report::offer(
+        &mut store,
+        || panic!("the blueprints need no manifest read"),
+        SESSION,
+        "chuck",
+        Utc::now(),
+        "chore",
+        "chores/2.md",
+        Some("blueprints"),
+    )
+    .unwrap();
+    assert_eq!(crate::report::exit_code(&blueprints), 0);
+    assert_eq!(flywheel_domain::offers::pending(&store, SESSION).unwrap().len(), 2);
+    assert_eq!(store.thread(SESSION).unwrap()[3].fields.get("scope"), Some(&json!("atlas")));
 }

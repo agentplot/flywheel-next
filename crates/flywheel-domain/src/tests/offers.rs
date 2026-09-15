@@ -13,6 +13,10 @@ fn now() -> DateTime<Utc> {
 }
 
 fn offer(store: &mut FakeStore, session: &str, kind: &str, document: &str) {
+    offer_scoped(store, session, kind, document, None);
+}
+
+fn offer_scoped(store: &mut FakeStore, session: &str, kind: &str, document: &str, scope: Option<&str>) {
     write_report(
         store,
         session,
@@ -21,6 +25,7 @@ fn offer(store: &mut FakeStore, session: &str, kind: &str, document: &str) {
         &Report::Offer {
             kind: kind.into(),
             document: document.into(),
+            scope: scope.map(String::from),
         },
     )
     .unwrap();
@@ -40,13 +45,23 @@ fn an_offer_no_object_is_above_becomes_a_signal() {
     let finding = "flywheel/curation/findings/stale-claims.md";
     let chore = "flywheel/curation/chores/rename-tags.md";
     offer(&mut store, session, "finding", finding);
+    // A chore naming no repository has nowhere to land off every bolt. The
+    // command refuses it before writing; one on the thread anyway is refused
+    // there, and is no signal (60, S231).
     offer(&mut store, session, "chore", chore);
 
     let made = offers::record(&mut store, &mut world, &defs, session, "curation/main", now()).unwrap();
-    assert_eq!(made.len(), 2, "one record per offer: {made:?}");
+    assert_eq!(made.len(), 1, "one record, for the finding: {made:?}");
     assert!(offers::pending(&store, session).unwrap().is_empty(), "nothing is left to stop the session");
+    let thread = store.thread(session).unwrap();
+    let refusal = thread.last().expect("the refusal is on the thread");
+    assert_eq!(refusal.fields.get("refuses"), Some(&json!(format!("{session}#1"))));
+    assert!(
+        refusal.fields.get("refused").and_then(|v| v.as_str()).is_some_and(|r| r.contains("blueprints")),
+        "the refusal names where a chore may land: {refusal:?}"
+    );
 
-    for (id, document) in made.iter().zip([finding, chore]) {
+    for (id, document) in made.iter().zip([finding]) {
         let signal = store.get(id).unwrap().expect("the signal is on record");
         assert_eq!(signal.machine, "signal");
         assert_eq!(signal.record.get("document"), Some(&json!(document)));
@@ -103,4 +118,96 @@ fn an_offer_under_a_capture_is_that_captures_signal() {
         .filter(|o| o.machine == "capture")
         .count();
     assert_eq!(captures, 1, "the offer made no capture of its own");
+}
+
+/// A chore offered off every bolt is a proposed chore unit of the repository
+/// its scope names, folded with that repository's other shared-line chores into
+/// one decision; no capture or signal is written, and a route naming the offer
+/// names the unit it became (60, 62, 11, 116, S231).
+#[test]
+fn a_chore_offered_off_every_bolt_is_a_unit_of_its_repository() {
+    let mut store = FakeStore::default();
+    let mut world = FakeWorld::new().tracking("atlas");
+    let defs = crate::set::load().unwrap();
+    commands::put_new(&mut store, &defs, "curation/main", "curation", None, Default::default(), now()).unwrap();
+    let session = "session/curation/main/1";
+    let first = "flywheel/curation/chores/agents-md.md";
+    let second = "flywheel/curation/chores/rename-ref.md";
+    offer_scoped(&mut store, session, "chore", first, Some("atlas"));
+    offer_scoped(&mut store, session, "chore", second, Some("atlas"));
+
+    let made = offers::record(&mut store, &mut world, &defs, session, "curation/main", now()).unwrap();
+    assert_eq!(made, vec!["unit/atlas/chore-1".to_string(), "unit/atlas/chore-2".to_string()]);
+    for (id, document) in made.iter().zip([first, second]) {
+        let unit = store.get(id).unwrap().expect("the chore unit is on record");
+        assert_eq!(unit.machine, "unit");
+        assert_eq!(unit.parent.as_deref(), Some("repository/atlas"), "it stands under its repository");
+        assert_eq!(unit.config.get("life").map(String::as_str), Some("proposed"));
+        for (field, value) in [
+            ("type", json!("chore")),
+            ("batch", json!("atlas")),
+            ("repository", json!("atlas")),
+            ("document", json!(document)),
+        ] {
+            assert_eq!(unit.record.get(field), Some(&value), "{id} {field}");
+        }
+        assert_eq!(unit.record.get("sources").and_then(|s| s.as_array()).map(Vec::len), Some(1));
+    }
+    let written = store
+        .list_records(&flywheel_atoms::Scope::All)
+        .unwrap()
+        .into_iter()
+        .filter(|o| matches!(o.machine.as_str(), "capture" | "signal"))
+        .count();
+    assert_eq!(written, 0, "a chore is no capture and no signal");
+    assert!(world.under("flywheel/signals/").is_empty(), "nothing is written into the signals");
+    assert!(offers::pending(&store, session).unwrap().is_empty());
+
+    let standing = commands::rail(&mut store, &defs).unwrap();
+    let chores: Vec<_> = standing.iter().filter(|d| d.kind == "unit-proposed").collect();
+    assert_eq!(chores.len(), 1, "one decision for the repository's chores: {chores:?}");
+    assert_eq!(chores[0].folds.len(), 2);
+
+    let signal = signals::signal_object("page-1", 1);
+    commands::put_new(&mut store, &defs, &signal, "signal", Some("capture/page-1"), Default::default(), now()).unwrap();
+    let moved = signals::Move {
+        signal: signal.clone(),
+        target: format!("route {session}#0"),
+        reason: "curation offered a chore for it".into(),
+        at: now().to_rfc3339(),
+    };
+    signals::apply_move(&mut store, &mut world, &moved, now()).unwrap();
+    assert_eq!(
+        store.get(&signal).unwrap().unwrap().record.get("route"),
+        Some(&json!("unit/atlas/chore-1")),
+        "the route names the unit the offer became (116)"
+    );
+}
+
+/// A chore of the blueprints stands under the instance with the blueprints
+/// named as its repository, folds under that name, and every host covers it,
+/// as every host clones the blueprints (123, 149, 205).
+#[test]
+fn a_blueprints_chore_stands_under_the_instance() {
+    let mut store = FakeStore::default();
+    let mut world = FakeWorld::new();
+    let defs = crate::set::load().unwrap();
+    commands::put_new(&mut store, &defs, "instance/willdan", "instance", None, Default::default(), now()).unwrap();
+    commands::put_new(&mut store, &defs, "curation/main", "curation", None, Default::default(), now()).unwrap();
+    let session = "session/curation/main/1";
+    offer_scoped(&mut store, session, "chore", "flywheel/curation/chores/skill-typo.md", Some("blueprints"));
+
+    let made = offers::record(&mut store, &mut world, &defs, session, "curation/main", now()).unwrap();
+    assert_eq!(made, vec!["unit/blueprints/chore-1".to_string()]);
+    let unit = store.get(&made[0]).unwrap().expect("the chore unit");
+    assert_eq!(unit.parent.as_deref(), Some("instance/willdan"));
+    assert_eq!(unit.record.get("repository"), Some(&json!("blueprints")));
+    assert_eq!(unit.record.get("batch"), Some(&json!("blueprints")));
+
+    let declaration = crate::derived::Declaration {
+        repositories: vec!["atlas".into()],
+        types: vec![],
+        kinds: vec!["all".into()],
+    };
+    assert!(declaration.covers(&unit), "a host that declares its repositories still takes the blueprints' chores");
 }

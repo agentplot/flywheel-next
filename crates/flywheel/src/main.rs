@@ -200,16 +200,29 @@ enum Cmd {
         #[arg(long, default_value = "local")]
         host: String,
     },
-    /// Offer a finding or a chore, pointing at its document.
+    /// Offer a finding or a chore, pointing at its document. A chore says
+    /// where its fix belongs: `bolt-line` under a bolt, or a repository the
+    /// instance tracks, `blueprints` among them (60).
     Offer {
         kind: String,
         #[arg(long)]
         document: String,
+        /// Where a chore's fix belongs: `bolt-line`, or a repository's name.
+        #[arg(long)]
+        scope: Option<String>,
         #[arg(long, env = SESSION_ENV, default_value = "")]
         session: String,
         /// Which host's checkout the report is written through (232).
         #[arg(long, default_value = "local")]
         host: String,
+        /// The manifest naming the repositories the instance tracks, read when
+        /// a chore's scope needs them (183, 205).
+        #[arg(long, env = "FLYWHEEL_MANIFEST", default_value = "flywheel.yaml")]
+        manifest: PathBuf,
+        /// Where this host keeps its clones, in place of the manifest's own
+        /// (205, 232).
+        #[arg(long)]
+        root: Option<PathBuf>,
     },
     /// Say something on the session's thread that is not an exit.
     Note {
@@ -260,17 +273,20 @@ fn do_report(cli: &Cli, host: &str, session: &str, report: &Report) -> Result<i3
     let at = chrono::Utc::now();
     let outcome = report::write_report(&mut store, session, &by, at, report)?;
     wake_page();
-    Ok(match outcome {
-        Reported::Accepted(entry) => {
-            println!("{} recorded on {session}", entry.kind);
-            0
-        }
+    Ok(said(session, &outcome))
+}
+
+/// What a report says back, and the code it exits with: a refusal is recorded
+/// on the thread with what was reported, and exits 1 (66, 80).
+fn said(session: &str, outcome: &Reported) -> i32 {
+    match outcome {
+        Reported::Accepted(entry) => println!("{} recorded on {session}", entry.kind),
         Reported::Refused { reason, .. } => {
             eprintln!("refused: {reason}");
-            eprintln!("recorded on {session} as invalid, with the raw report");
-            1
+            eprintln!("the refusal is recorded on {session}, with the raw report");
         }
-    })
+    }
+    report::exit_code(outcome)
 }
 
 /// A report is a cause the loop should act on now (130, D6, S221): the order
@@ -856,9 +872,19 @@ async fn main() -> Result<()> {
             let r = Report::Exit { kind: kind.clone(), deliverables: deliverables.clone(), question: question.clone(), text: text.clone() };
             std::process::exit(do_report(&cli, host, session, &r)?);
         }
-        Cmd::Offer { kind, document, session, host } => {
-            let r = Report::Offer { kind: kind.clone(), document: document.clone() };
-            std::process::exit(do_report(&cli, host, session, &r)?);
+        Cmd::Offer { kind, document, scope, session, host, manifest, root } => {
+            let mut store = open_state(&cli.state, host)?;
+            let by = std::env::var("USER").unwrap_or_else(|_| "operator".into());
+            // The tracked names, from the manifest as the ask reads them, and
+            // only when a chore's scope needs them (`sessions.yaml` commands.offer).
+            let tracked = || -> Result<Vec<String>> {
+                let read = flywheel::host::manifest_with_root(manifest, host, root.as_deref())?;
+                let world = flywheel_world_host::HostWorld::open(read, host)?;
+                flywheel_domain::offers::tracked(&world)
+            };
+            let outcome = report::offer(&mut store, tracked, session, &by, chrono::Utc::now(), kind, document, scope.as_deref())?;
+            wake_page();
+            std::process::exit(said(session, &outcome));
         }
         Cmd::Note { text, session, host } => {
             let r = Report::Note { text: text.join(" ") };
