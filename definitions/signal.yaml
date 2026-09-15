@@ -1,13 +1,18 @@
-# One raw piece of input (113). Immutable once written; exactly one
+# One raw piece of input (113), or a finding a session offered with no
+# intent or bolt above it, asking under the capture the session read or
+# under a capture of its own (62). Immutable once written; exactly one
 # standing move — attach, challenge, join, answered, route or drop —
 # replaced only by the operator's response (107). A route move names the
 # chore or the ask the curation session, being a session, offered for a
-# signal that argues with no claim (58–60, 116).
+# signal that argues with no claim (58–60, 116). An unmoved signal is never
+# a decision: the operator's hand on it is a control on its capture — build
+# now, make an intent, attach to an open intent, drop — each a catalogue
+# tool that writes the move record curation would have (19a, 110, 193).
 machine: signal
-version: 2
+version: 3
 kind: object
 tier: core
-satisfies: [58, 60, 106, 107, 113, 114, 116, 118]
+satisfies: [19, 58, 60, 106, 107, 113, 114, 116, 118]
 object: signal
 parent: capture
 record:
@@ -24,18 +29,8 @@ regions:
     initial: unmoved
     states:
       unmoved:
-        doc: counted and aged by source on the status view; never discarded (118). It stands on the rail as the operator's own decision — what to make of it — until curation or the operator moves it (19a, 107)
-        decision: {kind: signal-unmoved, group: decide, answers: [build, intent, drop], satisfies: [19, 107, 116, 311]}
+        doc: counted and aged by source on the status view and listed there with the operator's controls; never discarded (118). Never a decision (19a) — curation moves it on its cadence, its threshold or the operator's run-now dictation (110), or the operator moves it by hand with a control on its capture, `propose-unit` (route, naming the unit), `open-intent` (attach, to the intent the same gesture opened), `attach-signal` or `drop-signal`, each a dictation that writes the move record (12, 107, 193)
         transitions:
-          - when: {response: build}
-            to: unmoved
-            effects: [{do: build_from_signal, note: "a chore unit on a bolt named from the capture's own words, approved by this response; the move is route, naming the unit (19a, 12, 34)"}]
-          - when: {response: intent}
-            to: unmoved
-            effects: [{do: move_signal, args: {move: join}, note: "the join proposes an intent named from the capture's words, citing this signal, as curation's join does (19a, 109, 116)"}]
-          - when: {response: drop}
-            to: unmoved
-            effects: [{do: move_signal, args: {move: drop}}]
           - {when: {ev: signal.move, is: attach}, to: attached}
           - {when: {ev: signal.move, is: challenge}, to: challenging}
           - {when: {ev: signal.move, is: join}, to: joined}
@@ -65,7 +60,7 @@ regions:
           - when: {ev: signal.move, is: none}
             to: unmoved
       routed:
-        doc: the curation session offered a chore or an ask for it through the command, like any session (58–60), and the move names that offer's record; the chore is a proposed chore unit on the shared line, the ask a record for planning (116)
+        doc: the curation session offered a chore or an ask for it through the command, like any session (58–60), and the move names that offer's record; the chore is a proposed chore unit under the repository, on its shared line (60, 62), the ask a record for planning (116)
         transitions:
           - when: {ev: signal.move, is: none}
             to: unmoved

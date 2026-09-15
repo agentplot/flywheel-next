@@ -2,7 +2,7 @@
 //! control (S220).
 //!
 //! The model names a decision by its kind and its answers by the words the
-//! response grammar matches (`yes`, `hold`, `build`). A card that printed
+//! response grammar matches (`yes`, `hold`, `drop`). A card that printed
 //! those alone — "bolt-close · yes · hold" — told the operator which machine
 //! was asking and not what they were being asked. The sentence is the
 //! question; the label is what pressing the control does; the key is how it
@@ -20,7 +20,6 @@ pub fn question(kind: &str, name: &str, facts: &Facts) -> Option<String> {
             1 => format!("Its one unit is merged. Land {name} on main?"),
             n => format!("All {n} units are merged. Land {name} on main?"),
         },
-        "signal-unmoved" => "Build it, elaborate it as an intent, or drop it?".to_string(),
         "intent-proposed" => format!("Open {name} as an intent and start elaborating?"),
         "intent-close" => format!("Every elaboration of {name} has delivered. Close it?"),
         "question" => "The agent is waiting on your answer.".to_string(),
@@ -49,9 +48,6 @@ pub fn label(kind: &str, answer: &str) -> String {
         ("bolt-close", "hold") => "hold".into(),
         ("intent-proposed", "yes") => "open".into(),
         ("package-install", "yes") => "install".into(),
-        ("signal-unmoved", "build") => "build".into(),
-        ("signal-unmoved", "intent") => "intent".into(),
-        ("signal-unmoved", "drop") => "drop".into(),
         ("land-failed", "retry") | ("stalled", "retry") => "retry".into(),
         _ => super::said(answer),
     }
@@ -63,9 +59,6 @@ pub fn does(kind: &str, answer: &str) -> Option<&'static str> {
     Some(match (kind, answer) {
         ("bolt-close", "yes") => "merge the branch into main and remove its place",
         ("bolt-close", "hold") => "keep the bolt open; the decision returns when something merges",
-        ("signal-unmoved", "build") => "a chore on a new bolt, worked by an agent in its own place",
-        ("signal-unmoved", "intent") => "an intent to elaborate before anything is built",
-        ("signal-unmoved", "drop") => "set it aside; it stays on record",
         ("intent-proposed", "yes") => "open the intent and start its elaborations",
         ("intent-proposed", "drop") => "set it aside with its signals",
         ("intent-proposed", "split") => "send the signals back to curation",
@@ -84,7 +77,6 @@ pub fn does(kind: &str, answer: &str) -> Option<&'static str> {
 /// being asked, in one word, beside the number (S219).
 pub fn short(kind: &str) -> &str {
     match kind {
-        "signal-unmoved" => "what next",
         "bolt-close" => "land?",
         "intent-proposed" => "open?",
         "intent-close" => "close?",
@@ -99,7 +91,7 @@ pub fn short(kind: &str) -> &str {
 
 /// The affirmative answer of a decision, drawn as its primary control.
 pub fn primary(answer: &str) -> bool {
-    matches!(answer, "yes" | "build" | "installed" | "placed" | "close" | "start")
+    matches!(answer, "yes" | "installed" | "placed" | "close" | "start")
 }
 
 /// The answer that sets something aside, drawn in the colour for it.

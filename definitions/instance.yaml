@@ -51,7 +51,7 @@ tier: core
 object: instance
 parent: null
 singleton: instance
-owns: [repository, package, pool]
+owns: [repository, package, pool, unit]   # unit: only chore units on the blueprints' shared line, offered off every bolt with scope `blueprints` (60, 62, 123)
 satisfies: [15, 204, 207, 208, 218, 219, 220, 221, 241, 247, 255, 261, 265, 266, 267, 276, 279, 281, 282, 294, 302, 304, 312]
 record:
   name: string           # the operator's name for it; may but need not coincide with a git-host organization (219)

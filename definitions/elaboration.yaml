@@ -33,8 +33,8 @@ regions:
     initial: proposed
     states:
       proposed:
-        doc: a decision of its own when the intent is open; folded into the intent's decision when the intent is itself proposed; a gathering shows every intent it covers, and the operator may pick which stay or answer per intent (188)
-        decision: {kind: elaboration-proposed, group: approve, document: document, answers: ["yes", drop, "type <name>", "pick <intents>", "<intent>: drop"], shows: [elaboration.type, sources, covers], satisfies: [10, 27, 58, 188]}
+        doc: a decision of its own when the intent is open; folded into the intent's decision when the intent is itself proposed; the card names the type and offers only the answers that apply — pick and the per-intent drop only when covers names more than one intent (27, 188, S226); a gathering shows every intent it covers, and the operator may pick which stay or answer per intent (188); a proposal naming no type is self-closing (27); an elaboration whose type the instance does not know stays here, its decision naming the type it lacks and asking the operator to set one with `type <name>` (85a)
+        decision: {kind: elaboration-proposed, group: approve, document: document, answers: ["yes", drop, "type <name>", "pick <intents>", "<intent>: drop"], shows: [elaboration.type, elaboration.type_defined, sources, covers], satisfies: [10, 27, 58, 85, 188]}
         transitions:
           - when: {ev: elaboration.shown_with_parent, is: true}
             to: proposed
@@ -48,7 +48,10 @@ regions:
           - when: {response: "<intent>: drop"}
             to: proposed
             effects: [{do: set_covers, args: {without: $response}, note: "one intent answered on its own leaves the gathering (188)"}]
-          - when: {response: "yes"}
+          - when: {all: [{response: "yes"}, {ev: elaboration.type_defined, is: false}]}
+            to: proposed
+            note: the yes is refused with the missing type named; nothing moves on with no stages and no session until the operator sets a type (85a)
+          - when: {all: [{response: "yes"}, {ev: elaboration.type_defined, is: true}]}
             to: approved
           - when: {response: drop}
             to: dropped

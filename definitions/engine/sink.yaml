@@ -15,6 +15,9 @@
 # the dispatcher, a host that takes no work and presents the chat, is that
 # presenter for the chat sink (216, 217).
 # The delivery mark is the one recorded piece of state behind the tail (14).
+# It is also where a chat sink's presenter starts reading what waited: a
+# reply sent while no host presented the sink is read from after the mark's
+# delivery when the presenter opens the wire, and answered once (217f, 137).
 # On a hosted tier the page sink's delivery writes one small page projection
 # per instance — the status view and the rail as data, with each member's
 # page sink and its mark — to an object under the instance's key; a page

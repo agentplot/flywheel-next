@@ -52,12 +52,14 @@ evidence:
   elaboration.type: {read: "get(id).type"}
   elaboration.type_version: {read: "get(id).type_version"}
   elaboration.type_set: {read: "get(id).type equals the response's argument"}
+  elaboration.type_defined: {read: "registry.types holds get(id).type at some version; false when the type is null or names no entry (85a)"}
   elaboration.shown_with_parent: {read: "get(parent).state is proposed"}
   elaboration.kept_since: {read: "get(id).kept_at"}
   elaboration.covers_set: {read: "get(id).covers equals the response's picked set (with the parent kept), or lacks the intent the response named"}
   curation.gatherings_proposed: {read: "for every gathering the session delivered, one elaboration record in proposed whose covers equal its intents"}
   unit.type:      {read: "get(id).type"}
   unit.type_version: {read: "get(id).type_version"}
+  unit.type_defined: {read: "registry.types holds get(id).type at some version; false when the type is null or names no entry (85a)"}
   unit.batch:     {read: "get(id).batch"}
   unit.proposal:  {read: "get(get(id).proposal).state, or none when the unit names no proposal"}
   proposal.replaced: {read: "a proposal record of the same repository with a newer entered_at exists"}

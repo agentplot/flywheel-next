@@ -811,6 +811,49 @@ fn the_curators_surface_goes_when_the_curation_does() {
     );
 }
 
+/// A capture raises no decision: typed on the page it leaves the rail's count
+/// as it was, and the newest line of what happened lately says it was
+/// captured, in its own words (19a, S9, S212, S224).
+#[test]
+fn a_capture_raises_no_decision() {
+    let (mut store, mut world, defs) = a_page();
+    a_decision(&mut store, &defs, "bolt/atlas/plan-rows");
+    let count = |store: &mut FakeStore, world: &world::Files| {
+        crate::page::read(store, world, &defs, ADDRESS, "chuck")
+            .expect("the page reads")
+            .decisions
+            .len()
+    };
+    let before = count(&mut store, &world);
+    assert_eq!(before, 1, "the bolt's close stands");
+
+    let call = crate::catalogue::Call::new("capture", "chuck", "page")
+        .arg("text", json!("the rows lose their numbers on the second page"))
+        .arg("source", json!("console"));
+    crate::catalogue::call(&mut store, &mut world, &defs, &call).expect("the capture is taken");
+    commands::rail(&mut store, &defs).expect("the rail derives");
+    assert_eq!(count(&mut store, &world), before, "a capture put a decision on the rail (19a)");
+    // It stands in inception as a quote, waiting on curation and not on the
+    // operator (19a, 110).
+    let read = crate::page::read(&mut store, &world, &defs, ADDRESS, "chuck").expect("the page reads");
+    let row = read
+        .status
+        .rows
+        .iter()
+        .find(|row| row.machine == "capture")
+        .expect("the capture is on the board");
+    assert_eq!(row.group, "queued", "a capture is grouped as waiting on the operator (19a)");
+
+    let html = rendered(&mut store, &world, &defs);
+    let listed = html
+        .split("<ul class=\"since\">")
+        .nth(1)
+        .expect("what happened lately is listed");
+    let newest = listed.split("</li>").next().expect("a line");
+    assert!(newest.contains("class=\"v captured\">captured<"), "the newest line: {newest}");
+    assert!(newest.contains("the rows lose their numbers"), "the newest line: {newest}");
+}
+
 // ---- 17.4 the board draws each kind in its own form
 
 /// Every kind on the board has one form of its own, and no two share one (209).

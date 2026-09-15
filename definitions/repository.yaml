@@ -12,7 +12,8 @@ kind: object
 tier: core
 object: repository
 parent: instance
-satisfies: [5, 104, 149, 199, 202, 203, 206, 207, 208]
+owns: [unit]             # only chore units on its shared line: a chore offered off every bolt (60, 62)
+satisfies: [5, 60, 104, 149, 199, 202, 203, 206, 207, 208]
 record:
   name: string           # the manifest entry's name and what map nodes name as home (199)
   repo: string           # <instance>/<name> on the git host

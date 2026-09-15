@@ -360,6 +360,14 @@ impl EvidenceSource for HostStore {
                     .as_ref()
                     .and_then(|defs| flywheel_domain::stages::evidence(&self.git, defs, object, region, name))
             })
+            // Whether the registry in force holds the object's type, which a
+            // unit's and an elaboration's approval waits on (85a,
+            // `record-derived.yaml` unit.type_defined, elaboration.type_defined).
+            .or_else(|| {
+                self.defs
+                    .as_ref()
+                    .and_then(|defs| flywheel_domain::blueprints::evidence(&self.git, defs, object, name))
+            })
             // The signal material, read from the blueprints under the
             // machinery's prefix (111, 107, `blueprints.yaml` evidence).
             .or_else(|| {
@@ -2161,24 +2169,6 @@ fn performing(
         // reports the exit, and this reads those records back. Applying a move
         // already applied writes the same bytes and cites the same signal, so a
         // second pass changes nothing (127, 137).
-        // The operator's own move on one signal, from the rail (19a).
-        "move_signal" => {
-            let word = arg(effect, "move");
-            let HostStore { git, world, .. } = store;
-            flywheel_domain::signals::move_by_operator(
-                git,
-                &mut **world,
-                defs,
-                object,
-                &word,
-                "the operator's response on the rail (19a)",
-                now,
-            )?;
-        }
-        "build_from_signal" => {
-            let HostStore { git, world, .. } = store;
-            flywheel_surface::catalogue::build_from_signal(git, &mut **world, defs, object, now)?;
-        }
         "record_moves" => {
             let HostStore { git, world, .. } = store;
             let delivered =

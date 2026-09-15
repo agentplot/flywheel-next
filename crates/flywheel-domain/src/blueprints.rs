@@ -8,8 +8,12 @@
 //! record, and the core machine stands (223).
 
 use anyhow::{Context, Result};
-use flywheel_engine::defs::{Definitions, Machine};
+use flywheel_atoms::Records;
+use flywheel_engine::defs::{Definitions, Machine, MachineKind};
+use serde_json::{json, Value};
+use std::collections::BTreeSet;
 use std::path::Path;
+use std::sync::OnceLock;
 
 /// Where an instance's own type files live in its blueprints repository.
 pub const TYPE_DIRECTORIES: &[&str] = &["flywheel/unit-types", "flywheel/elaboration-types"];
@@ -119,4 +123,70 @@ pub fn machine_for<'a>(
             .or_else(|| defs.machines.get(type_name)),
         None => defs.machines.get(type_name),
     }
+}
+
+/// The name a pinned reference stands for: `chore@2` is `chore`.
+fn bare(name: &str) -> &str {
+    name.split_once('@').map(|(n, _)| n).unwrap_or(name)
+}
+
+/// The types the binary's registry holds, by name: every `name@version` under
+/// `types` in the shipped `registry.yaml` (224, model.md 10.7).
+fn registered() -> &'static BTreeSet<String> {
+    static REGISTERED: OnceLock<BTreeSet<String>> = OnceLock::new();
+    REGISTERED.get_or_init(|| {
+        let Some((_, bytes)) = crate::set::files().into_iter().find(|(path, _)| path == "registry.yaml") else {
+            return BTreeSet::new();
+        };
+        let registry: serde_yaml::Value = serde_yaml::from_slice(bytes).unwrap_or_default();
+        registry
+            .get("types")
+            .and_then(|types| types.as_mapping())
+            .map(|types| types.keys().filter_map(|k| k.as_str()).map(|k| bare(k).to_string()).collect())
+            .unwrap_or_default()
+    })
+}
+
+/// The machines the binary carries, by name.
+fn core_names() -> &'static BTreeSet<String> {
+    static CORE: OnceLock<BTreeSet<String>> = OnceLock::new();
+    CORE.get_or_init(|| {
+        crate::set::load()
+            .map(|defs| defs.machines.into_keys().collect())
+            .unwrap_or_default()
+    })
+}
+
+/// Whether the registry in force holds a type at some version: one the binary
+/// registers, or one of the instance's own that the definitions in force were
+/// read over from its blueprints (57, 85). A type that is null, empty or names
+/// no entry is not defined, and an object of it is not approved until the
+/// operator sets one (85a).
+pub fn type_defined(defs: &Definitions, type_name: Option<&str>) -> bool {
+    let Some(name) = type_name.map(str::trim).filter(|n| !n.is_empty()) else {
+        return false;
+    };
+    let name = bare(name);
+    if registered().contains(name) {
+        return true;
+    }
+    // An instance's own type is a template the core set does not carry: a core
+    // machine is never overridden from the blueprints (223), so a template of
+    // another name in force came from there.
+    !core_names().contains(name)
+        && defs
+            .machines
+            .values()
+            .any(|m| m.kind == MachineKind::Template && m.machine == name)
+}
+
+/// `unit.type_defined` and `elaboration.type_defined`: the object's own type
+/// against the definitions in force (85a, `record-derived.yaml`).
+pub fn evidence<S: Records>(store: &S, defs: &Definitions, object: &str, name: &str) -> Option<Value> {
+    if !matches!(name, "unit.type_defined" | "elaboration.type_defined") {
+        return None;
+    }
+    let held = store.get(object).ok().flatten();
+    let kind = held.as_ref().and_then(|o| o.record.get("type")).and_then(|v| v.as_str());
+    Some(json!(type_defined(defs, kind)))
 }

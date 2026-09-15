@@ -905,44 +905,6 @@ pub fn text_of(signal: &flywheel_atoms::Object) -> Option<String> {
         .map(String::from)
 }
 
-/// The operator's own move on one signal, from the rail (19a): `join`
-/// proposes an intent named from the capture's words and citing the signal,
-/// as curation's join does (109, 116); `drop` drops it with the response as
-/// the reason. Either way it is the signal's one move (107).
-pub fn move_by_operator<S: StateStore, W: World + ?Sized>(
-    store: &mut S,
-    world: &mut W,
-    defs: &Definitions,
-    signal: &str,
-    word: &str,
-    reason: &str,
-    at: DateTime<Utc>,
-) -> Result<Move> {
-    let Some(held) = store.get(signal)? else {
-        bail!("`{signal}` is no signal on record");
-    };
-    let target = match word {
-        "join" => {
-            let text = text_of(&held).unwrap_or_default();
-            format!("join intent/{}", name_from_words(&text))
-        }
-        "drop" => "drop".to_string(),
-        other => bail!("`{other}` is no move the operator makes from the rail; join and drop are (19a)"),
-    };
-    let moved = Move {
-        signal: signal.to_string(),
-        target,
-        reason: reason.to_string(),
-        at: at.to_rfc3339(),
-    };
-    if word == "join" {
-        let proposals = proposals_of(std::slice::from_ref(&moved));
-        propose_intents(store, defs, &proposals, at)?;
-    }
-    apply_move(store, world, &moved, at)?;
-    Ok(moved)
-}
-
 /// `record_moves`: every judged signal gets its one standing move (107, 116).
 ///
 /// The moves are the session's delivery and not the machinery's judgment:

@@ -104,3 +104,41 @@ fn core_machine_override_refused() {
     );
     let _ = std::fs::remove_dir_all(&dir);
 }
+
+/// A type is defined where the registry in force holds it at some version: the
+/// binary's own, bare or pinned, or the instance's once its blueprints are read.
+/// Null, empty, a core machine or a name no entry has is not (85a).
+#[test]
+fn a_type_is_defined_where_the_registry_holds_it() {
+    let core = crate::set::load().expect("the core set parses");
+    for held in ["chore", "chore@2", "default", "fast", "self-closing", "standing", "with-operator"] {
+        assert!(blueprints::type_defined(&core, Some(held)), "`{held}` is registered");
+    }
+    for missing in [None, Some(""), Some("  "), Some("from-material"), Some("spike"), Some("line"), Some("unit")] {
+        assert!(!blueprints::type_defined(&core, missing), "{missing:?} is no registered type");
+    }
+    let loaded = blueprints::load_over_core(&fixture()).expect("the blueprints read");
+    assert!(
+        blueprints::type_defined(&loaded.defs, Some("spike")),
+        "the instance's own type is defined once its blueprints are read (57, 85)"
+    );
+}
+
+/// `unit.type_defined` and `elaboration.type_defined` answer from the object's
+/// own record, and no other read is theirs (85a).
+#[test]
+fn the_type_reads_answer_from_the_record() {
+    let defs = crate::set::load().unwrap();
+    let mut store = flywheel_atoms::testing::FakeStore::default();
+    let at = crate::commands::now(&store).unwrap();
+    for (id, machine, kind) in [("unit/atlas/one", "unit", "chore"), ("elaboration/limits/one", "elaboration", "from-material")] {
+        let record = [("type".to_string(), serde_json::json!(kind))].into_iter().collect();
+        crate::commands::put_new(&mut store, &defs, id, machine, None, record, at).unwrap();
+    }
+    assert_eq!(blueprints::evidence(&store, &defs, "unit/atlas/one", "unit.type_defined"), Some(serde_json::json!(true)));
+    assert_eq!(
+        blueprints::evidence(&store, &defs, "elaboration/limits/one", "elaboration.type_defined"),
+        Some(serde_json::json!(false))
+    );
+    assert_eq!(blueprints::evidence(&store, &defs, "unit/atlas/one", "unit.type"), None);
+}

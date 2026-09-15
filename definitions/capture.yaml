@@ -3,7 +3,14 @@
 # source (215, 231, host.yaml run_adapters) — and read into signals by a
 # session's judgment (115), except a capture that is already its own excerpt
 # and needs no judgment: a forwarded single message (S21), and text typed on
-# the page, which is one capture with one signal of kind ask (19). The reader is charged by the tick
+# the page, which is one capture with one signal of kind ask (19); and except
+# a capture from a signals folder, whose signals were read before the
+# instance existed and are carried into the record format by the adapter
+# without a reader's judgment, so it is read at once and no reader is
+# charged (114, 215); and except a capture of source `offer`, a session's
+# offer that no intent, bolt or capture stands above, written by
+# record_offers with its one signal of kind ask, the document its raw
+# material (62). The reader is charged by the tick
 # of the host that declares the capture's source (217e); the capture endpoint
 # for callers that cannot reach any host's binary is dispatch's (216).
 # On the hosted tiers the endpoint is a managed queue per instance behind

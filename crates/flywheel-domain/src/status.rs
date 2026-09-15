@@ -293,11 +293,11 @@ pub fn read_with<S: Records, R: crate::signals::Reads + ?Sized>(
         runners.insert(place.to_string(), runner.to_string());
     }
 
-    // A capture whose signal has no move yet is waiting on the operator: its
-    // own reading is over the moment the signal exists, but the move is a
-    // person's — a curation session's, or the control on the capture — and
-    // the board groups it by what it waits on, not by the reading (19, 107,
-    // 116).
+    // A capture whose signal has no move yet is not finished: its own reading
+    // is over the moment the signal exists, but nothing has been made of it.
+    // It stands queued in inception, a quote, until curation or the operator's
+    // hand on the capture moves its signal, and it asks the operator nothing
+    // (19a, 107, 110, 116).
     let awaiting_a_move: std::collections::BTreeSet<String> = objects
         .iter()
         .filter(|o| o.machine == "signal" && o.config.get("move").map(String::as_str) == Some("unmoved"))
@@ -318,7 +318,7 @@ pub fn read_with<S: Records, R: crate::signals::Reads + ?Sized>(
         let holder = lease.map(|l| l.holder);
         let runner = runners.get(&object.id).cloned();
         let group = match object.machine == "capture" && awaiting_a_move.contains(&object.id) {
-            true => "waiting on the operator".to_string(),
+            true => "queued".to_string(),
             false => group_of(defs, object, holder.is_some(), runner.is_some()),
         };
         let mut states: Vec<String> = object

@@ -1163,14 +1163,16 @@ fn rail(read: &Read) -> String {
     out
 }
 
-/// What finished lately, under the decisions: a capture built or dropped, a
-/// unit merged, a bolt landed — each with its word and when, newest first
-/// (14, S59). A finished thing leaves the lane and stands here, so the board
-/// is what is moving and the rail is what happened.
+/// What finished lately, under the decisions: a note captured, a capture built
+/// or dropped, a unit merged, a bolt landed — each with its word and when,
+/// newest first (14, S59). A finished thing leaves the lane and stands here, so
+/// the board is what is moving and the rail is what happened. A capture raises
+/// no decision, so this is where the operator sees it was taken (19a, S9).
 fn since(read: &Read) -> String {
     let mut rows: Vec<(chrono::DateTime<chrono::Utc>, &Object, String)> = Vec::new();
     for object in &read.objects {
         let verb = match object.machine.as_str() {
+            "capture" => "captured",
             "signal" => match object.config.get("move").map(String::as_str) {
                 Some("routed") if dock::routes_an_ask(object) => "asked",
                 Some("routed") => "built",
@@ -1194,7 +1196,13 @@ fn since(read: &Read) -> String {
             },
             _ => continue,
         };
-        let Some(at) = object.entered_at.values().max().copied() else {
+        // A capture was captured the moment it was put; its regions moving
+        // after that are its reading, not the capture.
+        let at = match object.machine.as_str() {
+            "capture" => object.entered_at.values().min(),
+            _ => object.entered_at.values().max(),
+        };
+        let Some(at) = at.copied() else {
             continue;
         };
         rows.push((at, object, verb.to_string()));
@@ -1205,10 +1213,17 @@ fn since(read: &Read) -> String {
     rows.sort_by(|a, b| b.0.cmp(&a.0));
     let mut out = String::from("<div class=\"grp since\"><span class=\"g\">since</span></div>\n<ul class=\"since\">\n");
     for (at, object, verb) in rows.iter().take(8) {
-        let name = match object.machine.as_str() {
-            "signal" => signals::text_of(object).map(|s| clipped_to(&s, 56)).unwrap_or_else(|| name_of(&object.id).to_string()),
-            _ => name_of(&object.id).to_string(),
+        // A note is its signal's words, and so is the capture that holds it.
+        let said = match object.machine.as_str() {
+            "signal" => signals::text_of(object),
+            "capture" => read
+                .objects
+                .iter()
+                .find(|o| o.machine == "signal" && o.parent.as_deref() == Some(object.id.as_str()))
+                .and_then(signals::text_of),
+            _ => None,
         };
+        let name = said.map(|s| clipped_to(&s, 56)).unwrap_or_else(|| name_of(&object.id).to_string());
         let _ = write!(
             out,
             "<li><span class=\"v {verb}\">{verb}</span><a class=\"grow\" href=\"#dock-{id}\">{name}</a><span class=\"t\">{when}</span></li>\n",

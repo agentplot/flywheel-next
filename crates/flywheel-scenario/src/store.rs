@@ -622,6 +622,12 @@ impl Store {
             "elaboration.shown_with_parent" => json!(obj.and_then(|o| o.parent.as_deref()).and_then(|p| self.state_of(p)) == Some("proposed")),
             "elaboration.kept_since" => obj.and_then(|o| o.record.get("kept_at").cloned()).filter(|v| !v.is_null())?,
             "elaboration.type" => obj.and_then(|o| o.record.get("type").cloned())?,
+            // Whether the registry in force holds the object's type, read as
+            // the host reads it (85a, `record-derived.yaml`).
+            "unit.type_defined" | "elaboration.type_defined" => json!(flywheel_domain::blueprints::type_defined(
+                self.defs.as_deref().unwrap_or(&flywheel_engine::Definitions::default()),
+                obj.and_then(|o| o.record.get("type")).and_then(|v| v.as_str()),
+            )),
             // ---- engine machines
             // A decision derived this tick with no register entry: what the
             // rail machine reads to know it must number (15,

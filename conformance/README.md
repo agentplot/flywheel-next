@@ -77,7 +77,11 @@ then:
 ```
 
 Every `then` clause is asserted; an unlisted effect with count 0 is
-asserted absent when `effects_closed: true`.
+asserted absent when `effects_closed: true`. A `decisions` clause's
+`count` counts the standing decisions on the rail of the kinds
+`present:` names, so a clause about one kind says nothing about the
+others; a line under attention is no rail decision, so a clause naming
+only attention kinds, or none, counts the whole rail.
 
 ## The steps
 
@@ -201,6 +205,15 @@ A run whose bound implementations do not provide a requirement skips
 the scenario, prints it as skipped with the reason, and names the
 skipped set in the run record. A scenario the phase's acceptance table
 lists but every configuration skips is a failure, never a silent pass.
+
+## The phase gate
+
+A phase's gate is the rows its acceptance table lists (roadmap, phase
+gates): the gate asserts each of those and fails when any fails or is
+skipped by every configuration. A run over the whole directory plays
+every scenario and reports each; a scenario a later phase lists that
+fails or does not validate is reported there and gates nothing until
+its phase opens.
 
 ## Hooks
 

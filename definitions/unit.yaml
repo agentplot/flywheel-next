@@ -12,7 +12,7 @@ version: 4
 kind: object
 tier: core
 object: unit
-parent: [bolt, intent]   # an intent owns only the chore units that resolve its line's take conflicts (52)
+parent: [bolt, intent, repository, instance]   # an intent owns only the chore units that resolve its line's take conflicts (52); a repository owns only the chore units on its shared line — a chore offered off every bolt, as curation's route offers, the offer's scope naming the repository (60, 62, 116); the instance owns only such chores of the blueprints' shared line, their repository field `blueprints` (123)
 owns: [work-item]
 satisfies: [4, 5, 13, 16, 17, 31, 35, 36, 37, 57, 60, 74, 172]
 record:
@@ -39,7 +39,10 @@ regions:
       in-proposal:
         doc: named by a proposal in proposed; no decision here — the proposal's is the one the operator answers, and a per-unit answer arrives as a response forwarded from it (172); nothing is a bolt or a unit's items until the proposal's yes
         transitions:
-          - when: {ev: unit.proposal, is: approved}
+          - when: {all: [{ev: unit.proposal, is: approved}, {ev: unit.type_defined, is: false}]}
+            to: proposed
+            note: the proposal's yes does not carry a unit whose type the instance does not know; it stands on a decision of its own that names the missing type and asks for one (85a)
+          - when: {all: [{ev: unit.proposal, is: approved}, {ev: unit.type_defined, is: true}]}
             to: approved
             effects:
               - {do: create_bolt, args: {name: target.new_name, repository: parent.repository}, note: "only when the target is a new bolt; several units of one proposal naming the same new bolt make one (I8)"}
@@ -63,10 +66,10 @@ regions:
           - when: {response: drop}
             to: dropped
       proposed:
-        doc: a finding routed to a bolt or a chore offer, proposed on its own (58, 60); the decision names the target bolt and what a yes starts, derived from the type's stages and the item count (13, 16); the document is reviewed on its own surface and an annotation on it is the response (17)
+        doc: a finding routed to a bolt or a chore offer, proposed on its own (58, 60); a chore under a repository is on its shared line and names no bolt, and such chores fold by repository as a bolt's fold by bolt (11, 60); the decision names the target bolt and what a yes starts, derived from the type's stages and the item count (13, 16); the document is reviewed on its own surface and an annotation on it is the response (17); a unit whose type the instance does not know stays here, its decision naming the type it lacks and asking the operator to set one with `type <name>` (85a)
         decision: {kind: unit-proposed, group: approve, batch: batch, document: document,
                    answers: ["yes", drop, "redo: <notes>", "bolt <name>", "new bolt <name>", "rename <name>", "type <name>", "pick <letters>", later],
-                   shows: [unit.type, target, depends_on, claims, estimate], satisfies: [10, 11, 16, 17, 29, 172]}
+                   shows: [unit.type, unit.type_defined, target, depends_on, claims, estimate], satisfies: [10, 11, 16, 17, 29, 85, 172]}
         transitions:
           - when: {ev: unit.claim_moved, is: true}
             to: superseded
@@ -83,7 +86,10 @@ regions:
           - when: {response: "type <name>"}
             to: proposed
             effects: [{do: set_type, args: {type: $response}}]
-          - when: {response: "yes"}
+          - when: {all: [{response: "yes"}, {ev: unit.type_defined, is: false}]}
+            to: proposed
+            note: the yes is refused with the missing type named; nothing moves on with no stages and no session until the operator sets a type (85a)
+          - when: {all: [{response: "yes"}, {ev: unit.type_defined, is: true}]}
             to: approved
             effects:
               - {do: create_bolt, args: {name: target.new_name, repository: parent.repository}, note: only when the target is a new bolt; a chore never creates one (I8)}

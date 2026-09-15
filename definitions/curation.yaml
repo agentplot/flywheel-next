@@ -1,18 +1,23 @@
 # Curation: one machine per instance (A.15). It never opens an intent. It
 # runs a session over the signals with no move when the count crosses the
-# threshold or the cadence says so; the session's exit delivers one move per
+# threshold, when the cadence says so, or at once on the operator's dictation
+# to run it now — the tray's control and the chat's `/curate` are one tool
+# (110, 12); the session's exit delivers one move per
 # signal and the proposed intents the joins produce. A person writing the same
-# records by hand is curation too, and this machine then finds nothing to do.
+# records by hand is curation too, and this machine then finds nothing to do;
+# the operator's controls on a capture are that hand (19a).
 # When one run proposes elaborations of one type on several intents, it may
 # propose them gathered: one elaboration covering those intents (188). The
 # session is a session like any other (58–60): for a signal that argues with
-# no claim it may offer a chore or an ask through the command, and the
-# signal's move is then route, naming that offer (116).
+# no claim it may offer a chore (`flywheel offer chore`) or file an ask
+# (`flywheel ask <repository> <text>`, the ask tool called as the session,
+# sessions.yaml commands.ask), and the signal's move is then route, naming
+# that offer (116, 67).
 machine: curation
-version: 4
+version: 5
 kind: object
 tier: core
-satisfies: [4, 20, 58, 60, 108, 110, 116, 118, 171, 182, 188]
+satisfies: [4, 12, 20, 58, 60, 108, 110, 116, 118, 171, 182, 188]
 object: curation
 singleton: instance
 record:
@@ -27,8 +32,11 @@ regions:
           - when: {any: [{ev: curation.unmoved_count, gte_ev: curation.threshold},
                          {all: [{ev: curation.unmoved_count, gte: 1}, {ev: curation.cadence_due, is: true}]}]}
             to: running
+          - when: {response: run}
+            to: running
+            note: the operator's dictation to run curation now — the signals tray's control or the chat's `/curate`, one tool, applied at once and recorded like any response (110, 12, 193)
       running:
-        doc: one session, bounded job, fixed exits; it reads the unmoved signals against the standing claims in the blueprints' `openspec/specs/` and the open intents
+        doc: one session, bounded job, fixed exits; it reads the unmoved signals against the standing claims in the blueprints' `openspec/specs/` and the open intents; the status view shows it working beside the unmoved count, which falls as moves are written (118)
         regions:
           place:
             initial: place
@@ -54,7 +62,7 @@ regions:
             enter: {session: ended, place: removing}
             note: dictation retires the session (4); the run is due again on the next tick
       applying:
-        doc: every judged signal gets its one standing move; each join becomes or grows a proposed intent with its elaborations; a challenge stales the claim's verdicts wherever they stand (101, 116); a route names the chore or ask the session offered, which record_offers on the session already turned into a proposed chore unit on the shared line or an ask record (58–60)
+        doc: every judged signal gets its one standing move; each join becomes or grows a proposed intent with its elaborations; a challenge stales the claim's verdicts wherever they stand (101, 116); a route names the chore or ask the session offered — a chore through `flywheel offer --scope <repository>`, which record_offers on the session already turned into a proposed chore unit under the repository the scope names, on its shared line (60, 62), an ask through `flywheel ask`, the ask tool called as the session, which already wrote the ask record and printed the id the move names (58–60, 28, 67)
         entry:
           - {do: record_moves, args: {moves: delivered}}
           - {do: propose_intents, args: {intents: delivered}}
