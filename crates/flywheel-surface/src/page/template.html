@@ -845,7 +845,15 @@ a.btn.pri{color:var(--accent-ink)}
   .top .count span.hint{display:none}
   .top .palbtn{display:none}
   .phone-only{display:inline-flex}
-  .wrap{grid-template-columns:1fr;margin-bottom:50px}
+  /* One column no wider than the screen, whatever its content's widest line:
+     a `1fr` column is `minmax(auto, 1fr)`, and the rail's head set it to 418px
+     on a 390px phone, which put every card's right edge past the screen
+     (306, 307, 311). */
+  .wrap{grid-template-columns:minmax(0,1fr);margin-bottom:50px}
+  /* The rail's head wraps rather than pushing past the edge, and a phone has
+     no j and k to walk with, as the header's keys are gone here too. */
+  .rail-h{flex-wrap:wrap;row-gap:4px}
+  #decisions .rail-h .keys{display:none}
   .lanes{grid-template-columns:1fr;grid-auto-rows:auto;overflow:visible}
   .lane{overflow:visible;border-right:0;border-bottom:1px solid var(--line);padding-bottom:16px}
   .pal-scrim{align-items:flex-end;padding:0}
