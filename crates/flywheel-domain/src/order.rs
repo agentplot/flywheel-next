@@ -324,6 +324,59 @@ pub fn curation(inputs: &Curation) -> String {
     out
 }
 
+/// What a capture-reader session reads a capture against: the capture's
+/// provenance and its pointer, the standing claims a signal may argue with, and
+/// the subject tags the instance keeps, where it keeps a vocabulary (111, 113,
+/// 115; context.yaml sessions.capture-reader).
+#[derive(Debug, Clone, Default)]
+pub struct Reading {
+    pub capture: crate::signals::Capture,
+    pub claims: Vec<crate::changes::Claim>,
+    /// `flywheel/signal-tags.yaml` as the blueprints hold it, when they do.
+    pub tags: Option<String>,
+}
+
+/// The part of a capture-reader's work order that is its job: the capture whose
+/// pointer it follows, the claims a signal names when it argues with one, the
+/// tags, and the one file it delivers its signals in, parsed when it exits (111,
+/// 113, 115; `instructions/schemas/signal.md`).
+pub fn capture_reading(inputs: &Reading) -> String {
+    let capture = &inputs.capture;
+    let mut out = format!(
+        "## the capture\n\n\
+         - source: {}\n- event: {}\n- said at: {}\n- captured by: {}\n- the material: {}\n\n\
+         Follow the pointer and read the material where it lies; copy none of it into this place.\n",
+        capture.source, capture.key, capture.event_at, capture.captured_by, capture.raw
+    );
+    out.push_str("\n## the standing claims\n\n");
+    if inputs.claims.is_empty() {
+        out.push_str("None stands yet.\n");
+    }
+    for claim in &inputs.claims {
+        out.push_str(&format!("- `{}` · {} · {}\n", claim.name, claim.title, claim.path));
+    }
+    out.push_str("\n## subject tags\n\n");
+    match inputs.tags.as_deref().map(str::trim).filter(|tags| !tags.is_empty()) {
+        Some(tags) => out.push_str(&format!("{tags}\n")),
+        None => out.push_str("The instance keeps no vocabulary yet: name each subject in a word or two of the material's own.\n"),
+    }
+    out.push_str(&format!(
+        "\n## the deliverable, as a file in this place\n\n\
+         `{path}`: one record per signal, in the order the material says them, records separated by a blank line:\n\n\
+         \x20   Kind: {kinds}\n\
+         \x20   Said-by: <who asserted it>\n\
+         \x20   Subjects: <tags, separated by spaces>\n\
+         \x20   Assertion: <one sentence in the asserter's terms, saying no more than the excerpt supports>\n\
+         \x20   Excerpt: <the words exactly as said; each further line of it begins with \"+ \">\n\
+         \x20   Position: <where the excerpt sits in the material: a line range or a timestamp>\n\
+         \x20   Argues-with: <the standing claims above it argues with, separated by spaces; empty when none>\n\n\
+         Then exit done naming it: --deliverable signal.\n",
+        path = crate::offers::delivery_path("signal"),
+        kinds = crate::signals::KINDS.join(" | "),
+    ));
+    out
+}
+
 /// Which tier of type a session type belongs to, which is how the set decides
 /// the default instructions it carries (`instructions/set.yaml` carries:).
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]

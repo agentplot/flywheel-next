@@ -2508,11 +2508,17 @@ pub(crate) fn work_order(
         .or_else(|| field("title"))
         .unwrap_or_default();
     let stage = session_stage(session);
-    let agent = kind_of_agent(defs, store, object, held.as_ref(), stage.as_deref());
+    // A capture is read by the capture reader (`capture.yaml` reading.session).
+    let agent = match kind.as_str() {
+        "capture" => Some("capture-reader".to_string()),
+        _ => kind_of_agent(defs, store, object, held.as_ref(), stage.as_deref()),
+    };
     // Curation's deliverables are the row's, its moves and its intent proposals
-    // (context.yaml sessions.curation); every other session's are its stage's.
+    // (context.yaml sessions.curation), and a capture reader's are its signals
+    // (sessions.capture-reader); every other session's are its stage's.
     let deliverables = match kind.as_str() {
-        "curation" => flywheel_domain::offers::PARSED.iter().map(|d| d.to_string()).collect(),
+        "curation" => flywheel_domain::offers::CURATION.iter().map(|d| d.to_string()).collect(),
+        "capture" => vec!["signal".to_string()],
         _ => stage_deliverables(defs, store, held.as_ref(), stage.as_deref()),
     };
 
@@ -2567,6 +2573,34 @@ pub(crate) fn work_order(
         };
         body.push('\n');
         body.push_str(&flywheel_domain::order::curation(&inputs));
+    }
+    // A capture reader's job is its capture: the pointer it follows, the claims
+    // a signal names when it argues with one, and the tags (113, 115;
+    // context.yaml sessions.capture-reader).
+    if kind == "capture" {
+        let key = field("event_key").unwrap_or_default();
+        let capture = flywheel_domain::signals::read_capture(&*store.world, &key)?.unwrap_or_else(|| {
+            flywheel_domain::signals::Capture {
+                key: key.clone(),
+                source: field("source").unwrap_or_default(),
+                event_at: field("event_at").unwrap_or_default(),
+                captured_by: field("captured_by").unwrap_or_default(),
+                raw: field("raw").unwrap_or_default(),
+            }
+        });
+        let tags = store
+            .world
+            .read_file(flywheel_domain::signals::BLUEPRINTS, "flywheel/signal-tags.yaml")
+            .ok()
+            .flatten()
+            .map(|bytes| String::from_utf8_lossy(&bytes).to_string());
+        let inputs = flywheel_domain::order::Reading {
+            capture,
+            claims: flywheel_domain::changes::standing_claims(&flywheel_domain::signals::Blueprints(&*store.world)),
+            tags,
+        };
+        body.push('\n');
+        body.push_str(&flywheel_domain::order::capture_reading(&inputs));
     }
     body.push_str("\n## what to deliver\n\n");
     match deliverables.is_empty() {

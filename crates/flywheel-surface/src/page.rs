@@ -2572,11 +2572,22 @@ fn slip(read: &Read, row: &status::Row, lane: &[&status::Row]) -> String {
 /// 116). Where it carries neither, its id stands in.
 fn quote(read: &Read, row: &status::Row) -> String {
     let record = read.objects.iter().find(|o| o.id == row.object).map(|o| &o.record);
+    // A capture with no words of its own points at its material, and a path is
+    // named by its file (111).
+    let pointed = |raw: &str| match raw.starts_with('/') {
+        true => raw.rsplit('/').next().unwrap_or(raw).to_string(),
+        false => raw.to_string(),
+    };
     let said = record
-        .and_then(|r| r.get("assertion").or_else(|| r.get("excerpt")).or_else(|| r.get("raw")))
-        .and_then(|value| value.as_str())
+        .and_then(|r| {
+            r.get("assertion")
+                .or_else(|| r.get("excerpt"))
+                .and_then(|value| value.as_str())
+                .map(String::from)
+                .or_else(|| r.get("raw").and_then(|value| value.as_str()).map(pointed))
+        })
         .filter(|said| !said.trim().is_empty())
-        .map(clipped)
+        .map(|said| clipped(&said))
         .unwrap_or_else(|| row.object.clone());
     let by = record
         .and_then(|r| r.get("asserted_by"))
@@ -2605,13 +2616,46 @@ fn quote(read: &Read, row: &status::Row) -> String {
         true => String::new(),
         false => format!("<span class=\"next\">{}</span>", escape(&hand::line(read))),
     };
+    let reader = match row.machine.as_str() {
+        "capture" => reader_chip(read, &row.object),
+        _ => String::new(),
+    };
     format!(
         "<div class=\"quote\"{attributes}>\
          <q><a href=\"#dock-{object}\">{said}</a></q>\
-         <span class=\"qm\">{under}</span>{next}{hand}</div>\n",
+         <span class=\"qm\">{under}</span>{reader}{next}{hand}</div>\n",
         attributes = board_attributes(row),
         object = escape(&row.object),
         said = escape(&said),
+    )
+}
+
+/// The chip a capture carries while its reader reads it, as a session's chip
+/// shows on the board; it goes when the reader has delivered and the capture's
+/// signals stand in its place (115, 217e).
+fn reader_chip(read: &Read, capture: &str) -> String {
+    let Some(object) = read.objects.iter().find(|o| o.id == capture) else {
+        return String::new();
+    };
+    if object.config.get("reading").map(String::as_str) != Some("reading") {
+        return String::new();
+    }
+    let at = |ending: &str| {
+        object
+            .config
+            .iter()
+            .find(|(region, _)| region.starts_with("reading.") && region.ends_with(ending))
+            .map(|(_, state)| state.as_str())
+    };
+    let (dot, said) = match at(".activity").or_else(|| at(".life")) {
+        Some("working") => ("working", "reading"),
+        Some("blocked") => ("blocked", "blocked"),
+        Some("exited") => ("working", "delivered"),
+        _ => ("working", "starting"),
+    };
+    format!(
+        "<span class=\"sc {dot}\"><span class=\"dot {dot}\"></span>\
+         <span class=\"ag\">capture-reader</span><span class=\"ac\">{said}</span></span>"
     )
 }
 

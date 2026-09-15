@@ -227,8 +227,12 @@ pub fn made_of<S: Records>(store: &S, entry: &str) -> Result<Option<String>> {
 
 /// The deliverables a session hands in as files in its place, which `flywheel
 /// exit` carries onto its thread and `record_offers` parses: curation's moves
-/// and its intent proposals (107, 109, 116; `deliverables.yaml`).
-pub const PARSED: &[&str] = &["move", "intent-proposal"];
+/// and its intent proposals, and a capture reader's signals (107, 109, 113, 116;
+/// `deliverables.yaml`).
+pub const PARSED: &[&str] = &["move", "intent-proposal", "signal"];
+
+/// What a curation session delivers, of those (context.yaml sessions.curation).
+pub const CURATION: &[&str] = &["move", "intent-proposal"];
 
 /// Where in its place a session writes a deliverable the machinery parses.
 pub fn delivery_path(deliverable: &str) -> String {
@@ -317,6 +321,14 @@ pub fn record_deliveries<S: StateStore, W: World + ?Sized>(
     for (entry, deliverable, text) in pending {
         for record in flywheel_engine::rec::parse(&text) {
             let field = |name: &str| record.get(name).map(str::trim).unwrap_or_default().to_string();
+            let words = |name: &str| -> Vec<String> {
+                record
+                    .fields
+                    .iter()
+                    .filter(|(n, _)| n == name)
+                    .flat_map(|(_, v)| v.split_whitespace().map(String::from).collect::<Vec<_>>())
+                    .collect()
+            };
             match deliverable.as_str() {
                 "move" => {
                     let (signal, word, target, reason) = (field("Signal"), field("Move"), field("Target"), field("Reason"));
@@ -365,14 +377,6 @@ pub fn record_deliveries<S: StateStore, W: World + ?Sized>(
                     }
                 }
                 "intent-proposal" => {
-                    let words = |name: &str| -> Vec<String> {
-                        record
-                            .fields
-                            .iter()
-                            .filter(|(n, _)| n == name)
-                            .flat_map(|(_, v)| v.split_whitespace().map(String::from).collect::<Vec<_>>())
-                            .collect()
-                    };
                     let (intent, subject) = (field("Intent"), field("Subject"));
                     if intent.is_empty() && subject.is_empty() {
                         continue;
@@ -408,6 +412,51 @@ pub fn record_deliveries<S: StateStore, W: World + ?Sized>(
                             .into_iter()
                             .collect();
                             note(store, "intent-proposal", fields)?;
+                            written += 1;
+                        }
+                    }
+                }
+                // One signal a capture reader read, held to the signal schema:
+                // a kind of the five, an assertion, the excerpt and where it
+                // sits, and only standing claims to argue with (113;
+                // `instructions/schemas/signal.md`).
+                "signal" => {
+                    let (kind, assertion, excerpt, position) =
+                        (field("Kind"), field("Assertion"), field("Excerpt"), field("Position"));
+                    if kind.is_empty() && assertion.is_empty() && excerpt.is_empty() {
+                        continue;
+                    }
+                    let argues = words("Argues-with");
+                    let refused = if !signals::KINDS.contains(&kind.as_str()) {
+                        Some(format!("`{kind}` is no kind of signal; a signal is one of {}", signals::KINDS.join(", ")))
+                    } else if assertion.is_empty() {
+                        Some(format!("a `{kind}` signal asserts nothing"))
+                    } else if excerpt.is_empty() {
+                        Some(format!("the signal asserting `{assertion}` quotes no excerpt, and every signal quotes one"))
+                    } else if position.is_empty() {
+                        Some(format!("the signal asserting `{assertion}` gives no position in its material"))
+                    } else if let Some(unknown) =
+                        argues.iter().find(|claim| !claims.contains(signals::claim_named(claim).0.as_str()))
+                    {
+                        Some(format!("the signal asserting `{assertion}` argues with `{unknown}`, which is no standing claim"))
+                    } else {
+                        None
+                    };
+                    match refused {
+                        Some(reason) => note(store, "refusal", refusal("signal", session, reason))?,
+                        None => {
+                            let fields = [
+                                ("kind".to_string(), json!(kind)),
+                                ("asserted_by".to_string(), json!(field("Said-by"))),
+                                ("subjects".to_string(), json!(words("Subjects"))),
+                                ("assertion".to_string(), json!(assertion)),
+                                ("excerpt".to_string(), json!(excerpt)),
+                                ("position".to_string(), json!(position)),
+                                ("argues_with".to_string(), json!(argues)),
+                            ]
+                            .into_iter()
+                            .collect();
+                            note(store, "signal", fields)?;
                             written += 1;
                         }
                     }
@@ -620,6 +669,11 @@ pub fn record<S: StateStore, W: World + ?Sized>(
     // offers, while its place still stands (107, 109, 80).
     record_deliveries(store, &*world, defs, session, at)?;
     let mut made = Vec::new();
+    // A reader's signals are its capture's, written in the order it read them
+    // (113, 115, `capture.yaml` reading).
+    if let Some(capture) = above(store, owner, "capture")? {
+        made.extend(write_read_signals(store, world, defs, session, &capture, at)?);
+    }
     for offer in pending(store, session)? {
         if offer.kind == "chore" {
             // `flywheel offer` refuses a chore with nowhere to land before it
@@ -694,6 +748,49 @@ pub fn record<S: StateStore, W: World + ?Sized>(
         }
 
         made.push(as_signal(store, world, defs, session, owner, &offer, record, at)?);
+    }
+    Ok(made)
+}
+
+/// The signals a capture reader delivered, written under its capture in the
+/// order it read them: the n-th is the capture's n-th signal, so a second pass
+/// finds each already written and writes nothing (113, 115, 127).
+fn write_read_signals<S: StateStore, W: World + ?Sized>(
+    store: &mut S,
+    world: &mut W,
+    defs: &Definitions,
+    session: &str,
+    capture: &str,
+    at: DateTime<Utc>,
+) -> Result<Vec<String>> {
+    let read: Vec<ThreadEntry> = store.thread(session)?.into_iter().filter(|entry| entry.kind == "signal").collect();
+    if read.is_empty() {
+        return Ok(vec![]);
+    }
+    let key = signals::key_of_capture(store, capture)?;
+    let mut made = Vec::new();
+    for (index, entry) in read.iter().enumerate() {
+        let text = |name: &str| entry.fields.get(name).and_then(|v| v.as_str()).unwrap_or_default().to_string();
+        let list = |name: &str| -> Vec<String> {
+            entry.fields.get(name).and_then(|v| serde_json::from_value(v.clone()).ok()).unwrap_or_default()
+        };
+        let ordinal = index as u64 + 1;
+        let signal = signals::Signal {
+            id: signals::signal_object(&key, ordinal),
+            capture: capture.to_string(),
+            kind: text("kind"),
+            asserted_by: text("asserted_by"),
+            subject_tags: list("subjects"),
+            assertion: text("assertion"),
+            excerpt: text("excerpt"),
+            position: text("position"),
+            argues_with: list("argues_with"),
+        };
+        signals::write_signal(world, &key, ordinal, &signal)?;
+        if store.get(&signal.id)?.is_none() {
+            commands::put_new(store, defs, &signal.id, "signal", Some(capture), signal.fields(), at)?;
+            made.push(signal.id);
+        }
     }
     Ok(made)
 }

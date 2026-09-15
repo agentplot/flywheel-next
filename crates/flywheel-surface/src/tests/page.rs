@@ -1026,6 +1026,44 @@ fn a_bead_card_and_dock_page_name_an_elaboration_not_its_id() {
     );
 }
 
+/// A capture with no signals is read by a capture-reader session, and while it
+/// reads the capture carries the reader's chip; once the capture is read the
+/// chip goes (115, 217e).
+#[test]
+fn a_capture_being_read_carries_the_readers_chip() {
+    let (mut store, world, defs) = a_page();
+    let at = commands::now(&store).expect("a point");
+    let id = "capture/folder-drops-5f1d2c3b4a596877";
+    let record = [
+        ("source".to_string(), json!("folder")),
+        ("raw".to_string(), json!("/drops/2026-09-03-viewpoint-sds-connector-design.txt")),
+    ];
+    commands::put_new(&mut store, &defs, id, "capture", None, record.into_iter().collect(), at).expect("the capture");
+    let mut capture = Records::get(&store, id).expect("a read").expect("the capture");
+    capture.config.insert("reading".into(), "reading".into());
+    capture.config.insert("reading.reading.session".into(), "session".into());
+    capture.config.insert("reading.reading.session.session.life".into(), "alive".into());
+    capture.config.insert("reading.reading.session.session.life.alive.activity".into(), "working".into());
+    let base = capture.seq;
+    Records::put(&mut store, id, &capture, base).expect("reading");
+
+    let chip = "<span class=\"ag\">capture-reader</span><span class=\"ac\">reading</span>";
+    let html = rendered(&mut store, &world, &defs);
+    let quote = html
+        .split("<div class=\"quote\"")
+        .skip(1)
+        .find(|quote| quote.contains(&format!("<q><a href=\"#dock-{id}\">")))
+        .unwrap_or_else(|| panic!("no quote for the capture: {html}"));
+    assert!(quote.contains(chip), "the capture being read carries no reader's chip: {quote}");
+
+    let mut capture = Records::get(&store, id).expect("a read").expect("the capture");
+    capture.config.retain(|region, _| !region.starts_with("reading."));
+    capture.config.insert("reading".into(), "read".into());
+    let base = capture.seq;
+    Records::put(&mut store, id, &capture, base).expect("read");
+    assert!(!rendered(&mut store, &world, &defs).contains(chip), "a capture already read carries the reader's chip");
+}
+
 /// The line under a waiting note says who reads it next and when, read from
 /// the curation record: how many wait against its threshold, and its cadence
 /// (110, 118, S224).
