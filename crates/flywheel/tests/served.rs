@@ -668,6 +668,96 @@ fn a_tap_on_the_seeded_rail_answers_and_the_next_render_shows_it() {
     let _ = std::fs::remove_dir_all(&dir);
 }
 
+/// An answer given on the page of an instance a scenario was applied into is
+/// applied on the pass it causes, as on a seeded host: one response is enough,
+/// and the operator never nudges (13, 129, 130).
+#[test]
+fn an_answer_on_an_applied_instance_is_applied_on_the_pass_it_causes() {
+    let dir = base("applied-answer");
+    // Through the curation's delivery: its proposed intent is the first
+    // numbered decision standing (`scenarios/storefront`, action 6).
+    let applied = flywheel::apply::apply(
+        &workspace().join("scenarios/storefront"),
+        &dir,
+        Some(6),
+        at(0),
+        Duration::seconds(60),
+    )
+    .expect("the storefront applied through the curation's delivery");
+    let mut host = Host::open(&applied.manifest, "local", None, applied.at).expect("the host opens over the applied instance");
+    let intent = "intent/storefront-declines";
+    let number = {
+        let defs = host.defs.clone();
+        flywheel_domain::commands::rail(&mut host.store, &defs)
+            .unwrap()
+            .into_iter()
+            .find(|d| d.object == intent)
+            .and_then(|d| d.number)
+            .expect("the proposed intent stands, numbered")
+    };
+
+    // The page is served unsigned-in at the address the instance was given
+    // (253a, 205a).
+    let named = flywheel_surface::http::private_host(&host.sinks.address).expect("the applied instance's address");
+    let host = Arc::new(Mutex::new(host));
+    let runtime = tokio::runtime::Builder::new_multi_thread().enable_all().build().unwrap();
+    let served = flywheel::serve::page_of(&host, 4242, &["operator".to_string()]);
+    let address = runtime.block_on(async {
+        let listener = tokio::net::TcpListener::bind("127.0.0.1:0").await.unwrap();
+        let address = listener.local_addr().unwrap();
+        let served = served.clone();
+        tokio::spawn(async move {
+            let _ = flywheel_surface::http::serve_on(served, listener).await;
+        });
+        address
+    });
+
+    // The tap, through the form the page rendered.
+    let page = speak(address, &format!("GET / HTTP/1.1\r\nHost: {named}\r\nConnection: close\r\n\r\n"));
+    assert!(
+        page.contains(&format!("data-number=\"{number}\"")),
+        "the page carries no decision {number}: {}",
+        &page[..page.len().min(2000)]
+    );
+    let (action, body) = form_on(&page, number, "yes");
+    let answered = {
+        let mut socket = std::net::TcpStream::connect(address).expect("the page answers");
+        socket.set_read_timeout(Some(std::time::Duration::from_secs(10))).expect("a bounded wait");
+        let request = format!(
+            "POST {action} HTTP/1.1\r\nHost: {named}\r\nConnection: close\r\nReferer: http://{named}/\r\n\
+             Content-Type: application/x-www-form-urlencoded\r\nContent-Length: {}\r\n\r\n{body}",
+            body.len()
+        );
+        socket.write_all(request.as_bytes()).expect("the request is sent");
+        let mut text = String::new();
+        socket.read_to_string(&mut text).expect("the page replies");
+        text
+    };
+    assert!(answered.starts_with("HTTP/1.1 2") || answered.starts_with("HTTP/1.1 3"), "the answer was not taken: {answered}");
+
+    // One pass, as the running host takes it: the notice the answer caused
+    // names the intent, and the pass applies it (130, D6).
+    {
+        let mut held = host.lock().unwrap();
+        let now = applied.at + Duration::seconds(1);
+        held.set_now(now);
+        assert!(
+            held.notified().unwrap().iter().any(|id| id == intent),
+            "the answer did not notify the object it answers"
+        );
+        let _ = flywheel::tour::play_due(&mut held, now);
+        held.once().unwrap();
+        let opened = Records::get(&held.store, intent).unwrap().expect("the intent");
+        assert_eq!(
+            opened.config.get("life").map(String::as_str),
+            Some("open"),
+            "the answer was recorded and not applied on the pass it caused: {:?}",
+            opened.config
+        );
+    }
+    let _ = std::fs::remove_dir_all(&dir);
+}
+
 /// An answer given on the page is applied on the pass that answer caused, and
 /// it puts nothing back on the rail (13, 130, 137, 153).
 ///
