@@ -756,9 +756,18 @@ nowhere else, not even into an error, since a request's address can carry a
 press's token (217l, 204, 207); a token not placed, or one Discord refuses, is
 under attention, the host runs on, and the sink sends nothing more until another
 is placed (217l). A delivery that fails is reported with its reason and owed
-again (81, 127). Replies that arrive while no host presents wait in the channel
-and are read, applied and acknowledged once when the presenter returns (217f,
-137, 154).
+again (81, 127). Replies that arrive while no host presents wait in the channel;
+Discord's gateway replays none of them, so each time the gateway is ready — at
+start and after a loss it could not resume — the presenter reads the channel's
+history after the newest message it has accounted for, at first the delivery
+the sink's mark records, oldest first, and hands each over as if it had just
+arrived (217f, S32, model 5.5). A message the bot has already replied to was
+answered by an earlier run and is skipped, so a restart re-answers neither a
+recorded reply nor free text; one handed over from the gateway is not handed
+over again from history; a sink that never delivered reads nothing until its
+first delivery (137). The acknowledgement follows the record on every channel:
+a delivery already applied writes nothing and gets no second reply (154, model
+5.6). A history read that fails is under attention (81).
 
 *Alternative considered:* leaving the page as the minimal rendering that passes
 the scenarios and taking the mockup up in phase 3 with the book. Rejected: the

@@ -61,7 +61,10 @@ that acknowledgement SHALL be filled in with the same once the answer is recorde
 (S32). A press SHALL reach the sink as the numbered reply it stands for and be
 recorded by that grammar, never as a command of its own; who gave it SHALL be the
 sink's member where the sink has one, and on a shared channel who wrote the
-message (model 5.6, 153, 236, 253a).
+message (model 5.6, 153, 236, 253a). The acknowledgement SHALL be given once, when
+the response is recorded: the same delivery reaching the sink again SHALL write
+nothing and SHALL not be acknowledged again, on every channel (model 5.6, 137,
+217f).
 
 #### Scenario: A numbered reply is answered on itself
 - **WHEN** the operator replies `yes 412` in the channel
@@ -116,16 +119,40 @@ applied once by its delivery id when the presenter returns, and acknowledged onc
 when it is recorded; a message read again after a restart is the same delivery,
 SHALL write nothing and SHALL not be acknowledged a second time (217f, 137, 154).
 
+The platform replays nothing of its own, so the presenter SHALL read what waited:
+whenever it opens the wire, at start and again after a loss it could not resume,
+it SHALL read the channel after the newest message it has accounted for — at
+first the delivery the sink's mark records — oldest first, and hear each message
+as if it had just arrived, in the order written with whatever the wire handed
+over meanwhile (217f, S32, model 5.5). A message the sink already answered SHALL
+not be heard again, a message heard from the wire SHALL not be heard again from
+the channel, and a sink that has never delivered SHALL hear nothing written
+before its first delivery (217f, 137).
+
 #### Scenario: A reply sent while the laptop slept
 - **WHEN** the operator replies `yes 412` while the only presenting host is
   asleep, and the host returns
-- **THEN** the reply is read, recorded once and acknowledged once (217f, 137,
-  154)
+- **THEN** the reply is read, recorded once and acknowledged once, and nothing
+  written before the delivery the sink's mark records is heard (217f, 137, 154)
+
+#### Scenario: A reply sent while the connection was lost
+- **WHEN** the presenter's connection is lost past resuming, the operator
+  replies meanwhile, and the connection is opened again
+- **THEN** the reply is read from after the newest message the presenter had
+  accounted for and recorded and acknowledged once (217f, 137, 154)
 
 #### Scenario: A reply read again after a restart
-- **WHEN** a reply already recorded is read again after the host restarts
-- **THEN** nothing is written and no second acknowledgement is sent (217f, 137,
-  154)
+- **WHEN** the host restarts before it delivers again, and reads the channel
+  after the same delivery
+- **THEN** a message the sink already answered — a numbered reply it recorded,
+  or a line it answered with what it accepts — is not heard again, and one that
+  reaches the sink all the same writes nothing and gets no second
+  acknowledgement (217f, 137, 154)
+
+#### Scenario: A sink that has never delivered
+- **WHEN** the presenter opens the wire of a sink whose mark records no delivery
+- **THEN** nothing already in the channel is heard, and what waits is read from
+  after the sink's first delivery (217f)
 
 ### Requirement: The chat accepts two shapes of message and refuses to guess at the rest
 
@@ -181,10 +208,11 @@ passes silently as not presented (81, 127, model 5.5).
 Only the presenter SHALL hear a sink. A message arriving on a chat sink's wire
 SHALL be a notify to the host that holds the wire, page served or not, read
 before the next pass (217l, model 5.5). What arrives while no host holds the
-lease SHALL wait; what arrives while another host holds it SHALL be that host's
-to hear, so a reply is answered once however many hosts listen (148, 217f). A
-message that could not be read, and whatever stopped the wire, SHALL be reported
-under attention (81).
+lease SHALL wait, and be read when the presenter opens the wire; what arrives
+while another host holds it SHALL be that host's to hear, so a reply is answered
+once however many hosts listen (148, 217f). A message that could not be read,
+what waited that could not be read, and whatever stopped the wire, SHALL be
+reported under attention (81, model 5.5).
 
 #### Scenario: One delivery, not two
 - **WHEN** more than one host could present the chat sink
