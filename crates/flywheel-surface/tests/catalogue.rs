@@ -390,6 +390,48 @@ fn a_refused_client_call_reaches_the_run_record() {
     assert!(refusal.reason.contains("operators list"), "{}", refusal.reason);
 }
 
+/// A control on the page the flywheel refuses writes no response and answers
+/// the operator on the page as it always has, and its refusal is in the host's
+/// run record beside a client's, naming the page's delivery — refused by the
+/// catalogue, or refused at the door (321, 79, 253a).
+#[test]
+fn a_refused_page_call_reaches_the_run_record() {
+    let sandbox = store::Sandbox::new("refused-page");
+    let page = caller::Server::start(sandbox.store(), flywheel_domain::set::load().expect("defs"), "chuck");
+    let posted = page.form("/api/tools/ask", &[("repository", "nowhere"), ("text", "keep the row numbers")]);
+    let shown = posted.refused().unwrap_or_else(|| panic!("the page did not refuse: {}", posted.body));
+    assert!(responses(&page).is_empty(), "a refused control wrote a response");
+    let run = page.with_store(|git| git.run_record().expect("the run record"));
+    let refusals: Vec<_> = run.iter().filter(|e| e.kind == "refusal").collect();
+    assert_eq!(refusals.len(), 1, "one refused control is one entry: {run:?}");
+    let refusal = refusals[0];
+    assert_eq!(refusal.object, "nowhere");
+    assert_eq!(field(refusal, "identity"), Some("chuck"));
+    assert_eq!(field(refusal, "operation"), Some("ask"));
+    assert_eq!(field(refusal, "delivery"), Some("page"));
+    // What the operator reads on the page is what the record keeps.
+    assert_eq!(shown, refusal.reason);
+
+    // At the door: a second operator is listed, so nothing is served unsigned-in.
+    let door = store::Sandbox::new("refused-page-door");
+    let two = caller::Server::for_operators(
+        door.store(),
+        flywheel_domain::set::load().expect("defs"),
+        &["chuck".to_string(), "lee".to_string()],
+        "http://host.example/instance",
+    );
+    let posted = two.form("/api/tools/drop", &[("object", "unit/atlas/u")]);
+    assert_eq!(posted.status, 403);
+    assert!(responses(&two).is_empty());
+    let run = two.with_store(|git| git.run_record().expect("the run record"));
+    let refusal = run.iter().find(|e| e.kind == "refusal").unwrap_or_else(|| panic!("no refusal in {run:?}"));
+    assert_eq!(refusal.object, "unit/atlas/u");
+    assert_eq!(field(refusal, "identity"), Some("unsigned-in"));
+    assert_eq!(field(refusal, "operation"), Some("drop"));
+    assert_eq!(field(refusal, "delivery"), Some("page"));
+    assert!(posted.refused().is_some_and(|shown| shown.contains(&refusal.reason)), "{}", posted.body);
+}
+
 /// A tool the catalogue lacks is refused at the transport with what it was, and
 /// no caller gains an operation by reaching for it over HTTP (193, 4).
 #[test]

@@ -56,10 +56,11 @@ pub struct Served<S: StateStore + Send + 'static> {
     /// store moved, and what `/events` tells every open page, so a page fetches
     /// itself the moment there is something new and not on a timer (S221).
     pub changed: Arc<tokio::sync::watch::Sender<u64>>,
-    /// Where a call a member's client made and the flywheel refused is written:
-    /// the run record of the host serving it, with the identity, the tool and
-    /// the object (321, 79). The run record is the host's, so the host binds
-    /// this; a caller with no run record behind it leaves it empty.
+    /// Where a call the page or a member's client made and the flywheel refused
+    /// is written: the run record of the host serving it, with the identity,
+    /// the tool, the object and the delivery (321, 79). The run record is the
+    /// host's, so the host binds this; a caller with no run record behind it
+    /// leaves it empty.
     pub run_record: Option<fn(&mut S, &[protocol::Refused]) -> anyhow::Result<()>>,
 }
 
@@ -335,6 +336,11 @@ async fn invoke<S: StateStore + Send + 'static>(
         },
     };
     if let Err(refused) = served.admits(host_of(&headers)) {
+        // Refused at the door all the same, and the run record says so, as it
+        // does for a client (321, 79, 253a).
+        let mut asked = Call::new(&name, protocol::UNSIGNED_IN, "page");
+        asked.args = input.args.clone();
+        served.record_refusals(&mut *served.store.lock().await, &[protocol::Refused::of(&asked, &refused)]);
         return match form {
             true => (
                 StatusCode::FORBIDDEN,
@@ -357,11 +363,14 @@ async fn invoke<S: StateStore + Send + 'static>(
                 answered["said"] = json!(view.said);
                 (StatusCode::OK, Json(answered)).into_response()
             }
-            Err(refused) => (
-                StatusCode::BAD_REQUEST,
-                Json(json!({"refused": refused.to_string(), "version": page::VERSION})),
-            )
-                .into_response(),
+            Err(refused) => {
+                served.record_refusals(&mut *store, &[protocol::Refused::of(&asked, &refused.to_string())]);
+                (
+                    StatusCode::BAD_REQUEST,
+                    Json(json!({"refused": refused.to_string(), "version": page::VERSION})),
+                )
+                    .into_response()
+            }
         };
     }
     let mut call = Call::new(&name, served.operator(), "page");
@@ -370,6 +379,12 @@ async fn invoke<S: StateStore + Send + 'static>(
     let mut store = served.store.lock().await;
     let mut world = served.world.lock().await;
     let outcome = catalogue::call(&mut *store, &mut **world, &served.defs, &call);
+    // A refused control is answered where the operator is, as it always was,
+    // and kept in the run record with who asked, the tool, the object and the
+    // page's delivery, as a client's is (321, 79).
+    if let Err(refused) = &outcome {
+        served.record_refusals(&mut *store, &[protocol::Refused::of(&call, &refused.to_string())]);
+    }
     // A page response is one of the three local causes, and it does not wait
     // for the poll (130, D6).
     if outcome.is_ok() {
@@ -409,13 +424,6 @@ async fn answer_all<S: StateStore + Send + 'static>(
     body: axum::body::Bytes,
 ) -> Response {
     let back = came_from(&headers);
-    if let Err(refused) = served.admits(host_of(&headers)) {
-        return (
-            StatusCode::FORBIDDEN,
-            Html(format!("<p class=\"refused\">{refused}</p>")),
-        )
-            .into_response();
-    }
     // The numbers the control named when it was rendered, which travelled with
     // the tap. The page is rendered in one request and the control used in the
     // next: a sweep over a fresh read would answer a decision that arrived
@@ -427,8 +435,31 @@ async fn answer_all<S: StateStore + Send + 'static>(
         .split_whitespace()
         .filter_map(|n| n.parse::<u32>().ok())
         .collect();
+    if let Err(refused) = served.admits(host_of(&headers)) {
+        // Each answer the control stood for is refused at the door, and the
+        // run record says so, as it does for a client's (321, 79, 253a).
+        let refusals: Vec<protocol::Refused> = match named.as_slice() {
+            [] => vec![protocol::Refused::of(
+                &Call::new(catalogue::ANSWER, protocol::UNSIGNED_IN, "page"),
+                &refused,
+            )],
+            numbers => numbers
+                .iter()
+                .map(|number| protocol::Refused::of(&yes_to(*number, protocol::UNSIGNED_IN), &refused))
+                .collect(),
+        };
+        served.record_refusals(&mut *served.store.lock().await, &refusals);
+        return (
+            StatusCode::FORBIDDEN,
+            Html(format!("<p class=\"refused\">{refused}</p>")),
+        )
+            .into_response();
+    }
     if named.is_empty() {
-        return back_with(&back, "the control named no decision to answer");
+        let reason = "the control named no decision to answer";
+        let asked = Call::new(catalogue::ANSWER, served.operator(), "page");
+        served.record_refusals(&mut *served.store.lock().await, &[protocol::Refused::of(&asked, reason)]);
+        return back_with(&back, reason);
     }
     let mut store = served.store.lock().await;
     let mut world = served.world.lock().await;
@@ -455,15 +486,14 @@ async fn answer_all<S: StateStore + Send + 'static>(
     }
     let mut given = 0usize;
     for (number, _) in &answering {
-        let mut call = Call::new(catalogue::ANSWER, served.operator(), "page");
-        call.args.insert("decision".into(), json!(number));
-        call.args.insert("answer".into(), Value::from("yes"));
+        let call = yes_to(*number, served.operator());
         match catalogue::call(&mut *store, &mut **world, &served.defs, &call) {
             Ok(_) => given += 1,
             // One that cannot be recorded does not stop the rest: each of these
             // is its own response and the operator is told which did not go
             // (11, 81).
             Err(refused) => {
+                served.record_refusals(&mut *store, &[protocol::Refused::of(&call, &refused.to_string())]);
                 return back_with(
                     &back,
                     &format!(
@@ -476,6 +506,14 @@ async fn answer_all<S: StateStore + Send + 'static>(
     }
     served.woken.notify_one();
     to_the_page(&back)
+}
+
+/// One number's yes under the "yes all" control: its own `answer` call, as the
+/// single control and the chat's `yes all` make it (11, 193).
+fn yes_to(number: u32, by: &str) -> Call {
+    Call::new(catalogue::ANSWER, by, "page")
+        .arg("decision", json!(number))
+        .arg("answer", Value::from("yes"))
 }
 
 /// `POST /api/curate`: the curator's surface submitting its moves.
@@ -491,7 +529,11 @@ async fn curate<S: StateStore + Send + 'static>(
     body: axum::body::Bytes,
 ) -> Response {
     let back = came_from(&headers);
+    let fields = form_fields(&String::from_utf8_lossy(&body));
     if let Err(refused) = served.admits(host_of(&headers)) {
+        let mut asked = Call::new("curate", protocol::UNSIGNED_IN, "page");
+        asked.args = fields;
+        served.record_refusals(&mut *served.store.lock().await, &[protocol::Refused::of(&asked, &refused)]);
         return (
             StatusCode::FORBIDDEN,
             Html(format!("<p class=\"refused\">{refused}</p>")),
@@ -499,7 +541,7 @@ async fn curate<S: StateStore + Send + 'static>(
             .into_response();
     }
     let mut call = Call::new("curate", served.operator(), "page");
-    call.args = form_fields(&String::from_utf8_lossy(&body));
+    call.args = fields;
     let mut store = served.store.lock().await;
     let mut world = served.world.lock().await;
     match catalogue::call(&mut *store, &mut **world, &served.defs, &call) {
@@ -508,7 +550,10 @@ async fn curate<S: StateStore + Send + 'static>(
             served.woken.notify_one();
             to_the_page(&back)
         }
-        Err(refused) => back_with(&back, &refused.to_string()),
+        Err(refused) => {
+            served.record_refusals(&mut *store, &[protocol::Refused::of(&call, &refused.to_string())]);
+            back_with(&back, &refused.to_string())
+        }
     }
 }
 

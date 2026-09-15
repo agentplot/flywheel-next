@@ -146,6 +146,23 @@ fn a_call_is_the_catalogues_and_a_repeat_delivery_writes_nothing() {
     assert_eq!(reply["result"]["structuredContent"]["id"], json!("client-1"));
 }
 
+/// A refusal names the delivery its call came by, so the run record tells the
+/// page's refused control from a client's refused call (321, 79).
+#[test]
+fn a_refusal_names_the_delivery_its_call_came_by() {
+    let call = crate::catalogue::Call::new("answer", "chuck", "page").arg("decision", json!(3));
+    let refused = protocol::Refused::of(&call, "decision 3 is not on the rail");
+    assert_eq!(
+        (refused.identity.as_str(), refused.tool.as_str(), refused.object.as_str(), refused.delivery.as_str()),
+        ("chuck", "answer", "decision 3", "page")
+    );
+    let entry = refused.entry("laptop", chrono::Utc::now());
+    assert_eq!((entry.kind.as_str(), entry.object.as_str()), ("refusal", "decision 3"));
+    assert_eq!(entry.reason, "decision 3 is not on the rail");
+    assert!(entry.fields.contains(&("delivery".to_string(), "page".to_string())));
+    assert!(entry.fields.contains(&("operation".to_string(), "answer".to_string())));
+}
+
 /// A call the catalogue refuses is the tool's error with the reason, and writes
 /// nothing; a delivery named in a shape the store cannot key is refused by the
 /// wire before any call (193, 137).

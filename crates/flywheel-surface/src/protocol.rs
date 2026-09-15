@@ -81,23 +81,37 @@ pub struct Handled {
 pub const UNSIGNED_IN: &str = "unsigned-in";
 
 /// A call the flywheel refused, as the run record keeps it: who asked, the
-/// tool, the object it named, and why (321, 79).
+/// tool, the object it named, the delivery it came by, and why (321, 79).
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct Refused {
     pub identity: String,
     pub tool: String,
     pub object: String,
+    /// `client` for a member's client, `page` for the page's own controls.
+    pub delivery: String,
     pub reason: String,
 }
 
 impl Refused {
+    /// A call refused, named as its record would have named it: who gave it,
+    /// the tool, the object it named and the delivery it came by (321, 79).
+    pub fn of(call: &Call, reason: &str) -> Refused {
+        Refused {
+            identity: call.by.clone(),
+            tool: call.tool.clone(),
+            object: object_named(&call.args),
+            delivery: call.delivery.clone(),
+            reason: reason.to_string(),
+        }
+    }
+
     /// The run record's entry for it, on the host that refused it and at the
     /// moment it did (79).
     pub fn entry(&self, host: &str, at: chrono::DateTime<chrono::Utc>) -> RunEntry {
         RunEntry::new(at, host, "refusal", &self.object, &self.reason)
             .with("identity", &self.identity)
             .with("operation", &self.tool)
-            .with("delivery", DELIVERY)
+            .with("delivery", &self.delivery)
     }
 }
 
@@ -146,6 +160,7 @@ pub fn refused_calls(message: &Value, identity: &str, reason: &str) -> Vec<Refus
                 identity: identity.to_string(),
                 tool: params.get("name").and_then(Value::as_str).unwrap_or_default().to_string(),
                 object: object_named(&arguments),
+                delivery: DELIVERY.to_string(),
                 reason: reason.to_string(),
             }
         })
@@ -337,12 +352,7 @@ fn looked<S: StateStore, W: World + ?Sized>(
             "isError": false,
         }),
         Err(refused) => {
-            handled.refused.push(Refused {
-                identity: caller.by.to_string(),
-                tool: name.to_string(),
-                object: object_named(&asked.args),
-                reason: refused.to_string(),
-            });
+            handled.refused.push(Refused::of(&asked, &refused.to_string()));
             refusal(&refused.to_string())
         }
     }
@@ -411,12 +421,7 @@ fn call<S: StateStore, W: World + ?Sized>(
             // the run record's, with who asked, the tool and the object (321,
             // 79).
             Err(refused) => {
-                handled.refused.push(Refused {
-                    identity: caller.by.to_string(),
-                    tool: name.to_string(),
-                    object: object_named(&invoked.args),
-                    reason: refused.to_string(),
-                });
+                handled.refused.push(Refused::of(&invoked, &refused.to_string()));
                 refusal(&refused.to_string())
             }
         },

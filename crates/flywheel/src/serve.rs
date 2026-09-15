@@ -38,8 +38,9 @@ impl SharedStore {
         act(&mut host.store)
     }
 
-    /// Calls a member's client made and the host refused, written to this
-    /// host's run record with the identity, the tool and the object (321, 79).
+    /// Calls the page or a member's client made and the host refused, written
+    /// to this host's run record with the identity, the tool, the object and
+    /// the delivery (321, 79).
     pub fn write_refusals(&mut self, refused: &[flywheel_surface::protocol::Refused]) -> Result<()> {
         let mut host = self.0.lock().expect("the running host is poisoned");
         let (name, now) = (host.name.clone(), host.now());
