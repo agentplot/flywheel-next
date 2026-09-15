@@ -123,8 +123,9 @@ page submission SHALL be the delivery, recorded once like any response (19).
 #### Scenario: A capture on the board
 - **WHEN** a capture's signal is waiting on the operator
 - **THEN** the board shows the capture as one card with its words from their
-  beginning and its source, its whole face opening it in the dock, and its
-  signal is not a second line (S215, S216)
+  beginning and its source, its signal is not a second line, a click on its
+  face takes it and its decision in hand, and a click on its words opens it in
+  the dock (S215, S216, S219)
 
 ### Requirement: The page is served at the address the host was given
 

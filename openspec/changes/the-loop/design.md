@@ -857,3 +857,5 @@ private network.
   withdraws it: a capture is a note with controls and never a rail decision,
   curation proposes and the operator approves. The proposal is not ratified, so
   the change follows 19a as the requirements state it (21.1).
+- **Selection inside a drawn object.** A bolt's units and an intent's beads
+  take no hand of their own; deferred by Chuck on 2026-09-14 (S219).
