@@ -76,48 +76,160 @@ impl Status {
     }
 }
 
-/// What an object is doing, as a person reads it (141, 310).
+/// What an object is doing, as a person reads it: one sentence, its own state
+/// first and then what is moving under it, in the operator's words (141, 310,
+/// S214).
 ///
 /// The config is keyed by the dotted path of every region and state above an
-/// entry, and printing those paths verbatim puts
-/// `life.in-type.stages.build.run.sessions.life.alive.presence: unknown` on a
-/// card, which says nothing to anyone. Three rules make it a sentence.
-///
-/// A state whose ancestors are not the ones the object is actually in is not
-/// what it is doing: a machine keeps what a branch it has left last stood in,
-/// and `session.life: lost` beside `session.life.alive.activity: idle` reads as
-/// a contradiction because only the first is live. An entry whose value merely
-/// names which sub-machine runs — `place: place`, `work: session` — says
-/// nothing the entries under it do not say better. And what is left is said by
-/// the region it is in rather than by the path that reaches it.
+/// entry, and printing its states puts "landed · line removed · place removed ·
+/// services gone" under a bolt, which is the machine talking to itself. So each
+/// machine's own state is said in words, and of what stands under it only what
+/// someone would act on or wait for is said: a session working or lost, a
+/// branch in conflict, a close offered. A branch current, a place ready and
+/// services declared are the quiet a sentence leaves out.
 pub fn said(object: &Object) -> String {
-    let mut out: Vec<String> = Vec::new();
-    for (region, state) in &object.config {
-        if !entered(&object.config, region) || selector(region, state) {
-            continue;
-        }
-        // A life whose stages are running is saying only that they are; the
-        // stage itself is the answer, and it is on the next line.
-        if object.config.contains_key(&format!("{region}.{state}.stages")) {
-            continue;
-        }
-        // A presence nobody has looked for says nothing either way (146).
-        if region.ends_with(".presence") && state == "unknown" {
-            continue;
-        }
-        // A nested region standing where it stands when nothing is happening
-        // — a close not offered, material settled, a line current, services
-        // declared — is the quiet a sentence leaves out; the object's own
-        // state and what is moving are what it says (141, D16).
-        if region.contains('.') && matches!(state.as_str(), "not-offered" | "settled" | "current" | "declared" | "none") {
-            continue;
-        }
-        out.push(match noun(region) {
-            Some(noun) => format!("{noun} {state}"),
-            None => state.clone(),
-        });
+    let (state, rest) = told(object);
+    match rest.is_empty() {
+        true => state,
+        false => format!("{state}, {rest}"),
     }
-    out.join(" · ")
+}
+
+/// The sentence in its two parts: the object's own state, which a head has room
+/// for, and what else is so, which goes under it.
+pub fn told(object: &Object) -> (String, String) {
+    let config = &object.config;
+    let live = |region: &str| config.get(region).filter(|_| entered(config, region)).map(String::as_str);
+    let mut rest: Vec<String> = Vec::new();
+
+    let own = ["life", "run", "move", "reading", "standing"]
+        .into_iter()
+        .find_map(|region| config.get(region).map(|state| (region, state.as_str())))
+        .or_else(|| object.top_state().map(|state| ("", state)));
+    let state = match own {
+        // A work item in its type's stages is in the stage it stands at.
+        Some(("life", "in-type")) => match live("life.in-type.stages") {
+            Some(stage @ ("passed" | "stopped")) => stage.to_string(),
+            Some(stage) => format!("in {stage}"),
+            None => "started".to_string(),
+        },
+        Some((_, state)) => state_in_words(&object.machine, state),
+        None => String::new(),
+    };
+
+    // A stage's run, where it is doing something other than running sessions.
+    for run in config.iter().filter(|(region, _)| region.ends_with(".run") && entered(config, region)).map(|(_, run)| run) {
+        match run.as_str() {
+            "resolving" => rest.push("starting".into()),
+            "sent-back" => rest.push("sent back".into()),
+            _ => {}
+        }
+    }
+    match (object.machine.as_str(), live("life.open.citations"), live("life.open.close")) {
+        ("bolt", citations, close) => {
+            if citations == Some("moved") {
+                rest.push("a claim it cites moved".into());
+            }
+            match close {
+                Some("offered") => rest.push("ready to land".into()),
+                Some("held") => rest.push("held open".into()),
+                _ => {}
+            }
+        }
+        ("intent", _, close) => match close {
+            Some("offered") => rest.push("ready to close".into()),
+            Some("declined") => rest.push("kept open".into()),
+            _ => {}
+        },
+        _ => {}
+    }
+    if live("life.working.work") == Some("stalled") {
+        rest.push("stalled".into());
+    }
+    if let Some(said) = session_in_words(config) {
+        rest.push(said);
+    }
+    if let Some(said) = live("line.line.life").and_then(|line| match line {
+        "taking" => Some("bringing main into its branch"),
+        "conflict" => Some("its branch conflicts with main"),
+        "conflict-stalled" => Some("its branch is stuck on a conflict"),
+        "request-open" => Some("its pull request is open"),
+        "land-failed" if state != "landing failed" => Some("landing failed"),
+        _ => None,
+    }) {
+        rest.push(said.into());
+    }
+    for place in config.iter().filter(|(region, _)| region.ends_with("place.life") && entered(config, region)).map(|(_, place)| place) {
+        let said = match place.as_str() {
+            "preparing" => "its place is being made",
+            "behind" => "its place is behind its branch",
+            "conflict" => "its place has a conflict",
+            "conflict-stalled" => "its place is stuck on a conflict",
+            "merging" => "merging its place",
+            "held" => "its place is held",
+            _ => continue,
+        };
+        rest.push(said.into());
+    }
+    (state, rest.join(", "))
+}
+
+/// An object's own state, in words.
+fn state_in_words(machine: &str, state: &str) -> String {
+    let said = match (machine, state) {
+        ("bolt", "land-failed") => "landing failed",
+        ("unit", "in-proposal") => "in a proposal",
+        ("unit", "waiting") => "waiting on what it depends on",
+        ("unit", "claim-moved") => "held for a moved claim",
+        ("unit", "in-flight") => "being built",
+        ("work-item", "placing") | ("elaboration", "placing") => "making its place",
+        ("work-item", "archiving") => "archiving its change",
+        ("elaboration", "writing-back") => "writing back",
+        ("intent", "archive-failed") => "archiving failed",
+        ("capture", "reading") => "being read",
+        ("signal", "unmoved") => "not moved yet",
+        ("signal", "challenging") => "challenging a claim",
+        ("signal", "joined") => "joined into an intent",
+        ("signal", "attached") => "attached to an intent",
+        ("curation", "applying") | ("planning", "applying") => "applying what it found",
+        ("repository", "creating") => "being created",
+        ("repository", "registering") => "being registered",
+        ("repository", "covering") => "being added to the App",
+        ("repository", "uncovered") => "not covered by the App",
+        ("instance", "absent") => "not made yet",
+        ("instance", "awaiting-app") => "waiting for the App's key",
+        ("package", "needs-secret") => "waiting for a secret",
+        ("package", "checking-secrets") => "checking its secrets",
+        (_, other) => return other.replace('-', " "),
+    };
+    said.to_string()
+}
+
+/// The session running under an object, where one is and it says something:
+/// working, idle, asking, finished or lost (65–72, 146, `session.yaml`).
+fn session_in_words(config: &BTreeMap<String, String>) -> Option<String> {
+    let (region, life) = config
+        .iter()
+        .filter(|(region, _)| region.ends_with("session.life") || region.ends_with("sessions.life"))
+        .find(|(region, _)| entered(config, region))?;
+    let under = |name: &str| config.get(&format!("{region}.alive.{name}")).map(String::as_str);
+    Some(
+        match life.as_str() {
+            "requested" => "waiting for its session",
+            "starting" => "its session is starting",
+            "alive" => match (under("presence"), under("activity")) {
+                (Some("gone"), _) => "its session's pane is gone",
+                (_, Some("idle")) => "its session is idle",
+                (_, Some("blocked")) => "its session is asking a question",
+                (_, Some("exited")) => "its session finished",
+                _ => "its session is working",
+            },
+            "exited" => "its session finished",
+            "lost" => "its session was lost",
+            _ => return None,
+        }
+        .to_string(),
+    )
 }
 
 /// Whether every state above this region is the one the object is in.
@@ -138,36 +250,6 @@ fn entered(config: &std::collections::BTreeMap<String, String>, region: &str) ->
         at += 2;
     }
     true
-}
-
-/// Whether an entry only names which sub-machine is running, which the entries
-/// under it say better: `place: place`, `line: line`, `work: session`,
-/// `run: sessions`.
-fn selector(region: &str, state: &str) -> bool {
-    let leaf = region.rsplit('.').next().unwrap_or(region);
-    leaf == state || leaf == "work" || leaf == "run"
-}
-
-/// What to call a state, from the region it is in. `life` is the word every
-/// machine uses for its own, so the state above it is what names it: the region
-/// `place.place.life` is the place, and `…sessions.life` is the session.
-fn noun(region: &str) -> Option<String> {
-    let segments: Vec<&str> = region.split('.').collect();
-    let leaf = match segments.len() {
-        1 => segments[0],
-        len if segments[len - 1] == "life" => segments[len - 2],
-        len => segments[len - 1],
-    };
-    match leaf {
-        // The object's own life needs no word in front of it.
-        "life" => None,
-        // A stage is what the item is in.
-        "stages" => Some("in".into()),
-        // The activity is the session's doing, and saying so twice is noise.
-        "activity" => None,
-        "sessions" => Some("session".into()),
-        other => Some(other.replace('_', " ")),
-    }
 }
 
 /// Which group an object is in, from its states and what holds it.

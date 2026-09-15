@@ -110,3 +110,97 @@ fn every_kind_has_its_own_form_and_parts_hang_inside() {
     ]);
     assert!(opening(&body, "elaboration/rows/first").starts_with("<article class=\"bead\""));
 }
+
+/// An object as the store holds it, standing in the given regions.
+fn standing(id: &str, machine: &str, config: &[(&str, &str)]) -> flywheel_engine::Object {
+    flywheel_engine::Object {
+        id: id.into(),
+        machine: machine.into(),
+        parent: None,
+        config: config.iter().map(|(r, s)| (r.to_string(), s.to_string())).collect(),
+        entered_at: Default::default(),
+        record: Default::default(),
+        counters: Default::default(),
+        applied_responses: vec![],
+        seq: 0,
+        created: 0,
+    }
+}
+
+/// What an object is doing reads as one sentence in the operator's words, its
+/// own state first and then only what someone would act on or wait for; the
+/// quiet of a branch current, a place ready or services declared is left out,
+/// and no region's name is said (141, S214, S222).
+#[test]
+fn what_an_object_is_doing_is_one_sentence() {
+    let bolt = |extra: &[(&str, &str)]| {
+        let mut config = vec![("line", "line"), ("place", "place")];
+        config.extend_from_slice(extra);
+        standing("bolt/atlas/rows", "bolt", &config)
+    };
+    let cases = [
+        (
+            bolt(&[("life", "landed"), ("line.line.life", "removed"), ("place.place.life", "removed"), ("services", "gone")]),
+            "landed",
+        ),
+        (
+            bolt(&[
+                ("life", "open"),
+                ("life.open.citations", "moved"),
+                ("life.open.close", "not-offered"),
+                ("line.line.life", "current"),
+                ("place.place.life", "ready"),
+                ("services", "declared"),
+            ]),
+            "open, a claim it cites moved",
+        ),
+        (
+            bolt(&[("life", "open"), ("life.open.citations", "current"), ("life.open.close", "offered"), ("line.line.life", "conflict")]),
+            "open, ready to land, its branch conflicts with main",
+        ),
+        (
+            standing(
+                "work-item/atlas/rows/wi-1",
+                "work-item",
+                &[
+                    ("life", "in-type"),
+                    ("life.in-type.stages", "build"),
+                    ("life.in-type.stages.build.run", "sessions"),
+                    ("life.in-type.stages.build.run.sessions.life", "alive"),
+                    ("life.in-type.stages.build.run.sessions.life.alive.activity", "working"),
+                    ("life.in-type.stages.build.run.sessions.life.alive.presence", "unknown"),
+                    ("place", "place"),
+                    ("place.place.life", "ready"),
+                ],
+            ),
+            "in build, its session is working",
+        ),
+        (
+            standing(
+                "elaboration/rows/research",
+                "elaboration",
+                &[
+                    ("life", "working"),
+                    ("life.working.work", "session"),
+                    ("life.working.work.session.life", "lost"),
+                    // What the session last stood in before it was lost is not
+                    // what it is doing.
+                    ("life.working.work.session.life.alive.activity", "idle"),
+                    ("place", "place"),
+                    ("place.place.life", "preparing"),
+                ],
+            ),
+            "working, its session was lost, its place is being made",
+        ),
+        (standing("unit/atlas/rows", "unit", &[("life", "in-flight")]), "being built"),
+        (standing("capture/page/1", "capture", &[("reading", "reading")]), "being read"),
+        (standing("elaboration/rows/e1", "elaboration", &[("life", "done"), ("place", "none")]), "done"),
+    ];
+    for (object, sentence) in cases {
+        let said = status::said(&object);
+        assert_eq!(said, sentence, "{}: {:?}", object.id, object.config);
+        for region in [" · ", "line ", "services", "place ready", "place none", "not-offered"] {
+            assert!(!said.contains(region), "{} says `{region}`: {said}", object.id);
+        }
+    }
+}

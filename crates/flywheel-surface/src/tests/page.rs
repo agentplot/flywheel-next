@@ -1062,8 +1062,8 @@ fn the_board_reads_an_object_by_its_name_its_repository_and_its_state() {
     // The head takes the object's own life; the rest goes under it, where it
     // wraps. A head is `nowrap` by design and the whole string ran off the lane.
     assert_eq!(
-        state_and_rest("open · citations moved · line current"),
-        ("open", "citations moved · line current")
+        state_and_rest("open, a claim it cites moved, ready to land"),
+        ("open", "a claim it cites moved, ready to land")
     );
     assert_eq!(state_and_rest("proposed"), ("proposed", ""));
     assert_eq!(state_and_rest(""), ("", ""));

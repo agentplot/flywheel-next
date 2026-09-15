@@ -2062,13 +2062,12 @@ fn held_by(row: &status::Row) -> String {
 /// What an object is doing, split into the one word a head has room for and
 /// the rest of it.
 ///
-/// `said` is every live region of the machine, joined — "open · citations moved
-/// · close not-offered · line current · place ready · services declared" for a
-/// bolt. The first of those is the object's own life, which is what a head
-/// states; the rest belongs under it, where it can wrap. Running the whole
-/// string into a head that is `nowrap` by design pushed it off the lane.
+/// `said` is one sentence, the object's own state first — "open, a claim it
+/// cites moved, ready to land" for a bolt. The state is what a head says; the
+/// rest belongs under it, where it can wrap. Running the whole sentence into a
+/// head that is `nowrap` by design pushed it off the lane.
 pub(crate) fn state_and_rest(said: &str) -> (&str, &str) {
-    match said.split_once(" \u{b7} ") {
+    match said.split_once(", ") {
         Some((state, rest)) => (state, rest),
         None => (said, ""),
     }
