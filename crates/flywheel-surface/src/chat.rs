@@ -263,7 +263,32 @@ impl<C: Channel> Chat<C> {
         // A link to a host past its stale window says so rather than failing
         // silently (308, 150a).
         let away = sinks::away_by_object(store, commands::now(store)?, Duration::minutes(5))?;
-        render(&sink, &self.address, &decisions, &tail, &notices, &away)
+        let mut post = render(&sink, &self.address, &decisions, &tail, &notices, &away)?;
+        // A fold of chores is answered yes or drop, as its card on the page is,
+        // and its line lists the rows by letter, so a row can be answered from
+        // what the channel shows: `drop 415b` (18, S231, S232).
+        let objects = flywheel_atoms::Records::list_records(store, &flywheel_atoms::Scope::All)?;
+        for line in post.lines.iter_mut() {
+            let Some(decision) = decisions.iter().find(|d| d.number.is_some() && d.number == line.number) else {
+                continue;
+            };
+            let (Some((name, _)), Some(rows)) =
+                (crate::page::chores_of(&objects, decision), crate::page::rows_of(&objects, decision))
+            else {
+                continue;
+            };
+            let listed: Vec<String> = rows
+                .iter()
+                .filter(|row| row.standing)
+                .map(|row| {
+                    let document = row.chore.record.get("document").and_then(|v| v.as_str()).unwrap_or(&row.chore.id);
+                    format!("{} {}", row.letter, crate::page::chore_words(document))
+                })
+                .collect();
+            line.object = format!("{name} · {}", listed.join(" · "));
+            line.controls.retain(|answer| matches!(answer.as_str(), "yes" | "drop"));
+        }
+        Ok(post)
     }
 
     /// Deliver: post the rendering and advance this sink's mark in the same
@@ -372,15 +397,42 @@ pub enum Grammar {
     /// `yes all`: one response per standing decision, so "yes to all" means
     /// something and any one could still have been answered alone (11).
     All { answer: String },
+    /// One answer to several decisions or to rows of a fold: `yes 412 416`,
+    /// `drop 415b`, `yes 415a 415c`, or `415b` on its own. Each is its own
+    /// response, as each would have been answered alone (11, S232).
+    Several { answer: String, targets: Vec<Target> },
     /// Nothing the grammar names.
     Unaccepted,
+}
+
+/// A decision a reply names: its number, and the letter of one row where the
+/// decision is a fold of chores (S232).
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct Target {
+    pub number: u32,
+    pub row: Option<String>,
+}
+
+/// `415` or `415b`: digits, then letters where the reply names a row.
+fn target(word: &str) -> Option<Target> {
+    let split = word.find(|c: char| !c.is_ascii_digit()).unwrap_or(word.len());
+    let (digits, letters) = word.split_at(split);
+    let number = digits.parse::<u32>().ok()?;
+    match letters.is_empty() {
+        true => Some(Target { number, row: None }),
+        false if letters.chars().all(|c| c.is_ascii_alphabetic()) => Some(Target {
+            number,
+            row: Some(letters.to_ascii_lowercase()),
+        }),
+        false => None,
+    }
 }
 
 /// What the sink accepts, said in one line, for the reply a message it does not
 /// recognise gets back (194).
 pub const ACCEPTS: &str =
-    "this channel takes a numbered reply — `yes 412`, `412: <text>`, `yes all` — or a forwarded \
-     message, which becomes a capture. Anything else is not read.";
+    "this channel takes a numbered reply — `yes 412`, `412: <text>`, `yes all`, `drop 415b` for one \
+     chore of a fold — or a forwarded message, which becomes a capture. Anything else is not read.";
 
 /// Read one message against the grammar (194).
 pub fn read_grammar(text: &str) -> Grammar {
@@ -404,31 +456,43 @@ pub fn read_grammar(text: &str) -> Grammar {
     match words.as_slice() {
         // `412` on its own is the bare number of the reply grammar, which is a
         // yes (`surfaces.yaml` palette.grammar).
-        [one] => match one.parse::<u32>() {
-            Ok(number) => Grammar::Answer {
+        [one] => match (one.parse::<u32>(), target(one)) {
+            (Ok(number), _) => Grammar::Answer {
                 number,
                 answer: "yes".into(),
             },
-            Err(_) => Grammar::Unaccepted,
+            // `415b` on its own is that row's yes, as a bare number is.
+            (Err(_), Some(named)) => Grammar::Several {
+                answer: "yes".into(),
+                targets: vec![named],
+            },
+            (Err(_), None) => Grammar::Unaccepted,
         },
         // `yes all`, and only that word for all: a message saying anything else
         // about all of them is free text (194).
         [answer, "all"] if is_answer(answer) => Grammar::All {
             answer: answer.to_ascii_lowercase(),
         },
-        [answer, number] if is_answer(answer) => match number.parse::<u32>() {
-            Ok(number) => Grammar::Answer {
-                number,
-                answer: answer.to_ascii_lowercase(),
-            },
-            Err(_) => Grammar::Unaccepted,
+        [answer, number] if is_answer(answer) && number.parse::<u32>().is_ok() => Grammar::Answer {
+            number: number.parse().expect("the guard parsed it"),
+            answer: answer.to_ascii_lowercase(),
         },
-        [number, answer] if is_answer(answer) => match number.parse::<u32>() {
-            Ok(number) => Grammar::Answer {
-                number,
+        [number, answer] if is_answer(answer) && number.parse::<u32>().is_ok() => Grammar::Answer {
+            number: number.parse().expect("the guard parsed it"),
+            answer: answer.to_ascii_lowercase(),
+        },
+        [named, answer] if is_answer(answer) && target(named).is_some() => Grammar::Several {
+            answer: answer.to_ascii_lowercase(),
+            targets: vec![target(named).expect("the guard read it")],
+        },
+        // One answer, then every decision or row it answers: each word must
+        // name one, or none is read (S232, 194).
+        [answer, named @ ..] if is_answer(answer) => match named.iter().map(|word| target(word)).collect::<Option<Vec<_>>>() {
+            Some(targets) if !targets.is_empty() => Grammar::Several {
                 answer: answer.to_ascii_lowercase(),
+                targets,
             },
-            Err(_) => Grammar::Unaccepted,
+            _ => Grammar::Unaccepted,
         },
         _ => Grammar::Unaccepted,
     }
@@ -544,9 +608,31 @@ impl<C: Channel> Chat<C> {
                 defs,
                 message,
                 number,
+                None,
                 &answer,
                 &format!("chat-{}", message.id),
             )?])),
+            // Each decision or row named is its own response, with its own
+            // delivery identity where the reply names several, as `yes all`
+            // gives each (11, 137, S232). A row the fold does not hold is
+            // answered in the channel and the rest are still recorded.
+            Grammar::Several { answer, targets } => {
+                let mut given = Vec::new();
+                for named in &targets {
+                    let said = format!("{}{}", named.number, named.row.as_deref().unwrap_or_default());
+                    let delivery = match targets.len() {
+                        1 => format!("chat-{}", message.id),
+                        _ => format!("chat-{}-{said}", message.id),
+                    };
+                    match self.answer(store, world, defs, message, named.number, named.row.as_deref(), &answer, &delivery) {
+                        Ok(called) => given.push(called),
+                        Err(refused) => self
+                            .channel
+                            .reply(&message.id, &format!("#{said} → not recorded: {refused:#}"))?,
+                    }
+                }
+                Ok(Heard::Answered(given))
+            }
             // "Yes to all" means something and any one of them could have been
             // answered alone, so it is one response per decision and not one
             // response about many (11). Each carries its own delivery identity,
@@ -568,6 +654,7 @@ impl<C: Channel> Chat<C> {
                         defs,
                         message,
                         number,
+                        None,
                         &answer,
                         &format!("chat-{}-{number}", message.id),
                     )?);
@@ -586,8 +673,9 @@ impl<C: Channel> Chat<C> {
         }
     }
 
-    /// One numbered answer, through the same `answer` tool the page's control
-    /// calls (193, 194).
+    /// One numbered answer, or one row's, through the same `answer` tool the
+    /// page's control calls (193, 194, S232).
+    #[allow(clippy::too_many_arguments)]
     fn answer<S: StateStore, W: World + ?Sized>(
         &mut self,
         store: &mut S,
@@ -595,13 +683,17 @@ impl<C: Channel> Chat<C> {
         defs: &Definitions,
         message: &Message,
         number: u32,
+        row: Option<&str>,
         answer: &str,
         delivery: &str,
     ) -> Result<Called> {
-        let call = Call::new(catalogue::ANSWER, &message.by, "chat")
+        let mut call = Call::new(catalogue::ANSWER, &message.by, "chat")
             .delivered(delivery)
             .arg("decision", json!(number))
             .arg("answer", json!(answer));
+        if let Some(row) = row {
+            call = call.arg("row", json!(row));
+        }
         let called = crate::catalogue::call(store, world, defs, &call)?;
         // The operator can tell it was recorded (154), once, when it is: the
         // same delivery read again — after a restart, say — writes nothing and
@@ -609,7 +701,7 @@ impl<C: Channel> Chat<C> {
         if !matches!(called.outcome, Received::AlreadyApplied { .. }) {
             self.channel.reply(
                 &message.id,
-                &format!("#{number} → {answer}, recorded as {}", called.id),
+                &format!("#{number}{} → {answer}, recorded as {}", row.unwrap_or_default(), called.id),
             )?;
         }
         Ok(called)

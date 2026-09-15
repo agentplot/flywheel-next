@@ -1067,6 +1067,135 @@ fn shared_line_chores_fold_by_repository() {
     assert!(docked.contains("atlas · chores"));
 }
 
+/// A repository's proposed shared-line chores, one per name, as `record_offers`
+/// makes them from a curation session's offers (60, 62).
+fn chores_of_repository(store: &mut FakeStore, defs: &flywheel_engine::Definitions, repository: &str, names: &[&str]) {
+    let at = commands::now(store).expect("a point");
+    for (at_row, name) in names.iter().enumerate() {
+        let record = [
+            ("type", json!("chore")),
+            ("type_version", json!(2)),
+            ("batch", json!(repository)),
+            ("repository", json!(repository)),
+            ("document", json!(format!("flywheel/curation/chores/{name}.md"))),
+            ("sources", json!([format!("curation/willdan/main/1#{at_row}")])),
+        ]
+        .into_iter()
+        .map(|(k, v)| (k.to_string(), v))
+        .collect();
+        let id = format!("unit/{repository}/chore-{}", at_row + 1);
+        commands::put_new(store, defs, &id, "unit", Some(&format!("repository/{repository}")), record, at).expect("the chore");
+    }
+}
+
+/// The card a decision number stands on, from its opening tag to its close.
+fn rail_card(html: &str, number: u32) -> String {
+    let label = format!("aria-label=\"decision {number}\"");
+    let start = html.find(&label).unwrap_or_else(|| panic!("no card {label}"));
+    let rest = &html[start..];
+    rest[..rest.find("</article>").expect("the card closes")].to_string()
+}
+
+/// A fold of chores lists them as lettered rows by document, and when it holds
+/// more than one each row carries its own drop, posting the fold's number and
+/// the row's letter beside the fold's own yes and drop; a fold of one carries
+/// none (S232, S231).
+#[test]
+fn a_chores_fold_carries_a_drop_on_each_row() {
+    let (mut store, world, defs) = a_page();
+    chores_of_repository(&mut store, &defs, "atlas", &["agents-md", "rename-ref", "citation-fix"]);
+    chores_of_repository(&mut store, &defs, "storefront", &["readme-row"]);
+    commands::rail(&mut store, &defs).expect("the rail derives");
+    let read = crate::page::read(&mut store, &world, &defs, ADDRESS, "chuck").expect("the page reads");
+    let number_of = |repository: &str| {
+        read.decisions
+            .iter()
+            .find(|d| d.object == format!("unit/{repository}/chore-1"))
+            .and_then(|d| d.number)
+            .expect("the fold is numbered")
+    };
+    let html = crate::page::render(&read);
+
+    let atlas = rail_card(&html, number_of("atlas"));
+    for (letter, words) in [("a", "agents md"), ("b", "rename ref"), ("c", "citation fix")] {
+        assert!(atlas.contains(&format!("data-row=\"{letter}\"")), "no row {letter}: {atlas}");
+        assert!(atlas.contains(&format!(">{words}</a>")), "row {letter} is not named by its document: {atlas}");
+        assert!(atlas.contains(&format!("name=\"row\" value=\"{letter}\"")), "row {letter} carries no drop of its own: {atlas}");
+    }
+    assert_eq!(atlas.matches("class=\"answer row-drop\"").count(), 3, "{atlas}");
+    assert!(atlas.contains(&format!("aria-label=\"drop {}b\"", number_of("atlas"))), "{atlas}");
+    assert_eq!(atlas.matches("data-answer=").count(), 2, "the fold's own yes and drop, and no pick: {atlas}");
+
+    let storefront = rail_card(&html, number_of("storefront"));
+    assert!(storefront.contains("data-row=\"a\""), "{storefront}");
+    assert!(!storefront.contains("row-drop"), "a fold of one is answered by the card's own drop: {storefront}");
+}
+
+/// A row's letter stays with its chore: once the second of three is dropped the
+/// fold keeps its number and the rows a and c, on the card and in the dock, and
+/// a tenth chore joining is d. A chore of the repository merged before the fold
+/// was raised takes no letter (S232).
+#[test]
+fn a_rows_letter_stays_after_another_is_dropped() {
+    let (mut store, world, defs) = a_page();
+    let at = commands::now(&store).expect("a point");
+    let in_life = |store: &mut FakeStore, id: &str, life: &str, entered: chrono::DateTime<chrono::Utc>| {
+        let mut held = store.get(id).expect("a read").expect("the chore");
+        held.config.insert("life".into(), life.into());
+        held.entered_at.insert("life".into(), entered);
+        let base = held.seq;
+        store.put(id, &held, base).expect("the chore's state is written");
+    };
+    chores_of_repository(&mut store, &defs, "atlas", &["agents-md", "rename-ref", "citation-fix"]);
+    let old = [
+        ("type", json!("chore")),
+        ("batch", json!("atlas")),
+        ("repository", json!("atlas")),
+        ("document", json!("flywheel/curation/chores/last-weeks.md")),
+    ]
+    .into_iter()
+    .map(|(k, v)| (k.to_string(), v))
+    .collect();
+    commands::put_new(&mut store, &defs, "unit/atlas/chore-0", "unit", Some("repository/atlas"), old, at).expect("an older chore");
+    in_life(&mut store, "unit/atlas/chore-0", "merged", at - chrono::Duration::hours(1));
+    let before = commands::rail(&mut store, &defs).expect("the rail derives");
+    let number = before.iter().find(|d| d.object == "unit/atlas/chore-1").and_then(|d| d.number).expect("numbered");
+
+    in_life(&mut store, "unit/atlas/chore-2", "dropped", at + chrono::Duration::minutes(1));
+    let tenth = [
+        ("type", json!("chore")),
+        ("batch", json!("atlas")),
+        ("repository", json!("atlas")),
+        ("document", json!("flywheel/curation/chores/skill-typo.md")),
+    ]
+    .into_iter()
+    .map(|(k, v)| (k.to_string(), v))
+    .collect();
+    commands::put_new(&mut store, &defs, "unit/atlas/chore-10", "unit", Some("repository/atlas"), tenth, at).expect("a tenth chore");
+    commands::rail(&mut store, &defs).expect("the rail derives");
+
+    let mut read = crate::page::read(&mut store, &world, &defs, ADDRESS, "chuck").expect("the page reads");
+    let fold = read.decisions.iter().find(|d| d.object == "unit/atlas/chore-1").expect("the fold stands");
+    assert_eq!(fold.number, Some(number), "the fold keeps its number");
+    let html = crate::page::render(&read);
+    let held = rail_card(&html, number);
+    assert!(held.contains(">atlas · 3 chores<"), "{held}");
+    assert!(held.contains("data-row=\"a\"") && held.contains("data-row=\"c\""), "a and c stand: {held}");
+    assert!(!held.contains("data-row=\"b\""), "b left the fold: {held}");
+    assert!(held.contains("name=\"row\" value=\"c\""), "c still carries its own drop: {held}");
+    assert!(
+        held.contains("data-row=\"d\" data-object=\"unit/atlas/chore-10\""),
+        "the tenth chore made is d, after c: {held}"
+    );
+    assert!(!held.contains("last weeks"), "a chore merged before the fold takes no row: {held}");
+
+    read.opened = Some("unit/atlas/chore-3".into());
+    let docked = crate::page::render(&read);
+    assert!(docked.contains("<span class=\"st mono\">c</span>"), "the dock letters c as the card does");
+    assert!(docked.contains(&format!("{number}c: drop")), "the dock's row says what its drop does");
+    assert!(!docked.contains(&format!("{number}b: drop")));
+}
+
 /// Two chores merged onto two shared lines are both `chore-1` by name, so each
 /// line under since says which repository it merged in, greyed before the name,
 /// as its slip did on the board (209, S231).

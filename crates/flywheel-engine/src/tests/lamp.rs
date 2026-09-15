@@ -524,6 +524,33 @@ fn grouping_and_single_answer() {
     assert!(again.is_empty(), "the same deliveries again ask nothing");
 }
 
+/// An answer that names one of the objects folded under a number is that
+/// object's alone, and the rest stand under the same number (11, S232).
+#[test]
+fn an_answer_naming_one_folded_object_is_that_objects_alone() {
+    let d = defs();
+    let facts = Facts::default();
+    let mut objects = BTreeMap::new();
+    objects.insert("lamp/1".into(), named_lamp(&d, "lamp/1", Some("hall"), 1, t0()));
+    objects.insert("lamp/2".into(), named_lamp(&d, "lamp/2", Some("hall"), 2, t0()));
+    let mut register = Register::default();
+    let standing = rail_of(&d, &objects, &mut register, t0());
+    assert_eq!(standing.len(), 1, "one decision on the fixture");
+    let number = standing[0].number.expect("numbered");
+
+    let mut named = answer("row-2", number, "on", t0());
+    named.object = Some("lamp/2".into());
+    let at = t0() + Duration::minutes(1);
+    let fired = tick(&d, &mut objects, &[named], &register, &facts, at);
+    assert_eq!(fired.len(), 1, "the named object alone moves: {fired:?}");
+    assert_eq!(objects["lamp/2"].config.get("power").map(String::as_str), Some("on"));
+    assert_ne!(objects["lamp/1"].config.get("power").map(String::as_str), Some("on"));
+    let after = rail_of(&d, &objects, &mut register, at);
+    assert_eq!(after.len(), 1);
+    assert_eq!(after[0].number, Some(number), "the rest keep the number");
+    assert_eq!(after[0].folds, vec!["lamp/1".to_string()]);
+}
+
 #[test]
 fn new_material_joins_the_proposal() {
     let d = defs();

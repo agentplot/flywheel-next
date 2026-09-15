@@ -257,6 +257,12 @@ fn eval_response(pattern: &str, cx: &Ctx) -> Hold {
         let addressed = match r.kind {
             ResponseKind::Answer => {
                 let Some(n) = r.decision else { continue };
+                // An answer naming one of the objects folded under the number
+                // is that object's alone: one row of a fold, answered on its
+                // own while the rest stand under the same number (11, S232).
+                if r.object.as_deref().is_some_and(|named| named != cx.object.id) {
+                    continue;
+                }
                 let Some(did) = cx.snap.register.decision_of(n) else { continue };
                 // decision id = <object>/<kind>/<entered_at>
                 let mut parts = did.rsplitn(3, '/');

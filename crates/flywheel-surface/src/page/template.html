@@ -256,6 +256,18 @@ form.busy .btn.pri{opacity:.85}
 .card .title{font-size:13.5px;font-weight:700;line-height:1.3}
 .card .title .pre{color:var(--ink3);font-weight:500}
 .card .tail{color:var(--ink2);font-size:12px;margin-top:2px}
+/* A fold of chores: one lettered row per chore, and its own drop where the fold
+   holds more than one (S232), drawn as the mockup's chore rows. */
+.card .chores{list-style:none;margin:6px 0 0;padding:0;display:flex;flex-direction:column;gap:4px}
+.card .chore{display:flex;align-items:center;gap:8px;min-width:0;border:1px solid var(--line);border-radius:5px;padding:2px 2px 2px 8px;min-height:30px;font-size:12.5px;background:var(--surface2)}
+.card .chore .lt{flex:none;width:12px;font:600 11px var(--mono);color:var(--ink3)}
+.card .chore .nm{min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;color:var(--ink);text-decoration:none}
+.card .chore .nm:hover{text-decoration:underline;text-decoration-color:var(--ink3)}
+.card .chore .f{margin-left:auto;min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;font:11px var(--mono);color:var(--ink3)}
+.card .chore form{flex:none;margin:0 0 0 auto}
+.card .chore .f + form{margin-left:0}
+.card .chore .gx{width:28px;height:28px;display:grid;place-items:center;border:0;border-radius:50%;background:transparent;color:var(--ink3);font-size:15px;line-height:1;cursor:pointer}
+.card .chore .gx:hover,.card .chore .gx:focus-visible{background:color-mix(in srgb,var(--crit) 15%,transparent);color:var(--crit)}
 .card .q{font-style:italic;color:var(--ink);margin-top:4px;font-size:13px}
 .card .acts{display:flex;flex-wrap:wrap;gap:5px;margin-top:8px;align-items:center}
 .card .acts .hint{margin-left:auto;display:flex;gap:3px}

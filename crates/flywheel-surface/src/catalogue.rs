@@ -127,9 +127,10 @@ pub const ANSWER: &str = "answer";
 pub const CATALOGUE: &[Tool] = &[
     Tool {
         name: ANSWER,
-        args: &["decision", "answer", "text"],
+        args: &["decision", "answer", "text", "row"],
         doc: "answer a numbered decision; the deterministic path, `yes 412` or \
-              `421: <text>` in chat is this tool (194)",
+              `421: <text>` in chat is this tool (194); a row's letter names one \
+              chore of a fold, `drop 415b`, and the answer is that chore's alone (S232)",
     },
     Tool {
         name: "capture",
@@ -625,13 +626,21 @@ fn answer<S: StateStore>(store: &mut S, defs: &Definitions, call: &Call) -> Resu
         (None, Some(text)) => text,
         (None, None) => String::new(),
     };
+    // A row of a fold of chores is its chore's own decision: named by the
+    // fold's number and the row's letter, the answer is recorded on that chore
+    // and applies to it alone (S232, 11).
+    let row = call.text("row").map(|row| row.trim().to_ascii_lowercase()).filter(|row| !row.is_empty());
+    let object = match &row {
+        Some(letter) => Some(row_object(store, defs, number as u32, letter)?),
+        None => None,
+    };
     let mut record = commands::record_call(
         store,
         defs,
         &CallRecord {
             tool: ANSWER,
             decision: Some(number as u32),
-            object: None,
+            object: object.as_deref(),
             answer: &answer,
             args: Some(Value::Object(call.args.clone().into_iter().collect())),
             by: &call.by,
@@ -640,10 +649,34 @@ fn answer<S: StateStore>(store: &mut S, defs: &Definitions, call: &Call) -> Resu
             proposed_by: call.proposed_by.as_deref(),
         },
     )?;
-    record
-        .journal
-        .push(noted("response", &record.id, format!("{number} → {answer}")));
+    record.journal.push(noted(
+        "response",
+        &record.id,
+        format!("{number}{} → {answer}", row.as_deref().unwrap_or_default()),
+    ));
     Ok(record)
+}
+
+/// The chore a row of a standing fold names, by the fold's number and the
+/// row's letter; refused with the rows it has where the letter names none that
+/// stands (S232).
+fn row_object<S: StateStore>(store: &mut S, defs: &Definitions, number: u32, letter: &str) -> Result<String> {
+    let standing = commands::rail(store, defs)?;
+    let Some(decision) = standing.iter().find(|d| d.number == Some(number)) else {
+        bail!("{number} is not on the rail, so it has no row {letter}");
+    };
+    let objects = flywheel_atoms::Records::list_records(store, &flywheel_atoms::Scope::All)?;
+    let Some(rows) = crate::page::rows_of(&objects, decision) else {
+        bail!("{number} is not a fold of chores; a letter names a row of one (S232)");
+    };
+    let standing: Vec<_> = rows.iter().filter(|row| row.standing).collect();
+    match standing.iter().find(|row| row.letter == letter) {
+        Some(row) => Ok(row.chore.id.clone()),
+        None => bail!(
+            "{number} has no row {letter} standing; its rows are {}",
+            standing.iter().map(|row| format!("{number}{}", row.letter)).collect::<Vec<_>>().join(", ")
+        ),
+    }
 }
 
 /// One answer's pattern with the operator's text in place of its placeholder.

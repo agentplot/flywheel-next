@@ -464,23 +464,37 @@ fn unit_page(read: &Read, unit: &Object, row_: Option<&status::Row>) -> String {
     out.push_str(&sec("the unit", "", &facts));
     // A chore proposed with others is one decision with them, and its page
     // lists every chore of the fold by the document it points at (S231, 11).
+    // Each row is its chore's own decision, lettered as the card letters it,
+    // with its own drop where the fold holds more than one (S232).
     let fold = read
         .decisions
         .iter()
         .filter(|d| d.folds.iter().any(|folded| *folded == unit.id))
-        .find_map(|d| super::chores_of(&read.objects, d));
-    if let Some((name, chores)) = fold {
+        .find_map(|d| super::chores_of(&read.objects, d).map(|(name, _)| (name, d)));
+    if let Some((name, decision)) = fold {
+        let lettered = super::rows_of(&read.objects, decision).unwrap_or_default();
+        let standing: Vec<_> = lettered.iter().filter(|row| row.standing).collect();
+        let number = decision.number.map(|n| n.to_string()).unwrap_or_default();
         let mut rows = String::from("<div class=\"rows\">\n");
-        for chore in &chores {
-            let document = field(chore, "document").unwrap_or_else(|| name_of(&chore.id));
+        for row in &standing {
+            let document = field(row.chore, "document").unwrap_or_else(|| name_of(&row.chore.id));
+            let drop = match standing.len() > 1 && !number.is_empty() {
+                true => super::row_drop(&number, &row.letter, Some(&format!("{number}{}: drop", row.letter))),
+                false => String::new(),
+            };
             let _ = write!(
                 rows,
-                "<div class=\"row\"><span class=\"st\">chore</span><span class=\"grow\">{}</span></div>\n",
-                link(read, &chore.id, document)
+                "<div class=\"row\" data-row=\"{letter}\"><span class=\"st mono\">{letter}</span><span class=\"grow\">{}</span>{drop}</div>\n",
+                link(read, &row.chore.id, document),
+                letter = escape(&row.letter),
             );
         }
         rows.push_str("</div>\n");
-        out.push_str(&sec(&format!("{name} · chores"), "", &rows));
+        let each = match standing.len() > 1 {
+            true => "one response each · the rest stand",
+            false => "",
+        };
+        out.push_str(&sec(&format!("{name} · chores"), each, &rows));
     }
 
     let items: Vec<&Object> = read

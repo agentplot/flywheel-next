@@ -241,6 +241,25 @@ fn only_a_decision_line_is_answerable() {
 
 // ---- 8.3 the numbered reply grammar, and "yes all"
 
+/// A row of a fold is named by the fold's number and its letter, and one answer
+/// may name several decisions or rows, each its own; a word that names neither
+/// is not guessed at (S232, 11, 194).
+#[test]
+fn rows_and_several_decisions_are_the_grammar() {
+    use crate::chat::{read_grammar, Grammar, Target};
+    let named = |number: u32, row: Option<&str>| Target { number, row: row.map(String::from) };
+    let several = |answer: &str, targets: Vec<Target>| Grammar::Several { answer: answer.into(), targets };
+    assert_eq!(read_grammar("drop 415b"), several("drop", vec![named(415, Some("b"))]));
+    assert_eq!(read_grammar("415b drop"), several("drop", vec![named(415, Some("b"))]));
+    assert_eq!(read_grammar("yes 415a 415c"), several("yes", vec![named(415, Some("a")), named(415, Some("c"))]));
+    assert_eq!(read_grammar("yes 412 416"), several("yes", vec![named(412, None), named(416, None)]));
+    assert_eq!(read_grammar("415b"), several("yes", vec![named(415, Some("b"))]));
+    assert_eq!(read_grammar("yes 415"), Grammar::Answer { number: 415, answer: "yes".into() });
+    for free in ["yes 415 and the rest", "drop 4-15b", "yes b415", "drop 415b please"] {
+        assert_eq!(read_grammar(free), Grammar::Unaccepted, "`{free}` was read");
+    }
+}
+
 /// The grammar reads a number and a word and nothing more; a message outside it
 /// is not guessed at (194).
 #[test]
@@ -279,6 +298,79 @@ fn the_reply_grammar_is_a_grammar_and_not_an_interpreter() {
             "`{free}` was read as something"
         );
     }
+}
+
+/// A row of a fold of chores is answered by the fold's number and its letter.
+/// The channel's line lists the rows by letter and offers yes or drop, `drop
+/// 415b` records one response on that chore alone, and `yes 415a 415c` two,
+/// each its own, leaving d standing (S232, 11, 153).
+#[test]
+fn a_row_is_answered_by_its_folds_number_and_letter() {
+    let (mut store, mut world, defs, mut chat) = a_chat("rows");
+    let at = commands::now(&store).expect("a point");
+    for (at_row, name) in ["agents-md", "rename-ref", "citation-fix", "readme-row"].iter().enumerate() {
+        let record = [
+            ("type", json!("chore")),
+            ("type_version", json!(2)),
+            ("batch", json!("atlas")),
+            ("repository", json!("atlas")),
+            ("document", json!(format!("flywheel/curation/chores/{name}.md"))),
+            ("sources", json!([format!("curation/willdan/main/1#{at_row}")])),
+        ]
+        .into_iter()
+        .map(|(k, v)| (k.to_string(), v))
+        .collect();
+        let id = format!("unit/atlas/chore-{}", at_row + 1);
+        commands::put_new(&mut store, &defs, &id, "unit", Some("repository/atlas"), record, at).expect("the chore");
+    }
+    let standing = commands::rail(&mut store, &defs).expect("the rail");
+    let number = standing
+        .iter()
+        .find(|d| d.object == "unit/atlas/chore-1")
+        .and_then(|d| d.number)
+        .expect("the fold is numbered");
+
+    let post = chat.rendering(&mut store, &defs).expect("the rendering");
+    let line = post.lines.iter().find(|l| l.number == Some(number)).expect("the fold's line");
+    assert!(
+        line.text().contains("atlas · a agents md · b rename ref · c citation fix · d readme row"),
+        "the line lists the rows by letter: {}",
+        line.text()
+    );
+    assert_eq!(line.controls, vec!["yes".to_string(), "drop".to_string()]);
+
+    let recorded_on = |store: &FakeStore, id: &str| -> (Option<u64>, String) {
+        let record = Records::get(store, &format!("response/{id}")).expect("a read").expect("the response");
+        (
+            record.record.get("decision").and_then(|v| v.as_u64()),
+            record.record.get("object").and_then(|v| v.as_str()).unwrap_or_default().to_string(),
+        )
+    };
+    let message = Message::new("1600", "chuck", &format!("drop {number}b"));
+    let Heard::Answered(given) = chat.receive(&mut store, &mut world, &defs, &message).expect("read") else {
+        panic!("`drop {number}b` was not heard as an answer");
+    };
+    assert_eq!(given.len(), 1, "one response");
+    assert_eq!(recorded_on(&store, &given[0].id), (Some(number as u64), "unit/atlas/chore-2".to_string()));
+
+    let message = Message::new("1601", "chuck", &format!("yes {number}a {number}c"));
+    let Heard::Answered(given) = chat.receive(&mut store, &mut world, &defs, &message).expect("read") else {
+        panic!("`yes {number}a {number}c` was not heard as an answer");
+    };
+    assert_eq!(given.len(), 2, "one response per row named");
+    let on: BTreeSet<String> = given.iter().map(|called| recorded_on(&store, &called.id).1).collect();
+    assert_eq!(on, ["unit/atlas/chore-1", "unit/atlas/chore-3"].map(String::from).into_iter().collect());
+
+    let message = Message::new("1602", "chuck", &format!("drop {number}z"));
+    let Heard::Answered(given) = chat.receive(&mut store, &mut world, &defs, &message).expect("read") else {
+        panic!("`drop {number}z` was not heard as an answer");
+    };
+    assert!(given.is_empty(), "a row the fold does not hold records nothing");
+    let said = &chat.channel.replies.last().expect("the channel was answered").1;
+    assert!(
+        said.contains(&format!("#{number}z → not recorded")) && said.contains(&format!("{number}d")),
+        "the refusal names the rows the fold holds: {said}"
+    );
 }
 
 /// "Yes to all" is one response per decision, each on its own delivery, so any

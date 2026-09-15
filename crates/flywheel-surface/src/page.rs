@@ -315,8 +315,20 @@ fn answers_of(objects: &[Object]) -> BTreeMap<u32, Vec<Answered>> {
         let Some(number) = object.record.get("decision").and_then(|v| v.as_u64()) else {
             continue;
         };
+        // An answer on one row of a fold says which, so a drop of one chore
+        // does not read as the fold's (S232).
+        let row = object
+            .record
+            .get("args")
+            .and_then(|args| args.get("row"))
+            .and_then(|v| v.as_str())
+            .map(str::trim)
+            .filter(|row| !row.is_empty());
         out.entry(number as u32).or_default().push(Answered {
-            answer: field("answer"),
+            answer: match row {
+                Some(row) => format!("{} {number}{row}", field("answer")),
+                None => field("answer"),
+            },
             given_by: field("given_by"),
             given_at: field("given_at"),
         });
@@ -553,6 +565,127 @@ pub(crate) fn chores_of<'a>(objects: &'a [Object], decision: &DecisionInstance) 
         false => batch.to_string(),
     };
     Some((name, chores))
+}
+
+/// One row of a fold of chores: the chore, the letter it is named by, and
+/// whether it still stands in the fold (S232).
+pub(crate) struct ChoreRow<'a> {
+    pub letter: String,
+    pub chore: &'a Object,
+    pub standing: bool,
+}
+
+/// A fold's chores as lettered rows (S232).
+///
+/// The letters run over every chore of the fold's batch that stands in it or
+/// has left it since it was raised, in the order the chores were made, so a
+/// letter stays with its chore when another row is answered and leaves. A chore
+/// answered before the fold was raised takes none. `None` for a decision that
+/// is no fold of chores.
+pub(crate) fn rows_of<'a>(objects: &'a [Object], decision: &DecisionInstance) -> Option<Vec<ChoreRow<'a>>> {
+    let (_, standing) = chores_of(objects, decision)?;
+    let batch = standing.first()?.record.get("batch").and_then(|v| v.as_str())?;
+    let mut held: Vec<&Object> = objects
+        .iter()
+        .filter(|o| o.machine == "unit")
+        .filter(|o| o.record.get("type").and_then(|v| v.as_str()) == Some("chore"))
+        .filter(|o| o.record.get("batch").and_then(|v| v.as_str()) == Some(batch))
+        .filter(|o| {
+            standing.iter().any(|s| s.id == o.id)
+                || o.entered_at.get(&decision.region).is_some_and(|left| *left >= decision.since)
+        })
+        .collect();
+    held.sort_by(|a, b| made(a).cmp(&made(b)));
+    Some(
+        held.into_iter()
+            .enumerate()
+            .map(|(at, chore)| ChoreRow {
+                letter: letter(at),
+                chore,
+                standing: standing.iter().any(|s| s.id == chore.id),
+            })
+            .collect(),
+    )
+}
+
+/// The order a chore was made in within its batch: the ordinal its id ends
+/// with, `chore-<n>`, which `record_offers` counts per batch and never reuses,
+/// then the id itself. The store records no creation order of its own.
+fn made(chore: &Object) -> (u64, &str) {
+    let ordinal = chore.id.rsplit('-').next().and_then(|n| n.parse::<u64>().ok()).unwrap_or(u64::MAX);
+    (ordinal, chore.id.as_str())
+}
+
+/// The letter of the row at a position: `a` to `z`, then `aa`.
+fn letter(at: usize) -> String {
+    let mut n = at + 1;
+    let mut out = Vec::new();
+    while n > 0 {
+        n -= 1;
+        out.push((b'a' + (n % 26) as u8) as char);
+        n /= 26;
+    }
+    out.iter().rev().collect()
+}
+
+/// What a chore's row is called: its document's file name in words, without
+/// the directories or the extension.
+pub(crate) fn chore_words(document: &str) -> String {
+    let file = document.rsplit('/').next().unwrap_or(document);
+    let stem = file.rsplit_once('.').map(|(stem, _)| stem).filter(|stem| !stem.is_empty()).unwrap_or(file);
+    stem.replace(['-', '_'], " ")
+}
+
+/// A fold of chores as its card lists them: a lettered row per standing chore
+/// by its document, what the offer said it concerns where it said, and its own
+/// drop where the fold holds more than one (S232, S231).
+fn chore_rows(number: &str, rows: &[ChoreRow<'_>]) -> String {
+    let standing: Vec<&ChoreRow<'_>> = rows.iter().filter(|row| row.standing).collect();
+    let dropped_alone = standing.len() > 1 && !number.is_empty();
+    let mut out = String::from("<ol class=\"chores\">\n");
+    for row in &standing {
+        let text = |name: &str| row.chore.record.get(name).and_then(|v| v.as_str());
+        let document = text("document").unwrap_or_else(|| name_of(&row.chore.id));
+        let _ = write!(
+            out,
+            "<li class=\"chore\" data-row=\"{letter}\" data-object=\"{id}\"><span class=\"lt\">{letter}</span>\
+             <a class=\"nm\" href=\"#dock-{id}\" data-object=\"{id}\" title=\"{document}\">{words}</a>{about}{drop}</li>\n",
+            letter = escape(&row.letter),
+            id = escape(&row.chore.id),
+            document = escape(document),
+            words = escape(&chore_words(document)),
+            about = text("about").map(|about| format!("<span class=\"f\">{}</span>", escape(about))).unwrap_or_default(),
+            drop = match dropped_alone {
+                true => row_drop(number, &row.letter, None),
+                false => String::new(),
+            },
+        );
+    }
+    out.push_str("</ol>\n");
+    out
+}
+
+/// The drop one row of a fold carries: the fold's number and the row's letter
+/// posted to the one answer tool, so the chore is dropped alone and the rest
+/// stand (S232, 193). On the card it is a mark beside the row; in the dock it
+/// says what it does.
+pub(crate) fn row_drop(number: &str, letter: &str, label: Option<&str>) -> String {
+    let tool = crate::catalogue::ANSWER;
+    let (class, said) = match label {
+        Some(label) => ("btn sm drop", escape(label)),
+        None => ("gx", "×".to_string()),
+    };
+    format!(
+        "<form method=\"post\" action=\"/api/tools/{tool}\" class=\"answer row-drop\">\n\
+         <input type=\"hidden\" name=\"decision\" value=\"{number}\">\n\
+         <input type=\"hidden\" name=\"answer\" value=\"drop\">\n\
+         <input type=\"hidden\" name=\"row\" value=\"{letter}\">\n\
+         <button type=\"submit\" class=\"{class}\" data-row-answer=\"drop\" \
+         title=\"{number}{letter} · drop this chore; the others stand\" aria-label=\"drop {number}{letter}\">{said}</button>\n\
+         </form>\n",
+        number = escape(number),
+        letter = escape(letter),
+    )
 }
 
 /// The answers a decision's controls offer: the model's, except that a fold of
@@ -1428,6 +1561,11 @@ fn card(read: &Read, decision: &DecisionInstance) -> String {
             escape(&away.host),
             escape(&away.said())
         );
+    }
+    // A fold of chores lists them as lettered rows, each its chore's own
+    // decision (S232).
+    if let Some(rows) = rows_of(&read.objects, decision) {
+        out.push_str(&chore_rows(&number, &rows));
     }
     // What is being asked, as a sentence, above the controls that answer it
     // (S220).
