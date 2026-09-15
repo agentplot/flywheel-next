@@ -123,9 +123,9 @@ page submission SHALL be the delivery, recorded once like any response (19).
 #### Scenario: A capture on the board
 - **WHEN** a capture's signal is waiting on the operator
 - **THEN** the board shows the capture as one card with its words from their
-  beginning and its source, its signal is not a second line, a click on its
-  face takes it and its decision in hand, and a click on its words opens it in
-  the dock (S215, S216, S219)
+  beginning and its source, its signal is not a second line, and a click
+  anywhere on it opens it in the dock and takes its decision in hand (S215,
+  S216, S219)
 
 ### Requirement: The page is served at the address the host was given
 
@@ -177,12 +177,34 @@ One decision SHALL be in hand: the first at load, or the one whose object the
 link opened (S219). The object it stands on SHALL be lit on the board and
 scrolled into view, and where the board does not draw that object, its nearest
 drawn parent SHALL be lit (S219). Walking the rail and taking a mark on a board
-object SHALL move the hand (S219).
+object SHALL move the hand (S219). A click anywhere on an object the board draws
+SHALL open it in the dock and make it the selection, taking its decision in hand
+where it has one and lighting it alone where it has none; nothing on the board
+SHALL need its words or a link inside it clicked separately to open (S216,
+S219).
+
+#### Scenario: A click on a board object opens it
+- **WHEN** the operator clicks anywhere on a bolt drawn on the board whose close
+  waits on the rail
+- **THEN** the dock opens on the bolt, the bolt is lit, and its decision is in
+  hand on the rail (S219)
 
 #### Scenario: A signal's decision lights its capture
 - **WHEN** the operator walks the rail to a signal's decision
 - **THEN** the capture the signal was read from is lit on the board and in view
   (S219)
+
+### Requirement: What finished lately is titled in plain words and windowed
+
+The rail's list of what finished SHALL be titled in words that say what it holds,
+"Recently done", and never "since" (S9). It SHALL hold today's entries, or the
+last twenty when today holds fewer, and what falls off it SHALL stay on record
+(S9).
+
+#### Scenario: A quiet day
+- **WHEN** twenty-five things finished yesterday and none today
+- **THEN** the list under "Recently done" shows the latest twenty, and the other
+  five are still on record (S9)
 
 ### Requirement: A decision reads as a question
 

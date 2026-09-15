@@ -447,7 +447,8 @@ need not resolve on the operator's network: it does not on a tailnet (204).
   154). The bundle fetches nothing from anywhere else (310).
 - The bundle carries its own script, which holds no model of the state: it keeps
   the page's standing rules (S210, S213, S218), holds one selection across rail
-  and board (S219), posts every form and swaps in the regions that came back,
+  and board, where a click on any board object opens it and selects it (S216,
+  S219), posts every form and swaps in the regions that came back,
   and listens on the host's `GET /events` so the page fetches itself when the
   store moved (S221). It fetches from its own host alone (310).
 - Every decision shows its number and its answers as controls, one tap each;
