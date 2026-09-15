@@ -268,18 +268,25 @@ fn a_link_the_machinery_wrote_is_fetched() {
         "every other surface stays shut: {body}"
     );
     // And it opened with the answer controls in reach, which is what the link
-    // is for: the surface's own footer carries the bolt's answers, so the
-    // operator the notification reached answers where they landed and is not
-    // sent back to the rail to hunt for the card (308, S27).
+    // is for: the surface's head carries the bolt's answers under its title,
+    // so the operator the notification reached answers where they landed and
+    // is not sent back to the rail to hunt for the card (308, S27, S220).
     let surface = body
         .split("id=\"dock-bolt/atlas/plan-rows\"")
         .nth(1)
         .and_then(|rest| rest.split("</article>").next())
         .expect("the object's surface");
+    let head = surface
+        .split("<div class=\"dk-b\">")
+        .next()
+        .expect("the surface has a head above its body");
+    let under_the_title = head.split("</h2>").nth(1).unwrap_or_default();
     assert!(
-        surface.contains("class=\"dk-f\"") && surface.contains("data-answerable=\"true\""),
-        "the surface the link opened carries no answers at its foot (308, S27): {surface}"
+        under_the_title.contains("<div class=\"dk-answers\" data-answerable=\"true\">")
+            && under_the_title.contains("data-answer=\"yes\""),
+        "the surface the link opened carries no answers under its title (308, S27): {surface}"
     );
+    assert!(!surface.contains("class=\"dk-f\""), "the surface has no foot (S27): {surface}");
     assert!(
         surface.contains(&format!("action=\"/api/tools/{}\"", flywheel_surface::catalogue::ANSWER)),
         "the answers on the surface do not post to the catalogue (193): {surface}"
