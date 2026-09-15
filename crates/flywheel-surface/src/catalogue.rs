@@ -63,6 +63,14 @@ pub const CATALOGUE: &[Tool] = &[
               job (19)",
     },
     Tool {
+        name: "ask",
+        args: &["repository", "text"],
+        doc: "an ask record for planning holding the words, by the operator or by \
+              curation routing a signal that argues with no claim (28, 116); a \
+              session reaches it as `flywheel ask <repository> <text>` run in its \
+              place (67, 197)",
+    },
+    Tool {
         name: "open-session",
         args: &["repository", "text"],
         doc: "the operator's own session (69)",
@@ -174,7 +182,8 @@ pub fn enumerate() -> Value {
 // ---------------------------------------------------------------- the bodies
 
 use anyhow::{bail, Result};
-use flywheel_atoms::{Received, Scope, StateStore, World};
+use flywheel_atoms::{Ask, Received, Scope, StateStore, World};
+use flywheel_domain::asks;
 use flywheel_domain::commands::{self, CallRecord, Called};
 use flywheel_domain::signals;
 use flywheel_engine::Definitions;
@@ -287,27 +296,23 @@ pub fn call<S: StateStore, W: World + ?Sized>(
     // attention on the next tick (43, 79, 81).
     if let Some(session) = session_caller(call) {
         if LINE_OPERATIONS.contains(&call.tool.as_str()) {
-            let at = commands::now(store)?;
             let reason = format!(
                 "a session commits inside its place only and never creates a line of work, \
                  merges or lands: `{}` is refused (43)",
                 call.tool
             );
-            let mut fields: BTreeMap<String, Value> = BTreeMap::new();
-            fields.insert("operation".into(), json!(call.tool));
-            if let Some(object) = first_object_argument(call) {
-                fields.insert("object".into(), json!(object));
-            }
-            fields.insert("reason".into(), json!(reason));
-            store.append(
-                &session,
-                &flywheel_atoms::ThreadEntry {
-                    at,
-                    kind: "refusal".into(),
-                    by: Some(session.clone()),
-                    fields,
-                },
-            )?;
+            refuse(store, &session, call, first_object_argument(call).as_deref(), &reason)?;
+            bail!("{reason}");
+        }
+        // The ask is the curation session's and the operator's own session's,
+        // and any other session is refused it as a line operation is (43, 69,
+        // 197, `sessions.yaml` commands.ask).
+        if call.tool == "ask" && !asks::granted(&session) {
+            let reason = format!(
+                "only the curation session and the operator's own session file an ask: \
+                 `ask` is refused to {session} (43, 69, 197)"
+            );
+            refuse(store, &session, call, call.text("repository").as_deref(), &reason)?;
             bail!("{reason}");
         }
     }
@@ -335,6 +340,7 @@ pub fn call<S: StateStore, W: World + ?Sized>(
 
     match tool.name {
         ANSWER => answer(store, defs, call),
+        "ask" => ask(store, world, defs, call),
         "capture" => capture(store, world, defs, call),
         "later" => later(store, defs, call),
         "open-session" => open_session(store, defs, call),
@@ -350,6 +356,137 @@ pub fn call<S: StateStore, W: World + ?Sized>(
             dictate(store, defs, call, tool, &object)
         }
     }
+}
+
+/// A refusal of a session's call, on the session's own thread: the operation,
+/// what it named, and why. `record_refusals` carries it to the run record and
+/// to attention on the next tick (43, 79, 81).
+fn refuse<S: StateStore>(
+    store: &mut S,
+    session: &str,
+    call: &Call,
+    object: Option<&str>,
+    reason: &str,
+) -> Result<()> {
+    let at = commands::now(store)?;
+    let mut fields: BTreeMap<String, Value> = BTreeMap::new();
+    fields.insert("operation".into(), json!(call.tool));
+    if let Some(object) = object.filter(|o| !o.is_empty()) {
+        fields.insert("object".into(), json!(object));
+    }
+    fields.insert("reason".into(), json!(reason));
+    store.append(
+        session,
+        &flywheel_atoms::ThreadEntry {
+            at,
+            kind: "refusal".into(),
+            by: Some(session.to_string()),
+            fields,
+        },
+    )
+}
+
+/// An ask for planning (28, 116): the words and the repository they name,
+/// written as the dictation's effect through the store's commit path, with
+/// the call recorded once as the response it was (153, 193).
+///
+/// The operator's dictation and a session's own command are the one call. A
+/// session's is recorded `by` the session and writes nothing on its thread;
+/// what refuses it is an entry there, like every refusal of a session's call
+/// (67, 197, `sessions.yaml` commands.ask). The same delivery twice is one ask
+/// (137). The ask's name is in the journal, for the caller that prints it and
+/// the route that names it (`asked`).
+fn ask<S: StateStore, W: World + ?Sized>(
+    store: &mut S,
+    world: &mut W,
+    defs: &Definitions,
+    call: &Call,
+) -> Result<Outcome> {
+    let session = session_caller(call);
+    let repository = call.text("repository").map(|r| r.trim().to_string()).unwrap_or_default();
+    let text = call.text("text").map(|t| t.trim().to_string()).unwrap_or_default();
+    if let Some(reason) = ask_refused(&built_repositories(world)?, &repository, &text) {
+        if let Some(session) = &session {
+            refuse(store, session, call, Some(&repository), &reason)?;
+        }
+        bail!("{reason}");
+    }
+    let by = match &session {
+        Some(session) => asks::by_session(session),
+        None => call.by.clone(),
+    };
+    let at = commands::now(store)?;
+    let id = asks::next_id(store, &repository)?;
+    let mut record = commands::record_call(
+        store,
+        defs,
+        &CallRecord {
+            tool: "ask",
+            decision: None,
+            object: Some(&asks::name_of(&id)),
+            answer: &text,
+            args: Some(Value::Object(call.args.clone().into_iter().collect())),
+            by: &by,
+            delivery: &call.delivery,
+            delivery_id: call.delivery_id.as_deref(),
+            proposed_by: call.proposed_by.as_deref(),
+        },
+    )?;
+    let name = match record.outcome {
+        // The delivery was recorded before: the ask it wrote then is the one,
+        // and nothing is written again (137).
+        Received::AlreadyApplied { .. } => store
+            .get(&format!("response/{}", record.id))?
+            .and_then(|o| o.record.get("object").and_then(|v| v.as_str()).map(String::from))
+            .unwrap_or_else(|| asks::name_of(&id)),
+        _ => {
+            store.put_ask(&Ask {
+                id: id.clone(),
+                repository: repository.clone(),
+                text: text.clone(),
+                by,
+                at,
+                consumed_by: None,
+            })?;
+            asks::name_of(&id)
+        }
+    };
+    record
+        .journal
+        .push(noted("ask", &name, format!("in {repository}: {text}")));
+    Ok(record)
+}
+
+/// Why an ask would be refused, where it would be: it names a repository the
+/// instance tracks, with the tracked ones named when it does not, and it gives
+/// words (28, 205, 206).
+fn ask_refused(tracked: &[String], repository: &str, text: &str) -> Option<String> {
+    if !tracked.iter().any(|t| t == repository) {
+        return Some(match (tracked, repository.is_empty()) {
+            ([], _) => "this instance tracks no repository to ask in (205, 206)".to_string(),
+            (_, true) => format!(
+                "an ask names the repository it is for: this instance tracks {} (205, 206)",
+                tracked.join(", ")
+            ),
+            (_, false) => format!(
+                "`{repository}` is no repository this instance tracks; it tracks {} (205, 206)",
+                tracked.join(", ")
+            ),
+        });
+    }
+    if text.is_empty() {
+        return Some("an ask holds the words to ask for, and this one gives none (28)".to_string());
+    }
+    None
+}
+
+/// The ask a call filed, by the name a route move gives it: `ask/<id>`.
+pub fn asked(outcome: &Outcome) -> Option<String> {
+    outcome
+        .journal
+        .iter()
+        .find(|noted| noted.kind == "ask")
+        .map(|noted| noted.object.clone())
 }
 
 /// The object a call names, for a tool the catalogue does not carry: whichever
@@ -492,10 +629,18 @@ fn dictate<S: StateStore>(
 /// field per signal with an optional `target.<signal>` beside it. A signal the
 /// operator left alone stays unmoved: nothing is judged by omission (107, 118).
 /// The session is the one charged where the call names none.
+///
+/// A route names what was offered for a signal that argues with no claim, and
+/// on this surface that is an ask: `ask.<signal>` gives the words and
+/// `repository.<signal>` the repository (or a listed move's `ask` and
+/// `repository`), and the `ask` tool files it before the route names it — the
+/// same call a curation session makes through `flywheel ask` (116, 67,
+/// `sessions.yaml` commands.ask). Every ask is checked before anything is
+/// written, so a refused one leaves no move and no exit behind.
 fn curate<S: StateStore, W: World + ?Sized>(
     store: &mut S,
     world: &mut W,
-    _defs: &Definitions,
+    defs: &Definitions,
     call: &Call,
 ) -> Result<Outcome> {
     let at = commands::now(store)?;
@@ -512,27 +657,36 @@ fn curate<S: StateStore, W: World + ?Sized>(
         }
     };
     let reason = format!("the operator curated it on the {}", call.delivery);
-    let mut moves: Vec<signals::Move> = Vec::new();
-    let mut push = |signal: &str, word: &str, names: &str| {
+    // Each move, with the ask a route files where it files one: the repository
+    // and the words.
+    let mut moves: Vec<(signals::Move, Option<(String, String)>)> = Vec::new();
+    let mut push = |signal: &str, word: &str, names: &str, asking: Option<(String, String)>| {
         let word = word.trim();
         if signal.is_empty() || word.is_empty() {
             return;
         }
         let names = names.trim();
-        moves.push(signals::Move {
-            signal: signal.to_string(),
-            target: match names.is_empty() {
-                true => word.to_string(),
-                false => format!("{word} {names}"),
+        let asking = asking
+            .filter(|(_, words)| word == "route" && !words.trim().is_empty())
+            .map(|(repository, words)| (repository.trim().to_string(), words.trim().to_string()));
+        moves.push((
+            signals::Move {
+                signal: signal.to_string(),
+                target: match names.is_empty() {
+                    true => word.to_string(),
+                    false => format!("{word} {names}"),
+                },
+                reason: reason.clone(),
+                at: at.to_rfc3339(),
             },
-            reason: reason.clone(),
-            at: at.to_rfc3339(),
-        });
+            asking,
+        ));
     };
     if let Some(Value::Array(listed)) = call.args.get("moves") {
         for item in listed {
             let text = |name: &str| item.get(name).and_then(Value::as_str).unwrap_or_default();
             let signal = text("signal");
+            let asking = Some((text("repository").to_string(), text("ask").to_string()));
             // `move` is the word and `target` what it names; a `target` alone
             // carries both, as the record does (`attach <intent>`).
             match text("move") {
@@ -540,9 +694,9 @@ fn curate<S: StateStore, W: World + ?Sized>(
                     let mut parts = text("target").splitn(2, char::is_whitespace);
                     let word = parts.next().unwrap_or_default().to_string();
                     let names = parts.next().unwrap_or_default().to_string();
-                    push(signal, &word, &names);
+                    push(signal, &word, &names, asking);
                 }
-                word => push(signal, word, text("target")),
+                word => push(signal, word, text("target"), asking),
             }
         }
     }
@@ -552,11 +706,51 @@ fn curate<S: StateStore, W: World + ?Sized>(
         };
         let word = value.as_str().unwrap_or_default();
         let names = call.text(&format!("target.{signal}")).unwrap_or_default();
-        push(signal, word, &names);
+        let asking = Some((
+            call.text(&format!("repository.{signal}")).unwrap_or_default(),
+            call.text(&format!("ask.{signal}")).unwrap_or_default(),
+        ));
+        push(signal, word, &names, asking);
+    }
+    // A route names what was offered for its signal (116). Where it offers an
+    // ask, the ask is checked here with every other, before anything is
+    // written; the only repository the instance tracks is the one meant when
+    // none is picked.
+    let tracked = built_repositories(world)?;
+    for (moved, asking) in &mut moves {
+        match asking {
+            Some((repository, words)) => {
+                if let ([one], true) = (tracked.as_slice(), repository.is_empty()) {
+                    *repository = one.clone();
+                }
+                if let Some(refused) = ask_refused(&tracked, repository, words) {
+                    bail!("the ask routing {} was refused: {refused}", moved.signal);
+                }
+            }
+            None if moved.word() == "route" && moved.names().is_empty() => bail!(
+                "a route names what was offered for {}: give the words to ask for (116)",
+                moved.signal
+            ),
+            None => {}
+        }
     }
     let mut journal = Vec::new();
-    for moved in &moves {
-        signals::write_move(world, moved)?;
+    for (mut moved, asking) in moves {
+        if let Some((repository, words)) = asking {
+            let mut asked_for = Call::new("ask", &call.by, &call.delivery)
+                .arg("repository", json!(repository))
+                .arg("text", json!(words));
+            asked_for.proposed_by = call.proposed_by.clone();
+            // Through the catalogue's door, so a caller refused the ask is
+            // refused it here too (43, 197).
+            let filed = self::call(store, world, defs, &asked_for)?;
+            let Some(name) = asked(&filed) else {
+                bail!("the ask routing {} was recorded and named nothing", moved.signal);
+            };
+            moved.target = format!("route {name}");
+            journal.extend(filed.journal);
+        }
+        signals::write_move(world, &moved)?;
         journal.push(noted("move", &moved.signal, moved.target.clone()));
     }
     flywheel_domain::report::write_report(
@@ -571,7 +765,8 @@ fn curate<S: StateStore, W: World + ?Sized>(
             text: None,
         },
     )?;
-    journal.push(noted("exit", &session, format!("done: {} move(s)", moves.len())));
+    let moved = journal.iter().filter(|noted| noted.kind == "move").count();
+    journal.push(noted("exit", &session, format!("done: {moved} move(s)")));
     Ok(Called {
         id: session.clone(),
         outcome: Received::Recorded { id: session },

@@ -294,6 +294,7 @@ fn noted(kind: &str, object: &str, text: impl Into<String>) -> Noted {
 pub const DICTATION_TOOLS: &[&str] = &[
     "capture",
     "propose-unit",
+    "ask",
     "open-session",
     "drop",
     "later",

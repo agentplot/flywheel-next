@@ -229,6 +229,26 @@ enum Cmd {
         #[arg(long, default_value = "local")]
         host: String,
     },
+    /// Ask for something to be done in a repository, for planning to take up.
+    /// The curation session's and the operator's own session's; prints the
+    /// ask's id, which the route move names (116, 197).
+    Ask {
+        repository: String,
+        text: Vec<String>,
+        #[arg(long, env = SESSION_ENV, default_value = "")]
+        session: String,
+        /// Which host's checkout the ask is written through (232).
+        #[arg(long, default_value = "local")]
+        host: String,
+        /// The manifest naming the repositories the instance tracks, which
+        /// the work order gives (183, 205).
+        #[arg(long, env = "FLYWHEEL_MANIFEST", default_value = "flywheel.yaml")]
+        manifest: PathBuf,
+        /// Where this host keeps its clones, in place of the manifest's own
+        /// (205, 232).
+        #[arg(long)]
+        root: Option<PathBuf>,
+    },
 }
 
 /// Write one report through the state repository and print what it was. A
@@ -840,6 +860,24 @@ async fn main() -> Result<()> {
         Cmd::Refuse { reason, session, host } => {
             let r = Report::Refuse { reason: reason.join(" ") };
             std::process::exit(do_report(&cli, host, session, &r)?);
+        }
+        // The catalogue's `ask`, called as the session through the same state
+        // checkout its reports go through; the tracked repositories are the
+        // manifest's (67, 197, `sessions.yaml` commands.ask).
+        Cmd::Ask { repository, text, session, host, manifest, root } => {
+            let mut store = open_state(&cli.state, host)?;
+            let read = flywheel::host::manifest_with_root(manifest, host, root.as_deref())?;
+            let mut world = flywheel_world_host::HostWorld::open(read, host)?;
+            let defs = flywheel_domain::set::load()?;
+            let asked = report::ask(&mut store, &mut world, &defs, session, repository, &text.join(" "));
+            wake_page();
+            match asked {
+                Ok(name) => println!("{name}"),
+                Err(refused) => {
+                    eprintln!("refused: {refused:#}");
+                    std::process::exit(1);
+                }
+            }
         }
         // An adapter runs unattended and makes no judgment: one keyed capture
         // per source event, with a pointer to material it never copies in

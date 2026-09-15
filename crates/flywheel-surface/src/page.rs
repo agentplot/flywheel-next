@@ -52,6 +52,9 @@ pub struct Read {
     /// lands: one, and the `unit` control on a capture never asks; several,
     /// and it does (34, 205, 206).
     pub repositories: Vec<String>,
+    /// Every ask on record, so a signal routed to one shows the words and the
+    /// repository they are for (28, 116).
+    pub asks: Vec<flywheel_atoms::Ask>,
     /// The objects held by a host past its stale window: a link to one says the
     /// host is away and since when, rather than failing silently (308, 150a).
     pub away: BTreeMap<String, sinks::Away>,
@@ -409,6 +412,7 @@ pub fn read<S: StateStore, W: World + ?Sized>(
         .map(|r| r.name)
         .filter(|name| name != "flywheel-state" && name != "flywheel-blueprints")
         .collect();
+    let asks = store.asks()?;
     // The commits on each bolt's line, from the world, and every session the
     // bindings recorded, with its exit from its own thread (185, 144, S28).
     let mut commits: BTreeMap<String, Vec<CommitRef>> = BTreeMap::new();
@@ -472,6 +476,7 @@ pub fn read<S: StateStore, W: World + ?Sized>(
         address: address.to_string(),
         operator: operator.to_string(),
         repositories,
+        asks,
         away,
         weight,
         answered,
@@ -898,6 +903,7 @@ fn since(read: &Read) -> String {
     for object in &read.objects {
         let verb = match object.machine.as_str() {
             "signal" => match object.config.get("move").map(String::as_str) {
+                Some("routed") if dock::routes_an_ask(object) => "asked",
                 Some("routed") => "built",
                 Some("joined") => "intent",
                 Some("dropped") => "dropped",
@@ -2014,11 +2020,12 @@ fn curator(read: &Read) -> String {
         out.push_str("</select>\n");
         let _ = write!(
             out,
-            "<input type=\"text\" name=\"target.{0}\" list=\"curate-intents\" \
+            "<input type=\"text\" class=\"cur-target\" name=\"target.{0}\" list=\"curate-intents\" \
              aria-label=\"what the move for {0} names\" \
-             placeholder=\"the intent, claim or offer it names\">\n",
+             placeholder=\"the intent or claim it names\">\n",
             escape(&signal.id)
         );
+        out.push_str(&ask_fields(read, signal));
         out.push_str("</div>\n");
     }
     out.push_str(
@@ -2026,6 +2033,41 @@ fn curator(read: &Read) -> String {
          </form>\n</section>\n",
     );
     out
+}
+
+/// Where a route's ask is given on the curator's surface, shown when the move
+/// is route: the repository it is for — the one the instance tracks as itself,
+/// several to pick from — and the words, which start as the signal's own
+/// (28, 116).
+fn ask_fields(read: &Read, signal: &signals::Signal) -> String {
+    let id = escape(&signal.id);
+    let repository = match read.repositories.as_slice() {
+        [] => {
+            return "<span class=\"cur-ask\"><span class=\"none\">no repository to ask in yet · \
+                    add one to flywheel.yaml</span></span>\n"
+                .to_string()
+        }
+        [one] => format!(
+            "<span class=\"repo\">{0}</span><input type=\"hidden\" name=\"repository.{id}\" value=\"{0}\">",
+            escape(one)
+        ),
+        many => {
+            let mut picked = format!(
+                "<select name=\"repository.{id}\" aria-label=\"the repository the ask for {id} is for\">"
+            );
+            for repository in many {
+                let _ = write!(picked, "<option value=\"{0}\">{0}</option>", escape(repository));
+            }
+            picked.push_str("</select>");
+            picked
+        }
+    };
+    format!(
+        "<span class=\"cur-ask\">ask in {repository}<input type=\"text\" name=\"ask.{id}\" \
+         aria-label=\"what the ask for {id} asks for\" placeholder=\"what to ask for\" \
+         value=\"{}\"></span>\n",
+        escape(&signal.excerpt)
+    )
 }
 
 /// The dock: one surface per object, each kind in its own form, full screen

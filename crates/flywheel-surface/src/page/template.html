@@ -118,7 +118,7 @@ form.busy .btn.pri{opacity:.85}
 #dk-f:empty,.dk-answers.none:empty{display:none}
 .since{list-style:none;margin:0;padding:0}
 .since li a.grow{flex:1;min-width:0;color:var(--ink);text-decoration:none;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
-.since .v.built,.since .v.landed,.since .v.merged{color:var(--ok)} .since .v.dropped{color:var(--ink3)} .since .v.intent{color:var(--accent)}
+.since .v.built,.since .v.landed,.since .v.merged{color:var(--ok)} .since .v.dropped{color:var(--ink3)} .since .v.intent,.since .v.asked{color:var(--accent)}
 .dk-f:has(> .dk-answers.none:empty){display:none}
 .dk-b blockquote.said{margin:0 0 10px;padding:8px 12px;border-left:3px solid var(--accent);background:var(--surface2);border-radius:0 6px 6px 0;font-size:13.5px;line-height:1.5}
 .dk-b .row .st{min-width:84px;flex:none;font:600 10.5px var(--mono);letter-spacing:.04em;text-transform:uppercase;color:var(--ink3);padding-top:3px}
@@ -425,6 +425,13 @@ label.chore .f{margin-left:auto;font:11px var(--mono);color:var(--ink3)}
 .svcline .ep{overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
 .curation{font-size:12px;color:var(--ink2);margin:0 2px 8px;display:flex;gap:8px;flex-wrap:wrap}
 .curation b{font-family:var(--mono)}
+/* the curator's surface: a route files an ask, so its repository and words stand where the target would */
+#curate .quote select,#curate .quote input[type=text]{font:12px var(--mono);padding:3px 6px;margin:5px 4px 0 0}
+#curate .cur-ask{display:none;align-items:center;gap:6px;flex-wrap:wrap;margin-top:5px;font:11px var(--mono);color:var(--ink3)}
+#curate .cur-ask input[type=text]{flex:1;min-width:180px;margin:0;font:12px var(--sans)}
+#curate .cur-ask .none{color:var(--warn)}
+#curate .quote:has(option[value=route]:checked) .cur-ask{display:flex}
+#curate .quote:has(option[value=route]:checked) .cur-target{display:none}
 .prop .pb{display:flex;align-items:baseline;gap:6px;font-size:12.5px;margin-top:4px;flex-wrap:wrap}
 .prop .pbn{font:600 12px var(--mono)}
 .prop .pbn.new{color:var(--accent)}
@@ -1086,6 +1093,11 @@ button#yesall[disabled],form.yesall-form:has(> button[disabled]){display:none}
       if(!hand) return {missing:'/'+tool+' needs something in hand · open it, then type the '+arg2};
       if(!rest) return {seed:'/'+tool+' ', said:'type the '+arg2+' after /'+tool};
       fields[arg]=hand.object; fields[arg2]=rest;
+    } else if(takes==='name-words'){
+      var named=/^(\S+)\s+(\S[\s\S]*)$/.exec(rest);
+      if(!rest) return {seed:'/'+tool+' ', said:'type the '+arg+', then the words'};
+      if(!named) return {seed:'/'+tool+' '+rest.trim()+' ', said:'type the words after '+rest.trim()};
+      fields[arg]=named[1]; fields[arg2]=named[2];
     }
     return {tool:tool, fields:fields};
   }

@@ -3,6 +3,7 @@
 //! fake store and the fake world, because none of them is about a repository.
 //! The first tier (D17).
 
+mod asks;
 mod bodies;
 mod chat;
 mod dictation;

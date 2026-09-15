@@ -64,6 +64,12 @@ impl Records for SharedStore {
     fn hosts(&self) -> Result<Vec<HostRecord>> {
         self.with(|s| s.hosts())
     }
+    fn put_ask(&mut self, ask: &flywheel_atoms::Ask) -> Result<bool> {
+        self.with(|s| s.put_ask(ask))
+    }
+    fn asks(&self) -> Result<Vec<flywheel_atoms::Ask>> {
+        self.with(|s| s.asks())
+    }
 }
 
 impl StateStore for SharedStore {

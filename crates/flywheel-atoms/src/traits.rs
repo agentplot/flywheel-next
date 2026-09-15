@@ -86,6 +86,27 @@ pub struct HostRecord {
     pub intermittent: bool,
 }
 
+/// An ask: a dictation naming a repository and the words, the operator's or
+/// curation's when it routes a signal that argues with no claim (28, 116). A
+/// record in the state store and not an object: it has no machine, planning
+/// reads every unconsumed one, and `propose_units` sets `consumed_by`
+/// (model.md 1, git-only `layout.asks`).
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+pub struct Ask {
+    /// `<repository>-<n>`; what points at it names it `ask/<id>`.
+    pub id: String,
+    pub repository: String,
+    /// The words as they were given. A dictation's record holds them, where 62
+    /// governs the documents a session writes.
+    pub text: String,
+    /// The operators list's entry, or `session/<session id>` for a session's
+    /// own command (153, 197).
+    pub by: String,
+    pub at: DateTime<Utc>,
+    #[serde(default)]
+    pub consumed_by: Option<String>,
+}
+
 // --------------------------------------------------------------- record layer
 
 /// The six record operations every profile binds, over which every evidence
@@ -112,6 +133,14 @@ pub trait Records {
     fn leases(&self, id: &str) -> Result<Option<LeaseRecord>>;
 
     fn hosts(&self) -> Result<Vec<HostRecord>>;
+
+    /// Write one ask record through the commit path every write takes. An id
+    /// already written is not written again, and the answer says which it was
+    /// (28, 127, git-only `layout.asks`).
+    fn put_ask(&mut self, ask: &Ask) -> Result<bool>;
+
+    /// Every ask record, by id.
+    fn asks(&self) -> Result<Vec<Ask>>;
 }
 
 // ------------------------------------------------------------- the state store

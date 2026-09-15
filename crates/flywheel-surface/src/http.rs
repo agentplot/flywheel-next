@@ -312,11 +312,14 @@ async fn invoke<S: StateStore + Send + 'static>(
         // The control the operator used sends them back to the page they were
         // on, which renders the answer they just gave (137, 310).
         (Ok(_), true) => to_the_page(&back),
-        (Ok(outcome), false) => (
-            StatusCode::OK,
-            Json(json!({"id": outcome.id, "recorded": catalogue::recorded(&outcome)})),
-        )
-            .into_response(),
+        (Ok(outcome), false) => {
+            let mut answered = json!({"id": outcome.id, "recorded": catalogue::recorded(&outcome)});
+            // An ask answers with the name a route move gives it (116).
+            if let Some(name) = catalogue::asked(&outcome) {
+                answered["ask"] = json!(name);
+            }
+            (StatusCode::OK, Json(answered)).into_response()
+        }
         (Err(refused), true) => back_with(&back, &refused.to_string()),
         (Err(refused), false) => (
             StatusCode::BAD_REQUEST,

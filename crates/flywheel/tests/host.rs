@@ -1505,6 +1505,114 @@ fn a_session_is_refused_a_line_operation() {
         .expect("the operator orders a take (50)");
 }
 
+// ------------------------------------------------------------ 16.12 the ask
+
+/// The world a host binds from its manifest, tracking these repositories
+/// (205, 206).
+fn tracking(host: &mut Host, repositories: &[&str]) {
+    let mut world = flywheel_atoms::testing::FakeWorld::new();
+    for repository in repositories {
+        world = world.tracking(repository);
+    }
+    host.store.world = Box::new(world);
+}
+
+/// A curation session files an ask by its own command: the catalogue's `ask`
+/// called as the session, the record the operator's dictation writes `by` the
+/// session, nothing on its thread, and the ask's id is what the command prints
+/// for the route to name (67, 116, 197; `sessions.yaml` commands.ask).
+#[test]
+fn a_session_files_an_ask_by_its_command() {
+    let mut host = host("ask-filed", &["atlas"]);
+    tracking(&mut host, &["atlas"]);
+    let session = "curation/willdan/curation/1";
+    flywheel_sessions_operator::set(
+        &mut host.store.git,
+        session,
+        &[("runner", json!("operator")), ("started_at", json!(at(0).to_rfc3339()))],
+    )
+    .unwrap();
+
+    let defs = host.defs.clone();
+    let words = "keep the row numbers when the table is sorted";
+    let printed = host
+        .store
+        .with_world(|store, world| {
+            flywheel::report::ask(&mut store.git, world, &defs, session, "atlas", words)
+        })
+        .expect("the curation session is granted the ask");
+    assert_eq!(printed, "ask/atlas-1");
+
+    let asks = host.store.git.asks().unwrap();
+    assert_eq!(asks.len(), 1, "{asks:?}");
+    assert_eq!(asks[0].id, "atlas-1");
+    assert_eq!(asks[0].repository, "atlas");
+    assert_eq!(asks[0].text, words);
+    assert_eq!(asks[0].by, format!("session/{session}"));
+    assert_eq!(asks[0].consumed_by, None);
+    assert!(
+        host.store.git.thread(session).unwrap().is_empty(),
+        "the ask wrote on the session's thread"
+    );
+    let responses = host.store.git.list(&Scope::Machine("response".into())).unwrap().objects;
+    assert_eq!(responses.len(), 1, "the call is recorded once: {responses:?}");
+    assert_eq!(responses[0].record.get("tool"), Some(&json!("ask")));
+    assert_eq!(responses[0].record.get("given_by"), Some(&json!(format!("session/{session}"))));
+}
+
+/// Only the curation session and the operator's own session file an ask: any
+/// other session is refused as a line operation is, on its own thread, and a
+/// granted one naming a repository the instance does not track is refused with
+/// the tracked names. Neither writes an ask (43, 69, 197, 205).
+#[test]
+fn an_ask_from_a_session_not_granted_it_is_refused() {
+    let mut host = host("ask-refused", &["atlas"]);
+    tracking(&mut host, &["atlas", "switchboard"]);
+    let defs = host.defs.clone();
+
+    let builder = "unit/atlas/rows/build/1";
+    let refused = host
+        .store
+        .with_world(|store, world| {
+            flywheel::report::ask(&mut store.git, world, &defs, builder, "atlas", "rewrite the table")
+        })
+        .expect_err("a build session is not granted the ask");
+    assert!(format!("{refused}").contains("43"), "{refused}");
+    let entry = host
+        .store
+        .git
+        .thread(builder)
+        .unwrap()
+        .into_iter()
+        .find(|e| e.kind == "refusal")
+        .expect("the refusal is on the session's own thread");
+    assert_eq!(entry.fields.get("operation"), Some(&json!("ask")));
+    assert_eq!(entry.by.as_deref(), Some(builder));
+
+    let curation = "curation/willdan/curation/1";
+    let refused = host
+        .store
+        .with_world(|store, world| {
+            flywheel::report::ask(&mut store.git, world, &defs, curation, "storefront", "a sale banner")
+        })
+        .expect_err("storefront is no repository the instance tracks");
+    let said = format!("{refused}");
+    assert!(said.contains("atlas") && said.contains("switchboard"), "{said}");
+    let entry = host
+        .store
+        .git
+        .thread(curation)
+        .unwrap()
+        .into_iter()
+        .find(|e| e.kind == "refusal")
+        .expect("the refusal is on the curation session's thread");
+    assert_eq!(entry.fields.get("object"), Some(&json!("storefront")));
+
+    assert!(host.store.git.asks().unwrap().is_empty(), "a refused ask was written");
+    let responses = host.store.git.list(&Scope::Machine("response".into())).unwrap().objects;
+    assert!(responses.is_empty(), "a refused ask was recorded: {responses:?}");
+}
+
 /// Liveness is recorded on the sweep's cadence, never on every pass: a tick
 /// that moved nothing writes no heartbeat, so `cost.yaml`'s quiet tick costs
 /// no push on the host's own ref, and a host is still read alive inside the

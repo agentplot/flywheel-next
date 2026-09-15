@@ -56,6 +56,14 @@ fn link(read: &Read, id: &str, text: &str) -> String {
     format!("<a class=\"elaboration\" href=\"#dock-{}\">{}</a>", escape(id), escape(text))
 }
 
+/// Whether a signal's route names an ask for planning rather than a unit that
+/// was built (116, 28).
+pub fn routes_an_ask(signal: &Object) -> bool {
+    field(signal, "route")
+        .and_then(flywheel_domain::asks::id_named)
+        .is_some()
+}
+
 /// The object whose answers the page's foot carries: a capture answers
 /// through its signal, which is where the decision stands (19a).
 pub fn answers_object(read: &Read, object: &Object) -> String {
@@ -77,6 +85,7 @@ pub fn subtitle(read: &Read, object: &Object, row: Option<&status::Row>) -> Stri
         "capture" | "signal" => {
             let (_, signal) = capture_and_signal(read, object);
             match signal.and_then(|s| s.config.get("move").map(String::as_str)) {
+                Some("routed") if signal.is_some_and(routes_an_ask) => "asked".into(),
                 Some("routed") => "built".into(),
                 Some("joined") | Some("attached") => "an intent".into(),
                 Some("dropped") => "dropped".into(),
@@ -241,11 +250,24 @@ fn capture_page(read: &Read, object: &Object) -> String {
     let mut became = String::new();
     if let Some(signal) = signal {
         match signal.config.get("move").map(String::as_str) {
-            Some("routed") => {
-                if let Some(unit) = field(signal, "route") {
-                    became = format!("built: {}", link(read, unit, unit));
+            Some("routed") => match field(signal, "route") {
+                // An ask holds its words, so what became of the signal is
+                // those words and the repository they were asked of (28, 116).
+                Some(route) if routes_an_ask(signal) => {
+                    let ask = flywheel_domain::asks::id_named(route)
+                        .and_then(|id| read.asks.iter().find(|ask| ask.id == id));
+                    became = match ask {
+                        Some(ask) => format!(
+                            "asked in <span class=\"repo\">{}</span> <q>{}</q>",
+                            escape(&ask.repository),
+                            escape(&ask.text)
+                        ),
+                        None => format!("asked: {}", mono(route)),
+                    };
                 }
-            }
+                Some(unit) => became = format!("built: {}", link(read, unit, unit)),
+                None => {}
+            },
             Some("joined") | Some("attached") => {
                 let intent = read.objects.iter().find(|o| {
                     o.machine == "intent"

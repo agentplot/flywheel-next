@@ -36,6 +36,14 @@ fn catalogue_is_identical_across_callers() {
             tool["name"]
         );
     }
+
+    // The ask is among them, on both callers alike, naming the repository and
+    // the words (28, 116, `surfaces.yaml` tools.ask).
+    let ask = tools
+        .iter()
+        .find(|tool| tool["name"] == json!("ask"))
+        .expect("the catalogue serves `ask`");
+    assert_eq!(ask["args"], json!(["repository", "text"]));
 }
 
 /// Every argument is named, and no two tools share a name (193).

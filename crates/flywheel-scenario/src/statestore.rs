@@ -394,6 +394,21 @@ impl Records for Store {
         self.deciding.served("read");
         Ok(self.heartbeats.values().cloned().collect())
     }
+
+    fn put_ask(&mut self, ask: &flywheel_atoms::Ask) -> Result<bool> {
+        self.state_repository()?
+            .lock()
+            .map_err(|_| anyhow!("the state repository is poisoned"))?
+            .put_ask(ask)
+    }
+
+    fn asks(&self) -> Result<Vec<flywheel_atoms::Ask>> {
+        self.deciding.served("read");
+        self.state_repository()?
+            .lock()
+            .map_err(|_| anyhow!("the state repository is poisoned"))?
+            .asks()
+    }
 }
 
 impl StateStore for Store {

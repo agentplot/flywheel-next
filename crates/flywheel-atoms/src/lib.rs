@@ -18,7 +18,7 @@ pub mod testing;
 
 pub use atoms::{AtomType, Effect, EffectAtom, Evidence, EvidenceAtom};
 pub use traits::{
-    Cost, EffectWrite, Endpoint, EvidenceRead, HostRecord, LandingPolicy, LeaseOp, LeaseOutcome,
+    Ask, Cost, EffectWrite, Endpoint, EvidenceRead, HostRecord, LandingPolicy, LeaseOp, LeaseOutcome,
     LeaseRecord, Listing, Notice, Object, Presentation, PutOutcome, ReadPoint, Received, Records,
     CommitRef, RepositoryRef, Scope, SessionPresence, Sessions, StateStore, StatusView, TakeOutcome,
     ThreadEntry, WorkOrder, Workspace, World, WriteOutcome,

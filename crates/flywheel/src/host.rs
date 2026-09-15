@@ -151,6 +151,9 @@ pub struct HostStore {
     /// What starts a session: `operator` records it for the operator to run,
     /// `herdr` starts the agent in a pane of the multiplexer (93b, 217c, D8).
     pub sessions: String,
+    /// The manifest the host was opened on, which a work order hands to the
+    /// session commands that read it (`flywheel ask`, 183).
+    pub manifest: Option<std::path::PathBuf>,
 }
 
 impl HostStore {
@@ -168,6 +171,7 @@ impl HostStore {
             workspace: "recorded".into(),
             root: None,
             sessions: "operator".into(),
+            manifest: None,
         }
     }
 
@@ -292,6 +296,15 @@ impl Records for HostStore {
 
     fn hosts(&self) -> Result<Vec<flywheel_atoms::HostRecord>> {
         self.git.hosts()
+    }
+
+    fn put_ask(&mut self, ask: &flywheel_atoms::Ask) -> Result<bool> {
+        self.saw("put_ask");
+        self.git.put_ask(ask)
+    }
+
+    fn asks(&self) -> Result<Vec<flywheel_atoms::Ask>> {
+        self.git.asks()
     }
 }
 
@@ -633,6 +646,7 @@ impl Host {
         // The manifest this host was opened on: what a step of a scenario
         // reaches the instance's own directories through (205).
         host.manifest = Some(manifest.to_path_buf());
+        host.store.manifest = Some(manifest.to_path_buf());
         // The host's one address, from the router the manifest names: every
         // link a delivery carries is written at it (191, 205a, D10a).
         host.sinks.address = world.address_of(name)?;
@@ -2470,6 +2484,23 @@ fn work_order(
     body.push_str(&format!(
         "    FLYWHEEL_SESSION={session} FLYWHEEL_STATE={state}{page} {flywheel} exit blocked --question \"<the question>\" --host {host}\n\n"
     ));
+    // The ask is the curation session's and the operator's own session's, so
+    // theirs alone carry its command (116, 197, `sessions.yaml` commands.ask).
+    if flywheel_domain::asks::granted(session) {
+        let manifest = store
+            .manifest
+            .as_ref()
+            .map(|m| std::fs::canonicalize(m).unwrap_or_else(|_| m.clone()))
+            .map(|m| format!(" FLYWHEEL_MANIFEST={}", m.display()))
+            .unwrap_or_default();
+        body.push_str(
+            "To ask for something to be done in a repository; it prints the ask's id, which the \
+             signal's route move names:\n\n",
+        );
+        body.push_str(&format!(
+            "    FLYWHEEL_SESSION={session} FLYWHEEL_STATE={state}{manifest}{page} {flywheel} ask <repository> \"<the words>\" --host {host}\n\n"
+        ));
+    }
     body.push_str("The machinery reads the report and nothing else you leave here; what you leave here is your work (66, 67).\n");
     body.push_str("\n## rules\n\n");
     body.push_str(

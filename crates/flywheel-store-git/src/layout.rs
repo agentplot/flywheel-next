@@ -35,9 +35,13 @@ pub fn response(delivery: &str) -> String {
 
 pub const RESPONSES: &str = "responses";
 
+/// An ask's record, named by its id: the dictation's words and who gave them
+/// (28, 116, `git-only.yaml` layout.asks).
 pub fn ask(id: &str) -> String {
-    format!("asks/{id}.rec")
+    format!("{ASKS}/{id}.rec")
 }
+
+pub const ASKS: &str = "asks";
 
 /// The run record: one file per host per day (79–82, 167).
 pub fn run_record(host: &str, date: &str) -> String {

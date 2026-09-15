@@ -2,7 +2,7 @@
 //! repository (D17).
 
 use crate::traits::{
-    Cost, EffectWrite, EvidenceRead, HostRecord, LeaseOp, LeaseOutcome, LeaseRecord, Listing,
+    Ask, Cost, EffectWrite, EvidenceRead, HostRecord, LeaseOp, LeaseOutcome, LeaseRecord, Listing,
     Notice, Presentation, PutOutcome, ReadPoint, Received, Records, Scope, StateStore, StatusView,
     ThreadEntry, WriteOutcome,
 };
@@ -29,6 +29,7 @@ pub struct FakeStore {
     responses: Vec<Response>,
     leases: BTreeMap<String, LeaseRecord>,
     hosts: BTreeMap<String, HostRecord>,
+    asks: BTreeMap<String, Ask>,
     effects: Vec<String>,
     presented: Vec<Presentation>,
     /// Which host this store answers as, so a lease another holds is refused.
@@ -59,6 +60,7 @@ impl FakeStore {
             responses: vec![],
             leases: BTreeMap::new(),
             hosts: BTreeMap::new(),
+            asks: BTreeMap::new(),
             effects: vec![],
             presented: vec![],
             host: host.to_string(),
@@ -258,6 +260,21 @@ impl Records for FakeStore {
 
     fn hosts(&self) -> Result<Vec<HostRecord>> {
         Ok(self.hosts.values().cloned().collect())
+    }
+
+    fn put_ask(&mut self, ask: &Ask) -> Result<bool> {
+        // One file per id on the real profile, so an id written once is not
+        // written again (127).
+        if self.asks.contains_key(&ask.id) {
+            return Ok(false);
+        }
+        self.writes += 1;
+        self.asks.insert(ask.id.clone(), ask.clone());
+        Ok(true)
+    }
+
+    fn asks(&self) -> Result<Vec<Ask>> {
+        Ok(self.asks.values().cloned().collect())
     }
 }
 

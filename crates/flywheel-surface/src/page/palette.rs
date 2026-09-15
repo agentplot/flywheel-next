@@ -33,6 +33,9 @@ pub enum Takes {
     /// The object in hand as the first argument, and the words typed after the
     /// name as the second.
     ObjectAndWords(&'static str, &'static str),
+    /// The first word typed after the name as the first argument, and the rest
+    /// as the second: `/ask atlas the rows lose their numbers`.
+    NameAndWords(&'static str, &'static str),
 }
 
 impl Takes {
@@ -41,7 +44,7 @@ impl Takes {
         match *self {
             Takes::Object(a) | Takes::Decision(a) | Takes::Words(a) => vec![a],
             Takes::Answer => vec!["decision", "answer"],
-            Takes::ObjectAndWords(a, b) => vec![a, b],
+            Takes::ObjectAndWords(a, b) | Takes::NameAndWords(a, b) => vec![a, b],
         }
     }
 
@@ -52,6 +55,7 @@ impl Takes {
             Takes::Answer => "answer",
             Takes::Words(_) => "words",
             Takes::ObjectAndWords(..) => "object-words",
+            Takes::NameAndWords(..) => "name-words",
         }
     }
 }
@@ -82,6 +86,13 @@ pub const COMMANDS: &[Command] = &[
         does: "capture what you noticed, exactly as you wrote it",
         on: "this flywheel",
         takes: Takes::Words("text"),
+    },
+    Command {
+        tool: "ask",
+        typed: "<repository> <words>",
+        does: "ask for work in a repository",
+        on: "a repository",
+        takes: Takes::NameAndWords("repository", "text"),
     },
     Command {
         tool: "drop",

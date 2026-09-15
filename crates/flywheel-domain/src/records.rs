@@ -3,7 +3,7 @@
 
 use anyhow::{anyhow, Result};
 use chrono::{DateTime, Utc};
-use flywheel_atoms::{HostRecord, LeaseRecord, ThreadEntry};
+use flywheel_atoms::{Ask, HostRecord, LeaseRecord, ThreadEntry};
 use flywheel_engine::rec::Record;
 use flywheel_engine::runtime::{Response, ResponseKind};
 use serde_json::Value;
@@ -134,6 +134,41 @@ pub fn lease_from_record(r: &Record) -> Result<LeaseRecord> {
         taken_at: time(r, "taken_at")?,
         renewed_at: time(r, "renewed_at")?,
         state: r.get("state").unwrap_or("free").to_string(),
+    })
+}
+
+// ---------------------------------------------------------------------- the ask
+//
+// One file per ask (`git-only.yaml layout.asks`): the dictation's words, who
+// gave it, when, and the unit that took it up once planning has — empty until
+// then (28, 62, 116).
+
+pub fn ask_to_record(ask: &Ask) -> Record {
+    let mut r = Record {
+        kind: Some("ask".to_string()),
+        fields: vec![],
+    };
+    r.set("id", &ask.id);
+    r.set("repository", &ask.repository);
+    r.set("text", &ask.text);
+    r.set("by", &ask.by);
+    r.set("at", &ask.at.to_rfc3339());
+    r.set("consumed_by", ask.consumed_by.as_deref().unwrap_or_default());
+    r
+}
+
+pub fn ask_from_record(r: &Record) -> Result<Ask> {
+    Ok(Ask {
+        id: text(r, "id")?,
+        repository: text(r, "repository")?,
+        text: r.get("text").unwrap_or_default().to_string(),
+        by: text(r, "by")?,
+        at: time(r, "at")?,
+        consumed_by: r
+            .get("consumed_by")
+            .map(str::trim)
+            .filter(|unit| !unit.is_empty())
+            .map(String::from),
     })
 }
 

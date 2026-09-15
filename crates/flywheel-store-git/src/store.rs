@@ -900,6 +900,35 @@ impl Records for GitStore {
         *self.heartbeats.borrow_mut() = Some(hosts.clone());
         Ok(hosts)
     }
+
+    fn put_ask(&mut self, ask: &flywheel_atoms::Ask) -> Result<bool> {
+        // One file per id, so an ask already written is found and written no
+        // second time (127).
+        let path = layout::ask(&ask.id);
+        if self.read_file(&path)?.is_some() {
+            return Ok(false);
+        }
+        self.on_fetched_head()?;
+        self.write_file(&path, &rec::write(std::slice::from_ref(&records::ask_to_record(ask))))?;
+        self.commit_and_push(&format!("ask {} by {}", ask.id, ask.by))?;
+        Ok(true)
+    }
+
+    fn asks(&self) -> Result<Vec<flywheel_atoms::Ask>> {
+        let mut out = Vec::new();
+        for path in self.tree(layout::ASKS)? {
+            // The directory's own `.keep` is no ask (`bootstrap`).
+            if !path.ends_with(".rec") {
+                continue;
+            }
+            let Some(text) = self.read_file(&path)? else { continue };
+            for record in rec::parse(&text) {
+                out.push(records::ask_from_record(&record)?);
+            }
+        }
+        out.sort_by(|a, b| a.id.cmp(&b.id));
+        Ok(out)
+    }
 }
 
 impl GitStore {
