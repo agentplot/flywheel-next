@@ -349,6 +349,21 @@ for an agent is a reading of 69 and 110 that 93 did not grant; 93a and 93b now
 grant both, and `host.yaml` and `sessions.yaml` bind them by name. See "The
 three clauses phase 1 rests on".
 
+**`Sessions` over Herdr.** `flywheel-sessions-herdr` binds the same trait to
+Herdr (171, 173, 174, 196; `sessions.yaml`). A host opens panes only in herdr
+sessions of its own — `flywheel-<instance>-intents`, `-bolts` and `-machinery`,
+by who charged the session — started headless when absent and named on every
+call, so nothing opens beside the operator's own panes; an instance's name is
+unique on its computer, since those names derive from it (218). A workspace
+stands per bolt and per intent and a tab per unit and per elaboration, and
+curation, planning and capture reading keep a workspace each with a tab per
+run. A session its type does not keep is ended on the pass that records its
+exit, and the host's reconciliation ends a pane an exit left open and closes a
+finished run's tab (73, 74, 186). A session reads its inputs and nothing else
+(89); how its place keeps other reads out is open in the model (gaps 89). The
+page says where a pane is and gives the lines that reach it, and never drives a
+terminal (68, S234).
+
 ### D9. One tool catalogue, one transport in phase 1
 
 The catalogue of `profiles/surfaces.yaml` `tools:` is one module in
@@ -495,8 +510,19 @@ need not resolve on the operator's network: it does not on a tailnet (204).
   the page's standing rules (S210, S213, S218), holds one selection across rail
   and board, where a click on any board object opens it and selects it (S216,
   S219), posts every form and swaps in the regions that came back,
-  and listens on the host's `GET /events` so the page fetches itself when the
-  store moved (S221). It fetches from its own host alone (310).
+  and listens on the host's `GET /events` so the page fetches what changed
+  since the generation it holds, and never the whole page again (S221, S235).
+  It fetches from its own host alone (310).
+- The page is built to a budget (310a, S235). A load ships the first view alone
+  — the top, the rail, the board's lanes, the counts and the dock page a link
+  named — compressed, with the fonts served once under a name carrying the
+  binary's version (291); every other dock page is fetched when opened, every
+  list past 50 rows is paged, and the rail never is; an update is the regions
+  changed since a generation, at most 8 KB for one move; and a page read is
+  answered while a pass records a delivery. What the page costs grows with what
+  is on screen and not with the instance. A system-tier test beside the
+  client-view test seeds two instance sizes and holds 310a's numbers in the
+  headless browser throttled as `surfaces.yaml` budget states (D15, D17).
 - Every decision shows its number and its answers as controls, one tap each;
   nothing is reachable only by hover or keyboard, and a long-form answer uses the
   platform's own keyboard (311, 15). The decision card is the only answerable
@@ -558,7 +584,10 @@ yields one capture (111, S22).
 
 Turning a capture into signals is a judgment and never runs unattended (115):
 a dropped file's capture waits for a `capture-reader` session charged by the
-tick of the host declaring the folder (217e). Two kinds of capture need no
+tick of the host declaring the folder (217e). It is keyed by the folder's name
+and the hash of the file's contents, dated by the date in the file's name or
+else when the file was last written, and called by its file name wherever it
+shows (111, S227). Two kinds of capture need no
 reader. The page's box — the console, as a source (S223) — writes its single
 ask signal directly, which is a control and not a judgment (19). The signals
 folder reads captures made before the instance existed in the layout the
@@ -571,11 +600,16 @@ instance's first real material, and the first proposals curation makes from it
 are self-closing elaborations, since a signal names no type (27, S227).
 
 A signal with no move is never a decision (19a). While it waits, its capture
-carries the operator's controls — build now, make an intent, attach to an open
-intent, drop — each a catalogue tool writing the move curation would have
-written, since a person writing those records is curation (110, 193, S224).
-The signals tray lists what waits and carries `curate`, which runs curation at
-once beside its threshold and cadence (110, 118, S225). Every signal takes
+carries the operator's controls — build now, add to an open bolt the operator
+picks, make an intent, attach to an open intent, drop — each a catalogue tool
+writing the move curation would have written, since a person writing those
+records is curation (110, 193, S224, S224a). The five sit as one row under the
+capture while the hand is on it and in its drawer's footer at rest, and attach
+and add share one picker opened inside the capture (S233). The signals tray
+lists what waits and carries `curate`, which runs curation at once beside its
+threshold and cadence (110, 118, S225). Nothing puts a clock on the curator's
+run, and its delivery is recorded in one commit (110, `blueprints.yaml`
+record_moves). Every signal takes
 exactly one standing move with a stated consequence, and only the operator's
 response replaces one (107, 116). A route names what curation, being a
 session, offered for a signal that argues with no claim: a chore through

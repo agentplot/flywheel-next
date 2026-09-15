@@ -186,3 +186,70 @@ nothing SHALL be lost or started twice (32).
 - **WHEN** the manifest sets a different bound for a host
 - **THEN** that host runs at most that many sessions at once, and other hosts
   are unaffected (32)
+
+### Requirement: A host opens its panes in multiplexer sessions of its own
+
+A host SHALL start every pane in a multiplexer session named for the instance and
+for who charged the session — intents, bolts or the machinery — unless the
+manifest routes a kind or a repository elsewhere, SHALL start that session
+headless when it is absent, and SHALL name it on every call, so no pane opens in
+the session the host's own process runs in (174). A workspace SHALL stand per
+bolt and per intent and a tab per unit and per elaboration, and curation,
+planning and capture reading SHALL keep a workspace each with a tab per run
+(196). The host SHALL never stop or delete a multiplexer session it made (174).
+An instance's name SHALL be unique on its computer: a host SHALL decline to start
+an instance whose name another host on the computer already runs (218).
+
+#### Scenario: A host started from the operator's terminal
+- **WHEN** a host started from a terminal inside the operator's own multiplexer
+  session charges a curator
+- **THEN** the curator's pane opens in the instance's machinery session, in the
+  curation workspace under a tab of its run, and nothing opens in the
+  operator's session (174, 196)
+
+#### Scenario: Closing one pane by hand
+- **WHEN** the operator closes one session's pane from the multiplexer's own menu
+- **THEN** that pane alone closes, its tab and workspace stand, and the session
+  reads lost (196, 73)
+
+#### Scenario: A second instance of one name
+- **WHEN** a host is started for an instance whose name another host on the
+  same computer already runs
+- **THEN** it declines, names the running host, and starts nothing (218)
+
+### Requirement: A session its type does not keep is ended on its exit
+
+A session whose type does not keep it alive — every session the machinery
+charges and a self-closing elaboration's — SHALL be ended on the pass that
+records its exit, done, stalled or invalid alike, after its deliverables are
+read, so its pane closes then (74). A blocked session SHALL keep its pane for the
+answer (70). A standing, with-operator or operator's own session SHALL keep its
+pane until its owner ends it (25, 26, 69). Ending a pane already gone SHALL NOT
+be an error (73). The host's reconciliation SHALL end any pane still open for a
+session exited, ended or retired, and SHALL close a run's tab once the run is
+final and its pane gone, in the multiplexer sessions it made alone (74, 186,
+196).
+
+#### Scenario: A curator's pane closes once its delivery is read
+- **WHEN** a curation session exits done with its moves
+- **THEN** on the pass that records the exit the moves are read and the pane is
+  closed, and the report stays on the session's thread (74, 67)
+
+#### Scenario: A blocked session keeps its pane
+- **WHEN** a session reports blocked with a question
+- **THEN** its pane stays open for the answer (70)
+
+#### Scenario: A pane an exit left open
+- **WHEN** a pass recorded a session's exit and could not end its pane
+- **THEN** the host's reconciliation ends the pane on a later pass and records
+  it (74, 73)
+
+### Requirement: A session reads its inputs and nothing else
+
+A session SHALL read its schema instruction, its skill, its work order and what
+the order hands it, in its place, and nothing else SHALL reach it (89).
+
+#### Scenario: A curator reads its order alone
+- **WHEN** a curator session runs over the unmoved signals
+- **THEN** it reads no file outside its place and the inputs its order hands it,
+  the binary's own source among them (89)

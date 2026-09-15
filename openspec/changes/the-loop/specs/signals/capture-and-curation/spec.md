@@ -54,6 +54,14 @@ its signals were written before the instance existed (114).
 - **THEN** one capture with a pointer and no signals is written, and one reader
   session is charged by the tick of the declaring host (215, 115, 217e)
 
+#### Scenario: A dropped file is keyed by what it holds
+- **WHEN** a file is dropped, dropped again, renamed, and a hidden file is
+  dropped beside it
+- **THEN** one capture exists, keyed by the folder's name and the hash of the
+  file's contents, dated by the date in the file's name or else by when it was
+  last written, called by its file name wherever it shows, and the hidden file
+  is no source event (111, S227)
+
 #### Scenario: An enumerator writes a capture and starts nothing
 - **WHEN** a source event arrives — a transcript named to the capture command, a
   message forwarded to the chat sink, or a submission of the page's box
@@ -277,11 +285,16 @@ retire with the bolt (62, 74; `unit.yaml`).
 A signal with no move SHALL NOT be a decision, and nothing on the rail SHALL ask
 the operator what a capture should become (19a). While its signal is unmoved,
 the capture SHALL carry the operator's controls on the object: build now
-(`propose-unit`), make an intent (`open-intent`), attach to an open intent
-(`attach-signal`) and drop (`drop-signal`), each a dictation that writes the
-move curation would have written and is the signal's one move (19a, 107, 110,
-116, 193). Build now SHALL name the bolt from the capture's own words and ask
-for no name (19a, S217). Make an intent SHALL open the intent at once, the
+(`propose-unit` naming no bolt), add to an open bolt the operator picks
+(`propose-unit` naming that bolt), make an intent (`open-intent`), attach to an
+open intent (`attach-signal`) and drop (`drop-signal`), each a dictation that
+writes the move curation would have written and is the signal's one move (19a,
+34, 107, 110, 116, 193, S224a). Build now SHALL name the bolt from the capture's
+own words and ask for no name (19a, S217). Add to bolt SHALL list every open
+bolt of the tracked repositories, a bolt whose close is offered or held among
+them, and SHALL name the unit from the capture's own words; the unit SHALL
+stand approved on that bolt, depend on nothing and start at once (34, 31,
+S224a). Make an intent SHALL open the intent at once, the
 gesture being its approval, with the signal attached (12, 19a). Under the
 capture one line SHALL say who acts next and when, read from the curation
 record's unmoved count, threshold and cadence (19a, 110, 118).
@@ -297,6 +310,14 @@ record's unmoved count, threshold and cadence (19a, 110, 118).
 - **THEN** a chore unit stands approved on a bolt named from the capture's first
   words, the call is its approval, and the signal's move routes it to the unit
   (19a, 34, S217)
+
+#### Scenario: Add to an open bolt
+- **WHEN** the operator picks a bolt whose close is offered from a capture's add
+  to bolt control
+- **THEN** a unit named from the capture's first words stands approved on that
+  bolt and starts at once, the close offer is taken back, the signal's move
+  routes it to the unit, and the capture reads added to that bolt (34, 31,
+  S224a, S9)
 
 #### Scenario: Make an intent
 - **WHEN** the operator uses make an intent on a capture
@@ -337,8 +358,14 @@ curation, and the operator's controls on a capture are that hand (110, 19a).
 
 #### Scenario: A proposed intent shows its weight
 - **WHEN** a proposed intent is presented
-- **THEN** it cites its signals and shows how many, from which sources and over
-  what span, counted by event date (109, 118)
+- **THEN** its card cites its signals and shows how many, from how many sources
+  and over what span, counted by event date, and the elaborations it proposes,
+  each with its type (109, 118, 10, S5)
+
+#### Scenario: A curator's delivery is one commit
+- **WHEN** a curator delivers moves for sixty-three signals
+- **THEN** the moves are recorded in one commit, and delivering them again
+  writes nothing (110, 127, 73)
 
 #### Scenario: Unmoved signals are visible and never discarded
 - **WHEN** signals accumulate without a move

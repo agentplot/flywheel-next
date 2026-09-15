@@ -126,17 +126,43 @@ The capture box in the header SHALL be the one place to type on the page, on the
 desktop and as the phone's palette (S211). Text the operator types there SHALL be
 a capture from the console with one signal of kind ask (19, S223). The capture
 SHALL raise no decision; while its signal has no move it SHALL carry build now,
-make an intent, attach to… and drop as controls on the object, never a word
-parsed out of the text, with one line under it saying who acts next and when
-(19a, 19, 194, S224). The page submission SHALL be the delivery, recorded once
-like any response (19).
+add to bolt…, make an intent, attach to… and drop as controls on the object,
+never a word parsed out of the text, with one line under it saying who acts
+next and when (19a, 19, 194, S224, S224a). The page submission SHALL be the
+delivery, recorded once like any response (19).
+
+At rest a capture SHALL show its words, its source and that line and no verb;
+its five verbs SHALL show as one row under the line, in that order, while the
+pointer or the focus is on it and while it is open in the dock, on the quote,
+every tray row and a finding's row, and the drawer's footer SHALL carry them at
+rest (S233). On a phone the quote and the tray row SHALL show no verb, and a tap
+SHALL open the drawer with the verbs in its footer (S233, 311). While a capture
+holds the focus, `b`, `a`, `m`, `t` and `d` SHALL press its verbs (S233, S218).
+`attach to…` and `add to bolt…` SHALL open one picker inside the capture under
+its verbs — above the drawer's footer, a bottom sheet on a phone — listing the
+open intents or bolts with their count, a filter above eight rows, walked with
+↓ and ↑ and picked with Enter, an empty list carrying the verb that makes one,
+one picker open at a time and Esc closing it first (S233, S56, S57).
 
 #### Scenario: Typing into the capture box
 - **WHEN** the operator types text into the capture box and submits it
 - **THEN** one capture from the console exists with one signal of kind ask, the
   submission is recorded once as a response naming the capture it made, the
-  rail gains nothing, and the capture stands in Inception with its four
-  controls and the line saying curation reads it next (19, 19a, S223, S224)
+  rail gains nothing, and the capture stands in Inception with the line saying
+  curation reads it next and its five controls under the hand (19, 19a, S223,
+  S224, S233)
+
+#### Scenario: Twenty notes read as notes
+- **WHEN** the signals tray lists twenty rows and the pointer rests on one
+- **THEN** only that row shows its five verbs, and every other row is its words,
+  its source and its line (S233)
+
+#### Scenario: A picker inside a scrolling lane
+- **WHEN** the operator presses `add to bolt…` on a capture in a scrolled lane
+  with twelve bolts open
+- **THEN** the capture grows to hold the picker under its verbs, nothing is
+  clipped, a filter field takes the cursor, and Enter on a row adds the capture
+  to that bolt and closes the picker (S233, S224a)
 
 #### Scenario: A capture on the board
 - **WHEN** a capture's signal is unmoved
@@ -227,15 +253,15 @@ SHALL land on the rail, one decision per proposal, and the tray SHALL ask
 nothing itself (109, 116, S225). A finding a session offered with no intent or
 bolt above it SHALL be a row like any other: its quote the document's path, its
 source reading "offer", its line naming the session that offered it, with the
-capture's four controls and no decision, and `build now` on it SHALL name its
-chore from the path's words (S231, 62).
+capture's five controls and no decision, and `build now` or `add to bolt…` on it
+SHALL name its chore from the path's words (S231, S224a, 62).
 
 #### Scenario: A session's offer waits in the tray
 - **WHEN** a curation session offers a finding and no intent, bolt or capture
   stands above it
 - **THEN** the tray lists one capture from that session, dated when the offer
   was made, with one row quoting the document's path under the source "offer",
-  carrying the four controls, and the rail's count is unchanged (S231, 19a)
+  carrying the five controls, and the rail's count is unchanged (S231, 19a)
 
 #### Scenario: Run curation now from the tray
 - **WHEN** the operator opens the tray and presses run curation now
@@ -409,9 +435,11 @@ same sentence and controls in its head under the title, and SHALL have no foot
 ### Requirement: The page keeps itself current
 
 The host SHALL raise a generation when its store moved and tell every open page
-over one event stream; the page SHALL fetch itself from the same host and swap
-the regions that differ, keeping the decision in hand, the open dock and where
-each column was scrolled (S221, 310). Every form SHALL be sent the same way, so
+over one event stream; the page SHALL fetch from the same host what changed
+since the generation it holds — the regions that moved, and the drawer's page
+only while it is open — and swap those in, keeping the decision in hand, the
+open dock and where each column was scrolled, and SHALL never fetch the whole
+page again (S221, S235, 310). Every form SHALL be sent the same way, so
 an answer or a capture never navigates (S221). No session SHALL call an address
 to wake the loop, and the machinery SHALL build no wake API of its own: the loop
 SHALL listen to the multiplexer's own events, so on a
@@ -433,8 +461,73 @@ note, offer or refusal, SHALL be a cause at once; the poll SHALL stay the floor
 
 #### Scenario: Only the host is fetched
 - **WHEN** the bundle is read for what it fetches
-- **THEN** it fetches its own location and listens on the host's event stream,
+- **THEN** it fetches from its own host and listens on the host's event stream,
   and names nothing external (310, S221)
+
+#### Scenario: One answer's update
+- **WHEN** the operator answers a decision on an open page
+- **THEN** what comes back is the regions that answer changed, at most 8 KB, and
+  the page is not fetched again (S221, S235, 310a)
+
+### Requirement: The page is built to a budget
+
+The first view — the top, the rail, the board and the dock page a link named —
+SHALL first paint within 1.0 s and take a press within 1.5 s on a mid-range phone
+over an ordinary mobile connection, and a load with nothing cached SHALL be at
+most 200 KB on the wire, 60 KB once the fonts are cached, with the first view's
+HTML at most 100 KB before compression (310a). A load SHALL ship the first view
+alone: a dock page SHALL be fetched when its object is opened, and the tray's
+rows and every other list SHALL show 50 rows with their count and a `more`,
+the rail never paged (310a, S235, 15). Every response SHALL be compressed, the
+fonts served once under a name carrying the binary's version (310a, S235, 291).
+The time and the bytes SHALL grow with what is on screen and not with the
+instance, and the page SHALL answer within its budget whatever the host is doing
+(310a). The numbers SHALL be held by a test measured as the surfaces profile
+states (310a, S235).
+
+#### Scenario: A phone opens the page
+- **WHEN** the page is loaded in a browser throttled to a mid-range phone over an
+  ordinary mobile connection, with nothing cached
+- **THEN** it first paints within 1.0 s, its first card takes a press within
+  1.5 s, and every response the first view needed sums to at most 200 KB
+  (310a, S235)
+
+#### Scenario: Ten times the instance
+- **WHEN** the same first view is loaded on an instance holding ten times the
+  signals, intents, captures and facts
+- **THEN** it paints and weighs within a tenth of what it did (310a)
+
+#### Scenario: A dock page is fetched when opened
+- **WHEN** the operator opens a capture no link named
+- **THEN** its page is fetched from the host, the drawer showing the capture's
+  head at once and its body when it arrives, and the load carried no other dock
+  page (S235)
+
+#### Scenario: The host is recording a delivery
+- **WHEN** the operator loads the page while the host records a curator's
+  delivery
+- **THEN** the page answers within its budget and does not wait for the pass
+  (310a)
+
+### Requirement: A session chip's pane link says where the pane is
+
+A session chip's pane link SHALL open a popover naming the multiplexer session
+the pane is in, the host it runs on and the pane by its session id, with the
+line that attaches a terminal to that session — naming the host's machine when
+the host is another computer — and the line that focuses the pane, each with a
+copy control (S234, 174, 196). A pane that is gone SHALL say so and offer
+nothing to copy (S234). The page SHALL never open, focus or read a pane (68).
+
+#### Scenario: Reaching a curator's pane
+- **WHEN** the operator opens the pane link on a curator's chip
+- **THEN** the popover names the machinery session, the host and the session id,
+  and offers the attach line and the focus line to copy (S234)
+
+#### Scenario: A pane already closed
+- **WHEN** the operator opens the pane link of a session whose pane closed on its
+  exit
+- **THEN** the popover says the session exited and when, and offers nothing to
+  copy (S234, 74)
 
 ### Requirement: The dock gives each kind its page
 
