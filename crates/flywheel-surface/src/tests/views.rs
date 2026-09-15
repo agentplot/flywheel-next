@@ -247,6 +247,102 @@ fn a_view_of_another_version_shows_it_is_out_of_date() {
     }
 }
 
+/// The views offered are the page's own and no others — the rail, the board,
+/// the status view and one object's detail — each listed among the resources
+/// before any tool is called, each named by the read-only tool that answers
+/// it, and every region each view draws is a region the served page has (322,
+/// 307, S230).
+#[test]
+fn the_offered_views_are_the_pages_own() {
+    let (mut store, mut world, defs) = a_rail();
+    // Before any tool has been called.
+    let listed = ask(&mut store, &mut world, &defs, "resources/list", json!({}));
+    let names: Vec<&str> = listed["result"]["resources"]
+        .as_array()
+        .expect("resources")
+        .iter()
+        .filter_map(|r| r["name"].as_str())
+        .collect();
+    assert_eq!(names, ["rail", "board", "status", "object"], "the resources are not the page's four views");
+
+    let tools = ask(&mut store, &mut world, &defs, "tools/list", json!({}));
+    let named: Vec<String> = tools["result"]["tools"]
+        .as_array()
+        .expect("tools")
+        .iter()
+        .filter_map(|t| t["_meta"]["ui"]["resourceUri"].as_str().map(String::from))
+        .collect();
+    let offered: Vec<String> = VIEWS.iter().map(|v| crate::catalogue::view_address(v)).collect();
+    assert_eq!(named, offered, "a tool names a view the resources do not list, or one goes unnamed");
+
+    // Each view draws regions the page has, by the ids the page gives them.
+    let read = page::read(&mut store, &world, &defs, ADDRESS, "chuck").expect("the page reads");
+    let served = page::render(&read);
+    let mut drawn: Vec<String> = Vec::new();
+    for view in VIEWS {
+        let object = (view == "object").then_some(BOLT);
+        let shown = page::view(&read, view, object).unwrap_or_else(|e| panic!("the {view}: {e}"));
+        assert!(!shown.regions.is_empty(), "the {view} draws nothing");
+        for id in shown.regions.keys() {
+            assert!(served.contains(&format!("id=\"{id}\"")), "the {view} draws `{id}`, which the page has no region for");
+            drawn.push(id.clone());
+        }
+    }
+    // And between them they draw the page's rail, board, status view and dock.
+    for region in ["rail", "board-h", "lane-inception", "lane-plan", "lane-construction", "lane-operation", "hosts", "dk-b"] {
+        assert!(drawn.iter().any(|id| id == region), "no view draws the page's `{region}`");
+    }
+}
+
+/// A caller that renders no view still holds every tool, and every decision on
+/// the rail is answerable by a call it holds: the rail in words names each
+/// decision's number and its answers, and `answer` takes them (322, 311).
+#[test]
+fn every_decision_is_answerable_without_a_view() {
+    let defs = defs();
+    let mut store = FakeStore::default();
+    a_decision(&mut store, &defs);
+    let mut world = world::Files::new();
+    // A client with no user-interface extension says hello like any other.
+    let hello = ask(&mut store, &mut world, &defs, "initialize", json!({"protocolVersion": "2025-06-18", "capabilities": {}}));
+    assert!(hello["result"]["capabilities"]["tools"].is_object());
+    let tools = ask(&mut store, &mut world, &defs, "tools/list", json!({}));
+    let answer = tools["result"]["tools"]
+        .as_array()
+        .expect("tools")
+        .iter()
+        .find(|t| t["name"] == json!("answer"))
+        .expect("the answer tool is held without a view")
+        .clone();
+    for takes in ["decision", "answer"] {
+        assert!(answer["inputSchema"]["properties"].get(takes).is_some(), "`answer` takes no `{takes}`");
+    }
+
+    let read = page::read(&mut store, &world, &defs, ADDRESS, "chuck").expect("the page reads");
+    assert!(!read.decisions.is_empty(), "no decision stands to answer");
+    let reply = ask(&mut store, &mut world, &defs, "tools/call", json!({"name": "rail"}));
+    let words = reply["result"]["content"][0]["text"].as_str().expect("the rail in words").to_string();
+    for decision in &read.decisions {
+        let number = decision.number.expect("numbered");
+        let line = words
+            .lines()
+            .position(|line| line.trim_start().starts_with(&format!("{number} · ")))
+            .unwrap_or_else(|| panic!("decision {number} is not in the words: {words}"));
+        let answers = words
+            .lines()
+            .nth(line + 1)
+            .and_then(|next| next.trim().strip_prefix("answers: "))
+            .unwrap_or_else(|| panic!("decision {number} says no answers: {words}"));
+        let said: Vec<&str> = answers.split(" | ").collect();
+        assert_eq!(said, decision.answers, "the words give decision {number} other answers");
+        // And a call answers it, with the first answer the words give.
+        let call = json!({"name": "answer", "arguments": {"decision": number, "answer": said[0]}});
+        let answered = ask(&mut store, &mut world, &defs, "tools/call", call);
+        assert_eq!(answered["result"]["isError"], json!(false), "decision {number} was not answerable: {answered}");
+        assert_eq!(answered["result"]["structuredContent"]["recorded"], json!(true));
+    }
+}
+
 /// A view the page does not have, and an object the instance does not hold,
 /// are refused in words with nothing drawn (322).
 #[test]
