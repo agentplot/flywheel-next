@@ -264,24 +264,31 @@ fn eval_response(pattern: &str, cx: &Ctx) -> Hold {
                     continue;
                 }
                 let Some(did) = cx.snap.register.decision_of(n) else { continue };
-                // decision id = <object>/<kind>/<entered_at>
-                let mut parts = did.rsplitn(3, '/');
-                let _since = parts.next();
-                let kind = parts.next();
-                let obj = parts.next();
-                let Some(kind) = kind else { continue };
-                if !kinds.iter().any(|x| x == kind) {
-                    continue;
-                }
-                // The number may name a decision several objects fold into:
-                // one number, one answer, and it applies to every object
-                // folded under it (11).
-                obj == Some(cx.object.id.as_str())
-                    || obj
-                        .and_then(|id| cx.snap.objects.get(id))
-                        .is_some_and(|first| {
+                // A fold's id is `<kind>/<batch>/<since>`: its number names
+                // every object standing in a decision of that kind folded by
+                // that batch, whichever of them it was raised on, and one
+                // answer applies to all of them (11, 15, model.md §5.1).
+                let by_fold = cx.object.config.keys().any(|region| {
+                    crate::tick::state_def(cx.defs, cx.object, region)
+                        .and_then(|(_, st)| st.decision.as_ref())
+                        .is_some_and(|d| {
+                            crate::rail::batch_of(cx.defs, cx.object, region)
+                                .is_some_and(|(_, batch)| crate::rail::is_fold_of(did, &d.kind, &batch))
+                        })
+                });
+                if by_fold {
+                    true
+                } else {
+                    // Otherwise the id is one object's: <object>/<kind>/<entered_at>.
+                    let Some((obj, kind)) = crate::rail::object_parts(did) else { continue };
+                    if !kinds.iter().any(|x| x == kind) {
+                        continue;
+                    }
+                    obj == cx.object.id
+                        || cx.snap.objects.get(obj).is_some_and(|first| {
                             crate::rail::folds_together(cx.defs, first, cx.object, kind)
                         })
+                }
             }
             ResponseKind::Dictation => r.object.as_deref() == Some(cx.object.id.as_str()),
         };

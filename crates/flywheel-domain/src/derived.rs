@@ -798,7 +798,7 @@ fn standing_delivered<S: Records>(store: &S, sink: &crate::sinks::Sink) -> bool 
         .unwrap_or_default();
     let routed: Vec<&String> = standing
         .iter()
-        .filter(|id| decision_kind(id).is_some_and(|kind| sink.routes_kind(kind)))
+        .filter(|id| decision_kind(store, id).is_some_and(|kind| sink.routes_kind(kind)))
         .collect();
     if routed.is_empty() {
         return true;
@@ -811,19 +811,19 @@ fn standing_delivered<S: Records>(store: &S, sink: &crate::sinks::Sink) -> bool 
         .all(|id| decision_since(id).is_some_and(|since| since <= mark))
 }
 
-/// A decision id is `<object>/<kind>/<entered_at>` (`rail::decision_id`).
-fn decision_parts(id: &str) -> Option<(&str, &str)> {
-    let (rest, since) = id.rsplit_once('/')?;
-    let (_object, kind) = rest.rsplit_once('/')?;
-    Some((kind, since))
+/// A decision's kind. Its id is `<object>/<kind>/<entered_at>` where it stands
+/// on one object on record (`rail::decision_id`), and a fold's
+/// `<kind>/<batch>/<since>` otherwise (`rail::fold_id`).
+fn decision_kind<'a, S: Records>(store: &S, id: &'a str) -> Option<&'a str> {
+    match flywheel_engine::rail::object_parts(id) {
+        Some((object, kind)) if store.get(object).ok().flatten().is_some() => Some(kind),
+        _ => flywheel_engine::rail::fold_parts(id).map(|(kind, _)| kind),
+    }
 }
 
-fn decision_kind(id: &str) -> Option<&str> {
-    decision_parts(id).map(|(kind, _)| kind)
-}
-
+/// When a decision was raised: the last part of its id, whichever its shape.
 fn decision_since(id: &str) -> Option<DateTime<Utc>> {
-    let (_kind, since) = decision_parts(id)?;
+    let (_, since) = id.rsplit_once('/')?;
     DateTime::parse_from_rfc3339(since)
         .ok()
         .map(|t| t.with_timezone(&Utc))

@@ -1480,6 +1480,23 @@ fn a_rows_letter_stays_after_another_is_dropped() {
     assert!(docked.contains("<span class=\"st mono\">c</span>"), "the dock letters c as the card does");
     assert!(docked.contains(&format!("{number}c: drop")), "the dock's row says what its drop does");
     assert!(!docked.contains(&format!("{number}b: drop")));
+
+    // The first row leaves too: the fold keeps its number, and c and d their
+    // letters (15, S232).
+    in_life(&mut store, "unit/atlas/chore-1", "dropped", at + chrono::Duration::minutes(2));
+    commands::rail(&mut store, &defs).expect("the rail derives");
+    let read = crate::page::read(&mut store, &world, &defs, ADDRESS, "chuck").expect("the page reads");
+    let fold = read
+        .decisions
+        .iter()
+        .find(|d| d.folds.iter().any(|f| f == "unit/atlas/chore-3"))
+        .expect("the fold stands");
+    assert_eq!(fold.number, Some(number), "the fold keeps its number when its first row leaves");
+    let held = rail_card(&crate::page::render(&read), number);
+    assert!(held.contains(">atlas · 2 chores<"), "{held}");
+    assert!(!held.contains("data-row=\"a\"") && !held.contains("data-row=\"b\""), "a and b left the fold: {held}");
+    assert!(held.contains("data-row=\"c\" data-object=\"unit/atlas/chore-3\""), "c keeps its letter: {held}");
+    assert!(held.contains("data-row=\"d\" data-object=\"unit/atlas/chore-10\""), "d keeps its letter: {held}");
 }
 
 /// Two chores merged onto two shared lines are both `chore-1` by name, so each

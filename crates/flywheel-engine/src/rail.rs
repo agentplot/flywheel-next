@@ -55,10 +55,64 @@ pub fn id_order(a: &str, b: &str) -> std::cmp::Ordering {
     }
 }
 
-/// The decision id: `<object>/<kind>/<entered_at>`. A re-entered decision state is a new decision.
+/// The id of a decision on one object: `<object>/<kind>/<entered_at>`. A
+/// re-entered decision state is a new decision.
 pub fn decision_id(obj: &Object, region: &str, kind: &str) -> String {
     let since = obj.entered_at.get(region).map(|t| t.to_rfc3339()).unwrap_or_default();
     format!("{}/{}/{}", obj.id, kind, since)
+}
+
+/// A fold's id: `<kind>/<batch>/<since>`. It is the fold's and never its first
+/// object's, so the fold keeps its number whichever of its objects leaves
+/// first (15, model.md §5.1).
+pub fn fold_id(kind: &str, batch: &str, since: &chrono::DateTime<chrono::Utc>) -> String {
+    format!("{kind}/{batch}/{}", since.to_rfc3339())
+}
+
+/// Whether a decision id is a fold of this kind and batch, raised at any point.
+pub fn is_fold_of(id: &str, kind: &str, batch: &str) -> bool {
+    id.strip_prefix(kind)
+        .and_then(|rest| rest.strip_prefix('/'))
+        .and_then(|rest| rest.strip_prefix(batch))
+        .and_then(|rest| rest.strip_prefix('/'))
+        .is_some_and(|since| !since.is_empty() && !since.contains('/'))
+}
+
+/// A decision id read as a fold's: its kind and its batch.
+///
+/// Read as one object's, the same id names something else, so a reader holding
+/// the objects says which reading names what is on record (`object_parts`).
+pub fn fold_parts(id: &str) -> Option<(&str, &str)> {
+    let (kind, rest) = id.split_once('/')?;
+    let (batch, since) = rest.rsplit_once('/')?;
+    (!kind.is_empty() && !batch.is_empty() && !since.is_empty()).then_some((kind, batch))
+}
+
+/// A decision id read as one object's: the object and its kind.
+pub fn object_parts(id: &str) -> Option<(&str, &str)> {
+    let (rest, since) = id.rsplit_once('/')?;
+    let (object, kind) = rest.rsplit_once('/')?;
+    (!object.is_empty() && !kind.is_empty() && !since.is_empty()).then_some((object, kind))
+}
+
+/// The fold of a kind and batch the register holds without `retracted_at`,
+/// with the point it was raised at: on every tick after the one that numbered
+/// it, that entry is the fold (model.md §5.1, §5.2).
+fn standing_fold(
+    register: &Register,
+    kind: &str,
+    batch: &str,
+) -> Option<(String, chrono::DateTime<chrono::Utc>)> {
+    let (id, entry) = register
+        .entries
+        .iter()
+        .filter(|(id, entry)| entry.retracted_at.is_none() && is_fold_of(id, kind, batch))
+        .min_by_key(|(_, entry)| entry.number)?;
+    let since = entry.since.or_else(|| {
+        let (_, at) = id.rsplit_once('/')?;
+        chrono::DateTime::parse_from_rfc3339(at).ok().map(|t| t.with_timezone(&chrono::Utc))
+    })?;
+    Some((id.clone(), since))
 }
 
 /// The record field a decision folds by and the value this object has for it,
@@ -106,6 +160,9 @@ pub fn folds_together(defs: &Definitions, a: &Object, b: &Object, kind: &str) ->
 /// and never issues one.
 pub fn derive(defs: &Definitions, objects: &BTreeMap<String, Object>, register: &Register) -> Vec<DecisionInstance> {
     let mut out: Vec<DecisionInstance> = Vec::new();
+    // Beside each decision, the batch it folds by where it has one, and the
+    // earliest point any object folded into it entered its state.
+    let mut batches: Vec<Option<((String, String), chrono::DateTime<chrono::Utc>)>> = Vec::new();
     let mut objs: Vec<&Object> = objects.values().collect();
     objs.sort_by(|a, b| id_order(&a.id, &b.id));
     for obj in objs {
@@ -116,25 +173,26 @@ pub fn derive(defs: &Definitions, objects: &BTreeMap<String, Object>, register: 
             if !crate::tick::is_live(obj, region) { continue; }
             let Some((_reg, st)) = state_def(defs, obj, region) else { continue };
             let Some(d) = &st.decision else { continue };
+            let entered = obj.entered_at.get(region).cloned().unwrap_or_else(chrono::Utc::now);
             // Decisions whose `batch` field is equal are one decision: the
-            // first of them stands and names the rest, so "yes" to it is yes
-            // to all of them and the rail carries one number, not six (11).
-            if let Some(batch) = batch_of(defs, obj, region) {
-                if let Some(standing) = out.iter_mut().find(|x| {
-                    x.kind == d.kind
-                        && objects
-                            .get(&x.object)
-                            .map(|first| batch_of(defs, first, &x.region).as_ref() == Some(&batch))
-                            .unwrap_or(false)
-                }) {
-                    standing.folds.push(obj.id.clone());
+            // first of them by id stands and names the rest, so "yes" to it is
+            // yes to all of them and the rail carries one number, not six (11).
+            let batch = batch_of(defs, obj, region);
+            if let Some(batch) = &batch {
+                let folded = out
+                    .iter()
+                    .zip(&batches)
+                    .position(|(x, held)| x.kind == d.kind && held.as_ref().is_some_and(|(b, _)| b == batch));
+                if let Some(at) = folded {
+                    out[at].folds.push(obj.id.clone());
+                    if let Some((_, earliest)) = batches[at].as_mut() {
+                        *earliest = (*earliest).min(entered);
+                    }
                     continue;
                 }
             }
-            let id = decision_id(obj, region, &d.kind);
-            let number = register.number_of(&id);
             out.push(DecisionInstance {
-                id,
+                id: decision_id(obj, region, &d.kind),
                 object: obj.id.clone(),
                 region: region.clone(),
                 state: state.clone(),
@@ -143,11 +201,25 @@ pub fn derive(defs: &Definitions, objects: &BTreeMap<String, Object>, register: 
                 answers: d.answers.clone(),
                 shows: d.shows.clone(),
                 document: d.document.as_ref().and_then(|f| obj.record.get(f).cloned()),
-                since: obj.entered_at.get(region).cloned().unwrap_or_else(chrono::Utc::now),
-                number,
+                since: entered,
+                number: None,
                 folds: vec![obj.id.clone()],
             });
+            batches.push(batch.map(|batch| (batch, entered)));
         }
+    }
+    // A fold is named for its kind and batch and the point it was raised: the
+    // entry the register holds for it while any of its objects stands, and
+    // otherwise the earliest point one of them entered, so a fold emptied and
+    // refilled is a new decision with a new number (15, model.md §5.1, §5.2).
+    for (decision, held) in out.iter_mut().zip(&batches) {
+        if let Some(((_, batch), earliest)) = held {
+            let (id, since) = standing_fold(register, &decision.kind, batch)
+                .unwrap_or_else(|| (fold_id(&decision.kind, batch, earliest), *earliest));
+            decision.id = id;
+            decision.since = since;
+        }
+        decision.number = register.number_of(&decision.id);
     }
     // The number the register gave, and a decision raised this tick and not
     // yet numbered after the numbered ones, in the order it was derived —

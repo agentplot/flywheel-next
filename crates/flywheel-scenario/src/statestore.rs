@@ -362,11 +362,18 @@ impl Records for Store {
         if id == RAIL {
             return Ok(self.responses.clone());
         }
+        // An object's own decisions, and the folds whose batch its record
+        // carries (`rail::fold_id`, 15).
+        let held = self.objects.get(id);
+        let carries = |batch: &str| held.is_some_and(|o| o.record.values().any(|v| v.as_str() == Some(batch)));
         let numbers: Vec<u32> = self
             .register
             .entries
             .iter()
-            .filter(|(decision, _)| decision.starts_with(&format!("{id}/")))
+            .filter(|(decision, _)| {
+                decision.starts_with(&format!("{id}/"))
+                    || flywheel_engine::rail::fold_parts(decision).is_some_and(|(_, batch)| carries(batch))
+            })
             .map(|(_, e)| e.number)
             .collect();
         Ok(self

@@ -76,7 +76,7 @@ pub fn from_conformance(
             )))
         })
         .context("the suite the described state is closed by")?;
-    let runtime = flywheel_scenario::conformance::drive::seed(defs, scenario, &suite)?;
+    let runtime = flywheel_scenario::conformance::drive::seed(defs.clone(), scenario, &suite)?;
     let delta = at - flywheel_scenario::conformance::drive::start_of_time();
     let mut objects: Vec<Object> = runtime.store.objects.values().cloned().collect();
     objects.sort_by_key(|o| o.created);
@@ -103,6 +103,7 @@ pub fn from_conformance(
         register.next_number = next;
         flywheel_domain::commands::set_register(store, &register, &[])?;
     }
+    number_as_described(store, &defs, &objects)?;
     Ok(Seeded {
         objects: objects.len(),
         now: at,
@@ -121,7 +122,7 @@ pub fn into_store(
     let defs = flywheel_domain::set::load()?;
     // The described state, built the one way it is built anywhere: the
     // scenario's own seeding, which is what every conformance run stands on.
-    let runtime = flywheel_scenario::scenario::seed(defs, scenario);
+    let runtime = flywheel_scenario::scenario::seed(defs.clone(), scenario);
     let mut objects: Vec<Object> = runtime.store.objects.values().cloned().collect();
     objects.sort_by_key(|o| o.created);
     covered(&objects, declaration)?;
@@ -133,11 +134,33 @@ pub fn into_store(
         register.next_number = next;
         flywheel_domain::commands::set_register(store, &register, &[])?;
     }
+    number_as_described(store, &defs, &objects)?;
     Ok(Seeded {
         objects: objects.len(),
         now: at,
         register_start: scenario.given.register_start,
     })
+}
+
+/// Number the decisions a description raises in the order it lists their
+/// objects.
+///
+/// No object records when it was made, so the engine numbers what stands in
+/// the order ids count (15, S232). A description is the one thing that orders
+/// its objects — a scenario lists them and names the number its register
+/// starts at — so the decisions it raises take their numbers in that order, as
+/// the instance it describes gave them, and a later tick finds them numbered
+/// (15, 94).
+fn number_as_described(store: &mut GitStore, defs: &flywheel_engine::Definitions, order: &[Object]) -> Result<()> {
+    let place = |id: &str| order.iter().position(|o| o.id == id).unwrap_or(usize::MAX);
+    let mut standing = flywheel_domain::commands::rail_read(store, defs)?;
+    standing.sort_by_key(|d| d.folds.iter().map(|f| place(f)).chain([place(&d.object)]).min());
+    let mut register = flywheel_domain::commands::register(store)?;
+    if !register.number_all(&standing) {
+        return Ok(());
+    }
+    let ids: Vec<String> = standing.iter().map(|d| d.id.clone()).collect();
+    flywheel_domain::commands::set_register(store, &register, &ids)
 }
 
 /// Refuse a seed no host's declaration covers, naming what is missing.

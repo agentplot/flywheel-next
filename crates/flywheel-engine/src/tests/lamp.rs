@@ -551,6 +551,56 @@ fn an_answer_naming_one_folded_object_is_that_objects_alone() {
     assert_eq!(after[0].folds, vec!["lamp/1".to_string()]);
 }
 
+/// A fold keeps its number whichever of its objects leaves first, and a yes to
+/// the number is yes to what stands; a fold whose every object has gone and
+/// that later gains one is a new decision with a new number (15, model.md
+/// §5.1, §5.2).
+#[test]
+fn a_fold_keeps_its_number_when_its_first_object_leaves() {
+    let d = defs();
+    let facts = Facts::default();
+    let mut objects = BTreeMap::new();
+    for (n, id) in ["lamp/1", "lamp/2", "lamp/3"].into_iter().enumerate() {
+        let entered = t0() + Duration::seconds(n as i64);
+        objects.insert(id.to_string(), named_lamp(&d, id, Some("hall"), n as u64 + 1, entered));
+    }
+    let mut register = Register::default();
+    let raised = rail_of(&d, &objects, &mut register, t0());
+    assert_eq!(raised.len(), 1, "one decision on the fixture");
+    let number = raised[0].number.expect("numbered");
+    assert_eq!(raised[0].id, format!("switch/hall/{}", t0().to_rfc3339()), "a fold is named for its kind, batch and since");
+
+    // Its first object is answered on its own and leaves the fold.
+    let mut first = answer("row-1", number, "on", t0());
+    first.object = Some("lamp/1".into());
+    let mut responses = vec![first];
+    let at = t0() + Duration::minutes(1);
+    tick(&d, &mut objects, &responses, &register, &facts, at);
+    let after = rail_of(&d, &objects, &mut register, at);
+    assert_eq!(after.len(), 1);
+    assert_eq!(after[0].number, Some(number), "the fold keeps its number");
+    assert_eq!(after[0].id, raised[0].id);
+    assert_eq!(after[0].object, "lamp/2");
+    assert_eq!(after[0].folds, vec!["lamp/2".to_string(), "lamp/3".to_string()]);
+    assert_eq!(register.next_number, number + 1, "no second number was given");
+
+    // Yes to the number accepts what stands.
+    let at = t0() + Duration::minutes(2);
+    responses.push(answer("yes", number, "on", at));
+    let fired = tick(&d, &mut objects, &responses, &register, &facts, at);
+    assert_eq!(fired.iter().map(|f| f.object.as_str()).collect::<Vec<_>>(), vec!["lamp/2", "lamp/3"]);
+    assert!(rail_of(&d, &objects, &mut register, at).is_empty());
+    assert_eq!(register.retracted_at(&raised[0].id), Some(at), "the emptied fold is retracted");
+
+    // Emptied, then refilled: a new decision with a new number.
+    let at = t0() + Duration::minutes(3);
+    objects.insert("lamp/4".into(), named_lamp(&d, "lamp/4", Some("hall"), 4, at));
+    let refilled = rail_of(&d, &objects, &mut register, at);
+    assert_eq!(refilled.len(), 1);
+    assert_ne!(refilled[0].id, raised[0].id);
+    assert_eq!(refilled[0].number, Some(number + 1));
+}
+
 /// Ids order as they count: a run of digits is its number, the rest is text.
 #[test]
 fn ids_order_as_they_count() {

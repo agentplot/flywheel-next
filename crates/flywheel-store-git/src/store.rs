@@ -942,17 +942,20 @@ impl GitStore {
     /// reported rather than silently lost (`record-derived.yaml` responses, 6,
     /// 15).
     /// The objects the responses in one response file answer: the one each
-    /// names, and the one the register says its number belongs to (15, 137).
+    /// names, and those the register says its number belongs to (15, 137).
     ///
-    /// A register entry is keyed `<object>/<kind>/<entered_at>`, and neither the
-    /// kind nor the moment carries a `/`, so the object is what is left when
-    /// the last two are taken off.
+    /// A register entry is keyed `<object>/<kind>/<entered_at>` for a decision
+    /// on one object, and neither the kind nor the moment carries a `/`, so the
+    /// object is what is left when the last two are taken off. A fold's entry
+    /// is `<kind>/<batch>/<since>`, and names every object whose record carries
+    /// the batch (`rail::fold_id`).
     fn answers_for(&self, path: &str) -> Result<Vec<String>> {
         let Some(text) = self.read_file(path)? else {
             return Ok(vec![]);
         };
         let register = flywheel_domain::commands::register(self)?;
         let mut out = Vec::new();
+        let mut batches = Vec::new();
         for record in rec::parse(&text) {
             let Ok(response) = records::response_from_record(&record) else {
                 continue;
@@ -964,26 +967,39 @@ impl GitStore {
                 continue;
             };
             for (decision, _) in register.entries.iter().filter(|(_, e)| e.number == number) {
-                let mut parts = decision.rsplitn(3, '/');
-                let (_moment, _kind, object) = (parts.next(), parts.next(), parts.next());
-                if let Some(object) = object {
-                    out.push(object.to_string());
+                match flywheel_engine::rail::object_parts(decision) {
+                    Some((object, _)) if Records::get(self, object)?.is_some() => out.push(object.to_string()),
+                    _ => batches.extend(flywheel_engine::rail::fold_parts(decision).map(|(_, batch)| batch.to_string())),
+                }
+            }
+        }
+        if !batches.is_empty() {
+            for object in Records::list_records(self, &Scope::All)? {
+                if object.record.values().any(|v| v.as_str().is_some_and(|held| batches.iter().any(|b| b == held))) {
+                    out.push(object.id);
                 }
             }
         }
         Ok(out)
     }
 
+    /// The numbers an answer to this object may name: its own decisions', and
+    /// those of the folds whose batch its record carries (15, `rail::fold_id`).
     fn numbers_of(&self, id: &str) -> Result<Vec<u32>> {
         if id == flywheel_domain::RAIL {
             return Ok(vec![]);
         }
         let register = flywheel_domain::commands::register(self)?;
+        let held = Records::get(self, id)?;
+        let carries = |batch: &str| held.as_ref().is_some_and(|o| o.record.values().any(|v| v.as_str() == Some(batch)));
         let under = format!("{id}/");
         Ok(register
             .entries
             .iter()
-            .filter(|(decision, _)| decision.starts_with(&under))
+            .filter(|(decision, _)| {
+                decision.starts_with(&under)
+                    || flywheel_engine::rail::fold_parts(decision).is_some_and(|(_, batch)| carries(batch))
+            })
             .map(|(_, entry)| entry.number)
             .collect())
     }
