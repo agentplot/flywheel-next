@@ -116,6 +116,19 @@ enum Cmd {
         /// (93b, 217c, D8).
         #[arg(long, default_value = "operator")]
         sessions: String,
+        /// The chat the instance's decisions reach the phone through:
+        /// `discord` (D9, 309). The first host presents it, on the channel
+        /// `--channel` gives, its bot's token read from the variable
+        /// `--token-from` names when the host starts.
+        #[arg(long, requires_all = ["channel", "token_from"])]
+        chat: Option<String>,
+        /// The chat channel's id on the platform.
+        #[arg(long, requires = "chat")]
+        channel: Option<String>,
+        /// The environment variable the operator places the bot's token in.
+        /// The token itself is written nowhere (204, 207).
+        #[arg(long, requires = "chat")]
+        token_from: Option<String>,
     },
     /// Load the machine definitions and report what was read.
     Defs,
@@ -391,7 +404,19 @@ async fn main() -> Result<()> {
             repositories,
             workspace,
             sessions,
+            chat,
+            channel,
+            token_from,
         } => {
+            // The chat is checked before anything is made, so a token pasted
+            // where its variable's name goes is refused with nothing written
+            // (204, 207).
+            let chat = match (chat, channel, token_from) {
+                (Some(chat), Some(channel), Some(token_from)) => {
+                    Some(flywheel::apply::chat_sink(chat, channel, token_from)?)
+                }
+                _ => None,
+            };
             let report = init::run(init::Init {
                 at: chrono::Utc::now(),
                 instance: instance.clone(),
@@ -414,6 +439,14 @@ async fn main() -> Result<()> {
                 println!("{line}");
             }
             flywheel::apply::bind(&manifest, &host, &workspace, &sessions)?;
+            if let Some(sink) = &chat {
+                flywheel::apply::bind_chat(manifest, host, sink)?;
+                println!(
+                    "chat: {host} presents it on {} channel {}, the bot's token read from \
+                     {} when the host starts (204, 207)",
+                    sink.channel, sink.surface, sink.token_from
+                );
+            }
         }
         Cmd::Version { definitions } => {
             println!("flywheel {}", env!("CARGO_PKG_VERSION"));
@@ -610,6 +643,11 @@ async fn main() -> Result<()> {
                     // the variable the entry names. One whose token is not
                     // placed is under attention and the host runs on (D8, D9,
                     // 148, 204, 207, 217f).
+                    // A message arriving in the chat is a local cause, served
+                    // page or not: it wakes the loop at once (130, D6).
+                    let chat_wakes = woken
+                        .get_or_insert_with(|| std::sync::Arc::new(tokio::sync::Notify::new()))
+                        .clone();
                     let read = flywheel::host::manifest_with_root(manifest, name, root.as_deref())?;
                     let operator = operators.first().cloned();
                     let presented = host
@@ -623,6 +661,9 @@ async fn main() -> Result<()> {
                                 None,
                                 operator.as_deref(),
                             )?;
+                            let wake = chat_wakes.clone();
+                            discord.wake_with(std::sync::Arc::new(move || wake.notify_one()));
+                            discord.listen()?;
                             Ok(Box::new(discord) as Box<dyn flywheel_surface::chat::Channel + Send>)
                         })?;
                     for line in &presented {
@@ -678,6 +719,22 @@ async fn main() -> Result<()> {
                                 ),
                                 None => held.poll_interval(),
                             };
+                            // What arrived in the chat this host presents: a
+                            // numbered reply or a press answered through the
+                            // tool the page calls, a forward captured; the
+                            // pass below takes up what that wrote (194, 148).
+                            match held.hear() {
+                                Ok(0) => {}
+                                Ok(heard) => {
+                                    println!("chat: {heard} message(s) heard");
+                                    moved = true;
+                                }
+                                Err(e) => {
+                                    let name = held.name.clone();
+                                    held.report_problem(&format!("host/{name}"), &format!("{e:#}"));
+                                    eprintln!("problem: {e:#}");
+                                }
+                            }
                             match held.once() {
                                 Ok(fired) => {
                                     // Progress, not the count: a machine

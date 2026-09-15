@@ -237,6 +237,74 @@ pub fn bind(manifest: &std::path::Path, host: &str, workspace: &str, sessions: &
     Ok(())
 }
 
+/// The name `flywheel init --chat` gives the sink it writes.
+pub const CHAT: &str = "chat";
+
+/// The chat sink `flywheel init --chat <channel> --channel <id> --token-from
+/// <variable>` names: the channel binding, the platform's channel, and the
+/// environment variable the bot's token is placed in (D8, D9, 204, 207).
+///
+/// Refused before anything is written: a binding this release does not carry,
+/// an id that is no Discord channel's, and a `--token-from` that could not be
+/// a variable's name — which is what a token pasted in its place looks like,
+/// so a token never reaches the manifest, and the refusal never repeats it.
+pub fn chat_sink(
+    channel: &str,
+    surface: &str,
+    token_from: &str,
+) -> Result<flywheel_world_host::manifest::Sink> {
+    if channel != "discord" {
+        bail!("`--chat {channel}`: this release binds `discord` (D9)");
+    }
+    if surface.trim().parse::<u64>().is_err() {
+        bail!(
+            "`--channel {surface}` is no Discord channel's id: with Developer Mode on in \
+             Discord's settings, right-click the channel and copy its id"
+        );
+    }
+    let a_variable = token_from.starts_with(|c: char| c.is_ascii_alphabetic() || c == '_')
+        && token_from.chars().all(|c| c.is_ascii_alphanumeric() || c == '_');
+    if !a_variable {
+        bail!(
+            "`--token-from` names the environment variable the bot's token is placed in, never \
+             the token: say `--token-from FLYWHEEL_DISCORD_TOKEN` and put the token in that \
+             variable (204, 207)"
+        );
+    }
+    Ok(flywheel_world_host::manifest::Sink {
+        kind: "chat".into(),
+        channel: channel.into(),
+        surface: surface.trim().into(),
+        member: None,
+        routes: vec!["all".into()],
+        token_from: token_from.into(),
+    })
+}
+
+/// Write the chat sink into the manifest, presented by the host named (148). A
+/// repeat writes what is already there, and says whether anything was written.
+pub fn bind_chat(
+    manifest: &std::path::Path,
+    host: &str,
+    sink: &flywheel_world_host::manifest::Sink,
+) -> Result<bool> {
+    let mut read = flywheel_world_host::Manifest::read(manifest)?;
+    let entry = read
+        .hosts
+        .get_mut(host)
+        .ok_or_else(|| anyhow!("the manifest names no host `{host}`"))?;
+    let presented = entry.presents.iter().any(|name| name == CHAT);
+    if presented && read.sinks.get(CHAT) == Some(sink) {
+        return Ok(false);
+    }
+    if !presented {
+        entry.presents.push(CHAT.into());
+    }
+    read.sinks.insert(CHAT.into(), sink.clone());
+    read.write(manifest)?;
+    Ok(true)
+}
+
 fn instance_name(scenario: &str) -> String {
     let name: String = scenario
         .to_lowercase()

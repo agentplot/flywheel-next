@@ -1087,6 +1087,122 @@ fn a_host_with_no_channel_delivers_nothing() {
     assert_eq!(after.delivery, None);
 }
 
+// ------------------------------------------ 15.2 the sink the host declares
+
+/// The host that declares a sink presents it: it takes the sink's presenter
+/// lease, delivers there, and hears what arrives there, answering a numbered
+/// reply through the same tool the page calls. A sink the instance holds that
+/// this host does not declare takes no lease from it and is delivered nothing,
+/// whatever kinds of work the host covers (148, D8, D9).
+#[test]
+fn host_presents_to_the_declared_sink() {
+    use flywheel_surface::chat::{Channel, Message, Recorded};
+
+    let mut host = host("presents-declared", &["atlas"]);
+    seed(
+        &mut host,
+        "bolt/atlas/plan-rows",
+        "bolt",
+        &[("life", "open"), ("life.open.close", "offered")],
+        &[("repository", json!("atlas"))],
+    );
+    let defs = host.defs.clone();
+    let number = flywheel_domain::commands::rail(&mut host.store, &defs)
+        .unwrap()
+        .iter()
+        .find(|d| d.object == "bolt/atlas/plan-rows")
+        .and_then(|d| d.number)
+        .expect("the decision is numbered");
+
+    // What `flywheel init --chat discord --channel <id> --token-from <VAR>`
+    // writes; a repeat writes nothing, and a token pasted where the variable's
+    // name goes is refused without being repeated.
+    let path = dir("presents-declared-manifest").join("flywheel.yaml");
+    let mut manifest = flywheel_world_host::Manifest {
+        instance: "willdan".into(),
+        ..Default::default()
+    };
+    manifest
+        .hosts
+        .insert("mac-mini".into(), flywheel_world_host::manifest::Host::default());
+    manifest.write(&path).unwrap();
+    let chat = flywheel::apply::chat_sink("discord", "1200000000000000000", "FLYWHEEL_DISCORD_TOKEN")
+        .expect("the chat init names");
+    assert!(flywheel::apply::bind_chat(&path, "mac-mini", &chat).unwrap());
+    assert!(!flywheel::apply::bind_chat(&path, "mac-mini", &chat).unwrap(), "a repeat wrote");
+    let pasted = "MTAwMDAwMDAwMDAwMDAwMDAwMA.GhYjKl.a-bot-token";
+    let refused = flywheel::apply::chat_sink("discord", "1200000000000000000", pasted)
+        .expect_err("a token is no variable's name");
+    assert!(!format!("{refused:#}").contains(pasted), "{refused:#}");
+    let mut manifest = flywheel_world_host::Manifest::read(&path).unwrap();
+    assert_eq!(manifest.host("mac-mini").unwrap().presents, ["chat"]);
+    assert_eq!(manifest.sinks["chat"].token_from, "FLYWHEEL_DISCORD_TOKEN");
+
+    // A second chat the instance holds, which this host does not declare.
+    manifest.sinks.insert(
+        "elsewhere".into(),
+        flywheel_world_host::manifest::Sink {
+            surface: "1299999999999999999".into(),
+            ..manifest.sinks["chat"].clone()
+        },
+    );
+    flywheel_domain::sinks::ensure(
+        &mut host.store,
+        &defs,
+        &flywheel_domain::sinks::Spec::chat("elsewhere", "chuck", "1299999999999999999"),
+    )
+    .unwrap();
+
+    // The channel this host loads for the sink it declares, a numbered reply
+    // already waiting in it.
+    let said = host
+        .present_sinks(&manifest, |_, _| {
+            let mut channel = Recorded::new();
+            channel
+                .inbox
+                .push(Message::new("1801", "chuck", &format!("yes {number}")));
+            Ok(Box::new(channel) as Box<dyn Channel + Send>)
+        })
+        .unwrap();
+    assert_eq!(said, ["presents chat on discord"]);
+
+    // Nobody presents the sink until a tick takes its lease, and the reply
+    // waits for the presenter rather than being lost (148, 217f).
+    assert_eq!(host.hear().unwrap(), 0);
+
+    host.sweep().unwrap();
+    let presenter = |host: &Host, sink: &str| flywheel_domain::sinks::presenter(&host.store, sink).unwrap();
+    assert_eq!(presenter(&host, "sink/chat").as_deref(), Some("mac-mini"));
+    assert_eq!(
+        presenter(&host, "sink/elsewhere"),
+        None,
+        "the host took the lease of a sink it does not declare"
+    );
+    let mark = |host: &Host, sink: &str| {
+        flywheel_domain::sinks::read(&host.store, sink)
+            .unwrap()
+            .unwrap()
+            .delivered_at
+    };
+    assert!(mark(&host, "sink/chat").is_some(), "the declared sink was delivered nothing");
+    assert!(mark(&host, "sink/elsewhere").is_none(), "an undeclared sink was delivered to");
+
+    // The presenter hears the reply, and it is answered through the answer
+    // tool, once, given by the member (194, 137, 153).
+    assert_eq!(host.hear().unwrap(), 1);
+    let answered: Vec<Object> = host
+        .store
+        .list_records(&Scope::Machine("response".into()))
+        .unwrap()
+        .into_iter()
+        .filter(|r| r.record.get("decision").and_then(|v| v.as_u64()) == Some(u64::from(number)))
+        .collect();
+    assert_eq!(answered.len(), 1, "{answered:?}");
+    assert_eq!(answered[0].record.get("tool").and_then(|v| v.as_str()), Some("answer"));
+    assert_eq!(answered[0].record.get("given_by").and_then(|v| v.as_str()), Some("chuck"));
+    assert_eq!(host.hear().unwrap(), 0, "the reply was heard twice");
+}
+
 // ------------------------------------------- 19.6 a lease is not a decision
 
 /// A lease a host holds is the machinery's own bookkeeping: which host has the

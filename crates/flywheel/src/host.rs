@@ -830,6 +830,12 @@ impl Host {
             if object.machine == "host" {
                 continue;
             }
+            // A sink's presenter lease is the declaring host's: the one that
+            // loaded its channel. Covering every kind of work is not
+            // presenting a sink (148, D8).
+            if object.machine == "sink" && !self.sinks.channels.contains_key(&object.id) {
+                continue;
+            }
             if !self.declaration.covers(object) {
                 continue;
             }
@@ -1638,6 +1644,68 @@ impl Host {
             }
         }
         Ok(said)
+    }
+
+    /// Hand what arrived at each sink this host presents to the sink: a
+    /// numbered reply or a press answered through the same tool the page calls,
+    /// a forward captured, anything else answered with what the sink takes
+    /// (194, 112, 215, D9). Returns how many messages were read.
+    ///
+    /// Only the presenter hears, so a reply is answered once however many hosts
+    /// listen to the channel (148). While another host holds the sink's lease,
+    /// what arrives is that host's to hear and is let go here; while nobody
+    /// holds it yet, it waits (217f). What stopped a channel hearing, and a
+    /// message that could not be read, is reported under attention (81).
+    pub fn hear(&mut self) -> Result<usize> {
+        let me = self.name.clone();
+        let now = self.now();
+        let defs = self.defs.clone();
+        let address = self.sinks.address.clone();
+        let mut read = 0;
+        let bound: Vec<String> = self.sinks.channels.keys().cloned().collect();
+        for sink in bound {
+            let presenter = flywheel_domain::sinks::presenter(&self.store, &sink)?;
+            let Some(mut channel) = self.sinks.channels.remove(&sink) else {
+                continue;
+            };
+            let outcome = match presenter.as_deref() {
+                None => Ok(()),
+                Some(holder) if holder != me => channel.heard().map(|_| ()),
+                Some(_) => {
+                    let mut chat = Chat::new(&sink, &me, &address, channel);
+                    let mut outcome = Ok(());
+                    match chat.channel.heard() {
+                        Ok(messages) => {
+                            for message in &messages {
+                                let received = self.store.with_world(|store, world| {
+                                    chat.receive(store, world, &defs, message)
+                                });
+                                match received {
+                                    Ok(_) => read += 1,
+                                    Err(e) => {
+                                        outcome = Err(e.context(format!(
+                                            "reading message {} in `{sink}`",
+                                            message.id
+                                        )))
+                                    }
+                                }
+                            }
+                        }
+                        Err(e) => outcome = Err(e),
+                    }
+                    channel = chat.channel;
+                    outcome
+                }
+            };
+            self.sinks.channels.insert(sink.clone(), channel);
+            if let Err(e) = outcome {
+                self.run.push(
+                    RunEntry::new(now, &me, "problem", &sink, &format!("{e:#}"))
+                        .with("attention", "true"),
+                );
+            }
+        }
+        Ok(read)
     }
 
     /// Report a problem with the machinery. It goes in the run record and makes
