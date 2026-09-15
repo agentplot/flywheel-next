@@ -409,6 +409,7 @@ impl GitStore {
         let from = objects::rev(&self.odb, "HEAD")?.unwrap_or_default();
         objects::put_worktree_at(&self.odb, &self.repo.dir, &from, to)?;
         objects::set_ref(&self.odb, layout::MAIN, to, None)?;
+        objects::write_index(&self.odb, &self.repo.dir, to)?;
         self.read_at.borrow_mut().forget("");
         Ok(())
     }
@@ -459,6 +460,7 @@ impl GitStore {
             self.now,
         )?;
         objects::set_ref(&self.odb, layout::MAIN, &sha, None)?;
+        objects::write_index(&self.odb, &self.repo.dir, &sha)?;
         Ok(sha)
     }
 

@@ -541,6 +541,35 @@ pub fn changed_paths(repo: &gix::Repository, from: &str, to: &str) -> Result<Vec
     Ok(out)
 }
 
+/// Write the checkout's index from the tree a commit holds, each entry's stat
+/// read from the file the checkout already has at that path, so `git status`
+/// in the checkout reads the branch and the files as they stand. Neither a
+/// commit's tree nor a reset's writing of files touches the index, and an
+/// index left behind them lists files that are in the commit and on disk as
+/// staged deletions. In process, with no process spawned (`git-only.yaml`
+/// Tools, 169).
+pub fn write_index(repo: &gix::Repository, dir: &Path, commit: &str) -> Result<()> {
+    let Some(tree) = tree_of(repo, commit)? else {
+        return Ok(());
+    };
+    let mut index = repo
+        .index_from_tree(&tree.id)
+        .with_context(|| format!("the index of {commit}'s tree"))?;
+    for (entry, path) in index.entries_mut_with_paths() {
+        let full = dir.join(gix::path::from_bstr(path));
+        if let Ok(stat) = gix::index::fs::Metadata::from_path_no_follow(&full)
+            .map_err(anyhow::Error::from)
+            .and_then(|meta| Ok(gix::index::entry::Stat::from_fs(&meta)?))
+        {
+            entry.stat = stat;
+        }
+    }
+    index
+        .write(gix::index::write::Options::default())
+        .context("writing the checkout's index")?;
+    Ok(())
+}
+
 /// Put the working tree at a commit: every path that differs written or
 /// removed. What `git reset --hard` does, without the process (D6).
 pub fn put_worktree_at(repo: &gix::Repository, dir: &Path, from: &str, to: &str) -> Result<()> {

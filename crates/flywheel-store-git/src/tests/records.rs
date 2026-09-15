@@ -244,6 +244,56 @@ fn a_response_delivered_twice_writes_one_file() {
     assert_eq!(found[0].given_by, "chuck");
 }
 
+/// What anyone reading a host's state checkout with git sees:
+/// `git status --porcelain` there.
+fn status(store: &GitStore) -> String {
+    let out = std::process::Command::new("git")
+        .args(["status", "--porcelain"])
+        .current_dir(&store.repo.dir)
+        .output()
+        .expect("git status runs");
+    assert!(out.status.success(), "{}", String::from_utf8_lossy(&out.stderr));
+    String::from_utf8_lossy(&out.stdout).into_owned()
+}
+
+/// A host's commits leave its checkout clean: the index is written from the
+/// tree each commit puts the branch at, so git lists nothing staged and
+/// nothing changed where nothing is lost (169, 167).
+#[test]
+fn a_commit_leaves_the_checkout_clean() {
+    let sandbox = Sandbox::new("clean-commit");
+    let mut a = sandbox.host("a");
+    assert_eq!(status(&a), "", "the checkout init leaves is clean");
+    a.put("lamp/1", &a_lamp("lamp/1"), 0).unwrap();
+    a.append(
+        "lamp/1",
+        &ThreadEntry {
+            at: at(1),
+            kind: "note".into(),
+            by: None,
+            fields: Default::default(),
+        },
+    )
+    .unwrap();
+    a.put("lamp/2", &a_lamp("lamp/2"), 0).unwrap();
+    assert_eq!(status(&a), "", "a host's commits leave its checkout clean");
+}
+
+/// A host that takes up another's writes puts its checkout at them, index and
+/// all, so its checkout is clean after the reset too (169, 165).
+#[test]
+fn a_reset_leaves_the_checkout_clean() {
+    let sandbox = Sandbox::new("clean-reset");
+    let mut a = sandbox.host("a");
+    let mut b = sandbox.host("b");
+    a.put("lamp/1", &a_lamp("lamp/1"), 0).unwrap();
+    a.put("lamp/2", &a_lamp("lamp/2"), 0).unwrap();
+    b.fetch().unwrap();
+    assert!(b.get("lamp/2").unwrap().is_some(), "the other host's checkout is at the writes");
+    assert!(b.repo.dir.join(crate::layout::object("lamp/2")).exists(), "and its files are");
+    assert_eq!(status(&b), "", "a reset leaves the checkout clean");
+}
+
 #[test]
 fn notify_names_what_moved_and_a_never_notified_host_converges() {
     let sandbox = Sandbox::new("notify");
