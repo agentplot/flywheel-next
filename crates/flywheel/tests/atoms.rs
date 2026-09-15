@@ -341,6 +341,23 @@ fn every_atom_a_guard_reads_has_a_real_binding() {
             holder: "mac-mini".into(),
         })
         .expect("a lease is taken");
+    // A session of the work item's build stage that has reported. The join and
+    // the verdict are read from a session's exit on its thread, and a session
+    // that has not reported is nothing on the record, so a world with none
+    // leaves both unanswered however they are bound (41, 56, D8).
+    flywheel_atoms::Records::append(
+        &mut host.store.git,
+        "work-item/atlas/u/1/build/1",
+        &flywheel_atoms::ThreadEntry {
+            at: now,
+            kind: "exit".into(),
+            by: Some("builder".into()),
+            fields: [("exit".to_string(), json!("done")), ("deliverables".to_string(), json!(["commits"]))]
+                .into_iter()
+                .collect(),
+        },
+    )
+    .expect("the build session's exit is on its thread");
     host.store.git.fetch().expect("the shared line");
 
     let mut answered = BTreeSet::new();
