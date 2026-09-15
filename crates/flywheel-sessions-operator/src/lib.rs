@@ -149,15 +149,17 @@ pub fn evidence<S: Records>(store: &S, session: &str, name: &str) -> Option<Valu
         // and the exit beneath it was never reached, so the elaboration, unit
         // or curation above it stood in `working` for ever. It is the exact
         // complement of `session.offers_recorded` below.
-        "session.offers_pending" => json!(!flywheel_domain::offers::pending(store, session)
-            .unwrap_or_default()
-            .is_empty()),
+        "session.offers_pending" => json!(
+            !flywheel_domain::offers::pending(store, session).unwrap_or_default().is_empty()
+                || !flywheel_domain::offers::deliveries_pending(store, session).unwrap_or_default().is_empty()
+        ),
         // Every offer entry on the thread is cited by a unit, elaboration or
         // signal record — which is what `record_offers` made, and what makes it
         // not run again (`record-derived.yaml` session.offers_recorded, 58, 62).
-        "session.offers_recorded" => json!(flywheel_domain::offers::pending(store, session)
-            .unwrap_or_default()
-            .is_empty()),
+        "session.offers_recorded" => json!(
+            flywheel_domain::offers::pending(store, session).unwrap_or_default().is_empty()
+                && flywheel_domain::offers::deliveries_pending(store, session).unwrap_or_default().is_empty()
+        ),
         // Every gathering the session delivered exists as one proposed
         // elaboration covering the intents it names; a run that gathered
         // nothing has nothing to find (188, `atoms.yaml` gather_elaborations).

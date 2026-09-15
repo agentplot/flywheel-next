@@ -550,18 +550,15 @@ impl Store {
             // Findings and chores the session offered through the command that
             // no record points at yet, and their opposite: what makes
             // `record_offers` run and what proves it did (58, 62).
-            "session.offers_pending" => json!(!flywheel_domain::offers::pending(
-                self,
-                &self.session_of(object, region)
-            )
-            .unwrap_or_default()
-            .is_empty()),
-            "session.offers_recorded" => json!(flywheel_domain::offers::pending(
-                self,
-                &self.session_of(object, region)
-            )
-            .unwrap_or_default()
-            .is_empty()),
+            "session.offers_pending" | "session.offers_recorded" => {
+                let session = self.session_of(object, region);
+                let settled = flywheel_domain::offers::pending(self, &session).unwrap_or_default().is_empty()
+                    && flywheel_domain::offers::deliveries_pending(self, &session).unwrap_or_default().is_empty();
+                json!(match name {
+                    "session.offers_pending" => !settled,
+                    _ => settled,
+                })
+            }
             "session.operator_present" | "session.refusals_pending" => json!(false),
             "session.exit_recorded" | "session.host_alive" | "session.message_delivered" => json!(true),
             // `deliver_answer`'s proof: no block is waiting on an answer. Read

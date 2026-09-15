@@ -932,6 +932,10 @@ pub struct Proposal {
     pub signals: Vec<String>,
     /// The claims its signals challenge, by name and version (116).
     pub challenges: Vec<String>,
+    /// What is unsettled, in one line, where the delivery stated it (109).
+    pub subject: Option<String>,
+    /// The elaborations proposed to work it, by type (188).
+    pub elaborations: Vec<String>,
 }
 
 /// What one curation run delivered: a move per signal it judged, and the
@@ -1093,6 +1097,12 @@ pub fn propose_intents<S: StateStore>(
         record.insert("signals".into(), json!(cited));
         if !proposal.challenges.is_empty() {
             record.insert("challenges".into(), json!(proposal.challenges));
+        }
+        if let Some(subject) = &proposal.subject {
+            record.insert("subject".into(), json!(subject));
+        }
+        if !proposal.elaborations.is_empty() {
+            record.insert("elaborations".into(), json!(proposal.elaborations));
         }
         match held {
             Some(mut object) => {

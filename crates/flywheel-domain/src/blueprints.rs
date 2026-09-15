@@ -147,6 +147,31 @@ fn registered() -> &'static BTreeSet<String> {
     })
 }
 
+/// The elaboration types the binary's registry holds, by name: what a curation
+/// session's proposal may name (188, model.md 10.7).
+pub fn elaboration_types() -> Vec<String> {
+    let Some((_, bytes)) = crate::set::files().into_iter().find(|(path, _)| path == "registry.yaml") else {
+        return vec![];
+    };
+    let registry: serde_yaml::Value = serde_yaml::from_slice(bytes).unwrap_or_default();
+    let mut out: Vec<String> = registry
+        .get("types")
+        .and_then(|types| types.as_mapping())
+        .map(|types| {
+            types
+                .iter()
+                .filter(|(_, entry)| {
+                    entry.get("file").and_then(|f| f.as_str()).is_some_and(|f| f.starts_with("elaboration-types/"))
+                })
+                .filter_map(|(name, _)| name.as_str().map(|n| bare(n).to_string()))
+                .collect()
+        })
+        .unwrap_or_default();
+    out.sort();
+    out.dedup();
+    out
+}
+
 /// The machines the binary carries, by name.
 fn core_names() -> &'static BTreeSet<String> {
     static CORE: OnceLock<BTreeSet<String>> = OnceLock::new();

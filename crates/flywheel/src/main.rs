@@ -846,6 +846,24 @@ async fn main() -> Result<()> {
             }
         }
         Cmd::Exit { kind, deliverables, question, text, session, host } => {
+            // A deliverable the machinery parses is a file the session wrote in
+            // its place, carried onto its thread whole before the exit that
+            // names it; the command judges nothing of it (66, 67, 80).
+            if kind == "done" {
+                let place = std::env::current_dir()?;
+                let named: Vec<&String> =
+                    deliverables.iter().filter(|d| flywheel_domain::offers::PARSED.contains(&d.as_str())).collect();
+                if !named.is_empty() {
+                    let mut store = open_state(&cli.state, host)?;
+                    let by = std::env::var("USER").unwrap_or_else(|_| "operator".into());
+                    for name in named {
+                        let path = place.join(flywheel_domain::offers::delivery_path(name));
+                        if let Ok(text) = std::fs::read_to_string(&path) {
+                            flywheel_domain::report::deliver(&mut store, session, &by, chrono::Utc::now(), name, &text)?;
+                        }
+                    }
+                }
+            }
             let r = Report::Exit { kind: kind.clone(), deliverables: deliverables.clone(), question: question.clone(), text: text.clone() };
             std::process::exit(do_report(&cli, host, session, &r)?);
         }

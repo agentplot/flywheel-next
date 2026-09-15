@@ -26,6 +26,51 @@ pub fn archived<R: Reads + ?Sized>(files: &R, intent: &str) -> bool {
     under(ARCHIVE) && !under(CHANGES)
 }
 
+/// Where the standing claims are: one specification per capability.
+pub const SPECS: &str = "openspec/specs/";
+
+/// One standing claim, as a curation session's work order names it and a
+/// challenge names it back: `<capability>/<requirement>` in one word, as a
+/// signal's list of claims holds it, with its title and the file it stands in
+/// (97, 113, 116; context.yaml sessions.curation).
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct Claim {
+    pub name: String,
+    pub title: String,
+    pub path: String,
+}
+
+/// Every standing claim on the blueprints' shared line: each requirement of
+/// each capability's `spec.md` under `openspec/specs/` (97, 98).
+pub fn standing_claims<R: Reads + ?Sized>(files: &R) -> Vec<Claim> {
+    let mut paths: Vec<String> = files.list(SPECS).into_iter().filter(|p| p.ends_with("/spec.md")).collect();
+    paths.sort();
+    let mut out = Vec::new();
+    for path in paths {
+        let capability = path.trim_start_matches(SPECS).trim_end_matches("/spec.md").to_string();
+        let Some(text) = files.read(&path) else {
+            continue;
+        };
+        for line in text.lines() {
+            if let Some(requirement) = line.strip_prefix("### Requirement:") {
+                let title = requirement.trim().to_string();
+                let slug: String = title
+                    .to_lowercase()
+                    .split(|c: char| !c.is_ascii_alphanumeric())
+                    .filter(|word| !word.is_empty())
+                    .collect::<Vec<_>>()
+                    .join("-");
+                out.push(Claim {
+                    name: format!("{capability}/{slug}"),
+                    title,
+                    path: path.clone(),
+                });
+            }
+        }
+    }
+    out
+}
+
 /// The evidence the change directory answers (`intent.archived`).
 pub fn evidence<R: Reads + ?Sized>(files: &R, object: &str, name: &str) -> Option<Value> {
     match name {

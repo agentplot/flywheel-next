@@ -2236,17 +2236,31 @@ fn performing(
         // already applied writes the same bytes and cites the same signal, so a
         // second pass changes nothing (127, 137).
         "record_moves" => {
+            // What the curator session delivered, parsed onto its thread, beside
+            // the moves the operator's surface wrote into the blueprints (107,
+            // 116, 93b).
+            let session = flywheel_domain::offers::newest_session(&store.git, object)?;
             let HostStore { git, world, .. } = store;
-            let delivered = flywheel_domain::signals::moves(&flywheel_domain::signals::snapshot(&**world));
+            let mut delivered = flywheel_domain::signals::moves(&flywheel_domain::signals::snapshot(&**world));
+            if let Some(session) = &session {
+                delivered.extend(flywheel_domain::offers::delivered(git, session)?.0);
+            }
             flywheel_domain::signals::record_moves(git, &mut **world, &delivered, now)?;
         }
         // Curation never opens an intent: what its joins make stands as a
         // proposal on the rail and becomes work only on the operator's
         // response (20, 110, 5).
         "propose_intents" => {
+            // One proposed intent per join and per proposal the curator stated,
+            // with its subject and the elaborations to work it (109, 188).
+            let session = flywheel_domain::offers::newest_session(&store.git, object)?;
             let HostStore { git, world, .. } = store;
-            let delivered = flywheel_domain::signals::moves(&flywheel_domain::signals::snapshot(&**world));
-            let proposals = flywheel_domain::signals::proposals_of(&delivered);
+            let moves = flywheel_domain::signals::moves(&flywheel_domain::signals::snapshot(&**world));
+            let stated = match &session {
+                Some(session) => flywheel_domain::offers::delivered(git, session)?.1,
+                None => vec![],
+            };
+            let proposals = flywheel_domain::offers::proposals_with(&moves, &stated);
             flywheel_domain::signals::propose_intents(git, defs, &proposals, now)?;
         }
         // Every signal a dropped intent cited keeps a move naming the drop, and
@@ -2491,7 +2505,12 @@ pub(crate) fn work_order(
         .unwrap_or_default();
     let stage = session_stage(session);
     let agent = kind_of_agent(defs, store, object, held.as_ref(), stage.as_deref());
-    let deliverables = stage_deliverables(defs, store, held.as_ref(), stage.as_deref());
+    // Curation's deliverables are the row's, its moves and its intent proposals
+    // (context.yaml sessions.curation); every other session's are its stage's.
+    let deliverables = match kind.as_str() {
+        "curation" => flywheel_domain::offers::PARSED.iter().map(|d| d.to_string()).collect(),
+        _ => stage_deliverables(defs, store, held.as_ref(), stage.as_deref()),
+    };
 
     let mut body = String::new();
     body.push_str(&format!("# work order · {session}\n\n"));
@@ -2509,6 +2528,41 @@ pub(crate) fn work_order(
                 body.push_str(&format!("{name}: {value}\n"));
             }
         }
+    }
+    // A curation session's job is the signals nothing has moved, read against
+    // the standing claims and the open intents (model.md §9, 110).
+    if kind == "curation" {
+        let open: Vec<(String, String, usize)> = store
+            .list_records(&Scope::All)?
+            .into_iter()
+            .filter(|o| o.machine == "intent" && o.config.get("life").map(String::as_str) == Some("open"))
+            .map(|o| {
+                let subject = ["subject", "title"]
+                    .iter()
+                    .find_map(|f| o.record.get(*f).and_then(|v| v.as_str()).map(String::from))
+                    .unwrap_or_default();
+                let held = o.record.get("signals").and_then(|v| v.as_array()).map(|a| a.len()).unwrap_or(0);
+                (o.id, subject, held)
+            })
+            .collect();
+        let mut repositories: Vec<String> = store
+            .world
+            .repositories()
+            .unwrap_or_default()
+            .into_iter()
+            .map(|r| r.name)
+            .filter(|name| name != "flywheel-state" && name != "flywheel-blueprints")
+            .collect();
+        repositories.push(flywheel_domain::offers::BLUEPRINTS.to_string());
+        let inputs = flywheel_domain::order::Curation {
+            signals: flywheel_domain::signals::unmoved(&*store.material()),
+            claims: flywheel_domain::changes::standing_claims(&flywheel_domain::signals::Blueprints(&*store.world)),
+            intents: open,
+            types: flywheel_domain::blueprints::elaboration_types(),
+            repositories,
+        };
+        body.push('\n');
+        body.push_str(&flywheel_domain::order::curation(&inputs));
     }
     body.push_str("\n## what to deliver\n\n");
     match deliverables.is_empty() {

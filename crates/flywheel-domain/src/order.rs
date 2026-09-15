@@ -246,6 +246,84 @@ pub fn render(
     })
 }
 
+/// What a curation session's work order lists, read when it is rendered: the
+/// unmoved signals, the standing claims, the open intents, the elaboration
+/// types a proposal may name and the repositories a route may offer into
+/// (model.md §9; context.yaml sessions.curation).
+#[derive(Debug, Clone, Default)]
+pub struct Curation {
+    pub signals: Vec<crate::signals::Signal>,
+    pub claims: Vec<crate::changes::Claim>,
+    /// Each open intent: its id, its subject and how many signals it holds.
+    pub intents: Vec<(String, String, usize)>,
+    pub types: Vec<String>,
+    pub repositories: Vec<String>,
+}
+
+/// The part of a curation session's work order that is its job: every unmoved
+/// signal with what it asserts, the claims and intents a move may name, and the
+/// two files the session delivers its judgments in, parsed when it exits (107,
+/// 109, 116; `instructions/schemas/move.md`, `intent-proposal.md`).
+pub fn curation(inputs: &Curation) -> String {
+    let mut out = String::from("## the unmoved signals\n\n");
+    if inputs.signals.is_empty() {
+        out.push_str("None is waiting.\n");
+    }
+    for signal in &inputs.signals {
+        let mut head = format!("- `{}` · {}", signal.id, signal.kind);
+        if !signal.asserted_by.is_empty() {
+            head.push_str(&format!(" · {}", signal.asserted_by));
+        }
+        if !signal.subject_tags.is_empty() {
+            head.push_str(&format!(" · subjects: {}", signal.subject_tags.join(", ")));
+        }
+        if !signal.argues_with.is_empty() {
+            head.push_str(&format!(" · argues with: {}", signal.argues_with.join(", ")));
+        }
+        out.push_str(&head);
+        out.push('\n');
+        if !signal.assertion.trim().is_empty() {
+            out.push_str(&format!("  {}\n", signal.assertion.trim()));
+        }
+        for line in signal.excerpt.lines().filter(|l| !l.trim().is_empty()) {
+            out.push_str(&format!("  > {}\n", line.trim()));
+        }
+    }
+    out.push_str("\n## the standing claims\n\n");
+    if inputs.claims.is_empty() {
+        out.push_str("None stands yet.\n");
+    }
+    for claim in &inputs.claims {
+        out.push_str(&format!("- `{}` · {} · {}\n", claim.name, claim.title, claim.path));
+    }
+    out.push_str("\n## the open intents\n\n");
+    if inputs.intents.is_empty() {
+        out.push_str("None is open.\n");
+    }
+    for (id, subject, held) in &inputs.intents {
+        out.push_str(&format!("- `{id}` · {subject} · {held} signal(s) attached\n"));
+    }
+    out.push_str(&format!("\n## elaboration types\n\n{}\n", inputs.types.join(", ")));
+    out.push_str(&format!("\n## repositories\n\n{}\n", inputs.repositories.join(", ")));
+    out.push_str(&format!(
+        "\n## the deliverables, as files in this place\n\n\
+         `{move_path}`: one record per unmoved signal, records separated by a blank line:\n\n\
+         \x20   Signal: <the signal's id>\n\
+         \x20   Move: attach | challenge | join | answered | route | drop\n\
+         \x20   Target: <the open intent, the claim, the new intent's id, the decision, or the ask or chore offered; none for drop>\n\
+         \x20   Reason: <one sentence a stranger could weigh>\n\n\
+         `{proposal_path}`: one record per intent the joins propose:\n\n\
+         \x20   Intent: intent/<a short name>\n\
+         \x20   Subject: <what is unsettled, in one line>\n\
+         \x20   Signals: <the ids it rests on, separated by spaces>\n\
+         \x20   Elaboration: <a type above>\n\n\
+         Then exit done naming both: --deliverable move --deliverable intent-proposal.\n",
+        move_path = crate::offers::delivery_path("move"),
+        proposal_path = crate::offers::delivery_path("intent-proposal"),
+    ));
+    out
+}
+
 /// Which tier of type a session type belongs to, which is how the set decides
 /// the default instructions it carries (`instructions/set.yaml` carries:).
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]

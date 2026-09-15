@@ -182,6 +182,28 @@ pub fn write_report(
     Ok(reported)
 }
 
+/// A deliverable a session hands in as a file in its place, carried onto its
+/// thread whole before the exit that names it, for the machinery to parse
+/// against its schema (67, 80; `offers::record_deliveries`). The command judges
+/// nothing of what it carries (66).
+pub fn deliver(
+    store: &mut impl Records,
+    session: &str,
+    by: &str,
+    at: DateTime<Utc>,
+    deliverable: &str,
+    text: &str,
+) -> Result<()> {
+    if session.is_empty() {
+        return Err(anyhow!(
+            "no session: pass --session or set {SESSION_ENV}, which the work order names"
+        ));
+    }
+    let fields: BTreeMap<String, Value> =
+        [("deliverable".to_string(), json!(deliverable)), ("text".to_string(), json!(text))].into_iter().collect();
+    store.append(session, &entry(at, "delivery", by, fields))
+}
+
 /// An offer refused for where it would land, or for a document its place's head
 /// does not hold: one entry on the session's thread
 /// with the reason, never an offer and never pending, as an offer of a kind

@@ -223,6 +223,277 @@ pub fn made_of<S: Records>(store: &S, entry: &str) -> Result<Option<String>> {
     Ok(None)
 }
 
+// ------------------------------------------ what a curation session delivers
+
+/// The deliverables a session hands in as files in its place, which `flywheel
+/// exit` carries onto its thread and `record_offers` parses: curation's moves
+/// and its intent proposals (107, 109, 116; `deliverables.yaml`).
+pub const PARSED: &[&str] = &["move", "intent-proposal"];
+
+/// Where in its place a session writes a deliverable the machinery parses.
+pub fn delivery_path(deliverable: &str) -> String {
+    format!(".flywheel/deliverables/{deliverable}.rec")
+}
+
+/// One proposed intent as a curation session delivered it: the subject, the
+/// signals it rests on, the claims they argue with and the elaborations
+/// proposed to work it (109, 188; `instructions/schemas/intent-proposal.md`).
+#[derive(Debug, Clone, PartialEq, Eq, Default)]
+pub struct IntentProposal {
+    pub intent: String,
+    pub subject: String,
+    pub signals: Vec<String>,
+    pub challenges: Vec<String>,
+    pub elaborations: Vec<String>,
+}
+
+/// The deliveries on a session's thread not yet parsed: the entry, the
+/// deliverable and the text it carried.
+pub fn deliveries_pending<S: Records>(store: &S, session: &str) -> Result<Vec<(String, String, String)>> {
+    let entries = store.thread(session)?;
+    let parsed: BTreeSet<String> = entries
+        .iter()
+        .filter(|entry| entry.kind == "delivery-recorded")
+        .filter_map(|entry| entry.fields.get("entry").and_then(|v| v.as_str()).map(String::from))
+        .collect();
+    Ok(entries
+        .iter()
+        .enumerate()
+        .filter(|(_, entry)| entry.kind == "delivery")
+        .filter_map(|(at, entry)| {
+            let id = format!("{session}#{at}");
+            if parsed.contains(&id) {
+                return None;
+            }
+            let deliverable = entry.fields.get("deliverable")?.as_str()?.to_string();
+            let text = entry.fields.get("text").and_then(|v| v.as_str()).unwrap_or_default().to_string();
+            Some((id, deliverable, text))
+        })
+        .collect())
+}
+
+/// Parse what a session delivered against its schema, and write each judgment
+/// it holds as one entry on its thread: a `move` per signal, an
+/// `intent-proposal` per proposal, and a `refusal` naming what the schema
+/// refuses — a move with no reason, a move on a signal not on record or already
+/// moved, a second move on one signal, a move naming an intent or a claim that
+/// does not exist, a proposal resting on no signal or proposing a type the
+/// registry does not know (107, 109, 116, 80; `instructions/schemas/move.md`,
+/// `intent-proposal.md`). What is parsed is marked, so a second pass writes
+/// nothing (127).
+pub fn record_deliveries<S: StateStore, W: World + ?Sized>(
+    store: &mut S,
+    world: &W,
+    defs: &Definitions,
+    session: &str,
+    at: DateTime<Utc>,
+) -> Result<usize> {
+    let pending = deliveries_pending(store, session)?;
+    if pending.is_empty() {
+        return Ok(0);
+    }
+    let material = signals::snapshot(world);
+    let known: BTreeSet<String> = signals::all_signals_from(&material).into_iter().map(|s| s.id).collect();
+    let standing: BTreeMap<String, String> =
+        signals::moves(&material).into_iter().map(|m| (m.signal.clone(), m.target)).collect();
+    let claims: BTreeSet<String> = crate::changes::standing_claims(&signals::Blueprints(world))
+        .into_iter()
+        .map(|claim| claim.name)
+        .collect();
+    let mut written = 0;
+    let mut judged: BTreeSet<String> = BTreeSet::new();
+    let note = |store: &mut S, kind: &str, fields: BTreeMap<String, Value>| -> Result<()> {
+        store.append(session, &ThreadEntry { at, kind: kind.to_string(), by: Some(MACHINERY.to_string()), fields })
+    };
+    let refusal = |operation: &str, object: &str, reason: String| -> BTreeMap<String, Value> {
+        [
+            ("operation".to_string(), json!(operation)),
+            ("object".to_string(), json!(object)),
+            ("reason".to_string(), json!(reason)),
+        ]
+        .into_iter()
+        .collect()
+    };
+    for (entry, deliverable, text) in pending {
+        for record in flywheel_engine::rec::parse(&text) {
+            let field = |name: &str| record.get(name).map(str::trim).unwrap_or_default().to_string();
+            match deliverable.as_str() {
+                "move" => {
+                    let (signal, word, target, reason) = (field("Signal"), field("Move"), field("Target"), field("Reason"));
+                    if signal.is_empty() && word.is_empty() {
+                        continue;
+                    }
+                    let refused = if !known.contains(&signal) {
+                        Some(format!("`{signal}` names no signal on record"))
+                    } else if let Some(moved) = standing.get(&signal) {
+                        Some(format!("`{signal}` already has its move, {moved}; a signal takes one"))
+                    } else if judged.contains(&signal) {
+                        Some(format!("`{signal}` is moved twice in this delivery; a signal takes one move"))
+                    } else if !signals::MOVES.contains(&word.as_str()) {
+                        Some(format!("`{word}` is no move; a signal takes one of {}", signals::MOVES.join(", ")))
+                    } else if reason.is_empty() {
+                        Some(format!("the move on `{signal}` gives no reason, and every move takes one"))
+                    } else if word != "drop" && target.is_empty() {
+                        Some(format!("`{word}` on `{signal}` names nothing to {word}"))
+                    } else if word == "attach" && store.get(&target)?.is_none_or(|o| o.machine != "intent") {
+                        Some(format!("`{signal}` attaches to `{target}`, which is no intent"))
+                    } else if word == "join" && !target.starts_with("intent/") {
+                        Some(format!("`{signal}` joins `{target}`, which names no intent"))
+                    } else if word == "challenge" && !claims.contains(signals::claim_named(&target).0.as_str()) {
+                        Some(format!("`{signal}` challenges `{target}`, which is no standing claim"))
+                    } else {
+                        None
+                    };
+                    match refused {
+                        Some(reason) => note(store, "refusal", refusal("move", &signal, reason))?,
+                        None => {
+                            judged.insert(signal.clone());
+                            let target = match word.as_str() {
+                                "drop" if target.is_empty() => word.clone(),
+                                _ => format!("{word} {target}"),
+                            };
+                            let fields = [
+                                ("signal".to_string(), json!(signal)),
+                                ("target".to_string(), json!(target)),
+                                ("reason".to_string(), json!(reason)),
+                            ]
+                            .into_iter()
+                            .collect();
+                            note(store, "move", fields)?;
+                            written += 1;
+                        }
+                    }
+                }
+                "intent-proposal" => {
+                    let words = |name: &str| -> Vec<String> {
+                        record
+                            .fields
+                            .iter()
+                            .filter(|(n, _)| n == name)
+                            .flat_map(|(_, v)| v.split_whitespace().map(String::from).collect::<Vec<_>>())
+                            .collect()
+                    };
+                    let (intent, subject) = (field("Intent"), field("Subject"));
+                    if intent.is_empty() && subject.is_empty() {
+                        continue;
+                    }
+                    let (cited, elaborations) = (words("Signals"), words("Elaboration"));
+                    let refused = if !intent.starts_with("intent/") {
+                        Some(format!("`{intent}` names no intent"))
+                    } else if subject.is_empty() {
+                        Some(format!("`{intent}` states no subject"))
+                    } else if cited.is_empty() {
+                        Some(format!("`{intent}` rests on no signal"))
+                    } else if let Some(unknown) = cited.iter().find(|s| !known.contains(*s)) {
+                        Some(format!("`{intent}` rests on `{unknown}`, which is no signal on record"))
+                    } else if let Some(untyped) =
+                        elaborations.iter().find(|t| !crate::blueprints::type_defined(defs, Some(t.as_str())))
+                    {
+                        Some(format!("`{intent}` proposes a `{untyped}` elaboration, a type the registry does not know"))
+                    } else if store.get(&intent)?.is_some_and(|o| o.config.get("life").map(String::as_str) == Some("open")) {
+                        Some(format!("`{intent}` is open already; its signals attach to it"))
+                    } else {
+                        None
+                    };
+                    match refused {
+                        Some(reason) => note(store, "refusal", refusal("intent-proposal", &intent, reason))?,
+                        None => {
+                            let fields = [
+                                ("intent".to_string(), json!(intent)),
+                                ("subject".to_string(), json!(subject)),
+                                ("signals".to_string(), json!(cited)),
+                                ("challenges".to_string(), json!(words("Challenges"))),
+                                ("elaborations".to_string(), json!(elaborations)),
+                            ]
+                            .into_iter()
+                            .collect();
+                            note(store, "intent-proposal", fields)?;
+                            written += 1;
+                        }
+                    }
+                }
+                _ => {}
+            }
+        }
+        note(store, "delivery-recorded", [("entry".to_string(), json!(entry))].into_iter().collect())?;
+    }
+    Ok(written)
+}
+
+/// The moves and intent proposals a session's delivery holds, as
+/// `record_deliveries` wrote them on its thread (107, 109).
+pub fn delivered<S: Records>(store: &S, session: &str) -> Result<(Vec<signals::Move>, Vec<IntentProposal>)> {
+    let mut moves = Vec::new();
+    let mut proposals = Vec::new();
+    for entry in store.thread(session)? {
+        let text = |name: &str| entry.fields.get(name).and_then(|v| v.as_str()).unwrap_or_default().to_string();
+        let list = |name: &str| -> Vec<String> {
+            entry.fields.get(name).and_then(|v| serde_json::from_value(v.clone()).ok()).unwrap_or_default()
+        };
+        match entry.kind.as_str() {
+            "move" => moves.push(signals::Move {
+                signal: text("signal"),
+                target: text("target"),
+                reason: text("reason"),
+                at: entry.at.to_rfc3339(),
+            }),
+            "intent-proposal" => proposals.push(IntentProposal {
+                intent: text("intent"),
+                subject: text("subject"),
+                signals: list("signals"),
+                challenges: list("challenges"),
+                elaborations: list("elaborations"),
+            }),
+            _ => {}
+        }
+    }
+    Ok((moves, proposals))
+}
+
+/// The proposed intents a delivery makes: one per intent its joins name, with
+/// the signals that joined it, and one per proposal it states, the proposal
+/// giving the subject, the signals it rests on and the elaborations to work it
+/// (109, 110, 116, 188).
+pub fn proposals_with(moves: &[signals::Move], stated: &[IntentProposal]) -> Vec<signals::Proposal> {
+    let mut out = signals::proposals_of(moves);
+    for proposal in stated {
+        let at = match out.iter().position(|p| p.id == proposal.intent) {
+            Some(at) => at,
+            None => {
+                out.push(signals::Proposal { id: proposal.intent.clone(), ..Default::default() });
+                out.len() - 1
+            }
+        };
+        let held = &mut out[at];
+        for signal in &proposal.signals {
+            if !held.signals.contains(signal) {
+                held.signals.push(signal.clone());
+            }
+        }
+        for claim in &proposal.challenges {
+            if !held.challenges.contains(claim) {
+                held.challenges.push(claim.clone());
+            }
+        }
+        held.subject = Some(proposal.subject.clone()).filter(|s| !s.is_empty());
+        held.elaborations = proposal.elaborations.clone();
+    }
+    out
+}
+
+/// The newest session a curation or a capture ran, by the session facts on
+/// record: what its applying reads the delivery of (`session.yaml` id).
+pub fn newest_session<S: Records>(store: &S, owner: &str) -> Result<Option<String>> {
+    let prefix = format!("fact/session/{owner}/");
+    Ok(store
+        .list_records(&Scope::All)?
+        .into_iter()
+        .filter_map(|o| o.id.strip_prefix("fact/session/").filter(|_| o.id.starts_with(&prefix)).map(String::from))
+        .max_by_key(|session| {
+            session.rsplit('/').next().and_then(|n| n.parse::<u64>().ok()).unwrap_or(0)
+        }))
+}
+
 /// The object a session runs under, from the session's id alone: an id is
 /// `<owner>/<stage or type>/<attempt>` (`session.yaml` id), so the owner is the
 /// longest prefix of it that is an object on record. `flywheel offer` has the
@@ -345,6 +616,9 @@ pub fn record<S: StateStore, W: World + ?Sized>(
     owner: &str,
     at: DateTime<Utc>,
 ) -> Result<Vec<String>> {
+    // What the session delivered as files is parsed on the same pass as its
+    // offers, while its place still stands (107, 109, 80).
+    record_deliveries(store, &*world, defs, session, at)?;
     let mut made = Vec::new();
     for offer in pending(store, session)? {
         if offer.kind == "chore" {
