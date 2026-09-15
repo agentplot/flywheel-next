@@ -125,10 +125,14 @@ fn the_fonts_are_cached_under_the_binarys_version() {
         let (_, page) = split(&asked(address, "/willdan/", "").await);
         let page = String::from_utf8_lossy(&page).to_string();
         assert!(!page.contains("data:font/woff2"), "a face still rides in the page");
+        // The page's stylesheet, at its own address, is what asks for the faces.
+        let (_, style) = split(&asked(address, &crate::page::style_address(), "").await);
+        let style = String::from_utf8_lossy(&style).to_string();
+        assert!(!style.contains("data:font/woff2"), "a face rides in the stylesheet");
         for (name, _, _, bytes) in crate::page::FONTS {
             let own = crate::page::font_address(name);
             assert!(own.contains(crate::page::VERSION), "{own}");
-            assert!(page.contains(&format!("url({own})")), "the page does not ask the host for {name} at {own}");
+            assert!(style.contains(&format!("url({own})")), "the page does not ask the host for {name} at {own}");
             let (head, body) = split(&asked(address, &own, "Accept-Encoding: br, gzip\r\n").await);
             assert!(head.starts_with("http/1.1 200"), "{head}");
             assert_eq!(header(&head, "content-type"), Some("font/woff2"), "{head}");
@@ -140,6 +144,38 @@ fn the_fonts_are_cached_under_the_binarys_version() {
             let another = own.replace(crate::page::VERSION, "0.0.0-another");
             let (head, _) = split(&asked(address, &another, "").await);
             assert!(head.starts_with("http/1.1 404"), "another build's face is served: {head}");
+        }
+    });
+}
+
+/// The page's stylesheet and script leave its HTML and are served from the host
+/// under names carrying the binary's version, cached for a year and compressed
+/// like any response; a name of another build's is not served (291, 310a, S235).
+#[test]
+fn the_style_and_script_are_cached_under_the_binarys_version() {
+    in_a_runtime(async {
+        let address = a_served_page().await;
+        let (_, page) = split(&asked(address, "/willdan/", "").await);
+        let page = String::from_utf8_lossy(&page).to_string();
+        assert!(!page.contains("<style") && !page.contains("<script>"), "the stylesheet or the script rides in the page");
+        let style = (crate::page::style_address(), "text/css", crate::page::stylesheet());
+        let script = (crate::page::script_address(), "text/javascript", crate::page::script());
+        assert!(page.contains(&format!("<link rel=\"stylesheet\" href=\"{}\">", style.0)), "the page links no stylesheet");
+        assert!(page.contains(&format!("<script src=\"{}\"></script>", script.0)), "the page loads no script");
+        for (own, media, body) in [style, script] {
+            assert!(own.contains(crate::page::VERSION), "{own}");
+            let (head, served) = split(&asked(address, &own, "").await);
+            assert!(head.starts_with("http/1.1 200"), "{head}");
+            assert!(header(&head, "content-type").is_some_and(|t| t.starts_with(media)), "{head}");
+            let cache = header(&head, "cache-control").unwrap_or_default();
+            assert!(cache.contains("max-age=31536000") && cache.contains("immutable"), "{head}");
+            assert_eq!(served, body.as_bytes(), "{own} is not what the bundle carries");
+            let (head, _) = split(&asked(address, &own, "Accept-Encoding: br, gzip\r\n").await);
+            assert_eq!(header(&head, "content-encoding"), Some("br"), "{head}");
+
+            let another = own.replace(crate::page::VERSION, "0.0.0-another");
+            let (head, _) = split(&asked(address, &another, "").await);
+            assert!(head.starts_with("http/1.1 404"), "another build's {media} is served: {head}");
         }
     });
 }

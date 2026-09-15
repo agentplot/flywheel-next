@@ -141,9 +141,17 @@ fn ui_resource_is_the_pages_own_bundle() {
         }
     }
 
-    // The page the host serves is this bundle with the state drawn into it.
-    assert_eq!(block(&bundle, "style"), block(&served, "style"), "a second stylesheet");
-    assert_eq!(block(&bundle, "script"), block(&served, "script"), "a second script");
+    // The page the host serves is this bundle with the state drawn into it, and
+    // its stylesheet and script at the host's own versioned addresses: what the
+    // bundle carries inline is those files' bytes (293a, 310a, S235).
+    let inline = |html: &str, tag: &str| block(html, tag)[tag.len() + 2..].trim().to_string();
+    let file = |address: String| address.rsplit('/').next().unwrap_or_default().to_string();
+    let (_, css) = page::bundled(&file(page::style_address())).expect("the served stylesheet");
+    let (_, js) = page::bundled(&file(page::script_address())).expect("the served script");
+    assert_eq!(inline(&bundle, "style"), css, "a second stylesheet");
+    assert_eq!(inline(&bundle, "script"), js, "a second script");
+    assert!(served.contains(&format!("<link rel=\"stylesheet\" href=\"{}\">", page::style_address())), "the page links no stylesheet");
+    assert!(served.contains(&format!("<script src=\"{}\"></script>", page::script_address())), "the page loads no script");
     assert!(served.contains(BOLT), "the served page draws the state");
     assert!(!bundle.contains(BOLT), "the bundle carries state");
     assert!(bundle.contains("<aside class=\"rail\" id=\"rail\" aria-label=\"Decisions\"></aside>"));

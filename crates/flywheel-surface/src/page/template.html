@@ -1052,6 +1052,10 @@ body[data-served="view"] .dk-b{overflow:visible}
       <div class="dk-b" id="dk-b">{{DOCK}}</div>
       <div class="dk-f" id="dk-f"></div>
     </aside>
+    <!-- A dock page as the drawer shows it before its fetch comes back: shut
+         until it is opened, with the object's kind and name and a line saying
+         it is opening (310a, S235). -->
+    <template class="dock-page"><article class="surface" data-loading data-opened="false"><div class="dk-h"><div class="row"><span class="kind"></span></div><h2></h2></div><div class="dk-b"><p class="loading"><span class="spin"></span>opening</p></div></article></template>
   </section>
 </main>
 <nav class="tabs" role="tablist">
@@ -1316,10 +1320,7 @@ body[data-served="view"] .dk-b{overflow:visible}
     return {kind:kind==='signal' ? 'capture' : kind, title:title || object.split('/').pop()};
   }
   function placeholder(object){
-    var head=headOf(object), held=document.createElement('div');
-    held.innerHTML='<article class="surface" data-loading data-opened="false"><div class="dk-h"><div class="row"><span class="kind"></span></div><h2></h2></div>'
-      +'<div class="dk-b"><p class="loading"><span class="spin"></span>opening</p></div></article>';
-    var page=held.firstChild;
+    var head=headOf(object), page=document.querySelector('template.dock-page').content.firstElementChild.cloneNode(true);
     page.id='dock-'+object; page.querySelector('.kind').textContent=head.kind; page.querySelector('h2').textContent=head.title;
     return page;
   }

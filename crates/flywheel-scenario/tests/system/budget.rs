@@ -479,7 +479,7 @@ fn secs(ms: f64) -> String {
 fn said(m: &Measured) -> String {
     format!(
         "{} ({} signals · {} captures · {} intents · {} facts): first paint {} · first press {} · \
-         a load {} ({} with the fonts cached, paint {}) · first view HTML {} · a dock page {} · \
+         a load {} ({} with the fonts, style and script cached, paint {}) · first view HTML {} · a dock page {} · \
          the tray {} · the update after an answer {}\n    responses: {}",
         m.name,
         m.counts.signals,
@@ -517,7 +517,7 @@ fn over_budget(m: &Measured, over: &mut Vec<String>) {
         over.push(format!("{at}: a load with nothing cached is {}, over 200 KB", kb(m.cold.bytes)));
     }
     if m.cached.bytes > CACHED_LOAD_BYTES {
-        over.push(format!("{at}: a load with the fonts cached is {}, over 60 KB", kb(m.cached.bytes)));
+        over.push(format!("{at}: a load with the fonts, style and script cached is {}, over 60 KB", kb(m.cached.bytes)));
     }
     if m.cold.html > FIRST_VIEW_HTML_BYTES {
         over.push(format!("{at}: the first view's HTML is {}, over 100 KB", kb(m.cold.html)));

@@ -145,12 +145,14 @@ fn page_carries_status_view() {
 fn layout_switches_at_760px() {
     let (_sandbox, page) = a_page("layout");
     let html = page.html("/");
+    // The one stylesheet, at the host's own versioned address (310a, S235).
+    let style = page.html(&flywheel_surface::page::style_address());
 
     assert!(
-        html.contains("@media (max-width: 760px)"),
-        "the bundle lays out under 760px: {html}"
+        style.contains("@media (max-width: 760px)"),
+        "the bundle lays out under 760px: {style}"
     );
-    let (desktop, phone) = html
+    let (desktop, phone) = style
         .split_once("@media (max-width: 760px)")
         .expect("the phone's half of the one stylesheet");
 
@@ -206,9 +208,18 @@ fn one_bundle_version_is_the_binarys() {
         env!("CARGO_PKG_VERSION"),
         "the bundle's version is the binary's"
     );
-    // One document, served whole: one `<html>` and one stylesheet in it.
+    // One document: one `<html>`, and one stylesheet, linked at the host's own
+    // address under the binary's version rather than carried in it (310a, S235).
     assert_eq!(html.matches("<html").count(), 1);
-    assert_eq!(html.matches("<style>").count(), 1);
+    assert_eq!(html.matches("<style").count(), 0, "a stylesheet rides in the page");
+    assert_eq!(html.matches("rel=\"stylesheet\"").count(), 1, "one stylesheet");
+    assert!(
+        html.contains(&format!(
+            "<link rel=\"stylesheet\" href=\"/bundle/page.{}.css\">",
+            env!("CARGO_PKG_VERSION")
+        )),
+        "the stylesheet is not linked at the host's own versioned address: {html}"
+    );
 }
 
 /// The bundle carries no dependency the phone must fetch from anywhere else
@@ -217,11 +228,14 @@ fn one_bundle_version_is_the_binarys() {
 fn bundle_has_no_external_fetch() {
     let (_sandbox, page) = a_page("no-external");
     let html = page.html("/");
+    // The stylesheet and the script the page links, as the host serves them
+    // (310a, S235).
+    let style = page.html(&flywheel_surface::page::style_address());
+    let script = page.html(&flywheel_surface::page::script_address());
     for reaching_out in ["src=\"http", "href=\"http://cdn", "@import", "fetch(\"http", "fetch('http", "XMLHttpRequest", "WebSocket("] {
-        assert!(
-            !html.contains(reaching_out),
-            "the bundle fetches from elsewhere: {reaching_out}"
-        );
+        for (what, text) in [("the page", &html), ("its stylesheet", &style), ("its script", &script)] {
+            assert!(!text.contains(reaching_out), "{what} fetches from elsewhere: {reaching_out}");
+        }
     }
     // Every link it does carry is at the host's own address, and never a
     // localhost port (205a, 308).
@@ -239,11 +253,6 @@ fn bundle_has_no_external_fetch() {
     }
     // The two faces are fetched past the document, and from the page's own
     // host alone, under a name carrying the binary's version (310a, S235, 291).
-    let style = html
-        .split("<style>")
-        .nth(1)
-        .and_then(|rest| rest.split("</style>").next())
-        .expect("the page carries its own stylesheet");
     let fetched: Vec<&str> = style
         .match_indices("url(")
         .map(|(at, _)| {
@@ -260,12 +269,21 @@ fn bundle_has_no_external_fetch() {
     // No client state a reload loses, and nothing fetched from elsewhere: the
     // one script the page carries is its keys and its own refresh, which
     // fetches this page from this host and keeps nothing (310, 311, S221).
-    assert!(!html.contains("<script src"), "the bundle fetches no script");
+    // No script from anywhere but the host's own versioned address.
+    let scripts: Vec<&str> = html
+        .match_indices("<script")
+        .map(|(at, _)| &html[at..at + html[at..].find('>').unwrap_or(0)])
+        .collect();
+    assert_eq!(
+        scripts,
+        vec![format!("<script src=\"{}\"", flywheel_surface::page::script_address()).as_str()],
+        "the page loads a script from somewhere other than its host's versioned address"
+    );
     for kept in ["fetch(\"http", "fetch('http", "localStorage", "sessionStorage", "XMLHttpRequest", "indexedDB"] {
-        assert!(!html.contains(kept), "the page keeps client state or fetches from elsewhere: `{kept}`");
+        assert!(!html.contains(kept) && !script.contains(kept), "the page keeps client state or fetches from elsewhere: `{kept}`");
     }
-    assert!(html.contains("fetch(location.pathname"), "the page fetches itself when the host says it moved (S221)");
-    assert!(html.contains("new EventSource('/events')"), "the page listens for the host's changes (S221)");
+    assert!(script.contains("fetch(location.pathname"), "the page fetches itself when the host says it moved (S221)");
+    assert!(script.contains("new EventSource('/events')"), "the page listens for the host's changes (S221)");
 }
 
 /// The decision is the only answerable form, and every other kind keeps its own
@@ -673,6 +691,7 @@ fn page_carries_the_mockups_regions() {
         1,
     );
     let design = mockup();
+    let style = page.html(&flywheel_surface::page::style_address());
 
     let mut missing: Vec<String> = Vec::new();
     for id in ids_of(&design) {
@@ -793,14 +812,17 @@ fn page_carries_the_mockups_regions() {
             design.contains(rule),
             "the mockup no longer carries `{rule}`; the page's stylesheet is copied from it (D16)"
         );
-        assert!(html.contains(rule), "the page does not carry the mockup's `{rule}`");
+        assert!(style.contains(rule), "the page does not carry the mockup's `{rule}`");
     }
 
-    // And still one bundle with nothing fetched from anywhere else: the design
-    // is carried, its JavaScript is not — the page's one script is its keys
-    // (310, 311).
-    assert_eq!(html.matches("<style>").count(), 1);
-    assert!(!html.contains("<script src"));
+    // And still one bundle with nothing fetched from anywhere but its host: the
+    // design is carried, its JavaScript is not — the page's one script is its
+    // keys, and it and the stylesheet are at the host's versioned addresses
+    // (310, 311, 310a, S235).
+    assert_eq!(html.matches("rel=\"stylesheet\"").count(), 1);
+    assert!(html.contains(&format!("<link rel=\"stylesheet\" href=\"{}\">", flywheel_surface::page::style_address())));
+    assert_eq!(html.matches("<script").count(), 1);
+    assert!(html.contains(&format!("<script src=\"{}\"></script>", flywheel_surface::page::script_address())));
 }
 
 /// The words a region of the rendered page carries, with its markup taken out.

@@ -669,8 +669,8 @@ fn a_link_opens_its_object_in_the_dock_with_no_fragment() {
         "the surface the link named is not marked opened: {surface}"
     );
     // And exactly one: a link opens the object it names and nothing else. The
-    // stylesheet names the attribute too, so the count is of the document.
-    let body = html.split("</style>").nth(1).expect("the document after its stylesheet");
+    // stylesheet is served at its own address, so the count is of the document.
+    let body = html.split("<body").nth(1).expect("the document's body");
     assert_eq!(
         body.matches("data-opened=\"true\"").count(),
         1,
@@ -680,11 +680,11 @@ fn a_link_opens_its_object_in_the_dock_with_no_fragment() {
     // The stylesheet has to act on it. The page runs no script, so what opens
     // the dock is a rule; a document that marks the surface and no rule that
     // shows it is the link opening nothing (310, 311).
-    let style = html
-        .split("<style>")
-        .nth(1)
-        .and_then(|rest| rest.split("</style>").next())
-        .expect("the page carries its own stylesheet");
+    let style = crate::page::stylesheet();
+    assert!(
+        html.contains(&format!("<link rel=\"stylesheet\" href=\"{}\">", crate::page::style_address())),
+        "the page does not link its stylesheet"
+    );
     assert!(
         style.contains(".dock .surface[data-opened=\"true\"]"),
         "nothing in the stylesheet shows the surface the request opened"

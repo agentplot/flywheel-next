@@ -11,8 +11,9 @@
 //!
 //! It is rendered from the register and the objects on every request. No
 //! rendering is stored (15), the page holds no client state a reload loses
-//! (310), and the bundle fetches nothing from anywhere else — every style it
-//! needs is in the document it serves, and it runs no script at all (310).
+//! (310), and the bundle fetches nothing from anywhere but its own host: its
+//! stylesheet, its script and its faces are served there under the binary's
+//! version (310, 310a, S235).
 //!
 //! Under 760px it is the same bundle: two tabs, Decisions and Board, with the
 //! dock full screen and a back control (307). One bundle is built and one is
@@ -40,12 +41,63 @@ pub const VERSION: &str = env!("CARGO_PKG_VERSION");
 /// The one file the mockup is diffed against (D16, task 14.1).
 const TEMPLATE: &str = include_str!("page/template.html");
 
-/// The template as it is served: its comments and indentation taken out, once
-/// per process. They are for the person reading the file, and every load paid
-/// for them (310a, S235).
-fn template() -> &'static str {
-    static SERVED: std::sync::OnceLock<String> = std::sync::OnceLock::new();
-    SERVED.get_or_init(|| compact(TEMPLATE))
+/// The template as it is served, made once per process: its comments and
+/// indentation taken out, and its stylesheet and script lifted out into
+/// responses of their own, which the page names and a member's client's bundle
+/// carries inline (310a, S235, S230).
+struct Parts {
+    /// The document, with `{{STYLE}}` and `{{SCRIPT}}` where the two were.
+    shell: String,
+    stylesheet: String,
+    script: String,
+}
+
+fn parts() -> &'static Parts {
+    static PARTS: std::sync::OnceLock<Parts> = std::sync::OnceLock::new();
+    PARTS.get_or_init(|| {
+        let lift = |document: &str, open: &str, close: &str, slot: &str| -> (String, String) {
+            let start = document.find(open).expect("the template carries the block");
+            let end = start + document[start..].find(close).expect("the block is closed");
+            let inner = document[start + open.len()..end].trim().to_string();
+            (format!("{}{slot}{}", &document[..start], &document[end + close.len()..]), inner)
+        };
+        let (shell, stylesheet) = lift(&compact(TEMPLATE), "<style>", "</style>", "{{STYLE}}");
+        let (shell, script) = lift(&shell, "<script>", "</script>", "{{SCRIPT}}");
+        Parts { shell, stylesheet: stylesheet.replace("{{FONTS}}", fonts_at_the_host().trim_end()), script }
+    })
+}
+
+/// The page's stylesheet, as the host serves it.
+pub fn stylesheet() -> &'static str {
+    &parts().stylesheet
+}
+
+/// The page's script, as the host serves it.
+pub fn script() -> &'static str {
+    &parts().script
+}
+
+/// Where the page asks its own host for its stylesheet and its script: names
+/// carrying the binary's version, so what a year's cache holds is never another
+/// build's (291, 310a, S235).
+pub fn style_address() -> String {
+    format!("/bundle/page.{VERSION}.css")
+}
+
+pub fn script_address() -> String {
+    format!("/bundle/page.{VERSION}.js")
+}
+
+/// The stylesheet or the script a request names, with its media type, where it
+/// names this build's.
+pub fn bundled(file: &str) -> Option<(&'static str, &'static str)> {
+    if file == format!("page.{VERSION}.css") {
+        return Some(("text/css; charset=utf-8", stylesheet()));
+    }
+    if file == format!("page.{VERSION}.js") {
+        return Some(("text/javascript; charset=utf-8", script()));
+    }
+    None
 }
 
 /// A document with its comments and the indentation of its lines taken out:
@@ -1087,11 +1139,13 @@ pub fn render(read: &Read) -> String {
         .filter(|d| flywheel_engine::rail::counted(&d.group))
         .count();
     let sent: usize = read.answered.values().map(Vec::len).sum();
-    let mut out = template()
+    let mut out = parts()
+        .shell
+        .replace("{{STYLE}}", &format!("<link rel=\"stylesheet\" href=\"{}\">", style_address()))
+        .replace("{{SCRIPT}}", &format!("<script src=\"{}\"></script>", script_address()))
         .replace("{{VERSION}}", VERSION)
         .replace("{{SERVED}}", "page")
         .replace("{{GEN}}", &read.generation.to_string())
-        .replace("{{FONTS}}", fonts_at_the_host())
         .replace("{{VIEWFACES}}", "")
         .replace("{{INSTANCE}}", &escape(instance))
         .replace("{{OPERATOR}}", &escape(&read.operator))
@@ -1123,8 +1177,9 @@ pub fn render(read: &Read) -> String {
 /// regions a tool's result carries into the same places (293a, 322, S230). So
 /// there is one page and never a second implementation of it.
 pub fn bundle() -> String {
-    let mut out = String::with_capacity(template().len());
-    let mut rest = template();
+    let shell = &parts().shell;
+    let mut out = String::with_capacity(shell.len() + stylesheet().len() + script().len());
+    let mut rest = shell.as_str();
     while let Some(open) = rest.find("{{") {
         let Some(close) = rest[open..].find("}}").map(|at| open + at) else {
             break;
@@ -1132,7 +1187,10 @@ pub fn bundle() -> String {
         out.push_str(&rest[..open]);
         match &rest[open + 2..close] {
             "VERSION" => out.push_str(VERSION),
-            "FONTS" => out.push_str(fonts_at_the_host()),
+            // Inline, the same bytes the host serves at its addresses: a
+            // client's frame fetches nothing (310, S230).
+            "STYLE" => out.push_str(&format!("<style>\n{}\n</style>", stylesheet())),
+            "SCRIPT" => out.push_str(&format!("<script>\n{}\n</script>", script())),
             "VIEWFACES" => out.push_str(fonts_embedded()),
             "SERVED" => out.push_str("view"),
             // The catalogue as the page may invoke it, which is not state (193).

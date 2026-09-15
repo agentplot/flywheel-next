@@ -1010,6 +1010,24 @@ async fn font(Path(file): Path<String>) -> Response {
     }
 }
 
+/// `GET /bundle/page.<version>.css` and `.js` — the page's stylesheet and script,
+/// under the name of the build that serves them and cached for a year as the
+/// faces are, so a load after the first carries neither (291, 310a, S235).
+async fn bundle_file(Path(file): Path<String>) -> Response {
+    match page::bundled(&file) {
+        Some((media, body)) => (
+            StatusCode::OK,
+            [
+                (axum::http::header::CONTENT_TYPE, media),
+                (axum::http::header::CACHE_CONTROL, "public, max-age=31536000, immutable"),
+            ],
+            body,
+        )
+            .into_response(),
+        None => StatusCode::NOT_FOUND.into_response(),
+    }
+}
+
 /// `GET /events` — the host telling every open page when its store moved
 /// (S221). One line per change carrying the generation; the page compares it
 /// with the one it was rendered at and fetches itself when they differ. A
@@ -1036,6 +1054,7 @@ pub fn router<S: StateStore + Send + 'static>(served: Served<S>) -> Router {
         .route("/", get(page::<S>))
         .route("/events", get(events::<S>))
         .route("/fonts/:file", get(font))
+        .route("/bundle/:file", get(bundle_file))
         .route("/tour/next", post(tour_next::<S>))
         .route("/api/tools", get(tools::<S>))
         .route("/api/tools/:name", post(invoke::<S>))
