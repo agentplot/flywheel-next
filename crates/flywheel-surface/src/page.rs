@@ -1507,8 +1507,15 @@ fn since(read: &Read) -> String {
         return String::new();
     }
     rows.sort_by(|a, b| b.0.cmp(&a.0));
-    let mut out = String::from("<div class=\"grp since\"><span class=\"g\">since</span></div>\n<ul class=\"since\">\n");
-    for (at, object, verb) in rows.iter().take(8) {
+    // Today is the host's own day, where the operator is (S9).
+    let today = read.status.at.with_timezone(&chrono::Local).date_naive();
+    let days: Vec<chrono::NaiveDate> = rows
+        .iter()
+        .map(|(at, _, _)| at.with_timezone(&chrono::Local).date_naive())
+        .collect();
+    let shown = recently_done(&days, today);
+    let mut out = String::from("<div class=\"grp since\"><span class=\"g\">Recently done</span></div>\n<ul class=\"since\">\n");
+    for (at, object, verb) in rows.iter().take(shown) {
         // A note is its signal's words, and so is the capture that holds it.
         let said = match object.machine.as_str() {
             "signal" => signals::text_of(object),
@@ -1540,6 +1547,15 @@ fn since(read: &Read) -> String {
     }
     out.push_str("</ul>\n");
     out
+}
+
+/// How many of what finished the Recently done list shows, newest first:
+/// every entry of today, or the last twenty when today holds fewer. What falls
+/// off stays on record (S9). `days` is each entry's local day, newest first.
+pub(crate) fn recently_done(days: &[chrono::NaiveDate], today: chrono::NaiveDate) -> usize {
+    const THE_LAST: usize = 20;
+    let of_today = days.iter().filter(|day| **day == today).count();
+    of_today.max(days.len().min(THE_LAST))
 }
 
 /// A text cut at a length, from its beginning (S215).

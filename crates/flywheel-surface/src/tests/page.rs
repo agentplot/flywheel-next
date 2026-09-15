@@ -1365,3 +1365,72 @@ fn a_decision_lights_the_nearest_object_the_board_draws() {
     assert_eq!(crate::page::board_object(&read, "bolt/atlas/plan-rows"), "bolt/atlas/plan-rows");
     assert_eq!(crate::page::board_object(&read, "unit/atlas/never-made"), "unit/atlas/never-made");
 }
+
+/// The Recently done list holds today's entries, or the last twenty when today
+/// holds fewer (S9).
+#[test]
+fn recently_done_is_today_or_the_last_twenty() {
+    use crate::page::recently_done;
+    let today = chrono::NaiveDate::from_ymd_opt(2026, 9, 15).unwrap();
+    let yesterday = today.pred_opt().unwrap();
+    assert_eq!(recently_done(&vec![yesterday; 25], today), 20);
+    assert_eq!(recently_done(&vec![today; 30], today), 30);
+    let mixed: Vec<_> = std::iter::repeat(today).take(5).chain(std::iter::repeat(yesterday).take(30)).collect();
+    assert_eq!(recently_done(&mixed, today), 20, "five of today and the rest to twenty");
+    let busy: Vec<_> = std::iter::repeat(today).take(22).chain(std::iter::repeat(yesterday).take(10)).collect();
+    assert_eq!(recently_done(&busy, today), 22, "a busy day shows all of today and nothing older");
+    assert_eq!(recently_done(&[yesterday; 3], today), 3);
+}
+
+/// Units merged at a moment, each a minute apart going back.
+fn merged(store: &mut FakeStore, defs: &Definitions, how_many: usize, last: chrono::DateTime<chrono::Utc>) {
+    let at = commands::now(store).expect("a point");
+    for n in 0..how_many {
+        let id = format!("unit/atlas/merged-{n}");
+        let record = [("repository".to_string(), json!("atlas"))].into_iter().collect();
+        commands::put_new(store, defs, &id, "unit", None, record, at).expect("the unit");
+        let mut unit = Records::get(store, &id).expect("a read").expect("the unit");
+        unit.config.retain(|region, _| !region.starts_with("life."));
+        unit.config.insert("life".into(), "merged".into());
+        unit.entered_at.clear();
+        unit.entered_at.insert("life".into(), last - chrono::Duration::minutes(n as i64));
+        let base = unit.seq;
+        Records::put(store, &id, &unit, base).expect("the unit merged");
+    }
+}
+
+/// On the page the list is titled in plain words and counts by the host's day:
+/// twenty-five from yesterday show twenty, thirty from today show thirty (S9).
+#[test]
+fn the_recently_done_list_is_titled_and_counted_by_the_day() {
+    let listed = |html: &str| -> (String, usize) {
+        let title = html
+            .split("<div class=\"grp since\">")
+            .nth(1)
+            .and_then(|rest| rest.split("</div>").next())
+            .expect("the list has a heading")
+            .to_string();
+        let items = html
+            .split("<ul class=\"since\">")
+            .nth(1)
+            .and_then(|rest| rest.split("</ul>").next())
+            .expect("the list")
+            .matches("<li>")
+            .count();
+        (title, items)
+    };
+
+    let (mut store, world, defs) = a_page();
+    let now = commands::now(&store).expect("a point");
+    merged(&mut store, &defs, 25, now - chrono::Duration::hours(36));
+    let (title, items) = listed(&rendered(&mut store, &world, &defs));
+    assert_eq!(title, "<span class=\"g\">Recently done</span>");
+    assert!(!title.contains(">since<"), "{title}");
+    assert_eq!(items, 20, "twenty-five from yesterday show the last twenty");
+
+    let (mut store, world, defs) = a_page();
+    let now = commands::now(&store).expect("a point");
+    merged(&mut store, &defs, 30, now);
+    let (_, items) = listed(&rendered(&mut store, &world, &defs));
+    assert_eq!(items, 30, "thirty from today show all thirty");
+}
