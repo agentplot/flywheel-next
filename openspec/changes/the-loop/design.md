@@ -244,9 +244,13 @@ is what a laptop runs. After a fetch, `git diff --name-only <old>..<new>` names
 the object files that moved, so a host re-reads only those (130, 166). The git
 host's push webhook to a host's `/hook` is faster and is the operator's choice,
 because it needs an address reachable from outside the private network, and
-publishing one is never the machinery's decision (46, 191). Local causes — a
-page response, a chat message, a session's `flywheel exit` — notify in-process
-immediately and do not wait for the poll.
+publishing one is never the machinery's decision (46, 191). Local causes notify
+immediately and do not wait for the poll: a page response or a chat message in
+process; a session's `flywheel exit`, `note`, `offer` or `refuse` over
+`POST /api/wake` at the page address its work order carries (`FLYWHEEL_PAGE`);
+and, on a host bound to Herdr, an agent going idle, blocked or done, through one
+`herdr agent wait` per live agent (130, S221). Each of these also raises the
+generation every open page listens for on `GET /events` (S221).
 
 Notification only shortens the wait: a host that is never notified still
 converges by reading (130).
@@ -417,6 +421,11 @@ anything (D8), so this is the same manifest key doing the other half of its job:
 naming the host on the operator's network. Nothing is published beyond that
 network (46).
 
+When the operator gives `flywheel init` no address, the first host is registered
+at this computer's name on its own network, `http://<hostname>.local`, which a
+phone on that network reaches with no router configured; it is never localhost
+or a port (204, 191, 205a).
+
 *Alternative considered:* keep the localhost port and put a public URL in the
 chat. Rejected — publishing an address beyond the private network is the
 operator's choice and never the machinery's (46), and the tailnet name needs no
@@ -432,6 +441,11 @@ such publication.
   stored (15) and the page holds no client state a reload loses, so a reload
   after an answer shows the answer recorded with who gave it and when (310, 153,
   154). The bundle fetches nothing from anywhere else (310).
+- The bundle carries its own script, which holds no model of the state: it keeps
+  the page's standing rules (S210, S213, S218), holds one selection across rail
+  and board (S219), posts every form and swaps in the regions that came back,
+  and listens on the host's `GET /events` so the page fetches itself when the
+  store moved (S221). It fetches from its own host alone (310).
 - Every decision shows its number and its answers as controls, one tap each;
   nothing is reachable only by hover or keyboard, and a long-form answer uses the
   platform's own keyboard (311, 15). The decision card is the only answerable
@@ -480,9 +494,11 @@ outside every repository (111), under the blueprints' `flywheel/` prefix (203).
 Capturing the same source event twice yields one capture (111, S22).
 
 Turning a capture into signals is a judgment and never runs unattended (115). In
-phase 1 the page's box writes its single ask signal directly, which is not a
-judgment but a control (19), and everything else is the operator writing move
-records by hand — a person writing the same records is curation (110). Every
+phase 1 the page's box — the console, as a source (S223) — writes its single ask
+signal directly, which is not a judgment but a control (19), and that signal,
+while it has no move, is the operator's decision on the rail: build, intent or
+drop (19a). Everything else is the operator writing move records by hand — a
+person writing the same records is curation (110). Every
 signal takes exactly one standing move with a stated consequence, and only the
 operator's response replaces one (107, 116).
 
@@ -682,7 +698,16 @@ its session (93b), so the page is where the operator curates: each unmoved
 signal with its standing moves as controls (101, 116), submitted through the
 same `flywheel exit` command a session reports by, so `record_moves` runs
 unchanged and a joined signal becomes a proposed intent with a numbered
-decision on the rail. Controls, not parsed text (194).
+decision on the rail. Controls, not parsed text (194). A capture's own signal
+does not wait for that: it is a decision on the rail from the moment it lands
+(19a, D13).
+
+The page keeps the standing rules `surfaces.md` S210–S223 ruled on the first
+live walk: every control answers at once, one place to type, Escape closes the
+topmost thing, the page explains nothing about the model, one selection across
+rail and board, a decision asked as a question with keyed controls, a page that
+keeps itself current, *branch* for what the model calls a line, and the console
+as a capture's source.
 
 The chat sink's behaviour is proven against the recorded channel (D9); phase 1
 also ships the wire, a Discord `Channel` beside it, so the same decision
@@ -824,3 +849,7 @@ private network.
 - **How often `status.html` is rewritten.** Every tick where state moved is the
   simple rule; a cadence may be cheaper once the commit rate is known. Either way
   it states its as-of point (145), so the choice is invisible to every clause.
+- **Whether 19a stands.** The blueprints' `proposals/console-curation.md`
+  withdraws it: a capture is a note with controls and never a rail decision,
+  curation proposes and the operator approves. The proposal is not ratified, so
+  the change follows 19a as the requirements state it (21.1).

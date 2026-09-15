@@ -24,8 +24,8 @@ served, and its version SHALL be the binary's (307).
 
 #### Scenario: Nothing is desktop-only
 - **WHEN** the driver enumerates a fixed list at both viewports — a decision's
-  answer controls, the capture box, the mark-as-intent control, the dock's back
-  control, and one instance of each kind's form
+  answer controls, the capture box, a capture's build, intent and drop
+  controls, the dock's back control, and one instance of each kind's form
 - **THEN** every one is reachable at both, with the phone's layout the same
   bundle under 760px (306, 307)
 
@@ -106,21 +106,25 @@ item exists (253a, 233).
 
 ### Requirement: The page is a capture surface
 
-Text the operator types on the page SHALL be a capture with one signal of kind
-ask, so curation sees it (19). The operator MAY mark a capture as an intent, and
-that SHALL be a judgment made with a control and never a word parsed out of the
-text (19). The page submission SHALL be the delivery, recorded once like any
-response (19).
+The capture box in the header SHALL be the one place to type on the page, on the
+desktop and as the phone's palette (S211). Text the operator types there SHALL be
+a capture from the console with one signal of kind ask (19, S223). While that
+signal has no move it SHALL stand on the rail as a numbered decision whose
+answers are controls, never a word parsed out of the text (19a, 19, 194). The
+page submission SHALL be the delivery, recorded once like any response (19).
 
 #### Scenario: Typing into the capture box
 - **WHEN** the operator types text into the capture box and submits it
-- **THEN** one capture exists with one signal of kind ask, and the submission is
-  recorded once as a response naming the capture it made (19)
+- **THEN** one capture from the console exists with one signal of kind ask, the
+  submission is recorded once as a response naming the capture it made, and the
+  signal stands on the rail as a numbered decision with build, intent and drop
+  as its controls (19, 19a, S223)
 
-#### Scenario: Marking a capture as an intent
-- **WHEN** the operator uses the mark-as-intent control on a capture
-- **THEN** an intent is opened by that judgment, and no part of the capture's
-  text decided it (19)
+#### Scenario: A capture on the board
+- **WHEN** a capture's signal is waiting on the operator
+- **THEN** the board shows the capture as one card with its words from their
+  beginning and its source, its whole face opening it in the dock, and its
+  signal is not a second line (S215, S216)
 
 ### Requirement: The page is served at the host's private-network address
 
@@ -143,3 +147,87 @@ the operator says so (46).
 - **THEN** it is bound to its private-network address and to a localhost port
   for the operator at the machine, to no other address, and the manifest names
   no publication (46, 155, 191, 245)
+
+### Requirement: Every control answers at once, and a key is shown where it presses
+
+A used control SHALL show within a frame that it was used, its form SHALL go busy
+so a second press does nothing, and a bar SHALL run at the top of the page until
+the page comes back (S210, 311). Escape SHALL close the topmost thing, in order:
+the capture box, the field with the cursor, the dock, the log (S213). A key SHALL
+be shown on the control it presses, the rail's head SHALL show the walk keys,
+and a key a card does not offer SHALL be refused with the card's answers listed
+(S218, S56, S57).
+
+#### Scenario: A second press does nothing
+- **WHEN** the operator presses an answer twice before its response lands
+- **THEN** one response is recorded, and the control shows busy until the page
+  comes back (S210, 137)
+
+#### Scenario: A key the card does not offer
+- **WHEN** the operator presses a letter the card in hand has no control for
+- **THEN** nothing is answered and the card's answers are listed (S57, S218)
+
+### Requirement: The rail and the board are one selection
+
+One decision SHALL be in hand: the first at load, or the one whose object the
+link opened (S219). The object it stands on SHALL be lit on the board and
+scrolled into view, and where the board does not draw that object, its nearest
+drawn parent SHALL be lit (S219). Walking the rail and taking a mark on a board
+object SHALL move the hand (S219).
+
+#### Scenario: A signal's decision lights its capture
+- **WHEN** the operator walks the rail to a signal's decision
+- **THEN** the capture the signal was read from is lit on the board and in view
+  (S219)
+
+### Requirement: A decision reads as a question
+
+Each decision SHALL carry a sentence asking what it asks, with what the page
+knows of its object, above controls that each say what pressing it does in a
+verb, carry the key that presses it and one line of what follows; the value
+posted SHALL be the model's own word (S220, 193, 194). The dock SHALL carry the
+same sentence and controls in its head under the title, and SHALL have no foot
+(S27).
+
+#### Scenario: A bolt's close
+- **WHEN** a bolt whose one unit has merged stands at its close on the rail
+- **THEN** the card asks by name whether to land the bolt, its controls read
+  `land it` and `hold` with their keys, and pressing `land it` posts the model's
+  own answer (S220, 193)
+
+### Requirement: The page keeps itself current
+
+The host SHALL raise a generation when its store moved and tell every open page
+over one event stream; the page SHALL fetch itself from the same host and swap
+the regions that differ, keeping the decision in hand, the open dock and where
+each column was scrolled (S221, 310). Every form SHALL be sent the same way, so
+an answer or a capture never navigates (S221). A session's report, note, offer
+or refusal SHALL wake the loop the moment it is written, a host bound to Herdr
+SHALL take an agent's change of state as a cause at once, and the poll SHALL
+stay the floor (S221, 130).
+
+#### Scenario: A capture made elsewhere appears
+- **WHEN** a capture is posted to the host while the page is open with a
+  decision in hand
+- **THEN** the capture appears on the open page without a reload, and the
+  decision in hand and the lit object are kept (S221)
+
+#### Scenario: Only the host is fetched
+- **WHEN** the bundle is read for what it fetches
+- **THEN** it fetches its own location and listens on the host's event stream,
+  and names nothing external (310, S221)
+
+### Requirement: The dock gives each kind its page
+
+The dock SHALL give each kind its own page as `surfaces.md` S28 lists it, with no
+record of keys and values and no sentence about the model (S28, S214). A bolt's
+page SHALL show its repository, branch, host and place, every session on it and
+the commits on its branch, and the page SHALL say *branch* for what the model
+calls a line (S28, S222). A host SHALL be a chip in the hosts strip, and nothing
+on the board or in the dock SHALL say "held by" (S216).
+
+#### Scenario: A bolt's page
+- **WHEN** the operator opens a bolt whose session delivered a commit
+- **THEN** the dock shows its branch, host and place, the session with its
+  agent, host, start, exit and delivery, and the commit on the branch, and the
+  word *line* appears nowhere on it (S28, S222)

@@ -101,6 +101,34 @@ claim's verdicts (101) belongs to the phase that has a ledger.
 - **THEN** the drop move is removed, the signal is unmoved again, and the next
   curation run clusters it (107)
 
+### Requirement: A signal with no move is the operator's decision
+
+A signal with no move SHALL be a decision of the operator's on the rail,
+numbered like any other, from the moment it is recorded, with the answers
+build, intent and drop (19a). Build SHALL make a chore unit on a bolt named from
+the capture's own words and approve it in the same response, asking the
+operator for no name (19a, S217). Intent SHALL propose an intent citing the
+signal, which stands as its own decision (19a, 110). Drop SHALL move the signal
+dropped (19a, 107). Curation's batch judgment SHALL stand beside this, and a
+move made either way SHALL be the signal's one move (19a, 107, 116).
+
+#### Scenario: Build
+- **WHEN** the operator answers an unmoved signal's decision with build
+- **THEN** a chore unit stands approved on a bolt named from the capture's first
+  words, the response is its approval, the signal's move routes it to the unit,
+  and the decision leaves the rail (19a, 34, S217)
+
+#### Scenario: Intent
+- **WHEN** the operator answers an unmoved signal's decision with intent
+- **THEN** the signal is joined to an intent proposed under a name from its
+  words, and the proposed intent stands on the rail as its own numbered decision
+  (19a, 110)
+
+#### Scenario: Curation moves the signal first
+- **WHEN** curation records a move for a signal whose decision is on the rail
+- **THEN** the decision leaves the rail and the signal keeps curation's move as
+  its one move (19a, 107)
+
 ### Requirement: Curation is a bounded judgment the operator may make by hand
 
 Curation SHALL decide which signals become intents, and it MAY be a person, an

@@ -79,6 +79,13 @@ write (127).
   refused as duplicates of that name, ends with one session, and reports nothing
   failed (72, 73)
 
+#### Scenario: A start blocked on the agent's own prompt is a start
+- **WHEN** the multiplexer reports a start as blocked while the agent comes up,
+  and the agent's pane shows a trust dialog on its folder
+- **THEN** the start counts as a start, the sessions binding answers the dialog
+  from what the pane shows before the work order is handed in, and a pane
+  showing no such prompt is left alone (72)
+
 #### Scenario: A repeat is a no-op write, not a skipped act — mirrors contract/write-effect
 - **WHEN** the proof of a performed effect is lost from the world and the next
   tick performs the act again

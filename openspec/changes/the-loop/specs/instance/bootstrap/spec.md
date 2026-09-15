@@ -35,6 +35,11 @@ advance a half-finished bootstrap (204).
 - **THEN** the instance stands at a decision under attention until the
   installation is seen, and no agent performs it (204, 207, 82)
 
+#### Scenario: The first host's address when the operator gives none
+- **WHEN** initialization is run with no address for the first host
+- **THEN** the host is registered at this computer's name on its own network,
+  `http://<name>.local`, and never at localhost or a port (204, 191, 205a)
+
 ### Requirement: A host joins by one command and never by hand
 
 A host SHALL join by one command (205). It SHALL clone the state, the blueprints
