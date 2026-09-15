@@ -1,7 +1,8 @@
 //! The signals folder, read as captures already read: `flywheel capture signals
 //! <dir>` over the layout a blueprints' `signals/` folder is written in (114,
-//! 111, 215, D13). Over the fake store and world, since what is proven is the
-//! reading of the folder and not a repository (D17).
+//! 111, 215, D13); and the folder drop, `flywheel capture folder <dir>`. Over
+//! the fake store and world, since what is proven is the reading of the folder
+//! and not a repository (D17).
 
 use chrono::{TimeZone, Utc};
 use flywheel_atoms::testing::{FakeStore, FakeWorld};
@@ -147,4 +148,53 @@ fn a_move_by_an_unshipped_word_leaves_the_signal_unmoved() {
     let again = import(&mut store, &mut world, &folder);
     assert_eq!(again.moves_written, 0, "a move already standing is carried once");
     let _ = std::fs::remove_dir_all(folder.parent().unwrap());
+}
+
+/// A file dropped in a folder is one capture with a pointer to the file and no
+/// signals, keyed by the folder's name and what the file holds; its source is
+/// due until it is captured, and a second enumeration writes nothing (111, 115,
+/// 215).
+#[test]
+fn capture_folder_writes_a_capture_with_no_signals() {
+    let base = std::env::temp_dir().join(format!("flywheel-capture-folder-{}", std::process::id()));
+    let _ = std::fs::remove_dir_all(&base);
+    let folder = base.join("drops");
+    std::fs::create_dir_all(folder.join("read")).unwrap();
+    let transcript = folder.join("2026-09-02-willdan-weekly.vtt");
+    std::fs::write(&transcript, "WEBVTT\n\n00:00:04.000 --> 00:00:09.000\nthe gate scanner drops at shift change\n").unwrap();
+    std::fs::write(folder.join(".DS_Store"), "not a drop").unwrap();
+    let (mut store, mut world) = (FakeStore::default(), FakeWorld::new());
+    let defs = flywheel_domain::set::load().unwrap();
+    let at = Utc.with_ymd_and_hms(2026, 9, 15, 9, 0, 0).unwrap();
+    let command = format!("folder {}", folder.display());
+    assert!(adapters::folder_due(&world, &folder.display().to_string()), "the drop is not due");
+
+    let first = adapters::run(&mut store, &mut world, &defs, &command, "chuck", at).unwrap();
+    let hash = format!("{:016x}", flywheel_atoms::atoms::fnv1a(&std::fs::read(&transcript).unwrap()));
+    assert_eq!(first.keys, vec![format!("folder/drops/{hash}")], "one capture, the hidden file and the directory aside");
+    assert_eq!((first.captures_written, first.signals_written, first.moves_written), (1, 0, 0));
+
+    let capture = signals::read_capture(&world, &first.keys[0]).unwrap().expect("the capture");
+    assert_eq!((capture.source.as_str(), capture.event_at.as_str()), ("folder", "2026-09-02"));
+    assert_eq!(capture.captured_by, "chuck");
+    assert_eq!(capture.raw, transcript.display().to_string(), "the pointer, never the material");
+    assert!(signals::signals_of(&world, &first.keys[0]).unwrap().is_empty(), "the adapter read signals");
+    let object = signals::object_of(&first.keys[0]);
+    let held = store.get(&object).unwrap().expect("the capture's object");
+    assert_eq!(held.record.get("source").and_then(|v| v.as_str()), Some("folder"));
+    assert_eq!(
+        signals::evidence(&signals::Blueprints(&world), &object, "capture.signals_present"),
+        Some(serde_json::json!(false))
+    );
+    assert!(
+        store.list_records(&flywheel_atoms::Scope::All).unwrap().iter().all(|o| !o.id.contains("session")),
+        "the adapter charged a session"
+    );
+    assert!(!adapters::folder_due(&world, &folder.display().to_string()), "a captured drop is still due");
+
+    let writes = store.writes();
+    let again = adapters::run(&mut store, &mut world, &defs, &command, "chuck", at).unwrap();
+    assert_eq!((again.captures_written, again.signals_written), (0, 0));
+    assert_eq!(store.writes(), writes, "a second enumeration wrote to the store");
+    let _ = std::fs::remove_dir_all(&base);
 }

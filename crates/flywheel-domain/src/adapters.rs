@@ -8,9 +8,10 @@
 //! the capture machine's own `ensure_signal` covers (19, 112).
 //!
 //! This phase ships (D13): the page's capture box and the chat forward, which
-//! are the `capture` tool itself, and here the meeting transcript and the
-//! signals folder — captures read before the instance existed, whose signals
-//! are carried into the record format with no reader's judgment (114). The
+//! are the `capture` tool itself, and here the meeting transcript, the folder
+//! drop, and the signals folder — captures read before the instance existed,
+//! whose signals are carried into the record format with no reader's judgment
+//! (114). The
 //! pull-request and issue-tracker adapters read the git host's issues and
 //! reviews, which C.2 forbids on this profile; the capture endpoint is
 //! dispatch's and is phase 4 (215, 216).
@@ -68,22 +69,7 @@ pub fn meeting<S: StateStore, W: World + ?Sized>(
         raw: path.to_string(),
     };
     let wrote = signals::write_capture(world, &capture)?;
-    // The object the engine ticks, beside the record a person reads. A repeat
-    // finds both and writes neither (111, 127).
-    let id = signals::object_of(&key);
-    if store.get(&id)?.is_none() {
-        let record: BTreeMap<String, Value> = [
-            ("source", json!(MEETING)),
-            ("event_key", json!(key)),
-            ("event_at", json!(at.to_rfc3339())),
-            ("captured_by", json!(by)),
-            ("raw", json!(path)),
-        ]
-        .into_iter()
-        .map(|(k, v)| (k.to_string(), v))
-        .collect();
-        crate::commands::put_new(store, defs, &id, "capture", None, record, at)?;
-    }
+    capture_object(store, defs, &capture, at)?;
     Ok(Enumerated {
         keys: vec![key],
         captures_written: usize::from(wrote),
@@ -129,13 +115,135 @@ pub fn run<S: StateStore, W: World + ?Sized>(
     let words: Vec<&str> = command.split_whitespace().collect();
     match words.as_slice() {
         [.., "meeting", path] => meeting(store, world, defs, path, by, at),
+        [.., "folder", dir] => folder(store, world, defs, dir, by, at),
         [.., "signals", dir] => signals_folder(store, world, defs, dir, by, at),
         _ => bail!(
             "`{command}` names no adapter this release ships; the meeting transcript is \
-             `flywheel capture meeting <file>` and a folder of captures already read is \
+             `flywheel capture meeting <file>`, a folder files are dropped in is \
+             `flywheel capture folder <dir>`, and a folder of captures already read is \
              `flywheel capture signals <dir>` (215, D13)"
         ),
     }
+}
+
+/// The object the engine ticks for a capture, beside the record a person reads.
+/// A repeat finds it and writes nothing (111, 127).
+fn capture_object<S: StateStore>(store: &mut S, defs: &Definitions, capture: &Capture, at: DateTime<Utc>) -> Result<()> {
+    let id = signals::object_of(&capture.key);
+    if store.get(&id)?.is_some() {
+        return Ok(());
+    }
+    let record: BTreeMap<String, Value> = [
+        ("source", json!(capture.source)),
+        ("event_key", json!(capture.key)),
+        ("event_at", json!(capture.event_at)),
+        ("captured_by", json!(capture.captured_by)),
+        ("raw", json!(capture.raw)),
+    ]
+    .into_iter()
+    .map(|(k, v)| (k.to_string(), v))
+    .collect();
+    crate::commands::put_new(store, defs, &id, "capture", None, record, at)?;
+    Ok(())
+}
+
+// ------------------------------------------------------------ the folder drop
+
+/// The source name a file dropped in a folder is captured under.
+pub const FOLDER: &str = "folder";
+
+/// `flywheel capture folder <dir>`: each file dropped in the folder is one
+/// capture with a pointer to the file and no signals, since reading it into
+/// signals is a capture-reader's judgment (111, 115, 215).
+///
+/// The key is `folder/<folder name>/<file hash>`, the hash taken over what the
+/// file holds, so a file enumerated twice, or dropped again under another name,
+/// is one capture (111). The event date is the date the file's name begins
+/// with, as a transcript's does, else when the file was last written. Hidden
+/// files and directories in the folder are not drops.
+pub fn folder<S: StateStore, W: World + ?Sized>(
+    store: &mut S,
+    world: &mut W,
+    defs: &Definitions,
+    dir: &str,
+    by: &str,
+    at: DateTime<Utc>,
+) -> Result<Enumerated> {
+    let root = std::path::Path::new(dir);
+    let name = folder_name(root).ok_or_else(|| anyhow!("`{dir}` names no folder files are dropped in (215)"))?;
+    let mut out = Enumerated::default();
+    for dropped in dropped_files(root)? {
+        let key = format!("{FOLDER}/{name}/{}", dropped.hash);
+        if out.keys.contains(&key) {
+            continue;
+        }
+        out.keys.push(key.clone());
+        let capture = Capture {
+            key,
+            source: FOLDER.into(),
+            event_at: dropped.event_at,
+            captured_by: by.to_string(),
+            // The pointer, and never the material (111).
+            raw: dropped.path.display().to_string(),
+        };
+        out.captures_written += usize::from(signals::write_capture(world, &capture)?);
+        capture_object(store, defs, &capture, at)?;
+    }
+    Ok(out)
+}
+
+/// Whether a folder holds a dropped file this instance has no capture of yet,
+/// which is when its source is due (231, `host.yaml` host.adapters_due).
+pub fn folder_due<W: World + ?Sized>(world: &W, dir: &str) -> bool {
+    let root = std::path::Path::new(dir);
+    let (Some(name), Ok(dropped)) = (folder_name(root), dropped_files(root)) else {
+        return false;
+    };
+    dropped.iter().any(|file| {
+        let key = format!("{FOLDER}/{name}/{}", file.hash);
+        signals::read_capture(world, &key).ok().flatten().is_none()
+    })
+}
+
+/// One file dropped in a folder.
+struct Dropped {
+    path: std::path::PathBuf,
+    hash: String,
+    event_at: String,
+}
+
+/// The files a folder holds, by name, with what each holds hashed.
+fn dropped_files(root: &std::path::Path) -> Result<Vec<Dropped>> {
+    let entries = std::fs::read_dir(root).with_context(|| format!("reading {}", root.display()))?;
+    let mut paths: Vec<std::path::PathBuf> = entries
+        .filter_map(|entry| entry.ok())
+        .map(|entry| entry.path())
+        .filter(|path| path.is_file())
+        .filter(|path| path.file_name().and_then(|n| n.to_str()).is_some_and(|n| !n.starts_with('.')))
+        .collect();
+    paths.sort();
+    paths
+        .into_iter()
+        .map(|path| {
+            let bytes = std::fs::read(&path).with_context(|| format!("reading {}", path.display()))?;
+            let hash = format!("{:016x}", flywheel_atoms::atoms::fnv1a(&bytes));
+            let event_at = dated(&path).unwrap_or_else(|| {
+                std::fs::metadata(&path)
+                    .and_then(|m| m.modified())
+                    .map(|t| DateTime::<Utc>::from(t).to_rfc3339())
+                    .unwrap_or_default()
+            });
+            Ok(Dropped { path, hash, event_at })
+        })
+        .collect()
+}
+
+/// The date a file's name begins with, `2026-09-02-willdan-weekly.vtt` giving
+/// `2026-09-02`.
+fn dated(path: &std::path::Path) -> Option<String> {
+    let name = path.file_name()?.to_str()?;
+    let date = name.get(..10)?;
+    chrono::NaiveDate::parse_from_str(date, "%Y-%m-%d").ok().map(|d| d.to_string())
 }
 
 // ------------------------------------------------------- the signals folder
@@ -185,20 +293,8 @@ pub fn signals_folder<S: StateStore, W: World + ?Sized>(
             raw: read.raw.clone(),
         };
         out.captures_written += usize::from(signals::write_capture(world, &capture)?);
+        capture_object(store, defs, &capture, at)?;
         let id = signals::object_of(&key);
-        if store.get(&id)?.is_none() {
-            let record: BTreeMap<String, Value> = [
-                ("source", json!(capture.source)),
-                ("event_key", json!(key)),
-                ("event_at", json!(capture.event_at)),
-                ("captured_by", json!(capture.captured_by)),
-                ("raw", json!(capture.raw)),
-            ]
-            .into_iter()
-            .map(|(k, v)| (k.to_string(), v))
-            .collect();
-            crate::commands::put_new(store, defs, &id, "capture", None, record, at)?;
-        }
         for (at_file, held) in read.signals.iter().enumerate() {
             let ordinal = at_file as u64 + 1;
             let signal = signals::Signal {

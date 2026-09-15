@@ -446,9 +446,10 @@ impl EvidenceSource for HostStore {
                 })
             })
             // A source is due while what it names holds a source event with no
-            // capture yet — a transcript not captured, a signals folder with a
-            // capture not read in — and run once it has none (111, 114, 215,
-            // D13; `host.yaml` host.adapters_due).
+            // capture yet — a transcript not captured, a file dropped in a
+            // folder, a signals folder with a capture not read in — and run
+            // once it has none (111, 114, 215, D13; `host.yaml`
+            // host.adapters_due).
             .or_else(|| {
                 matches!(name, "host.adapters_due" | "host.adapters_run").then(|| {
                     let host = object.strip_prefix("host/").unwrap_or(object);
@@ -456,6 +457,9 @@ impl EvidenceSource for HostStore {
                         let words: Vec<&str> = source.split_whitespace().collect();
                         if let [.., "signals", dir] = words.as_slice() {
                             return flywheel_domain::adapters::signals_due(&*self.world, dir);
+                        }
+                        if let [.., "folder", dir] = words.as_slice() {
+                            return flywheel_domain::adapters::folder_due(&*self.world, dir);
                         }
                         let Some(path) = words.last() else {
                             return false;

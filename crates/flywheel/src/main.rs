@@ -161,11 +161,12 @@ enum Cmd {
     /// 115, 215). `flywheel capture meeting <file>` is the one this release
     /// ships beside the page's box and the chat forward (D13).
     Capture {
-        /// The adapter: `meeting`, or `signals` for a folder of captures
-        /// already read (114).
+        /// The adapter: `meeting`, `folder` for a folder files are dropped in,
+        /// or `signals` for a folder of captures already read (114).
         kind: String,
         /// What it enumerates — for a meeting, the transcript's path in the raw
-        /// store, which is cited and never copied in (111).
+        /// store, and for a folder its path; material is cited and never copied
+        /// in (111).
         source: String,
         /// Who captured it; the operators list's entry by default (153).
         #[arg(long, default_value = "operator")]
