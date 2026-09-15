@@ -114,8 +114,9 @@ phase is named.
   monitor webhook follows with the capture endpoint (216). Signals are immutable, carry
   their kind, asserter, subject, assertion and verbatim excerpt (113), and each
   takes exactly one standing move with a stated consequence (107, 116). The
-  signal and move formats are versioned and stable, so captures made before the
-  flywheel existed read without conversion (114). Signals, moves and captures
+  signal and move formats are versioned and stable, and captures made before the
+  instance existed are carried into them by an adapter with no reader's
+  judgment (114). Signals, moves and captures
   are files in the blueprints repository under the machinery's own prefix (203).
 - **Intents and their elaborations.** Curation, not the elaboration machinery,
   decides which signals become intents, and the flywheel accepts curation's

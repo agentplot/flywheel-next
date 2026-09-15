@@ -504,10 +504,14 @@ a dropped file's capture waits for a `capture-reader` session charged by the
 tick of the host declaring the folder (217e). Two kinds of capture need no
 reader. The page's box — the console, as a source (S223) — writes its single
 ask signal directly, which is a control and not a judgment (19). The signals
-folder reads captures made before the instance existed with their signals
-already written, keeping each capture's own source and event date (114); the
-willdan blueprints' `signals/` is the first such directory, and its import is
-the instance's first real material (S227).
+folder reads captures made before the instance existed in the layout the
+willdan blueprints' `signals/` was written in — a `capture.md` header per
+capture and a markdown file per signal — and carries them into the record
+format, keeping each capture's source and event date and each signal's kind,
+excerpt and assertion; a move in its `moves.rec` by a word outside the shipped
+six leaves the signal unmoved for curation (114, 107). Its import is the
+instance's first real material, and the first proposals curation makes from it
+are self-closing elaborations, since a signal names no type (27, S227).
 
 A signal with no move is never a decision (19a). While it waits, its capture
 carries the operator's controls — build now, make an intent, attach to an open

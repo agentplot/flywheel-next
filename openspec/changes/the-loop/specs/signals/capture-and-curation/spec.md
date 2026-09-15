@@ -36,11 +36,18 @@ run unattended (115), except where the capture is its own excerpt (19, S21) or
 its signals were written before the instance existed (114).
 
 #### Scenario: A signals folder is read as captures already read
-- **WHEN** a directory holding one directory per capture, each with its capture
-  record and its signals, is named to the signals-folder adapter
-- **THEN** each becomes a capture with its signals present, keeping the source
-  and event date its capture record names, no reader is charged, and naming the
+- **WHEN** a directory holding one directory per capture, each with a
+  `capture.md` provenance header and one markdown file per signal, is named to
+  the signals-folder adapter
+- **THEN** each becomes a capture record with one signal record per file,
+  keeping the capture's source and event date and each signal's kind, excerpt
+  and assertion as they were read, no reader is charged, and naming the
   directory again writes nothing (114, 111, 217e)
+
+#### Scenario: A move by a word the flywheel does not ship
+- **WHEN** the folder's `moves.rec` records a move whose word is not one of
+  attach, challenge, join, answered, route or drop
+- **THEN** that signal arrives unmoved and curation judges it (114, 107, 118)
 
 #### Scenario: A dropped file waits for its reader
 - **WHEN** a file is dropped in a folder the host declares as a source
@@ -71,8 +78,9 @@ A signal SHALL carry its capture, a kind from a small fixed set — constraint,
 ask, question, commitment, reaction — who asserted it, subject tags, the
 assertion in a sentence, the verbatim excerpt with its position, and the claims
 it argues with when any exist (113). A signal SHALL be immutable once written
-(113). The signal and move record formats SHALL be versioned and stable, and
-captures made before the flywheel existed SHALL be read without conversion (114).
+(113). The signal and move record formats SHALL be versioned and stable (114).
+Captures made before the instance existed SHALL be read without a reader's
+judgment, an adapter carrying their form into the record format (114).
 
 #### Scenario: A signal is not edited
 - **WHEN** the tool catalogue is enumerated and a signal's history is read
