@@ -500,6 +500,64 @@ fn token_written_nowhere_else() {
             .expect("the page reads");
         flywheel_surface::page::render(&read)
     };
+    // A member's own client, holding a credential of its own, calls the
+    // catalogue at the host's address: a view, an answer, and a call the host
+    // refuses, which its run record carries. No credential of a client is
+    // written anywhere either (320, 321, 79, 204, 207).
+    let client_token = "mcp-client-credential-a-member-holds";
+    let number = {
+        let defs = host.defs.clone();
+        flywheel_domain::commands::rail(&mut host.store, &defs)
+            .expect("the rail")
+            .iter()
+            .find_map(|d| d.number)
+            .expect("a decision stands")
+    };
+    let host = std::sync::Arc::new(std::sync::Mutex::new(host));
+    let served = flywheel::serve::page_of(&host, 4242, &["chuck".to_string()]);
+    let instance = served.instance().to_string();
+    let runtime = tokio::runtime::Builder::new_multi_thread().enable_all().build().unwrap();
+    let address = runtime.block_on(async {
+        let listener = tokio::net::TcpListener::bind("127.0.0.1:0").await.unwrap();
+        let address = listener.local_addr().unwrap();
+        tokio::spawn(async move {
+            let _ = flywheel_surface::http::serve_on(served, listener).await;
+        });
+        address
+    });
+    for params in [
+        serde_json::json!({"name": "rail"}),
+        serde_json::json!({"name": "answer", "arguments": {"decision": number, "answer": "yes"}}),
+        serde_json::json!({"name": "ask", "arguments": {"repository": "nowhere", "text": "keep the rows"}}),
+    ] {
+        use std::io::{Read, Write};
+        let body = serde_json::json!({"jsonrpc": "2.0", "id": 1, "method": "tools/call", "params": params}).to_string();
+        let mut socket = std::net::TcpStream::connect(address).expect("the host answers");
+        socket
+            .write_all(
+                format!(
+                    "POST /{instance} HTTP/1.1\r\nHost: 127.0.0.1:4242\r\nAuthorization: Bearer {client_token}\r\n\
+                     Content-Type: application/json\r\nContent-Length: {}\r\nConnection: close\r\n\r\n{body}",
+                    body.len()
+                )
+                .as_bytes(),
+            )
+            .expect("the call");
+        let mut reply = String::new();
+        socket.read_to_string(&mut reply).expect("the reply");
+        assert!(reply.starts_with("HTTP/1.1 200"), "the client's call was not served: {reply}");
+    }
+    let page_after = {
+        let mut guard = host.lock().expect("the host");
+        let held = &mut *guard;
+        let later = held.now() + chrono::Duration::minutes(2);
+        held.set_now(later);
+        held.sweep().expect("a sweep after the client's calls");
+        let flywheel::host::HostStore { git, world, .. } = &mut held.store;
+        let read = flywheel_surface::page::read(git, &**world, &held.defs, &held.sinks.address, "chuck")
+            .expect("the page reads");
+        flywheel_surface::page::render(&read)
+    };
     std::env::remove_var(&sandbox.key_from);
 
     // The manifest names where the key and the chat's token are, never either.
@@ -509,6 +567,7 @@ fn token_written_nowhere_else() {
     assert!(!manifest.contains(&token), "the manifest holds the token");
     assert!(manifest.contains(chat_from));
     assert!(!manifest.contains(chat_token), "the manifest holds the chat's token");
+    assert!(!manifest.contains(client_token), "the manifest holds a client's credential");
 
     // Every tracked file on the state repository's shared line, the run record
     // and the status view among them.
@@ -521,20 +580,27 @@ fn token_written_nowhere_else() {
     );
     assert!(paths.iter().any(|p| p == "status.html"), "the tick wrote no status view to sweep: {paths:?}");
     let mut delivered_on_record = false;
+    let mut client_refused_on_record = false;
     for path in &paths {
         let text = show(&state, "main", path).unwrap().unwrap_or_default();
         assert!(!text.contains(key), "{path} holds the key");
         assert!(!text.contains(&token), "{path} holds the token");
         assert!(!text.contains(chat_token), "{path} holds the chat's token");
+        assert!(!text.contains(client_token), "{path} holds a client's credential");
         delivered_on_record |= path.starts_with("runs/") && text.contains("401");
+        client_refused_on_record |= path.starts_with("runs/") && text.contains("nowhere");
     }
     assert!(delivered_on_record, "the run record on the shared line does not carry the refusal");
+    assert!(client_refused_on_record, "the run record does not carry the client's refused call");
 
     // And the served page's body, rendered from the same state.
     assert!(page.contains("mac-mini"), "the page is rendered from the host's state");
     assert!(!page.contains(key), "the page holds the key");
     assert!(!page.contains(&token), "the page holds the token");
     assert!(!page.contains(chat_token), "the page holds the chat's token");
+    assert!(page_after.contains("mac-mini"), "the page after the client's calls is rendered from the host's state");
+    assert!(!page_after.contains(client_token), "the page holds a client's credential");
+    drop(runtime);
 }
 
 /// A bootstrap stamps the instance at the moment it happens at, and not minutes

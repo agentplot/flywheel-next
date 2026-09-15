@@ -130,6 +130,31 @@ impl<S: StateStore + Send + 'static> Served<S> {
         self.operators.first().map(String::as_str).unwrap_or("")
     }
 
+    /// The one address a member adds to their own client, at an address this
+    /// host listens on: that address with the instance in its path, where the
+    /// protocol is answered (319, 320, 205a).
+    pub fn client_address(&self, listening: &str) -> String {
+        format!("http://{}/{}", listening.trim_end_matches('/'), self.instance())
+    }
+
+    /// What a member's client signs in against at this host (320, 243). This
+    /// release has no sign-in: while the operators list holds one entry the
+    /// host serves with none and every call is given by that entry (253a), and
+    /// past one it serves no client until the device flow is built (253).
+    pub fn authority(&self) -> String {
+        match self.operators.as_slice() {
+            [one] => format!(
+                "no sign-in: the operators list holds one entry, {one}, and every call is given \
+                 by it (253a)"
+            ),
+            many => format!(
+                "the operators list holds {} entries and this release has no sign-in to tell \
+                 them apart, so no client is served (253, 253a)",
+                many.len()
+            ),
+        }
+    }
+
     /// The two addresses the host binds, and no others: its private-network
     /// address, and a localhost port for the operator at the machine. Nothing
     /// is published beyond that network (46, 155, 245).

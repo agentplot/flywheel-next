@@ -138,3 +138,33 @@ fn binds_two_addresses_only() {
     assert!(!flywheel_surface::links::is_localhost(&served.address));
     assert_eq!(served.operator(), "chuck");
 }
+
+/// The host states the one address a member adds to their own client and what
+/// they sign in against: the instance's address at the port it listens on, and
+/// no sign-in while the operators list holds one entry. That address is where a
+/// client is answered, and past one entry no client is served (319, 320, 253,
+/// 253a).
+#[test]
+fn the_host_states_its_address_and_authority() {
+    let (_sandbox, page) = a_page("states", &["chuck"]);
+    let served = page.served();
+    assert_eq!(served.client_address("127.0.0.1:4242"), "http://127.0.0.1:4242/willdan");
+    let authority = served.authority();
+    assert!(
+        authority.contains("no sign-in") && authority.contains("chuck") && authority.contains("253a"),
+        "{authority}"
+    );
+    let hello = serde_json::json!({
+        "jsonrpc": "2.0", "id": 1, "method": "initialize",
+        "params": {"protocolVersion": "2025-06-18", "capabilities": {}}
+    });
+    let (status, answered) = page.protocol(hello.clone());
+    assert_eq!(status, 200, "the stated address does not answer a client: {answered:?}");
+    assert_eq!(answered.expect("a hello back")["result"]["serverInfo"]["name"], serde_json::json!("flywheel"));
+
+    let (_two, both) = a_page("states-two", &["chuck", "lee"]);
+    let authority = both.served().authority();
+    assert!(authority.contains("no client is served"), "{authority}");
+    let (status, _) = both.protocol(hello);
+    assert_eq!(status, 403, "a second operator is listed and a client was served unsigned-in");
+}

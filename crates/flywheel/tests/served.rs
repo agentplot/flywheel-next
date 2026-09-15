@@ -942,3 +942,220 @@ fn yes_all_answers_the_numbers_it_named_and_never_a_batch() {
     }
     let _ = std::fs::remove_dir_all(&dir);
 }
+
+/// One message of the model context protocol, posted at the instance's address
+/// the way a member's own client posts it (319).
+fn client_call(address: std::net::SocketAddr, message: serde_json::Value) -> serde_json::Value {
+    let body = message.to_string();
+    let reply = speak(
+        address,
+        &format!(
+            "POST /willdan HTTP/1.1\r\nHost: mac-mini.example\r\nContent-Type: application/json\r\n\
+             Accept: application/json, text/event-stream\r\nContent-Length: {}\r\nConnection: close\r\n\r\n{body}",
+            body.len()
+        ),
+    );
+    serde_json::from_str(&reply).unwrap_or_else(|e| panic!("the reply {reply:?}: {e}"))
+}
+
+fn tool_call(id: u64, name: &str, arguments: serde_json::Value, delivery: Option<&str>) -> serde_json::Value {
+    let mut params = json!({"name": name, "arguments": arguments});
+    if let Some(delivery) = delivery {
+        params["_meta"] = json!({"flywheel/delivery": delivery});
+    }
+    json!({"jsonrpc": "2.0", "id": id, "method": "tools/call", "params": params})
+}
+
+/// A host that has swept once over a bolt whose close is offered, serving its
+/// page and the protocol beside the loop, with the number the decision took.
+struct Serving {
+    dir: std::path::PathBuf,
+    host: Arc<Mutex<Host>>,
+    address: std::net::SocketAddr,
+    _runtime: tokio::runtime::Runtime,
+    number: u32,
+}
+
+fn a_serving_host(name: &str) -> Serving {
+    let dir = base(name);
+    let now = at(0);
+    let git = sandbox(&dir, "mac-mini", now).unwrap();
+    let mut host = Host::over(
+        "mac-mini",
+        "willdan",
+        flywheel_domain::set::load().unwrap(),
+        git,
+        Bindings { world: "host".into(), workspace: "recorded".into(), sessions: "operator".into() },
+        Declaration { repositories: vec!["atlas".into()], types: vec![], kinds: vec!["all".into()] },
+        now,
+    );
+    host.sinks.address = "http://mac-mini.example/willdan".into();
+    seed(
+        &mut host,
+        "bolt/atlas/plan-rows",
+        "bolt",
+        &[("life", "open"), ("life.open.close", "offered")],
+        &[("repository", json!("atlas"))],
+    );
+    host.sweep().unwrap();
+    let defs = host.defs.clone();
+    let number = flywheel_domain::commands::rail(&mut host.store, &defs)
+        .unwrap()
+        .iter()
+        .find(|d| d.object == "bolt/atlas/plan-rows")
+        .and_then(|d| d.number)
+        .expect("the running host numbered the decision");
+    let host = Arc::new(Mutex::new(host));
+    let runtime = tokio::runtime::Builder::new_multi_thread().enable_all().build().unwrap();
+    let served = flywheel::serve::page_of(&host, 4242, &["chuck".to_string()]);
+    let address = runtime.block_on(async {
+        let listener = tokio::net::TcpListener::bind("127.0.0.1:0").await.unwrap();
+        let address = listener.local_addr().unwrap();
+        tokio::spawn(async move {
+            let _ = flywheel_surface::http::serve_on(served, listener).await;
+        });
+        address
+    });
+    Serving { dir, host, address, _runtime: runtime, number }
+}
+
+/// What a client's call must leave as it was: every object's lease, the run
+/// record a tick writes, and every object but the responses a call records.
+fn untouched(host: &Host) -> (Vec<String>, usize, Vec<String>) {
+    let objects: Vec<_> = host
+        .store
+        .list(&Scope::All)
+        .unwrap()
+        .objects
+        .into_iter()
+        .filter(|o| o.machine != "response")
+        .collect();
+    let leases = objects
+        .iter()
+        .map(|o| format!("{} {:?}", o.id, host.store.leases(&o.id).unwrap()))
+        .collect();
+    let run = host.store.git.run_record().unwrap().len();
+    let moved = objects
+        .iter()
+        .map(|o| format!("{} {:?} {:?}", o.id, o.config, o.applied_responses))
+        .collect();
+    (leases, run, moved)
+}
+
+/// A call over the client's transport is a read under the caller's identity or
+/// a response recorded, and never a tick: it takes no lease, writes nothing a
+/// tick writes and moves no object; the answer it records is the loop's to
+/// apply on its next tick (291, 325, 231, 137).
+#[test]
+fn a_call_over_the_client_transport_takes_no_lease_and_runs_no_tick() {
+    let serving = a_serving_host("client-no-tick");
+    let before = untouched(&serving.host.lock().unwrap());
+
+    let hello = client_call(
+        serving.address,
+        json!({"jsonrpc": "2.0", "id": 1, "method": "initialize", "params": {"protocolVersion": "2025-06-18", "capabilities": {}}}),
+    );
+    assert_eq!(hello["result"]["serverInfo"]["name"], json!("flywheel"), "{hello}");
+    for (id, name, arguments) in [
+        (2, "rail", json!({})),
+        (3, "status", json!({})),
+        (4, "object", json!({"object": "bolt/atlas/plan-rows"})),
+    ] {
+        let read = client_call(serving.address, tool_call(id, name, arguments, None));
+        assert_eq!(read["result"]["isError"], json!(false), "{read}");
+    }
+    let uri = flywheel_surface::catalogue::view_address("rail");
+    let bundle = client_call(serving.address, json!({"jsonrpc": "2.0", "id": 5, "method": "resources/read", "params": {"uri": uri}}));
+    assert!(bundle["result"]["contents"][0]["text"].is_string(), "{bundle}");
+    let answered = client_call(
+        serving.address,
+        tool_call(6, "answer", json!({"decision": serving.number, "answer": "yes"}), Some("tap-0a1b2c3d")),
+    );
+    assert_eq!(answered["result"]["structuredContent"]["recorded"], json!(true), "{answered}");
+
+    let after = untouched(&serving.host.lock().unwrap());
+    assert_eq!(before.0, after.0, "a client's call took or changed a lease");
+    assert_eq!(before.1, after.1, "a client's call wrote the run record, which a tick does");
+    assert_eq!(before.2, after.2, "a client's call moved an object, which a tick does");
+
+    // The answer is a response on the shared line, and the loop applies it.
+    let reader = sandbox(&serving.dir, "reader", at(0)).unwrap();
+    assert!(reader.get("response/client-tap-0a1b2c3d").unwrap().is_some(), "the answer is not on the shared line");
+    {
+        let mut held = serving.host.lock().unwrap();
+        held.set_now(at(1));
+        held.sweep().unwrap();
+        let applied = held.store.list(&Scope::All).unwrap().objects;
+        assert!(
+            applied.iter().any(|o| o.applied_responses.iter().any(|r| r == "client-tap-0a1b2c3d")),
+            "the loop did not apply the client's answer"
+        );
+    }
+    let _ = std::fs::remove_dir_all(&serving.dir);
+}
+
+/// A client that disappears mid-call loses nothing: half a call is not taken, a
+/// whole call whose reply nobody read is taken at most once, the host serves
+/// on with no lease or run record touched, and the client coming back with the
+/// same delivery has it taken once (325, 217f, 137).
+#[test]
+fn losing_a_client_loses_nothing() {
+    use std::io::Write as _;
+    let serving = a_serving_host("client-lost");
+    let before = untouched(&serving.host.lock().unwrap());
+
+    // Gone half-way through sending a call.
+    {
+        let mut socket = std::net::TcpStream::connect(serving.address).unwrap();
+        let _ = socket.write_all(
+            b"POST /willdan HTTP/1.1\r\nHost: mac-mini.example\r\nContent-Type: application/json\r\n\
+              Content-Length: 400\r\n\r\n{\"jsonrpc\":\"2.0\",\"id\":1,\"method\":\"tools/call\",\"params\":{\"name\":\"answer\"",
+        );
+    }
+    // Gone once the call was sent, before its reply came.
+    let gone = tool_call(2, "answer", json!({"decision": serving.number, "answer": "yes"}), Some("tap-gone-9f8e"));
+    {
+        let body = gone.to_string();
+        let mut socket = std::net::TcpStream::connect(serving.address).unwrap();
+        let _ = socket.write_all(
+            format!(
+                "POST /willdan HTTP/1.1\r\nHost: mac-mini.example\r\nContent-Type: application/json\r\n\
+                 Content-Length: {}\r\n\r\n{body}",
+                body.len()
+            )
+            .as_bytes(),
+        );
+    }
+
+    // The host serves on: nothing it holds waits on a client.
+    let rail = client_call(serving.address, tool_call(3, "rail", json!({}), None));
+    assert_eq!(rail["result"]["isError"], json!(false), "{rail}");
+
+    // The client comes back and sends the same delivery.
+    let back = client_call(serving.address, gone);
+    assert_eq!(back["result"]["isError"], json!(false), "{back}");
+    let responses = serving.host.lock().unwrap().store.list(&Scope::Machine("response".into())).unwrap().objects;
+    assert_eq!(responses.len(), 1, "a lost client's call was taken twice, or half a call was taken: {responses:?}");
+    assert_eq!(responses[0].id, "response/client-tap-gone-9f8e");
+
+    let after = untouched(&serving.host.lock().unwrap());
+    assert_eq!(before.0, after.0, "a lost client left a lease behind");
+    assert_eq!(before.1, after.1);
+    assert_eq!(before.2, after.2);
+
+    // And the loop runs on and applies the one answer, once.
+    let mut held = serving.host.lock().unwrap();
+    held.set_now(at(1));
+    held.sweep().unwrap();
+    let applied: usize = held
+        .store
+        .list(&Scope::All)
+        .unwrap()
+        .objects
+        .iter()
+        .map(|o| o.applied_responses.iter().filter(|r| *r == "client-tap-gone-9f8e").count())
+        .sum();
+    assert_eq!(applied, 1, "the lost client's answer applied {applied} times");
+    drop(held);
+    let _ = std::fs::remove_dir_all(&serving.dir);
+}
