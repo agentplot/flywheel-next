@@ -901,6 +901,32 @@ a.btn.pri{color:var(--accent-ink)}
 .quote.lit{background:var(--lit);border-color:var(--lit-line);border-left-color:var(--lit-line)}
 .quote q a{color:inherit;text-decoration:none}
 .quote q a:hover{text-decoration:underline}
+/* ---- a note carries one line saying who reads it next and its controls, and
+   asks nothing (19a, S224). A pick is a list under its control, each choice its
+   own press, so it works by tap with nothing behind a hover (311). */
+.quote .next{display:block;font-size:11.5px;color:var(--ink3);margin-top:4px;line-height:1.35}
+.quote .answers.hand{margin-top:8px;cursor:default}
+.answers.hand{display:flex;flex-wrap:wrap;gap:6px;align-items:flex-start}
+.answers.hand form.answer{margin:0;display:inline-flex}
+.answers.hand button{min-height:32px;padding:5px 10px}
+.answers summary{list-style:none;min-height:32px;min-width:44px;padding:5px 10px;border:1px solid var(--line);border-radius:7px;background:var(--surface);color:var(--ink);font-weight:600;font-size:12.5px;display:inline-flex;align-items:center;gap:7px;cursor:pointer;user-select:none}
+.answers summary::-webkit-details-marker{display:none}
+.answers summary .k{font:600 10px var(--mono);border:1px solid currentColor;border-radius:3px;padding:0 4px;opacity:.7;line-height:1.5}
+.answers details.pick[open]{flex-basis:100%}
+.answers details.pick[open] summary{border-color:var(--accent);color:var(--accent)}
+.answers .pick-list{display:flex;flex-direction:column;gap:2px;margin:6px 0 0;padding:4px;border:1px solid var(--line);border-radius:8px;background:var(--surface2);max-width:100%}
+.answers .pick-list button{justify-content:flex-start;text-align:left;white-space:normal;border-color:transparent;background:transparent;font-weight:500;min-height:34px;width:100%}
+.answers .pick-list .none{font-size:12px;color:var(--ink3);margin:4px 6px}
+.dk-h .hand-h{margin-top:10px}
+.dk-h .hand-h .answers summary{min-height:36px;padding:6px 12px}
+.dk-answers .answers button.drop{color:var(--crit);border-color:color-mix(in srgb,var(--crit) 45%,var(--line))}
+/* On the board a note's controls are the size of the quote they sit on, so
+   four notes still read as notes; the drawer and a phone keep the full tap
+   size (311). */
+@media (min-width:761px){
+  .quote .answers.hand{gap:4px}
+  .quote .answers.hand button,.quote .answers.hand summary{min-height:26px;padding:2px 7px;font-size:12px;gap:5px}
+}
 .rail-h .keys{margin-left:auto;display:inline-flex;align-items:center;gap:3px;font-size:11px;color:var(--ink3);white-space:nowrap}
 .rail-h .keys kbd{font-size:10px;padding:0 4px}
 /* ---- a decision reads as a question, and each control says what it does and
@@ -1278,6 +1304,16 @@ body[data-served="view"] .dk-b{overflow:visible}
     c.forEach(function(x){ x.classList.remove('focused'); }); at=-1; light(object); return false;
   }
   function answer(key){
+    // A note open in the drawer, or lit on the board with no decision in hand,
+    // is pressed by the keys its controls carry (S220, S224).
+    var surface=document.querySelector('.dock .surface:target') || document.querySelector('.dock .surface[data-opened=true]');
+    var hand=surface && surface.querySelector('.hand-h .hand');
+    if(!hand && !focused()){ var lit=document.querySelector('#board .lit'); hand=lit && lit.querySelector('.hand'); }
+    if(hand){
+      var own=hand.querySelector('[data-key="'+key+'"]'); if(own){ own.click(); return; }
+      var keyed=Array.prototype.map.call(hand.querySelectorAll('[data-key]'), function(b){ return b.getAttribute('data-key')+' '+b.firstChild.textContent.trim(); });
+      toast('"'+key+'" does nothing here · '+keyed.join(' · ')); return;
+    }
     var card=focused(); if(!card){ toast('nothing in hand · j and k walk the decisions'); return; }
     var control=card.querySelector('[data-key="'+key+'"]');
     if(!control){
@@ -1310,7 +1346,7 @@ body[data-served="view"] .dk-b{overflow:visible}
     // none. A link inside it to another object opens that one; a button or a
     // form inside it does its own thing (S216, S219).
     var obj=t.closest('#board [data-machine]');
-    if(obj && obj.id && !t.closest('button,input,label,form,select,textarea')){
+    if(obj && obj.id && !t.closest('button,input,label,form,select,textarea,details')){
       var link=t.closest('a[href^="#dock-"]'); var target=obj.id;
       if(link && obj.contains(link)) target=decodeURIComponent(link.getAttribute('href').slice(6));
       e.preventDefault(); openObject(target); return;

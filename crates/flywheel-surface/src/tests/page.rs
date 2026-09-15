@@ -920,6 +920,106 @@ fn a_capture_raises_no_decision() {
     assert!(newest.contains("the rows lose their numbers"), "the newest line: {newest}");
 }
 
+/// A note typed in the capture box, and the capture it made.
+fn a_note(store: &mut FakeStore, world: &mut world::Files, defs: &Definitions, text: &str) -> String {
+    let call = crate::catalogue::Call::new("capture", "chuck", "page")
+        .arg("text", json!(text))
+        .arg("source", json!("console"));
+    let outcome = crate::catalogue::call(store, world, defs, &call).expect("the note is taken");
+    outcome.journal.iter().find(|n| n.kind == "capture").expect("a capture").object.clone()
+}
+
+/// The instance's curation, with its threshold and cadence, whose run last
+/// settled `ago` before now.
+fn a_curation(store: &mut FakeStore, defs: &Definitions, threshold: u64, cadence: &str, ago: chrono::Duration) {
+    let at = commands::now(store).expect("a point");
+    let record = [("threshold".to_string(), json!(threshold)), ("cadence".to_string(), json!(cadence))];
+    commands::put_new(store, defs, "curation/willdan", "curation", None, record.into_iter().collect(), at)
+        .expect("the curation");
+    let mut held = Records::get(store, "curation/willdan").expect("a read").expect("the curation");
+    held.entered_at.insert("run".into(), at - ago);
+    let base = held.seq;
+    Records::put(store, "curation/willdan", &held, base).expect("its run");
+}
+
+/// The line under the first waiting note on the board.
+fn the_line(store: &mut FakeStore, world: &world::Files, defs: &Definitions) -> String {
+    let html = rendered(store, world, defs);
+    let opening = "<span class=\"next\">";
+    let at = html.find(opening).unwrap_or_else(|| panic!("no note's line on the board: {html}"));
+    html[at + opening.len()..].split("</span>").next().expect("the line").to_string()
+}
+
+/// The line under a waiting note says who reads it next and when, read from
+/// the curation record: how many wait against its threshold, and its cadence
+/// (110, 118, S224).
+#[test]
+fn a_captures_line_reads_the_curation_record() {
+    // Below the threshold, with the schedule not up.
+    let (mut store, mut world, defs) = a_page();
+    a_curation(&mut store, &defs, 3, "0 6 * * 1-5", chrono::Duration::days(-1));
+    a_note(&mut store, &mut world, &defs, "the rows lose their numbers on the second page");
+    a_note(&mut store, &mut world, &defs, "page two drops them again");
+    assert_eq!(
+        the_line(&mut store, &world, &defs),
+        "curation reads it next · 2 waiting · runs at 3, or when you run it"
+    );
+
+    // At the threshold.
+    a_note(&mut store, &mut world, &defs, "a note for nobody");
+    assert_eq!(the_line(&mut store, &world, &defs), "curation reads it next · 3 waiting · runs shortly");
+
+    // While it runs.
+    let mut running = Records::get(&store, "curation/willdan").expect("a read").expect("the curation");
+    running.config.insert("run".into(), "running".into());
+    let base = running.seq;
+    Records::put(&mut store, "curation/willdan", &running, base).expect("running");
+    assert_eq!(the_line(&mut store, &world, &defs), "curation is reading it now · 3 waiting");
+
+    // Below the threshold, with the schedule up: hourly, and it last ran two
+    // hours ago.
+    let (mut store, mut world, defs) = a_page();
+    a_curation(&mut store, &defs, 12, "0 * * * *", chrono::Duration::hours(2));
+    a_note(&mut store, &mut world, &defs, "the rows lose their numbers on the second page");
+    assert_eq!(
+        the_line(&mut store, &world, &defs),
+        "curation reads it next · 1 waiting · its schedule is up · runs shortly"
+    );
+}
+
+/// A waiting note carries its four controls — build now, make an intent,
+/// attach to… and drop — each a verb with its key posting to its tool, on the
+/// board and in its drawer, and a note whose signal has moved carries none
+/// (19a, S220, S224).
+#[test]
+fn a_waiting_note_carries_its_four_controls_and_a_moved_one_none() {
+    let (mut store, _, defs) = a_page();
+    let mut world = world::Files::new().tracking("atlas");
+    let capture = a_note(&mut store, &mut world, &defs, "the rows lose their numbers on the second page");
+    let html = rendered(&mut store, &world, &defs);
+    let hands = html.matches(&format!("data-hand=\"{capture}\"")).count();
+    assert_eq!(hands, 2, "the note's controls are on the board and in its drawer: {html}");
+    for (tool, key, verb) in [
+        ("propose-unit", "b", "build now"),
+        ("open-intent", "m", "make an intent"),
+        ("drop-signal", "d", "drop"),
+    ] {
+        assert!(html.contains(&format!("action=\"/api/tools/{tool}\"")), "no `{verb}` posting to {tool}");
+        assert!(html.contains(&format!("data-key=\"{key}\"")), "`{verb}` carries no key {key}");
+        assert!(html.contains(&format!(">{verb}<span class=\"k\">{key}</span>")), "no `{verb}` control");
+    }
+    assert!(html.contains(">attach to…<span class=\"k\">a</span>"), "no attach control");
+    assert!(html.contains("No intent is open yet."), "attach says nothing to pick from");
+    assert!(!commands::rail(&mut store, &defs).expect("the rail").iter().any(|d| d.object == capture), "a note raised a decision");
+
+    let signal = flywheel_domain::signals::of_capture(&store, &capture).expect("a read").remove(0);
+    let dropped = crate::catalogue::Call::new("drop-signal", "chuck", "page").arg("signal", json!(signal));
+    crate::catalogue::call(&mut store, &mut world, &defs, &dropped).expect("the note is dropped");
+    let html = rendered(&mut store, &world, &defs);
+    assert!(!html.contains(&format!("data-hand=\"{capture}\"")), "a moved note still carries its controls");
+    assert!(html.contains("<div class=\"tail\">dropped</div>"), "its drawer says what became of it");
+}
+
 /// A proposal whose type the instance has no definition of says so on its
 /// card, in place of its type, with what to do about it; one whose type is
 /// defined says its type (85a).

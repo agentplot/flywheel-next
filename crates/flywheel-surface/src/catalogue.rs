@@ -999,8 +999,15 @@ fn propose_unit<S: StateStore, W: World + ?Sized>(
     call: &Call,
 ) -> Result<Outcome> {
     let at = commands::now(store)?;
-    let Some(named) = call.text("bolt").map(|b| b.trim().to_string()).filter(|b| !b.is_empty()) else {
-        bail!("`propose-unit` takes the bolt's name, and the call names none");
+    let capture = call.text("capture").map(|c| c.trim().to_string()).filter(|c| !c.is_empty());
+    // Built from a capture with no bolt named, the bolt is named from the
+    // capture's first words: the operator types no name (S217).
+    let (named, from_words) = match call.text("bolt").map(|b| b.trim().to_string()).filter(|b| !b.is_empty()) {
+        Some(named) => (named, false),
+        None => match capture.as_deref().and_then(|c| words_of(store, c)) {
+            Some(words) => (signals::name_from_words(&words), true),
+            None => bail!("`propose-unit` takes the bolt's name, and the call names none"),
+        },
     };
     let (repository, name) = match named.strip_prefix("bolt/").and_then(|rest| rest.split_once('/')) {
         Some((repository, name)) => (repository.to_string(), slug(name)),
@@ -1036,11 +1043,28 @@ fn propose_unit<S: StateStore, W: World + ?Sized>(
     let Some(machine) = defs.get(&kind).filter(|m| m.regions.contains_key("stages")) else {
         bail!("`propose-unit`: `{kind}` is no unit type this set carries (37, 57)");
     };
+    // A name taken from the words takes the next number where a unit or a bolt
+    // holds it already; a name the operator gave is given once (I1).
+    let name = match from_words {
+        true => {
+            let taken = |name: &str| -> Result<bool> {
+                Ok(store.get(&format!("unit/{repository}/{name}"))?.is_some()
+                    || store.get(&format!("bolt/{repository}/{name}"))?.is_some())
+            };
+            let mut free = name.clone();
+            let mut nth = 1;
+            while taken(&free)? {
+                nth += 1;
+                free = format!("{name}-{nth}");
+            }
+            free
+        }
+        false => name,
+    };
     let unit = format!("unit/{repository}/{name}");
     if store.get(&unit)?.is_some() {
         bail!("`{unit}` already exists; a name is given once (I1)");
     }
-    let capture = call.text("capture").map(|c| c.trim().to_string()).filter(|c| !c.is_empty());
     // The capture's signals are routed to the unit, as curation's route would
     // have: a signal already moved keeps its move, and a capture none of whose
     // signals is left unmoved is refused before anything is made (107, 116).
@@ -1058,7 +1082,7 @@ fn propose_unit<S: StateStore, W: World + ?Sized>(
         .text("text")
         .map(|t| t.trim().to_string())
         .filter(|t| !t.is_empty())
-        .or_else(|| capture.as_deref().and_then(|c| capture_text(store, c)));
+        .or_else(|| capture.as_deref().and_then(|c| words_of(store, c)));
     let mut record: BTreeMap<String, Value> = BTreeMap::new();
     record.insert("repository".into(), json!(repository));
     record.insert("type".into(), json!(kind));
@@ -1408,19 +1432,14 @@ fn slug(name: &str) -> String {
     out.trim_end_matches('-').to_string()
 }
 
-/// What a capture said, from the one ask signal the page's box wrote with it
-/// (19): the signal's assertion or excerpt, as the quote on the board shows it.
-fn capture_text<S: StateStore>(store: &S, capture: &str) -> Option<String> {
-    let key = capture.strip_prefix("capture/")?;
-    let signal = signals::signal_object(key, 1);
-    let held = store.get(&signal).ok().flatten()?;
-    held.record
-        .get("assertion")
-        .or_else(|| held.record.get("excerpt"))
-        .and_then(|v| v.as_str())
-        .map(str::trim)
-        .filter(|s| !s.is_empty())
-        .map(String::from)
+/// What a capture said, as the quote on the board shows it: its first signal's
+/// assertion or excerpt, or the signal's own where a signal is named (19, 113).
+fn words_of<S: StateStore>(store: &S, named: &str) -> Option<String> {
+    let signal = match named.starts_with(signals::PREFIX) {
+        true => named.to_string(),
+        false => signals::of_capture(store, named).ok()?.into_iter().next()?,
+    };
+    store.get(&signal).ok().flatten().as_ref().and_then(signals::text_of)
 }
 
 /// The next ordinal under a prefix. The objects are the count, so it comes from

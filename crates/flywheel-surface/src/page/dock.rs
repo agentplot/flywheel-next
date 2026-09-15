@@ -83,13 +83,15 @@ pub fn answers_object(read: &Read, object: &Object) -> String {
 pub fn subtitle(read: &Read, object: &Object, row: Option<&status::Row>) -> String {
     match object.machine.as_str() {
         "capture" | "signal" => {
-            let (_, signal) = capture_and_signal(read, object);
-            match signal.and_then(|s| s.config.get("move").map(String::as_str)) {
-                Some("routed") if signal.is_some_and(routes_an_ask) => "asked".into(),
-                Some("routed") => "built".into(),
-                Some("joined") | Some("attached") => "an intent".into(),
-                Some("dropped") => "dropped".into(),
-                _ => "waiting on you".into(),
+            // A note nothing has moved says who reads it next; it waits on
+            // curation and never on the operator (19a, S224).
+            if !super::hand::unmoved(read, &object.id).is_empty() {
+                return super::hand::line(read);
+            }
+            let (capture, signal) = capture_and_signal(read, object);
+            match became(read, capture, signal) {
+                Some((said, _)) => said,
+                None => row.map(|r| r.said.clone()).unwrap_or_default(),
             }
         }
         // A landed bolt's record is stamped with when it landed (S28).
@@ -264,45 +266,83 @@ fn capture_page(read: &Read, object: &Object) -> String {
     if !from.is_empty() {
         let _ = write!(out, "<div class=\"row\"><span class=\"grow\">{}</span></div>\n", from.join(" · "));
     }
-    let mut became = String::new();
-    if let Some(signal) = signal {
-        match signal.config.get("move").map(String::as_str) {
-            Some("routed") => match field(signal, "route") {
-                // An ask holds its words, so what became of the signal is
-                // those words and the repository they were asked of (28, 116).
-                Some(route) if routes_an_ask(signal) => {
-                    let ask = flywheel_domain::asks::id_named(route)
-                        .and_then(|id| read.asks.iter().find(|ask| ask.id == id));
-                    became = match ask {
-                        Some(ask) => format!(
-                            "asked in <span class=\"repo\">{}</span> <q>{}</q>",
-                            escape(&ask.repository),
-                            escape(&ask.text)
-                        ),
-                        None => format!("asked: {}", mono(route)),
-                    };
-                }
-                Some(unit) => became = format!("built: {}", link(read, unit, unit)),
-                None => {}
-            },
-            Some("joined") | Some("attached") => {
-                let intent = read.objects.iter().find(|o| {
-                    o.machine == "intent"
-                        && o.record
-                            .get("signals")
-                            .and_then(|v| v.as_array())
-                            .is_some_and(|s| s.iter().any(|v| v.as_str() == Some(signal.id.as_str())))
-                });
-                if let Some(intent) = intent {
-                    became = format!("intent: {}", link(read, &intent.id, name_of(&intent.id)));
-                }
-            }
-            Some("dropped") => became = "dropped".into(),
-            _ => {}
-        }
-    }
+    let became = became(read, capture, signal).map(|(_, shown)| shown).unwrap_or_default();
     out.push_str(&sec("what became of it", "", &row("", &became)));
     out
+}
+
+/// What became of a note's signal, as the subtitle says it and as its page
+/// shows it: built, with the unit; made into an intent, or attached to one,
+/// with the intent; joined into one; asked, with the repository and the words;
+/// dropped (S28, S229). Read from the standing move where its record is here,
+/// and from the signal's state where it is not (107).
+fn became(read: &Read, capture: Option<&Object>, signal: Option<&Object>) -> Option<(String, String)> {
+    let signal = signal?;
+    if let Some(moved) = read.moves.get(&signal.id) {
+        let named = moved.names();
+        let intent = || link(read, named, name_of(named));
+        return Some(match moved.word() {
+            "route" if named.starts_with("ask/") => ("asked".into(), asked(read, named)),
+            "route" => ("built".into(), format!("built · {}", link(read, named, named))),
+            "attach" if made_from(read, named, capture, signal) => ("made an intent".into(), format!("made an intent · {}", intent())),
+            "attach" => ("attached".into(), format!("attached to {}", intent())),
+            "join" => ("joined an intent".into(), format!("joined {}", intent())),
+            "drop" => ("dropped".into(), "dropped".into()),
+            other => (other.to_string(), format!("{} {}", escape(other), mono(named))),
+        });
+    }
+    match signal.config.get("move").map(String::as_str) {
+        // An ask holds its words, so what became of the signal is those words
+        // and the repository they were asked of (28, 116).
+        Some("routed") => match field(signal, "route") {
+            Some(route) if routes_an_ask(signal) => Some(("asked".into(), asked(read, route))),
+            Some(unit) => Some(("built".into(), format!("built · {}", link(read, unit, unit)))),
+            None => Some(("built".into(), String::new())),
+        },
+        Some("joined") | Some("attached") => {
+            let intent = read.objects.iter().find(|o| {
+                o.machine == "intent"
+                    && o.record
+                        .get("signals")
+                        .and_then(|v| v.as_array())
+                        .is_some_and(|s| s.iter().any(|v| v.as_str() == Some(signal.id.as_str())))
+            });
+            let shown = intent
+                .map(|intent| format!("intent: {}", link(read, &intent.id, name_of(&intent.id))))
+                .unwrap_or_default();
+            Some(("an intent".into(), shown))
+        }
+        Some("dropped") => Some(("dropped".into(), "dropped".into())),
+        _ => None,
+    }
+}
+
+/// An ask a route names, as its words and the repository they were asked of,
+/// or its name where the record is not on hand (28, 116).
+fn asked(read: &Read, route: &str) -> String {
+    let ask = flywheel_domain::asks::id_named(route).and_then(|id| read.asks.iter().find(|ask| ask.id == id));
+    match ask {
+        Some(ask) => format!(
+            "asked in <span class=\"repo\">{}</span> <q>{}</q>",
+            escape(&ask.repository),
+            escape(&ask.text)
+        ),
+        None => format!("asked: {}", mono(route)),
+    }
+}
+
+/// Whether an intent was made from this note by `make an intent`: the call that
+/// opened it named the capture or its signal (12, 19a).
+fn made_from(read: &Read, intent: &str, capture: Option<&Object>, signal: &Object) -> bool {
+    let Some(approval) = read.objects.iter().find(|o| o.id == intent).and_then(|o| field(o, "approval")) else {
+        return false;
+    };
+    let response = format!("response/{approval}");
+    read.objects.iter().find(|o| o.id == response).is_some_and(|response| {
+        let named = response.record.get("args").and_then(|args| args.get("capture")).and_then(|v| v.as_str());
+        field(response, "tool") == Some("open-intent")
+            && (named == Some(signal.id.as_str()) || named.is_some_and(|named| capture.is_some_and(|c| c.id == named)))
+    })
 }
 
 // --------------------------------------------------------------------- bolt

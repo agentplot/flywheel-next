@@ -23,6 +23,7 @@ use flywheel_atoms::{CommitRef, StateStore, World};
 
 mod asks;
 mod dock;
+pub(crate) mod hand;
 mod palette;
 pub use dock::Session;
 use flywheel_domain::signals;
@@ -69,6 +70,10 @@ pub struct Read {
     /// The signals with no standing move, each one the curator's surface offers
     /// the five moves on (107, 110, 116, 118).
     pub unmoved: Vec<signals::Signal>,
+    /// The move standing on each signal, by the signal's id, read from the move
+    /// records, so what became of a note shows the moment its move is written
+    /// (107, S28).
+    pub moves: BTreeMap<String, signals::Move>,
     /// What each object's sessions left behind: a file at a path, which the
     /// page links to (190, 213). Without it the operator sees that an
     /// elaboration is done and cannot read what it produced.
@@ -456,6 +461,8 @@ pub fn read<S: StateStore, W: World + ?Sized>(
     // What curation has to judge, and the session the operator judges it in
     // (110, 118, 93b).
     let unmoved = signals::unmoved(&files);
+    let moves: BTreeMap<String, signals::Move> =
+        signals::moves(&files).into_iter().map(|moved| (moved.signal.clone(), moved)).collect();
     let curation = curating(&objects);
     let intents: Vec<String> = objects
         .iter()
@@ -540,6 +547,7 @@ pub fn read<S: StateStore, W: World + ?Sized>(
         weight,
         answered,
         unmoved,
+        moves,
         curation,
         intents,
         why,
@@ -914,7 +922,7 @@ const LANE_HEADS: [(&str, &str); 4] = [
 const LANE_EMPTY: [(&str, &str); 4] = [
     ("Inception", "Nothing captured yet. Type what you noticed in the box above."),
     ("Bolt plan", "No proposals yet."),
-    ("Construction", "No bolts yet. Build a capture to start one."),
+    ("Construction", "No bolts yet. Use build now on a note to start one."),
     ("Operation", "Nothing running."),
 ];
 
@@ -2523,10 +2531,20 @@ fn quote(read: &Read, row: &status::Row) -> String {
     if let Some(by) = by {
         let _ = write!(&mut under, " · {}", escape(by));
     }
+    // A note nothing has moved carries the line saying who reads it next and
+    // its four controls, and asks nothing (19a, S224).
+    let hand = match row.machine.as_str() {
+        "capture" => hand::controls(read, &row.object),
+        _ => String::new(),
+    };
+    let next = match hand.is_empty() {
+        true => String::new(),
+        false => format!("<span class=\"next\">{}</span>", escape(&hand::line(read))),
+    };
     format!(
         "<div class=\"quote\"{attributes}>\
          <q><a href=\"#dock-{object}\">{said}</a></q>\
-         <span class=\"qm\">{under}</span></div>\n",
+         <span class=\"qm\">{under}</span>{next}{hand}</div>\n",
         attributes = board_attributes(row),
         object = escape(&row.object),
         said = escape(&said),
@@ -2854,6 +2872,14 @@ fn dock_head(read: &Read, object: &Object, row: Option<&status::Row>) -> String 
     // title where the number already is: one place to read, one place to
     // press (S220, S27, 308).
     out.push_str(&dock_answers(read, &dock::answers_object(read, object)));
+    // A note carries its controls under its title, where a decision carries
+    // its answers, and asks nothing (19a, S224).
+    if matches!(object.machine.as_str(), "capture" | "signal") {
+        let hand = hand::controls(read, &object.id);
+        if !hand.is_empty() {
+            let _ = write!(out, "<div class=\"dk-answers hand-h\" data-answerable=\"false\">\n{hand}</div>\n");
+        }
+    }
     out.push_str("</div>\n");
     out
 }
