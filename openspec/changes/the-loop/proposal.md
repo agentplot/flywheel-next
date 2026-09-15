@@ -101,16 +101,17 @@ phase is named.
 - **Captures land.** Adapters append captures unattended — one keyed capture per
   source event with its provenance and a pointer to raw material that stays
   outside every repository (111, 215) — and capture costs one gesture from
-  wherever the operator is (112). Phase 1 ships three, all of them enumerator-only
+  wherever the operator is (112). Phase 1 ships five, all of them enumerator-only
   arithmetic that starts no session (115): the page's capture box, which writes
-  a capture with one signal of kind ask so curation sees it, with marking it an
-  intent a control and never a word parsed out of the text (19, 194); the chat
+  a capture with one signal of kind ask, with what it becomes a control on the
+  capture and never a word parsed out of the text (19, 19a, 194); the chat
   forward, one response producing one capture and one signal with a link back
-  (112, 215, S21); and the meeting transcript, one keyed capture per file, so a
-  transcript imported twice yields one capture (111, 215, S22). Their judgment
-  half — turning a capture into signals — is curation's and never runs
-  unattended (115). The folder drop and the log or monitor webhook follow with
-  their sources. Signals are immutable, carry
+  (112, 215, S21); the meeting transcript, one keyed capture per file, so a
+  transcript imported twice yields one capture (111, 215, S22); the signals
+  folder, reading captures already read with their signals present (114); and
+  the folder drop (215). Their judgment half — turning a capture into signals —
+  is a reader session's and never runs unattended (115, 217e). The log or
+  monitor webhook follows with the capture endpoint (216). Signals are immutable, carry
   their kind, asserter, subject, assertion and verbatim excerpt (113), and each
   takes exactly one standing move with a stated consequence (107, 116). The
   signal and move formats are versioned and stable, so captures made before the
@@ -439,9 +440,10 @@ X07 proves when the bell's surface exists.
   the object on the page, the numbered reply grammar beside them, and
   notification routing by kind (18, 82, 152–155, 236, 308, 309).
 - `signals/capture-and-curation`: captures, signals, moves and their
-  consequences; the page capture box, the chat forward and the meeting
-  transcript as the phase-1 adapters; curation's records and its cadence
-  (106–118, 215).
+  consequences; the page capture box, the chat forward, the meeting
+  transcript, the signals folder and the folder drop as the phase-1 adapters;
+  the operator's controls on a capture; curation's records, its cadence and
+  its run-now (19a, 106–118, 215).
 - `instance/bootstrap`: the instance machine, `flywheel init`, the
   blueprints and state repositories, the GitHub App, host join, and the
   versioned template set (204, 205, 205a, 207, 207a, 208, 203).

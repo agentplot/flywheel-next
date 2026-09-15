@@ -24,14 +24,28 @@ cite them (111). Capturing the same source event twice SHALL yield one capture
 - **THEN** the repository holds the capture record with its pointer, and the raw
   transcript or log itself is not copied into any repository (111)
 
-### Requirement: This phase ships three adapters, all of them enumerators
+### Requirement: This phase ships five adapters, all of them enumerators
 
 The flywheel SHALL ship adapters that write one keyed capture per source event
-with a pointer to the raw material (215). This phase SHALL ship three: the
-page's capture box (19), the chat forward (112, 215) and the meeting transcript
-(111, 215). Enumerating source events and writing captures SHALL run unattended;
-turning a capture into signals SHALL be a judgment and SHALL NOT run unattended
-(115).
+with a pointer to the raw material (215). This phase SHALL ship five: the
+page's capture box (19), the chat forward (112, 215), the meeting transcript
+(111, 215), the signals folder of captures already read (114, 215) and the
+folder drop (215). Enumerating source events and writing captures SHALL run
+unattended; turning a capture into signals SHALL be a judgment and SHALL NOT
+run unattended (115), except where the capture is its own excerpt (19, S21) or
+its signals were written before the instance existed (114).
+
+#### Scenario: A signals folder is read as captures already read
+- **WHEN** a directory holding one directory per capture, each with its capture
+  record and its signals, is named to the signals-folder adapter
+- **THEN** each becomes a capture with its signals present, keeping the source
+  and event date its capture record names, no reader is charged, and naming the
+  directory again writes nothing (114, 111, 217e)
+
+#### Scenario: A dropped file waits for its reader
+- **WHEN** a file is dropped in a folder the host declares as a source
+- **THEN** one capture with a pointer and no signals is written, and one reader
+  session is charged by the tick of the declaring host (215, 115, 217e)
 
 #### Scenario: An enumerator writes a capture and starts nothing
 - **WHEN** a source event arrives — a transcript named to the capture command, a
@@ -101,41 +115,63 @@ claim's verdicts (101) belongs to the phase that has a ledger.
 - **THEN** the drop move is removed, the signal is unmoved again, and the next
   curation run clusters it (107)
 
-### Requirement: A signal with no move is the operator's decision
+### Requirement: A capture is a note, and the operator may move its signal by hand
 
-A signal with no move SHALL be a decision of the operator's on the rail,
-numbered like any other, from the moment it is recorded, with the answers
-build, intent and drop (19a). Build SHALL make a chore unit on a bolt named from
-the capture's own words and approve it in the same response, asking the
-operator for no name (19a, S217). Intent SHALL propose an intent citing the
-signal, which stands as its own decision (19a, 110). Drop SHALL move the signal
-dropped (19a, 107). Curation's batch judgment SHALL stand beside this, and a
-move made either way SHALL be the signal's one move (19a, 107, 116).
+A signal with no move SHALL NOT be a decision, and nothing on the rail SHALL ask
+the operator what a capture should become (19a). While its signal is unmoved,
+the capture SHALL carry the operator's controls on the object: build now
+(`propose-unit`), make an intent (`open-intent`), attach to an open intent
+(`attach-signal`) and drop (`drop-signal`), each a dictation that writes the
+move curation would have written and is the signal's one move (19a, 107, 110,
+116, 193). Build now SHALL name the bolt from the capture's own words and ask
+for no name (19a, S217). Make an intent SHALL open the intent at once, the
+gesture being its approval, with the signal attached (12, 19a). Under the
+capture one line SHALL say who acts next and when, read from the curation
+record's unmoved count, threshold and cadence (19a, 110, 118).
 
-#### Scenario: Build
-- **WHEN** the operator answers an unmoved signal's decision with build
+#### Scenario: A capture lands with nothing to answer
+- **WHEN** the operator types a note on the page
+- **THEN** a capture with one unmoved signal exists, the rail gains no decision,
+  and the capture shows its controls and the line saying curation reads it next
+  (19a, S224)
+
+#### Scenario: Build now
+- **WHEN** the operator uses build now on a capture
 - **THEN** a chore unit stands approved on a bolt named from the capture's first
-  words, the response is its approval, the signal's move routes it to the unit,
-  and the decision leaves the rail (19a, 34, S217)
+  words, the call is its approval, and the signal's move routes it to the unit
+  (19a, 34, S217)
 
-#### Scenario: Intent
-- **WHEN** the operator answers an unmoved signal's decision with intent
-- **THEN** the signal is joined to an intent proposed under a name from its
-  words, and the proposed intent stands on the rail as its own numbered decision
-  (19a, 110)
+#### Scenario: Make an intent
+- **WHEN** the operator uses make an intent on a capture
+- **THEN** an intent named from the capture's first words stands open with no
+  decision of its own, the signal's move attaches it there, and the intent
+  proposes its first elaboration from it (12, 19a, 21)
+
+#### Scenario: Attach to an open intent
+- **WHEN** the operator picks an open intent from a capture's attach control
+- **THEN** the signal's move attaches it to that intent, and the intent's one
+  proposal awaiting approval takes it as material (19a, 21, 116)
 
 #### Scenario: Curation moves the signal first
-- **WHEN** curation records a move for a signal whose decision is on the rail
-- **THEN** the decision leaves the rail and the signal keeps curation's move as
-  its one move (19a, 107)
+- **WHEN** curation records a move for a capture's signal
+- **THEN** the capture's controls go and the signal keeps curation's move as its
+  one move (19a, 107)
 
 ### Requirement: Curation is a bounded judgment the operator may make by hand
 
 Curation SHALL decide which signals become intents, and it MAY be a person, an
 agent, or both; the flywheel SHALL accept its output whoever produced it (20).
-Curation SHALL be charged on a cadence or when unmoved signals exceed a
-threshold, and it SHALL never open an intent (110). A person writing the same
-records by hand SHALL be curation (110).
+Curation SHALL be charged on a cadence, when unmoved signals exceed a threshold,
+or at once on the operator's dictation to run it now, which is one dictation
+whether given by a control on the page or a command (110, 12, 193); it SHALL
+never open an intent (110). A person writing the same records by hand SHALL be
+curation, and the operator's controls on a capture are that hand (110, 19a).
+
+#### Scenario: Run curation now
+- **WHEN** the operator runs curation now with fewer unmoved signals than the
+  threshold and no cadence due
+- **THEN** the curator session is charged at once, and the threshold and cadence
+  stand as they were (110, `curation.yaml`)
 
 #### Scenario: Curation proposes, the operator opens
 - **WHEN** curation clusters signals into a proposed intent
@@ -149,5 +185,8 @@ records by hand SHALL be curation (110).
 
 #### Scenario: Unmoved signals are visible and never discarded
 - **WHEN** signals accumulate without a move
-- **THEN** the status view shows their count and age by source, and none is
-  discarded (118)
+- **THEN** the status view shows their count and age by source and lists every
+  one by source and age, grouped by capture, each with its capture's controls
+  and the dictation to run curation now beside the trigger that would otherwise
+  charge it; while curation runs the listing shows it working and the count
+  falls as moves are written; none is discarded (118, 19a, 110)

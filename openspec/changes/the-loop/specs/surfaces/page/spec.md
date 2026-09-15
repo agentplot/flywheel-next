@@ -108,24 +108,47 @@ item exists (253a, 233).
 
 The capture box in the header SHALL be the one place to type on the page, on the
 desktop and as the phone's palette (S211). Text the operator types there SHALL be
-a capture from the console with one signal of kind ask (19, S223). While that
-signal has no move it SHALL stand on the rail as a numbered decision whose
-answers are controls, never a word parsed out of the text (19a, 19, 194). The
-page submission SHALL be the delivery, recorded once like any response (19).
+a capture from the console with one signal of kind ask (19, S223). The capture
+SHALL raise no decision; while its signal has no move it SHALL carry build now,
+make an intent, attach to… and drop as controls on the object, never a word
+parsed out of the text, with one line under it saying who acts next and when
+(19a, 19, 194, S224). The page submission SHALL be the delivery, recorded once
+like any response (19).
 
 #### Scenario: Typing into the capture box
 - **WHEN** the operator types text into the capture box and submits it
 - **THEN** one capture from the console exists with one signal of kind ask, the
-  submission is recorded once as a response naming the capture it made, and the
-  signal stands on the rail as a numbered decision with build, intent and drop
-  as its controls (19, 19a, S223)
+  submission is recorded once as a response naming the capture it made, the
+  rail gains nothing, and the capture stands in Inception with its four
+  controls and the line saying curation reads it next (19, 19a, S223, S224)
 
 #### Scenario: A capture on the board
-- **WHEN** a capture's signal is waiting on the operator
+- **WHEN** a capture's signal is unmoved
 - **THEN** the board shows the capture as one card with its words from their
   beginning and its source, its signal is not a second line, and a click
-  anywhere on it opens it in the dock and takes its decision in hand (S215,
-  S216, S219)
+  anywhere on it opens it in the dock with its controls (S215, S216, S219,
+  S224)
+
+### Requirement: The signals tray lists what curation has not read
+
+The curation counter SHALL open the signals tray in the dock: every unmoved
+signal grouped by capture and ordered by source and age, each row carrying its
+capture's controls, with `run curation now` at its head beside the automatic
+trigger stated in the operator's words (118, 19a, 110, S225). Pressing it SHALL
+be the `curate` dictation (110, 193). While curation runs the tray SHALL show it
+working and the count SHALL fall as moves are written; what curation proposes
+SHALL land on the rail, one decision per proposal, and the tray SHALL ask
+nothing itself (109, 116, S225).
+
+#### Scenario: Run curation now from the tray
+- **WHEN** the operator opens the tray and presses run curation now
+- **THEN** the curator session is charged at once, the tray's head shows it
+  working, the count falls as moves are written, and each proposed intent or
+  chore stands on the rail as one decision (110, 118, S225)
+
+#### Scenario: Nothing waits
+- **WHEN** no signal is unmoved
+- **THEN** the tray says so in the operator's terms (S214, S225)
 
 ### Requirement: The page is served at the address the host was given
 

@@ -490,22 +490,33 @@ because no rendering of the rail is stored (15). Drift between a projection and
 its source is rewritten from the source on the next tick and reported to the run
 record with both values (77, model.md §3.3).
 
-### D13. Three adapters, all enumerators, and the operator is curation
+### D13. Five adapters, all enumerators, and the operator's hand is curation's
 
-Phase 1 ships the page's capture box (19), the chat forward (112, 215, S21) and
-the meeting transcript (111, 215, S22). Each writes one keyed capture per
-source event with its provenance and a pointer to raw material that stays
-outside every repository (111), under the blueprints' `flywheel/` prefix (203).
-Capturing the same source event twice yields one capture (111, S22).
+Phase 1 ships the page's capture box (19), the chat forward (112, 215, S21), the
+meeting transcript (111, 215, S22), the signals folder (114, 215) and the folder
+drop (215). Each writes one keyed capture per source event with its provenance
+and a pointer to raw material that stays outside every repository (111), under
+the blueprints' `flywheel/` prefix (203). Capturing the same source event twice
+yields one capture (111, S22).
 
-Turning a capture into signals is a judgment and never runs unattended (115). In
-phase 1 the page's box — the console, as a source (S223) — writes its single ask
-signal directly, which is not a judgment but a control (19), and that signal,
-while it has no move, is the operator's decision on the rail: build, intent or
-drop (19a). Everything else is the operator writing move records by hand — a
-person writing the same records is curation (110). Every
-signal takes exactly one standing move with a stated consequence, and only the
-operator's response replaces one (107, 116).
+Turning a capture into signals is a judgment and never runs unattended (115):
+a dropped file's capture waits for a `capture-reader` session charged by the
+tick of the host declaring the folder (217e). Two kinds of capture need no
+reader. The page's box — the console, as a source (S223) — writes its single
+ask signal directly, which is a control and not a judgment (19). The signals
+folder reads captures made before the instance existed with their signals
+already written, keeping each capture's own source and event date (114); the
+willdan blueprints' `signals/` is the first such directory, and its import is
+the instance's first real material (S227).
+
+A signal with no move is never a decision (19a). While it waits, its capture
+carries the operator's controls — build now, make an intent, attach to an open
+intent, drop — each a catalogue tool writing the move curation would have
+written, since a person writing those records is curation (110, 193, S224).
+The signals tray lists what waits and carries `curate`, which runs curation at
+once beside its threshold and cadence (110, 118, S225). Every signal takes
+exactly one standing move with a stated consequence, and only the operator's
+response replaces one (107, 116).
 
 The pull-request and issue-tracker adapters of 215 read the git host's issues and
 reviews, which C.2 forbids the machinery doing; they belong to the tracker
@@ -698,14 +709,16 @@ drift from the design the way a paraphrase can. Every later change to the
 page's design is a change to the mockup first.
 
 A fresh instance has to be able to raise a decision with nothing written by
-hand. Curation is charged by the tick (110) and in this phase the operator is
-its session (93b), so the page is where the operator curates: each unmoved
-signal with its standing moves as controls (101, 116), submitted through the
-same `flywheel exit` command a session reports by, so `record_moves` runs
-unchanged and a joined signal becomes a proposed intent with a numbered
-decision on the rail. Controls, not parsed text (194). A capture's own signal
-does not wait for that: it is a decision on the rail from the moment it lands
-(19a, D13).
+hand. Curation is charged by the tick or by the operator's `curate` (110). Its
+session runs through the host's sessions binding like a chore's, a Herdr pane
+until the in-process runner has a model key (217b, 217m); where the operator is
+the session (93b), the page is where they curate: each unmoved signal with its
+standing moves as controls (101, 116), submitted through the same
+`flywheel exit` command a session reports by, so `record_moves` runs unchanged
+and a joined signal becomes a proposed intent with a numbered decision on the
+rail. Controls, not parsed text (194). What the curator proposes is the rail's;
+what a capture's signal becomes before then is the operator's controls on the
+capture (19a, D13).
 
 The page keeps the standing rules `surfaces.md` S210–S223 ruled on the first
 live walk: every control answers at once, one place to type, Escape closes the
@@ -854,9 +867,5 @@ private network.
 - **How often `status.html` is rewritten.** Every tick where state moved is the
   simple rule; a cadence may be cheaper once the commit rate is known. Either way
   it states its as-of point (145), so the choice is invisible to every clause.
-- **Whether 19a stands.** The blueprints' `proposals/console-curation.md`
-  withdraws it: a capture is a note with controls and never a rail decision,
-  curation proposes and the operator approves. The proposal is not ratified, so
-  the change follows 19a as the requirements state it (21.1).
 - **Selection inside a drawn object.** A bolt's units and an intent's beads
   take no hand of their own; deferred by Chuck on 2026-09-14 (S219).
