@@ -373,7 +373,24 @@ pub fn read<S: StateStore, W: World + ?Sized>(
         };
         let evidence = store.read(&decision.object).map(|read| read.evidence).unwrap_or_default();
         let mut said: Vec<String> = Vec::new();
+        // A type the instance has no definition of is said once, as what to do
+        // about it, in place of the type line: a yes waits on it (85a).
+        let kind = object.record.get("type").and_then(|v| v.as_str()).map(str::trim).filter(|k| !k.is_empty());
+        let undefined = decision.shows.iter().any(|name| name.ends_with(".type_defined"))
+            && !flywheel_domain::blueprints::type_defined(defs, kind);
         for name in &decision.shows {
+            if name.ends_with(".type_defined") {
+                if undefined {
+                    said.push(match kind {
+                        Some(kind) => format!("{kind} is not a type here · set one with type…"),
+                        None => "no type named · set one with type…".to_string(),
+                    });
+                }
+                continue;
+            }
+            if undefined && name.rsplit('.').next() == Some("type") {
+                continue;
+            }
             // The model names a field of the record or an atom of the
             // evidence; an atom is named for the machine it belongs to
             // (`elaboration.type`), and the record holds it under its own name

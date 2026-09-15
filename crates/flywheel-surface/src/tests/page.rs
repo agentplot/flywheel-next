@@ -854,6 +854,35 @@ fn a_capture_raises_no_decision() {
     assert!(newest.contains("the rows lose their numbers"), "the newest line: {newest}");
 }
 
+/// A proposal whose type the instance has no definition of says so on its
+/// card, in place of its type, with what to do about it; one whose type is
+/// defined says its type (85a).
+#[test]
+fn an_undefined_type_is_named_on_its_card() {
+    let (mut store, world, defs) = a_page();
+    let at = commands::now(&store).expect("a point");
+    for (id, kind) in [("unit/atlas/spike", "spike"), ("unit/atlas/rows", "chore")] {
+        let record = [("repository".to_string(), json!("atlas")), ("type".to_string(), json!(kind))];
+        commands::put_new(&mut store, &defs, id, "unit", None, record.into_iter().collect(), at).expect("the unit");
+    }
+    commands::rail(&mut store, &defs).expect("the rail derives");
+    let read = crate::page::read(&mut store, &world, &defs, ADDRESS, "chuck").expect("the page reads");
+    let why = |object: &str| -> Vec<String> {
+        let decision = read
+            .decisions
+            .iter()
+            .find(|d| d.object == object)
+            .unwrap_or_else(|| panic!("{object} stands on no decision"));
+        read.why.get(&decision.id).cloned().unwrap_or_default()
+    };
+    let undefined = why("unit/atlas/spike");
+    assert!(undefined.iter().any(|l| l == "spike is not a type here · set one with type…"), "{undefined:?}");
+    assert!(!undefined.iter().any(|l| l == "type spike"), "the type line stands beside it: {undefined:?}");
+    let defined = why("unit/atlas/rows");
+    assert!(defined.iter().any(|l| l == "type chore"), "{defined:?}");
+    assert!(!defined.iter().any(|l| l.contains("not a type")), "{defined:?}");
+}
+
 // ---- 17.4 the board draws each kind in its own form
 
 /// Every kind on the board has one form of its own, and no two share one (209).
