@@ -651,6 +651,14 @@ impl Store {
                 json!(self.objects.values().any(|o| o.applied_responses.iter().any(|a| a == rid)))
             }
             "response.decision_present" => {
+                // A dictation whose transition is not active on the object it
+                // names is unapplicable, as on a host (6, 154).
+                if let (Some(defs), Some(held)) = (self.defs.as_deref(), self.objects.get(object)) {
+                    let named = held.record.get("object").and_then(|v| v.as_str()).and_then(|id| self.objects.get(id));
+                    if let Some(takes) = flywheel_domain::commands::dictation_takes(defs, held, named) {
+                        return Some(json!(takes));
+                    }
+                }
                 let rid = object.strip_prefix("response/").unwrap_or(object);
                 let Some(r) = self.responses.iter().find(|r| r.id == rid) else { return Some(json!(false)) };
                 match r.decision {

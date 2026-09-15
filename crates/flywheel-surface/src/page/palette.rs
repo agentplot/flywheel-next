@@ -9,11 +9,11 @@
 //! plain text is a capture, and a bare number is the chat's reply grammar,
 //! answering the decision it names with the controls its card carries.
 //!
-//! What is left out is what the palette cannot seed as one call: `curate` is
-//! the curator's surface with its moves, `propose-unit` and `open-session` are
-//! the capture's and the repository's own controls with their fields, `start`
-//! and `stop` wait on a service the page shows, and removing the instance is
-//! not one Enter away.
+//! What is left out is what the palette cannot seed as one call: `propose-unit`
+//! and `open-session` are the capture's and the repository's own controls with
+//! their fields, `start` and `stop` wait on a service the page shows, and
+//! removing the instance is not one Enter away. `/curate` takes nothing and is
+//! the call the signals tray's control makes (110).
 
 use super::escape;
 use std::fmt::Write as _;
@@ -36,12 +36,15 @@ pub enum Takes {
     /// The first word typed after the name as the first argument, and the rest
     /// as the second: `/ask atlas the rows lose their numbers`.
     NameAndWords(&'static str, &'static str),
+    /// Nothing: the command is the whole call, `/curate`.
+    Nothing,
 }
 
 impl Takes {
     /// The argument names this sends, in the catalogue's order.
     pub fn args(&self) -> Vec<&'static str> {
         match *self {
+            Takes::Nothing => vec![],
             Takes::Object(a) | Takes::Decision(a) | Takes::Words(a) => vec![a],
             Takes::Answer => vec!["decision", "answer"],
             Takes::ObjectAndWords(a, b) | Takes::NameAndWords(a, b) => vec![a, b],
@@ -56,6 +59,7 @@ impl Takes {
             Takes::Words(_) => "words",
             Takes::ObjectAndWords(..) => "object-words",
             Takes::NameAndWords(..) => "name-words",
+            Takes::Nothing => "none",
         }
     }
 }
@@ -93,6 +97,13 @@ pub const COMMANDS: &[Command] = &[
         does: "ask for work in a repository",
         on: "a repository",
         takes: Takes::NameAndWords("repository", "text"),
+    },
+    Command {
+        tool: "curate",
+        typed: "",
+        does: "run curation now over the notes waiting",
+        on: "this flywheel",
+        takes: Takes::Nothing,
     },
     Command {
         tool: "drop",

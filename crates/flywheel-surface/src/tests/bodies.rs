@@ -113,8 +113,8 @@ fn every_named_tool_has_a_body() {
             continue;
         }
         if tool.name == "curate" {
-            // `curate` is a session's delivery and writes the session's exit,
-            // not a response record; it is exercised on its own below.
+            // `curate` names the instance's curation, which this store holds
+            // none of; it is exercised on its own below.
             continue;
         }
         let mut call = Call::new(tool.name, "chuck", "page");
@@ -167,6 +167,21 @@ fn every_named_tool_has_a_body() {
         .expect("a read")
         .expect("the move stands");
     assert_eq!(standing.target, "drop");
+
+    // With no moves it is run now: the dictation the curation machine takes,
+    // recorded once as a response naming the instance's curation (110, 12).
+    let at = flywheel_domain::commands::now(&store).expect("a point");
+    flywheel_domain::commands::put_new(&mut store, &defs, "curation/willdan", "curation", None, Default::default(), at)
+        .expect("the curation");
+    let outcome = catalogue::call(&mut store, &mut world, &defs, &Call::new("curate", "chuck", "page"))
+        .expect("run now has a body");
+    let record = store
+        .get(&format!("response/{}", outcome.id))
+        .expect("a read")
+        .expect("run now is recorded");
+    assert_eq!(record.record.get("tool"), Some(&json!("curate")));
+    assert_eq!(record.record.get("object"), Some(&json!("curation/willdan")));
+    assert_eq!(record.record.get("answer"), Some(&json!("run")));
 }
 
 /// A plausible value for an argument the schema names.

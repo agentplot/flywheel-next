@@ -181,12 +181,13 @@ pub const CATALOGUE: &[Tool] = &[
     },
     Tool {
         name: "curate",
-        args: &["session", "moves"],
-        doc: "the curator's moves on the unmoved signals — attach, join, route, \
-              challenge, drop — delivered as the charged curation session's \
-              `move` deliverable with its exit, the same record `flywheel exit \
-              done --deliverable move` writes; the operator running the session \
-              is the operator-as-session (93b, 107, 116, 67)",
+        args: &[],
+        doc: "run curation now: the curation machine's idle takes it to running and the \
+              curator session is charged at once, with the threshold and cadence as they \
+              were; the signals tray's control and the palette's `/curate` are this call \
+              (110, 12). Where the operator is the curation session, its surface delivers \
+              the moves through the same tool as `moves`, the entry `flywheel exit done \
+              --deliverable move` writes (93b, 107, 116, 67)",
     },
     Tool {
         name: "drop",
@@ -802,6 +803,10 @@ fn curate<S: StateStore, W: World + ?Sized>(
     defs: &Definitions,
     call: &Call,
 ) -> Result<Outcome> {
+    let delivers = call.args.contains_key("moves") || call.args.keys().any(|name| name.starts_with("move."));
+    if !delivers {
+        return run_curation_now(store, defs, call);
+    }
     let at = commands::now(store)?;
     let session = match call.text("session").filter(|s| !s.trim().is_empty()) {
         Some(session) => session,
@@ -931,6 +936,35 @@ fn curate<S: StateStore, W: World + ?Sized>(
         outcome: Received::Recorded { id: session },
         journal,
     })
+}
+
+/// `curate` with no moves: the operator's dictation to run curation now, on the
+/// instance's one curation, which its machine's idle takes to running and
+/// charges the curator session, whatever the threshold and cadence say; given
+/// while curation runs it is recorded all the same, and reported unapplicable
+/// (110, 12, 154, `curation.yaml`).
+fn run_curation_now<S: StateStore>(store: &mut S, defs: &Definitions, call: &Call) -> Result<Outcome> {
+    let listed = store.list(&Scope::Machine("curation".to_string()))?;
+    let Some(curation) = listed.objects.first().map(|o| o.id.clone()) else {
+        bail!("this instance has no curation to run (110)");
+    };
+    let mut record = commands::record_call(
+        store,
+        defs,
+        &CallRecord {
+            tool: "curate",
+            decision: None,
+            object: Some(&curation),
+            answer: "run",
+            args: Some(Value::Object(call.args.clone().into_iter().collect())),
+            by: &call.by,
+            delivery: &call.delivery,
+            delivery_id: call.delivery_id.as_deref(),
+            proposed_by: call.proposed_by.as_deref(),
+        },
+    )?;
+    record.journal.push(noted("dictation", &curation, "run"));
+    Ok(record)
 }
 
 /// The operator's own session (69): opened by dictation at any time, on no

@@ -351,6 +351,20 @@ impl EvidenceSource for HostStore {
     /// then what the world reports and this profile inherits; then the two
     /// bindings this release carries (`record-derived.yaml`, B.3, D8).
     fn evidence(&self, object: &str, region: &str, name: &str) -> Option<Value> {
+        // A dictation whose transition is not active on the object it names is
+        // unapplicable, and reported rather than kept (6, 154).
+        if let (true, Some(defs)) = (name == "response.decision_present", self.defs.as_ref()) {
+            if let Some(held) = self.git.get(object).ok().flatten() {
+                let named = held
+                    .record
+                    .get("object")
+                    .and_then(|v| v.as_str())
+                    .and_then(|id| self.git.get(id).ok().flatten());
+                if let Some(takes) = flywheel_domain::commands::dictation_takes(defs, &held, named.as_ref()) {
+                    return Some(json!(takes));
+                }
+            }
+        }
         flywheel_domain::derived::evidence(&self.git, &self.reading, object, name)
             // The stage's own reads — its agents from the type, its join and
             // verdict from the sessions' threads — and the item's retry bound

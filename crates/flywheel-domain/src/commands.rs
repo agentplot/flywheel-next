@@ -297,6 +297,7 @@ pub const DICTATION_TOOLS: &[&str] = &[
     "open-intent",
     "attach-signal",
     "drop-signal",
+    "curate",
     "ask",
     "open-session",
     "drop",
@@ -320,6 +321,62 @@ pub const DICTATION_TOOLS: &[&str] = &[
 /// one of the dictations (193).
 pub fn is_operation(tool: &str) -> bool {
     tool == "answer" || DICTATION_TOOLS.contains(&tool)
+}
+
+/// The dictations the catalogue applies in the body of its own tool: what they
+/// make or move is written by the call, and no machine takes them by a response
+/// (19, 19a, 28, 69, 107, 193).
+pub const APPLIED_BY_THE_CALL: &[&str] =
+    &["capture", "propose-unit", "open-intent", "attach-signal", "drop-signal", "ask", "open-session", "revive"];
+
+/// Whether a dictation stands to be applied, for `response.decision_present`:
+/// `None` where it is no dictation a machine takes by a response, and otherwise
+/// whether the object it names is in a state whose transition takes its answer
+/// now. One its machine takes in some state, but not in the state the object is
+/// in, is recorded unapplicable and reported rather than kept in silence (6,
+/// 154) — `curate` given while curation already runs among them (110).
+pub fn dictation_takes(defs: &Definitions, response: &Object, named: Option<&Object>) -> Option<bool> {
+    if response.record.get("decision").is_some_and(|decision| !decision.is_null()) {
+        return None;
+    }
+    let tool = response.record.get("tool")?.as_str()?;
+    if !DICTATION_TOOLS.contains(&tool) || APPLIED_BY_THE_CALL.contains(&tool) {
+        return None;
+    }
+    let answer = response.record.get("answer")?.as_str()?;
+    let named = named?;
+    let machine = defs.for_object(&named.machine).or_else(|| defs.get(&named.machine))?;
+    if !machine.regions.values().any(|region| region_takes(region, answer)) {
+        return None;
+    }
+    Some(
+        named
+            .config
+            .keys()
+            .filter(|region| flywheel_engine::tick::is_live(named, region))
+            .filter_map(|region| flywheel_engine::tick::state_def(defs, named, region))
+            .any(|(_, state)| state.transitions.iter().any(|t| guard_takes(&t.when, answer))),
+    )
+}
+
+/// Whether any state of a region, or of a region nested in one, has a
+/// transition taking this answer.
+fn region_takes(region: &flywheel_engine::defs::Region, answer: &str) -> bool {
+    region.states.values().any(|state| {
+        state.transitions.iter().any(|t| guard_takes(&t.when, answer))
+            || state.regions.values().any(|nested| region_takes(nested, answer))
+    })
+}
+
+/// Whether a guard asks for a response this answer matches.
+fn guard_takes(guard: &flywheel_engine::defs::Guard, answer: &str) -> bool {
+    use flywheel_engine::defs::Guard;
+    match guard {
+        Guard::All { all } => all.iter().any(|g| guard_takes(g, answer)),
+        Guard::Any { any } => any.iter().any(|g| guard_takes(g, answer)),
+        Guard::Response { response } => flywheel_engine::eval::match_answer(response, answer).is_some(),
+        _ => false,
+    }
 }
 
 /// One call of the catalogue, as it is recorded (153, 193).

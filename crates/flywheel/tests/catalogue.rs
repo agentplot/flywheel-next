@@ -150,16 +150,6 @@ fn every_write_goes_through_the_catalogue() {
             .iter()
             .filter_map(|a| a["name"].as_str().or(a.as_str()).map(String::from))
             .collect();
-        // `curate` is the one served tool the model's rows lack: the model
-        // delivers a curation session's moves through `flywheel exit`, and the
-        // operator running that session on the page (93b) had a page-only
-        // write until it became this tool (audit 6). The row is proposed to
-        // the model's `surfaces.yaml`; until it lands, this is the exemption.
-        if name == "curate" {
-            assert_eq!(args, ["session", "moves"], "`curate` names other arguments than proposed");
-            names.push(name);
-            continue;
-        }
         let row = rows
             .get(&name)
             .unwrap_or_else(|| panic!("`{name}` is served and is no row of the model's catalogue (193a)"));
@@ -171,7 +161,7 @@ fn every_write_goes_through_the_catalogue() {
     for granted in ["drop", "hold", "release", "retire", "takeover", "finish", "close"] {
         assert!(names.iter().any(|n| n == granted), "4 grants `{granted}` and the catalogue lacks it: {names:?}");
     }
-    assert!(names.iter().any(|n| n == "curate"), "the curator's moves are no tool: {names:?}");
+    assert!(names.iter().any(|n| n == "curate"), "running curation is no tool: {names:?}");
 
     // Two captures through the tool the page's box calls (19, 194).
     for text in ["the rows lose their numbers on the second page", "the second page drops the row numbers again"] {

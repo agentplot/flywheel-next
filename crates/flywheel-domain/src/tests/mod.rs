@@ -4,6 +4,7 @@
 mod asks;
 mod binding;
 mod blueprints;
+mod curation;
 mod envelope;
 mod offers;
 mod rail_folding;
