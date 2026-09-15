@@ -650,10 +650,22 @@ async fn main() -> Result<()> {
                         .clone();
                     let read = flywheel::host::manifest_with_root(manifest, name, root.as_deref())?;
                     let operator = operators.first().cloned();
-                    let presented = host
-                        .lock()
-                        .expect("the running host is poisoned")
-                        .present_sinks(&read, |sink, entry| {
+                    let presented = {
+                        let mut held = host.lock().expect("the running host is poisoned");
+                        // Each chat reads what was sent while nobody listened
+                        // from after the delivery its sink's mark records
+                        // (217f).
+                        let delivered = read
+                            .host(name)?
+                            .presents
+                            .iter()
+                            .map(|sink| {
+                                let id = flywheel_domain::sinks::id_for(sink);
+                                let recorded = flywheel_domain::sinks::read(&held.store, &id)?;
+                                Ok((sink.clone(), recorded.and_then(|sink| sink.delivery)))
+                            })
+                            .collect::<Result<std::collections::BTreeMap<_, _>>>()?;
+                        held.present_sinks(&read, |sink, entry| {
                             let discord = flywheel::host::discord_for(
                                 sink,
                                 entry,
@@ -663,9 +675,10 @@ async fn main() -> Result<()> {
                             )?;
                             let wake = chat_wakes.clone();
                             discord.wake_with(std::sync::Arc::new(move || wake.notify_one()));
-                            discord.listen()?;
+                            discord.listen(delivered.get(sink).and_then(|d| d.as_deref()))?;
                             Ok(Box::new(discord) as Box<dyn flywheel_surface::chat::Channel + Send>)
-                        })?;
+                        })?
+                    };
                     for line in &presented {
                         println!("{line}");
                     }

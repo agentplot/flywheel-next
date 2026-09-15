@@ -18,10 +18,10 @@ use anyhow::{anyhow, bail, Context as _, Result};
 use serenity::all::{
     ButtonStyle, ChannelId, ComponentInteraction, Context, CreateActionRow,
     CreateAllowedMentions, CreateButton, CreateMessage, EditInteractionResponse, EventHandler,
-    GatewayIntents, Http, HttpBuilder, Interaction, Message as Posted, MessageFlags, MessageId,
-    MessageReferenceKind, Ready, User,
+    GatewayIntents, GetMessages, Http, HttpBuilder, Interaction, Message as Posted, MessageFlags,
+    MessageId, MessageReferenceKind, Ready, User, UserId,
 };
-use std::collections::BTreeMap;
+use std::collections::{BTreeMap, BTreeSet};
 use std::future::Future;
 use std::pin::Pin;
 use std::sync::{Arc, Mutex};
@@ -48,6 +48,9 @@ const PATIENCE: Duration = Duration::from_secs(30);
 /// The link Discord gives a message, which a forward's capture points back at
 /// (111, 112).
 const MESSAGE_LINK: &str = "https://discord.com/channels";
+
+/// The most messages Discord gives in one read of a channel's history.
+const HISTORY_PAGE: u8 = 100;
 
 // ------------------------------------------------------------------ the token
 
@@ -281,6 +284,15 @@ pub struct Inbox {
     /// What to call when something arrives, so the host takes it up now and
     /// not at its next poll (130, D6).
     wake: Arc<Mutex<Option<Arc<dyn Fn() + Send + Sync>>>>,
+    /// The newest message of the channel accounted for: at first the delivery
+    /// the sink's mark records, then each message seen after it. What waited
+    /// is read from after it (217f).
+    after: Arc<Mutex<Option<MessageId>>>,
+    /// The bot this channel speaks as, whose replies say what it has answered.
+    me: Arc<Mutex<Option<UserId>>>,
+    /// Every message handed over, so one that comes both from the gateway and
+    /// from the history is handed over once (137).
+    handed: Arc<Mutex<BTreeSet<MessageId>>>,
 }
 
 impl Inbox {
@@ -289,9 +301,14 @@ impl Inbox {
     /// A message elsewhere, or one a bot wrote — this channel's own renderings
     /// and replies among them — is not the sink's, and is left where it is. A
     /// forward is what the platform says it is, a reference of the forward
-    /// kind to the message it carries, and never what its text looks like.
+    /// kind to the message it carries, and never what its text looks like. A
+    /// message already handed over is not handed over again.
     pub fn message(&self, posted: &Posted) -> bool {
-        if posted.channel_id != self.channel || posted.author.bot {
+        if posted.channel_id != self.channel {
+            return false;
+        }
+        self.seen(posted.id);
+        if posted.author.bot {
             return false;
         }
         let mut heard = chat::Message::new(
@@ -316,8 +333,106 @@ impl Inbox {
                 &format!("{MESSAGE_LINK}/{guild}/{}/{original}", reference.channel_id),
             );
         }
+        if !self
+            .handed
+            .lock()
+            .expect("the inbox is poisoned")
+            .insert(posted.id)
+        {
+            return false;
+        }
         self.arrive(heard);
         true
+    }
+
+    /// Read what waited from after this delivery: the one the sink's mark
+    /// records when the presenter starts listening (217f). A delivery that is
+    /// no Discord message's id was made through another channel, and nothing
+    /// is read after it.
+    pub fn after(&self, delivery: Option<&str>) {
+        if let Some(id) = delivery.and_then(|d| d.parse::<u64>().ok()).filter(|id| *id != 0) {
+            self.seen(MessageId::new(id));
+        }
+    }
+
+    /// Read the messages written in the channel while nobody listened, and
+    /// hand each over as if it had just arrived (217f, 137, 154).
+    ///
+    /// The gateway replays nothing, so a reply typed while the host slept is
+    /// heard only here: every message after the newest accounted for, oldest
+    /// first. One this bot has already replied to was answered by an earlier
+    /// run and is not handed over again, so a restart acknowledges nothing a
+    /// second time. With nothing accounted for — the sink never delivered here
+    /// — nothing is read. Returns how many were handed over.
+    pub async fn waited(&self) -> Result<usize> {
+        let Some(mut after) = *self.after.lock().expect("the inbox is poisoned") else {
+            return Ok(0);
+        };
+        let me = self.me().await?;
+        let mut read: Vec<Posted> = Vec::new();
+        loop {
+            let page = self
+                .channel
+                .messages(&*self.http, GetMessages::new().after(after).limit(HISTORY_PAGE))
+                .await
+                .map_err(said)
+                .context("reading what was sent while nobody listened")?;
+            let full = page.len() == usize::from(HISTORY_PAGE);
+            let Some(newest) = page.iter().map(|posted| posted.id).max() else {
+                break;
+            };
+            after = newest;
+            read.extend(page);
+            if !full {
+                break;
+            }
+        }
+        read.sort_by_key(|posted| posted.id);
+        let answered: BTreeSet<MessageId> = read
+            .iter()
+            .filter(|posted| posted.author.id == me)
+            .filter_map(|posted| posted.message_reference.as_ref()?.message_id)
+            .collect();
+        let mut handed = 0;
+        for posted in &read {
+            if answered.contains(&posted.id) {
+                self.seen(posted.id);
+            } else if self.message(posted) {
+                handed += 1;
+            }
+        }
+        // What the gateway handed over meanwhile keeps its place in the order
+        // the messages were written.
+        self.waiting
+            .lock()
+            .expect("the inbox is poisoned")
+            .sort_by_key(|message| message.id.parse::<u64>().unwrap_or(u64::MAX));
+        Ok(handed)
+    }
+
+    /// The bot this channel speaks as, asked of Discord once.
+    async fn me(&self) -> Result<UserId> {
+        if let Some(me) = *self.me.lock().expect("the inbox is poisoned") {
+            return Ok(me);
+        }
+        let me = self
+            .http
+            .get_current_user()
+            .await
+            .map_err(said)
+            .context("asking Discord which bot this is")?
+            .id;
+        *self.me.lock().expect("the inbox is poisoned") = Some(me);
+        Ok(me)
+    }
+
+    /// A message of the channel accounted for, so what waited is read from
+    /// after it.
+    fn seen(&self, id: MessageId) {
+        let mut after = self.after.lock().expect("the inbox is poisoned");
+        if after.map_or(true, |at| at < id) {
+            *after = Some(id);
+        }
     }
 
     /// One of this channel's buttons pressed (309, 155).
@@ -390,8 +505,14 @@ struct Listener {
 
 #[serenity::async_trait]
 impl EventHandler for Listener {
+    /// Connected, at first or again after the connection was lost: what was
+    /// sent meanwhile is read, since the gateway replays none of it (217f).
     async fn ready(&self, _: Context, ready: Ready) {
         self.inbox.http.set_application_id(ready.application.id);
+        *self.inbox.me.lock().expect("the inbox is poisoned") = Some(ready.user.id);
+        if let Err(e) = self.inbox.waited().await {
+            self.inbox.troubled(format!("{e:#}"));
+        }
     }
 
     async fn message(&self, _: Context, posted: Posted) {
@@ -526,6 +647,9 @@ impl Discord {
                 pressed: Default::default(),
                 trouble: Default::default(),
                 wake: Default::default(),
+                after: Default::default(),
+                me: Default::default(),
+                handed: Default::default(),
             },
             sink: settings.sink,
             channel,
@@ -580,13 +704,16 @@ impl Discord {
     }
 
     /// Listen on the gateway: the messages in the channel and the presses of
-    /// its buttons (194, 309). The listener reconnects on its own; what it
-    /// cannot get past — a token Discord refuses, an intent the application
-    /// has not been granted — is said on the next `heard` (81).
-    pub fn listen(&self) -> Result<()> {
+    /// its buttons (194, 309), and, each time the gateway is ready, what was
+    /// written in the channel after `after` — the delivery the sink's mark
+    /// records — while nobody listened (217f). The listener reconnects on its
+    /// own; what it cannot get past — a token Discord refuses, an intent the
+    /// application has not been granted — is said on the next `heard` (81).
+    pub fn listen(&self, after: Option<&str>) -> Result<()> {
         // The gateway's client asks the same API where the gateway is, so a
         // channel opened on another address never reaches Discord's own.
         self.check_the_token()?;
+        self.inbox.after(after);
         let http = http_at(&self.token, self.api.as_deref());
         let inbox = self.inbox.clone();
         self.worker.spawn(async move {
@@ -618,7 +745,7 @@ impl Channel for Discord {
         let http = self.http.clone();
         let channel = self.channel;
         let failed = self.failed();
-        self.worker.run(async move {
+        let last = self.worker.run(async move {
             let mut last = None;
             for piece in pieces {
                 let sent = channel
@@ -626,10 +753,18 @@ impl Channel for Discord {
                     .await
                     .map_err(&failed)
                     .context("posting the rendering")?;
-                last = Some(sent.id.to_string());
+                last = Some(sent.id);
             }
             last.ok_or_else(|| anyhow!("the rendering made no message"))
-        })
+        })?;
+        // A sink that had never delivered here reads what waits from after
+        // its first delivery (217f).
+        self.inbox
+            .after
+            .lock()
+            .expect("the inbox is poisoned")
+            .get_or_insert(last);
+        Ok(last.to_string())
     }
 
     /// Answer one message: a press by filling in its acknowledgement, which

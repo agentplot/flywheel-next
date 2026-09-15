@@ -397,3 +397,155 @@ fn token_written_nowhere() {
         assert!(!text.contains("the-bot-token"), "part of the token is written: {text}");
     }
 }
+
+/// The rendering delivered, the host gone, and what the operator wrote in the
+/// channel while nobody listened: a numbered reply, and a line the channel does
+/// not take. A reply from before the delivery stands behind the mark. Returns
+/// the delivery the mark records and the number replied to.
+fn replies_waiting(double: &Double) -> (FakeStore, world::Files, Definitions, String, u32) {
+    let (mut store, world, defs, mut chat) = a_chat(double);
+    let standing = commands::rail(&mut store, &defs).expect("the rail");
+    chat.deliver(&mut store, &defs).expect("delivered").expect("presented");
+    let delivered = chat
+        .read(&store)
+        .expect("the sink")
+        .delivery
+        .expect("the mark records the delivery");
+    let first = standing[0].number.expect("a number");
+    drop(chat);
+    double.written(&typed("1290000000000000001", &format!("drop {first}")));
+    double.written(&typed("1310000000000000001", &format!("yes {first}")));
+    double.written(&typed("1310000000000000002", "are you still there?"));
+    (store, world, defs, delivered, first)
+}
+
+/// The presenter back: a channel opened again on the same chat, reading from
+/// after the delivery the sink's mark records, as `flywheel host` starts it.
+fn the_presenter_returns(double: &Double, store: &mut FakeStore, delivered: &str) -> Chat<Discord> {
+    let mut chat = Chat::new(SINK, "studio", ADDRESS, a_channel(double));
+    assert!(chat.present(store).expect("the presenter lease"));
+    chat.channel.inbox().after(Some(delivered));
+    chat
+}
+
+/// The responses recorded to one decision.
+fn answers_to(store: &FakeStore, number: u32) -> Vec<String> {
+    store
+        .list_records(&Scope::Machine("response".into()))
+        .expect("a listing")
+        .into_iter()
+        .filter(|r| r.record.get("decision").and_then(|v| v.as_u64()) == Some(u64::from(number)))
+        .filter_map(|r| r.record.get("answer").and_then(|v| v.as_str()).map(String::from))
+        .collect()
+}
+
+/// The gateway replays nothing, so what the operator wrote while no host
+/// presented the chat is read from the channel's history when the presenter
+/// starts listening: every message after the sink's recorded delivery, oldest
+/// first, each applied once and acknowledged when it is recorded (217f, 137,
+/// 154).
+#[test]
+fn a_reply_sent_while_nobody_presented_is_applied_when_the_presenter_returns() {
+    let double = Double::start();
+    let (mut store, mut world, defs, delivered, first) = replies_waiting(&double);
+    let mut chat = the_presenter_returns(&double, &mut store, &delivered);
+
+    // What the gateway's ready does: read the channel after the delivery.
+    let asked = double.seen().len();
+    let handed = block_on(chat.channel.inbox().waited()).expect("the history reads");
+    assert_eq!(handed, 2);
+    let read = double.seen()[asked..].to_vec();
+    assert!(
+        read.iter().any(|r| r.method == "GET"
+            && r.path == format!("/api/v10/channels/{CHANNEL}/messages")
+            && r.query.as_deref().is_some_and(|q| q.contains(&format!("after={delivered}")))),
+        "the history was not read after the delivery: {read:#?}"
+    );
+    assert!(read.iter().all(|r| r.method == "GET"), "reading what waited sent something: {read:#?}");
+
+    // Oldest first; nothing from before the delivery, nothing the bot wrote.
+    let heard = chat.channel.heard().expect("nothing stopped the channel");
+    let ids: Vec<&str> = heard.iter().map(|m| m.id.as_str()).collect();
+    assert_eq!(ids, ["1310000000000000001", "1310000000000000002"]);
+    assert_eq!(heard[0].by, "chuck", "the response is not the sink's member's (153)");
+    for message in &heard {
+        chat.receive(&mut store, &mut world, &defs, message).expect("read");
+    }
+
+    // The reply applied once, and the one from before the delivery not at all.
+    assert_eq!(answers_to(&store, first), ["yes"]);
+
+    // Each answered once, on itself: the reply with its record, the line the
+    // channel does not take with what it takes.
+    let replies: Vec<_> = double
+        .seen()
+        .into_iter()
+        .filter(|r| r.method == "POST" && r.body["message_reference"]["message_id"].is_string())
+        .collect();
+    assert_eq!(replies.len(), 2, "{replies:#?}");
+    assert_eq!(replies[0].body["message_reference"]["message_id"], json!("1310000000000000001"));
+    assert!(
+        replies[0].body["content"]
+            .as_str()
+            .is_some_and(|c| c.starts_with(&format!("#{first} → yes, recorded as "))),
+        "{}",
+        replies[0].body
+    );
+    assert_eq!(replies[1].body["message_reference"]["message_id"], json!("1310000000000000002"));
+    assert!(replies[1].body["content"].as_str().is_some_and(|c| c.starts_with(ACCEPTS)));
+
+    // Read again in the same run, nothing is handed over twice.
+    assert_eq!(block_on(chat.channel.inbox().waited()).expect("the history reads"), 0);
+    assert!(chat.channel.heard().expect("a look").is_empty());
+}
+
+/// A host that restarts before it delivers again reads the same messages
+/// after the same delivery. What it answered before is not handed over again,
+/// and a message that reaches the sink again all the same is the same
+/// delivery: it writes nothing and is not acknowledged a second time (217f,
+/// 137, 154).
+#[test]
+fn a_reply_read_again_after_a_restart_is_not_acknowledged_twice() {
+    let double = Double::start();
+    let (mut store, mut world, defs, delivered, first) = replies_waiting(&double);
+    let mut chat = the_presenter_returns(&double, &mut store, &delivered);
+    block_on(chat.channel.inbox().waited()).expect("the history reads");
+    for message in chat.channel.heard().expect("a look") {
+        chat.receive(&mut store, &mut world, &defs, &message).expect("read");
+    }
+    assert_eq!(answers_to(&store, first), ["yes"]);
+    let records = store.list_records(&Scope::All).expect("a listing").len();
+    drop(chat);
+
+    // The restart: the mark still records the same delivery.
+    let mut chat = the_presenter_returns(&double, &mut store, &delivered);
+    let asked = double.seen().len();
+    let handed = block_on(chat.channel.inbox().waited()).expect("the history reads");
+    assert_eq!(handed, 0, "a message already answered was handed over again");
+    assert!(chat.channel.heard().expect("a look").is_empty());
+
+    // The reply reaching the sink again all the same, as a gateway replaying
+    // it would hand it over: the same delivery, recorded before.
+    let reply = typed("1310000000000000001", &format!("yes {first}"));
+    assert!(chat.channel.inbox().message(&reply));
+    assert!(!chat.channel.inbox().message(&reply), "one message was handed over twice");
+    let heard = chat.channel.heard().expect("a look");
+    assert_eq!(heard.len(), 1, "{heard:?}");
+    match chat.receive(&mut store, &mut world, &defs, &heard[0]).expect("read") {
+        Heard::Answered(given) => assert!(
+            matches!(given[0].outcome, flywheel_atoms::Received::AlreadyApplied { .. }),
+            "{given:?}"
+        ),
+        other => panic!("the reply was heard as {other:?}"),
+    }
+
+    // Nothing written, and no second request to the channel: the restart only
+    // read.
+    assert_eq!(answers_to(&store, first), ["yes"]);
+    assert_eq!(store.list_records(&Scope::All).expect("a listing").len(), records);
+    let since = double.seen()[asked..].to_vec();
+    assert!(
+        since.iter().all(|r| r.method == "GET"),
+        "the restart acknowledged something again: {since:#?}"
+    );
+}

@@ -221,7 +221,9 @@ gets the same line as a reply in the channel (137, 153, 154, 194). `git log` on
 the state repository shows the one answer. A message forwarded into the channel
 becomes a capture pointing back at it, and anything else typed there gets one
 line back saying what the channel takes, and is not read (112, 194). The host
-hears the channel while it runs.
+hears the channel while it runs, and when it starts again it reads what was sent
+while it was away: a reply typed while the computer slept is recorded then, and
+answered once, however many times the host restarts (217f, 137).
 
 ## What a session reports
 

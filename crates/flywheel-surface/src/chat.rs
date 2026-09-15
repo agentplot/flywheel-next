@@ -19,7 +19,7 @@
 use crate::catalogue::{self, Call};
 use crate::links;
 use anyhow::{bail, Result};
-use flywheel_atoms::{StateStore, World};
+use flywheel_atoms::{Received, StateStore, World};
 use flywheel_domain::commands::{self, Called};
 use flywheel_domain::sinks::{self, Sink};
 use flywheel_engine::{DecisionInstance, Definitions};
@@ -604,11 +604,15 @@ impl<C: Channel> Chat<C> {
             .arg("decision", json!(number))
             .arg("answer", json!(answer));
         let called = crate::catalogue::call(store, world, defs, &call)?;
-        // The operator can tell it was recorded (154).
-        self.channel.reply(
-            &message.id,
-            &format!("#{number} → {answer}, recorded as {}", called.id),
-        )?;
+        // The operator can tell it was recorded (154), once, when it is: the
+        // same delivery read again — after a restart, say — writes nothing and
+        // is not acknowledged a second time (137, 217f).
+        if !matches!(called.outcome, Received::AlreadyApplied { .. }) {
+            self.channel.reply(
+                &message.id,
+                &format!("#{number} → {answer}, recorded as {}", called.id),
+            )?;
+        }
         Ok(called)
     }
 }

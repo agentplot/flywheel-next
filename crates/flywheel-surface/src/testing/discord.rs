@@ -1,10 +1,12 @@
 //! Discord's HTTP API, recorded: a double on a port of this computer that the
 //! chat's wire is pointed at in place of Discord's own (D9, D16).
 //!
-//! It keeps every request made of it — the method, the path, the authorization
-//! it carried and the body — and answers each route the channel uses with the
-//! payload Discord documents for it, recorded beside this file. What arrives
-//! from the platform is handed in as the gateway hands it: a recorded
+//! It keeps every request made of it — the method, the path and query, the
+//! authorization it carried and the body — and answers each route the channel
+//! uses with the payload Discord documents for it, recorded beside this file.
+//! It keeps the channel's history as Discord does: every message the bot posts
+//! there, and what the operator wrote while nobody listened. What arrives from
+//! the platform is handed in as the gateway hands it: a recorded
 //! `MESSAGE_CREATE` or `INTERACTION_CREATE` payload read into serenity's own
 //! model. Nothing here reaches the network.
 
@@ -34,6 +36,7 @@ pub const INTERACTION_CREATE: &str = include_str!("discord/interaction_create.js
 pub struct Seen {
     pub method: String,
     pub path: String,
+    pub query: Option<String>,
     pub authorization: Option<String>,
     pub body: Value,
 }
@@ -43,6 +46,9 @@ struct Recording {
     seen: Arc<Mutex<Vec<Seen>>>,
     refusing: Arc<AtomicBool>,
     next: Arc<AtomicU64>,
+    /// The channel's messages, oldest first, as a read of its history finds
+    /// them.
+    history: Arc<Mutex<Vec<Value>>>,
 }
 
 /// The double, running until it is dropped.
@@ -64,6 +70,7 @@ impl Double {
             seen: Default::default(),
             refusing: Default::default(),
             next: Arc::new(AtomicU64::new(1_300_000_000_000_000_001)),
+            history: Default::default(),
         };
         let (stop, stopped) = tokio::sync::oneshot::channel::<()>();
         let state = recording.clone();
@@ -100,6 +107,20 @@ impl Double {
     pub fn refuse(&self) {
         self.recording.refusing.store(true, Ordering::SeqCst);
     }
+
+    /// A message written in the channel while no gateway carried it: kept in
+    /// the channel's history for a read to find, and handed to nobody. What
+    /// the bot posts after it is newer, as on Discord.
+    pub fn written(&self, message: &serenity::all::Message) {
+        self.recording
+            .next
+            .fetch_max(message.id.get() + 1, Ordering::SeqCst);
+        self.recording
+            .history
+            .lock()
+            .expect("the double is poisoned")
+            .push(serde_json::to_value(message).expect("a message writes"));
+    }
 }
 
 impl Drop for Double {
@@ -108,6 +129,14 @@ impl Drop for Double {
             let _ = stop.send(());
         }
     }
+}
+
+/// A message's id, as its snowflake orders it.
+fn id_of(message: &Value) -> u64 {
+    message["id"]
+        .as_str()
+        .and_then(|id| id.parse().ok())
+        .unwrap_or(0)
 }
 
 async fn answer(
@@ -126,6 +155,7 @@ async fn answer(
         .push(Seen {
             method: method.to_string(),
             path: path.clone(),
+            query: uri.query().map(String::from),
             authorization: headers
                 .get("authorization")
                 .and_then(|v| v.to_str().ok())
@@ -144,7 +174,10 @@ async fn answer(
         message["id"] = json!(recording.next.fetch_add(1, Ordering::SeqCst).to_string());
         message["channel_id"] = json!(channel);
         message["content"] = sent["content"].clone();
-        Json(message).into_response()
+        if sent["message_reference"].is_object() {
+            message["message_reference"] = sent["message_reference"].clone();
+        }
+        message
     };
     let api = path.strip_prefix("/api/v10").unwrap_or("");
     let posted_in = api
@@ -152,14 +185,52 @@ async fn answer(
         .and_then(|rest| rest.strip_suffix("/messages"))
         .filter(|channel| channel.parse::<u64>().is_ok());
     match (method, posted_in) {
-        (Method::POST, Some(channel)) => message(channel),
+        (Method::POST, Some(channel)) => {
+            let posted = message(channel);
+            recording
+                .history
+                .lock()
+                .expect("the double is poisoned")
+                .push(posted.clone());
+            Json(posted).into_response()
+        }
+        // A read of the history: the oldest `limit` messages after the one
+        // named, newest first, as Discord gives them.
+        (Method::GET, Some(channel)) => {
+            let asked = |name: &str| {
+                uri.query()
+                    .unwrap_or("")
+                    .split('&')
+                    .filter_map(|pair| pair.split_once('='))
+                    .find(|(key, _)| *key == name)
+                    .and_then(|(_, value)| value.parse::<u64>().ok())
+            };
+            let after = asked("after").unwrap_or(0);
+            let limit = asked("limit").unwrap_or(50) as usize;
+            let mut page: Vec<Value> = recording
+                .history
+                .lock()
+                .expect("the double is poisoned")
+                .iter()
+                .filter(|message| message["channel_id"] == json!(channel) && id_of(message) > after)
+                .cloned()
+                .collect();
+            page.sort_by_key(id_of);
+            page.truncate(limit);
+            page.reverse();
+            Json(Value::Array(page)).into_response()
+        }
+        (Method::GET, None) if api == "/users/@me" => {
+            let posted: Value = serde_json::from_str(POSTED).expect("the recorded message");
+            Json(posted["author"].clone()).into_response()
+        }
         (Method::POST, None) if api.starts_with("/interactions/") && api.ends_with("/callback") => {
             StatusCode::NO_CONTENT.into_response()
         }
         (Method::PATCH, None)
             if api.starts_with("/webhooks/") && api.ends_with("/messages/@original") =>
         {
-            message(&CHANNEL.to_string())
+            Json(message(&CHANNEL.to_string())).into_response()
         }
         _ => (
             StatusCode::NOT_FOUND,
