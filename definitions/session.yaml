@@ -14,6 +14,11 @@
 # holds the session's owner is away (150a), the pane, activity, idle time and
 # exit read as the host last reported them and the idle clock pauses, so the
 # session is neither lost nor stalled by the host's absence.
+# A prompt the program puts to its own pane — a trust dialog, a permission it
+# asks a person for before a command — is never the session's exit and reads
+# as neither idle nor blocked; the binding answers it from what the pane
+# shows, yes to the order's own commands and no to any other, the no a
+# refusal on the thread (72, sessions.yaml prompts).
 # A session its type does not keep alive is ended on the pass that records
 # its exit — done, stalled or invalid alike — after its deliverables are read,
 # so its pane closes then; blocked is not an exit and keeps the pane for the

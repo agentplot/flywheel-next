@@ -92,9 +92,29 @@ identity:
     an agent program and the multiplexer's own messaging are not used by
     any session: the work order says so and the place's settings deny them
     (173).
+prompts:
+  doc: |
+    A prompt the program puts to its own pane — a trust dialog on its folder
+    before it works, a permission it asks a person for before running a
+    command it cannot analyse — is never the session's exit and reads as
+    neither idle nor blocked (72; ruled 2026-09-16). The host reads it from
+    what the pane shows, never by assumption, and answers it on the pass that
+    sees it, the keys the prompt takes sent to the pane through the
+    multiplexer (`herdr --session <s> agent prompt <session-id> …`, as
+    deliver_answer sends an answer): yes to a command the order itself gave —
+    the exit, offer and ask lines of `how to report`, matched whole — and no
+    to any other, the no appended to the session's thread as a refusal naming
+    the command (43, record_refusals), so the program carries on with the
+    refusal and the session decides what to do with it. A yes on one of the
+    order's own lines is also reported as a fault of the place's preparation
+    (81), since prepare_place admits the machinery's command and writes the
+    order's lines as arguments the parser reads whole (host.yaml
+    prepare_place). session.activity reads working while a pane shows a
+    prompt. How herdr surfaces a prompt is to be verified before this is
+    relied on (gaps 72).
 evidence:
   session.pane:        {read: "`herdr --session <s> agent get <session-id>` in the session the record names; present when herdr lists the agent by that name"}
-  session.activity:    {read: "`herdr agent status`: the agent-aware state (working | idle); none when absent. While the holding host is away (150a) the value the host last wrote on the session record stands"}
+  session.activity:    {read: "`herdr agent status`: the agent-aware state (working | idle); none when absent; a pane at its program's own prompt reads working, the prompt answered by the host (72, prompts). While the holding host is away (150a) the value the host last wrote on the session record stands"}
   session.idle_since:  {read: "`herdr agent status` last-activity time. While the holding host is away (150a) the clock pauses: on the host's return the recorded idle_since is advanced by the time it was away before any `older` guard reads it, so a stall bound never counts absence"}
   session.operator_present: {read: "`herdr agent status` last human keystroke within the presence window: 30 minutes, a setting of this binding (25)"}
   session.pane_absent: {read: "`herdr agent status` reports no pane by that name"}
