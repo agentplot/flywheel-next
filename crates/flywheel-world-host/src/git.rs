@@ -345,12 +345,20 @@ fn walk(tree: &gix::Tree<'_>, under: &str, into: &mut Vec<String>) -> Result<()>
 
 /// Write a file into a checkout, commit it and push the shared line.
 pub fn commit_file(repo: &Repo, line: &str, path: &str, content: &str, message: &str) -> Result<()> {
-    let full = repo.dir.join(path);
-    if let Some(parent) = full.parent() {
-        std::fs::create_dir_all(parent)?;
+    commit_files(repo, line, std::slice::from_ref(&(path.to_string(), content.to_string())), message)
+}
+
+/// Several files in one commit on `line`, pushed once: what a delivery of many
+/// records costs, rather than a commit and a push for each of them (110, 127).
+pub fn commit_files(repo: &Repo, line: &str, files: &[(String, String)], message: &str) -> Result<()> {
+    for (path, content) in files {
+        let full = repo.dir.join(path);
+        if let Some(parent) = full.parent() {
+            std::fs::create_dir_all(parent)?;
+        }
+        std::fs::write(&full, content)?;
+        repo.git(&["add", "--", path])?;
     }
-    std::fs::write(&full, content)?;
-    repo.git(&["add", "--", path])?;
     let said = repo.run(&["commit", "--quiet", "-m", message])?;
     if !said.ok && !said.out.contains("nothing to commit") && !said.err.contains("nothing to commit")
     {

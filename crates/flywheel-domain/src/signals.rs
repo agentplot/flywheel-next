@@ -730,6 +730,14 @@ impl Move {
 /// only signals with no file here, and the operator's response is what replaces
 /// or clears one.
 pub fn write_move<W: World + ?Sized>(world: &mut W, moved: &Move) -> Result<bool> {
+    let (path, body) = move_file(moved)?;
+    world.write_file(BLUEPRINTS, &path, &body, None)
+}
+
+/// The file one move is written as, with its word checked: a delivery renders
+/// every move before it writes any, so one no word admits refuses the delivery
+/// rather than leaving half of it on the line (107).
+fn move_file(moved: &Move) -> Result<(String, Vec<u8>)> {
     let word = moved.word();
     if !MOVES.contains(&word) {
         bail!(
@@ -739,7 +747,7 @@ pub fn write_move<W: World + ?Sized>(world: &mut W, moved: &Move) -> Result<bool
         );
     }
     let body = rec::write(std::slice::from_ref(&moved.to_record()));
-    world.write_file(BLUEPRINTS, &move_path(&moved.signal), body.as_bytes(), None)
+    Ok((move_path(&moved.signal), body.into_bytes()))
 }
 
 /// The move standing on one signal, or none — which is what makes it unmoved
@@ -803,6 +811,13 @@ pub fn apply_move<S: StateStore, W: World + ?Sized>(
     at: DateTime<Utc>,
 ) -> Result<Applied> {
     write_move(world, moved)?;
+    applied(store, moved, at)
+}
+
+/// What a move, once written, leaves on the objects it names (107, 116). The
+/// writing is the caller's, so a delivery writes its moves together and then
+/// takes each one up here.
+fn applied<S: StateStore>(store: &mut S, moved: &Move, at: DateTime<Utc>) -> Result<Applied> {
     let named = moved.names().to_string();
     let mut applied = Applied {
         moved: moved.clone(),
@@ -1006,15 +1021,22 @@ pub fn text_of(signal: &flywheel_atoms::Object) -> Option<String> {
 /// The moves are the session's delivery and not the machinery's judgment:
 /// curation decides, and the flywheel accepts its output whoever produced it
 /// (20, 110).
+///
+/// A delivery is one delivery and is recorded as one: the moves are written
+/// together, so a curator's sixty-three cost one commit rather than
+/// sixty-three, and a repeat of the delivery writes nothing at all — the bytes
+/// are the ones already there (110, 127, 73).
 pub fn record_moves<S: StateStore, W: World + ?Sized>(
     store: &mut S,
     world: &mut W,
     moves: &[Move],
     at: DateTime<Utc>,
 ) -> Result<usize> {
+    let files = moves.iter().map(move_file).collect::<Result<Vec<_>>>()?;
+    world.write_files(BLUEPRINTS, &files, None)?;
     let mut stored = 0;
     for moved in moves {
-        apply_move(store, world, moved, at)?;
+        applied(store, moved, at)?;
         stored += 1;
     }
     Ok(stored)

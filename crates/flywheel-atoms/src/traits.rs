@@ -398,6 +398,32 @@ pub trait World {
         by_response: Option<&str>,
     ) -> Result<bool>;
 
+    /// Write several files together on a repository's shared line, as one
+    /// commit where the world commits at all (110, 127).
+    ///
+    /// A delivery is one delivery: a curator's moves for sixty-three signals
+    /// are recorded once, not sixty-three times, and the prefix rule holds
+    /// over every file before any of them is written (203). Returns how many
+    /// of them changed something; a repeat of a delivery changes nothing and
+    /// returns zero.
+    ///
+    /// A world that keeps no commits writes them in order, which is what this
+    /// does unless the world says otherwise.
+    fn write_files(
+        &mut self,
+        repository: &str,
+        files: &[(String, Vec<u8>)],
+        by_response: Option<&str>,
+    ) -> Result<usize> {
+        let mut changed = 0;
+        for (path, body) in files {
+            if self.write_file(repository, path, body, by_response)? {
+                changed += 1;
+            }
+        }
+        Ok(changed)
+    }
+
     /// Pin a revision of a repository on the git host under the machinery's
     /// own prefix, `refs/flywheel/`, so what a session committed in its place
     /// is readable on every host once the place is rebased, squashed or

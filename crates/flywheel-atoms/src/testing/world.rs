@@ -22,6 +22,10 @@ pub struct FakeWorld {
     /// reading a record wrote nothing back reads this rather than counting
     /// commits (78, 114).
     written: Vec<String>,
+    /// What the writes would have cost a world that commits: one per write
+    /// that changed something, and one for a delivery written together,
+    /// whatever it held (110, 127).
+    commits: usize,
     /// The pins on the git host, by repository and reference, each with the
     /// revision it holds (62).
     pub pinned: BTreeMap<(String, String), String>,
@@ -51,6 +55,12 @@ impl FakeWorld {
         self.written.iter().filter(|p| p.as_str() == path).count()
     }
 
+    /// How many commits what was written would have cost on a world that
+    /// commits, so a test can assert that a delivery is one of them (110, 127).
+    pub fn commits(&self) -> usize {
+        self.commits
+    }
+
     /// What was written under a path, for a test that reads it back.
     pub fn under(&self, prefix: &str) -> Vec<String> {
         self.files
@@ -59,6 +69,16 @@ impl FakeWorld {
             .cloned()
             .collect()
     }
+}
+
+/// What the machinery may write in a tracked repository without being asked
+/// (203) — the same rule a host enforces, so a test cannot pass on a world
+/// looser than the real one.
+fn prefix(repository: &str, path: &str, by_response: Option<&str>) -> Result<()> {
+    if repository != "flywheel-state" && !path.starts_with("flywheel/") && by_response.is_none() {
+        bail!("{repository}: `{path}` is outside the machinery's prefix (203)");
+    }
+    Ok(())
 }
 
 impl World for FakeWorld {
@@ -100,17 +120,38 @@ impl World for FakeWorld {
         body: &[u8],
         by_response: Option<&str>,
     ) -> Result<bool> {
-        if repository != "flywheel-state" && !path.starts_with("flywheel/") && by_response.is_none()
-        {
-            bail!("{repository}: `{path}` is outside the machinery's prefix (203)");
-        }
+        prefix(repository, path, by_response)?;
         let text = String::from_utf8_lossy(body).to_string();
         if self.files.get(path) == Some(&text) {
             return Ok(false);
         }
         self.files.insert(path.to_string(), text);
         self.written.push(path.to_string());
+        self.commits += 1;
         Ok(true)
+    }
+
+    /// One commit for the whole delivery, whatever it holds, and the prefix
+    /// rule read over every file first, so a refused one leaves nothing
+    /// written (110, 127, 203).
+    fn write_files(
+        &mut self,
+        repository: &str,
+        files: &[(String, Vec<u8>)],
+        by_response: Option<&str>,
+    ) -> Result<usize> {
+        for (path, _) in files {
+            prefix(repository, path, by_response)?;
+        }
+        let before = self.commits;
+        let mut changed = 0;
+        for (path, body) in files {
+            if self.write_file(repository, path, body, by_response)? {
+                changed += 1;
+            }
+        }
+        self.commits = before + usize::from(changed > 0);
+        Ok(changed)
     }
 
     fn pin(&mut self, repository: &str, reference: &str, revision: &str) -> Result<bool> {

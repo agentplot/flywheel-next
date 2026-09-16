@@ -215,3 +215,29 @@ fn a_curators_delivery_writes_its_moves_and_proposed_intents() {
     offers::record(&mut store, &mut world, &defs, session, "curation/willdan", now()).unwrap();
     assert_eq!(store.thread(session).unwrap().len(), before, "a second pass parsed the delivery again");
 }
+
+/// A curator's delivery is recorded in one commit, however many signals it
+/// moved, and a repeat of the delivery writes nothing (110, 127, 73).
+///
+/// A commit per record is what made a delivery of sixty-three take about three
+/// minutes after the curator had already exited.
+#[test]
+fn a_curators_delivery_is_one_commit() {
+    let mut store = FakeStore::default();
+    let mut world = FakeWorld::new();
+    let moves: Vec<signals::Move> = (1..=63)
+        .map(|ordinal| signals::Move {
+            signal: signals::signal_object(KEY, ordinal),
+            target: "drop".into(),
+            reason: "the standup said it twice".into(),
+            at: now().to_rfc3339(),
+        })
+        .collect();
+
+    assert_eq!(signals::record_moves(&mut store, &mut world, &moves, now()).unwrap(), 63);
+    assert_eq!(world.commits(), 1, "sixty-three moves are one delivery and one commit (110, 127)");
+    assert_eq!(world.under("flywheel/signals/moves/").len(), 63, "every move was written");
+
+    signals::record_moves(&mut store, &mut world, &moves, now()).unwrap();
+    assert_eq!(world.commits(), 1, "the same delivery was recorded a second time (73, 127)");
+}

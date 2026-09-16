@@ -124,6 +124,19 @@ impl HostWorld {
     }
 }
 
+/// The directory a batch of paths share, so the one commit carrying them says
+/// where they went: "63 files in flywheel/signals/moves" (110).
+fn common_dir(files: &[(String, String)]) -> String {
+    let dir = |path: &str| path.rsplit_once('/').map(|(dir, _)| dir.to_string()).unwrap_or_default();
+    let mut shared = files.first().map(|(path, _)| dir(path)).unwrap_or_default();
+    for (path, _) in files {
+        while !shared.is_empty() && !path.starts_with(&format!("{shared}/")) {
+            shared = dir(&shared);
+        }
+    }
+    shared
+}
+
 impl World for HostWorld {
     fn manifest(&self) -> Result<Value> {
         Ok(serde_json::to_value(&self.manifest)?)
@@ -282,6 +295,51 @@ impl World for HostWorld {
         };
         git::commit_file(&checkout, &line, path, &text, &reason)?;
         Ok(true)
+    }
+
+    /// A delivery of several files as one commit on the shared line: every one
+    /// checked against the prefix rule before any is written, those already
+    /// there left out, and what is left committed and pushed once (110, 127,
+    /// 203).
+    fn write_files(
+        &mut self,
+        repository: &str,
+        files: &[(String, Vec<u8>)],
+        by_response: Option<&str>,
+    ) -> Result<usize> {
+        let mut changing: Vec<(String, String)> = Vec::new();
+        for (path, body) in files {
+            crate::prefix::check(repository, path, by_response)?;
+            if self.read_file(repository, path)?.as_deref() == Some(body.as_slice()) {
+                continue;
+            }
+            changing.push((path.clone(), String::from_utf8_lossy(body).to_string()));
+        }
+        if changing.is_empty() {
+            return Ok(0);
+        }
+        let entry = self.repository(repository)?;
+        let line = entry.shared_line.clone();
+        let checkout = Repo::at(self.checkout(repository));
+        if !checkout.exists() {
+            bail!(
+                "this host has no checkout of `{repository}`; it joins by one command and never \
+                 by hand (205)"
+            );
+        }
+        let said = match changing.as_slice() {
+            [(path, _)] => path.clone(),
+            many => match common_dir(many).as_str() {
+                "" => format!("{} files", many.len()),
+                dir => format!("{} files in {dir}", many.len()),
+            },
+        };
+        let reason = match by_response {
+            Some(response) => format!("{said}\n\nreason: the effect of response {response} (203)"),
+            None => format!("{said}\n\nreason: the machinery's own material, under its prefix (203)"),
+        };
+        git::commit_files(&checkout, &line, &changing, &reason)?;
+        Ok(changing.len())
     }
 
     /// `git push origin <revision>:<reference>` from the bare clone, whose

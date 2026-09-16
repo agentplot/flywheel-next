@@ -153,6 +153,14 @@ impl World for SharedWorld {
     ) -> Result<bool> {
         self.with(|w| w.write_file(repository, path, body, by_response))
     }
+    fn write_files(
+        &mut self,
+        repository: &str,
+        files: &[(String, Vec<u8>)],
+        by_response: Option<&str>,
+    ) -> Result<usize> {
+        self.with(|w| w.write_files(repository, files, by_response))
+    }
     fn pin(&mut self, repository: &str, reference: &str, revision: &str) -> Result<bool> {
         self.with(|w| w.pin(repository, reference, revision))
     }
