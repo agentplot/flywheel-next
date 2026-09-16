@@ -293,6 +293,36 @@ fn throttle(tab: &Tab) {
     .expect("the connection");
 }
 
+/// The tab at this computer's own speed, for the steps between measurements.
+/// What 310a measures is a page asked for over the phone's connection, not the
+/// test's own reset to a blank page, which needs no network at all.
+fn unthrottle(tab: &Tab) {
+    tab.call_method(Emulation::SetCPUThrottlingRate { rate: 1.0 }).expect("the CPU at its own speed");
+    tab.call_method(Network::EmulateNetworkConditions {
+        offline: false,
+        latency: 0.0,
+        // Below nought is no emulation at all, which is what the tab had
+        // before the first throttling.
+        download_throughput: -1.0,
+        upload_throughput: -1.0,
+        connection_Type: None,
+        packet_loss: None,
+        packet_queue_length: None,
+        packet_reordering: None,
+    })
+    .expect("the connection unemulated");
+}
+
+/// What the driver answers, or the words it refused with. A wait that reads a
+/// driver which cannot answer as one that has not answered yet spends its whole
+/// bound and then says nothing of the cause (D15).
+fn evaluated(tab: &Tab, expression: &str) -> String {
+    match tab.evaluate(expression, false) {
+        Ok(answer) => format!("it last said {:?}", answer.value),
+        Err(refused) => format!("the driver refused: {refused}"),
+    }
+}
+
 /// A press at a point of the page, as a finger or a pointer makes one.
 fn press(tab: &Tab, x: f64, y: f64) {
     for kind in [
@@ -324,12 +354,26 @@ fn press(tab: &Tab, x: f64, y: f64) {
 /// Load the first view once, pressing the rail's first card the moment the page
 /// has drawn it and taken it in hand.
 fn load(tab: &Tab, url: &str, cold: bool) -> Load {
+    // The reset is the test's own step and not the phone's: held at the phone's
+    // speed it left the renderer busy enough that the blank page's answer never
+    // came, and since a wait reads a driver that cannot answer exactly as one
+    // that has not answered yet, the test spent its whole bound and failed at
+    // the blank page saying nothing of why. The throttle goes back on for the
+    // navigation that is measured (310a, `surfaces.yaml` budget).
+    unthrottle(tab);
     tab.navigate_to("about:blank").expect("a blank page");
     driver::within(WAIT, || (js(tab, "location.href") == Some(json!("about:blank"))).then_some(()))
-        .expect("the blank page");
+        .unwrap_or_else(|| {
+            panic!(
+                "the driver gave no blank page {} s after one was asked for; {}",
+                WAIT.as_secs(),
+                evaluated(tab, "location.href")
+            )
+        });
     if cold {
         tab.call_method(Network::ClearBrowserCache(None)).expect("an empty cache");
     }
+    throttle(tab);
     tab.navigate_to(url).expect("the page");
     // The card in hand is the page's script having run over the rail: a press
     // before that reaches nothing that answers it (S219).
