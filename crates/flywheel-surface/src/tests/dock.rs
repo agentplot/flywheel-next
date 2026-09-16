@@ -300,6 +300,33 @@ fn a_captures_page_is_its_words_its_source_and_what_became_of_it() {
     assert!(page.contains("<div class=\"tail\">dropped</div>"), "{page}");
 }
 
+/// A moment on a page is said as since when in the operator's own terms and
+/// never as the stamp the record keeps (S28, S214, 150a).
+#[test]
+fn an_away_line_says_since_when_in_words() {
+    let (mut store, world, defs) = a_bolt_worked();
+    // The host holding the bolt was last heard from ten minutes ago, which is
+    // past the window after which a host is away (150a).
+    let heard = commands::now(&store).expect("a point");
+    store.seed_host("laptop", 1);
+    store.seed_lease(BOLT, "laptop");
+    store.set_now(heard + chrono::Duration::minutes(10));
+
+    let html = rendered(&mut store, &world, &defs, false);
+    let line = html.split("class=\"away\"").nth(1).expect("the away line is on the page");
+    let line = &line[..line.find("</p>").expect("the line is closed")];
+
+    assert!(line.contains("laptop is away since"), "the line does not say who is away: {line}");
+    assert!(
+        !line.contains(&heard.to_rfc3339()),
+        "the line prints the stamp the record keeps rather than the moment in words: {line}"
+    );
+    assert!(
+        !line.contains('T') && !line.contains('+'),
+        "a moment on the page is said in the operator's own terms: {line}"
+    );
+}
+
 /// Any other object's page is what it holds, in the order it was made, and
 /// what it is part of (210, S28).
 #[test]

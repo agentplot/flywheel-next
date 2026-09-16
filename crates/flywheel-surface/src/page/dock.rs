@@ -179,7 +179,7 @@ pub fn body(read: &Read, object: &Object, row: Option<&status::Row>) -> String {
             out,
             "<p class=\"away\" data-away-host=\"{}\">{}</p>\n",
             escape(&away.host),
-            escape(&away.said())
+            escape(&super::away_said(away))
         );
     }
     // Why the decision on it is being asked, in the machine's own words; the

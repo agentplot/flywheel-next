@@ -86,7 +86,13 @@ fn away_link_says_so() {
         .expect("the decision");
     let said = line.away.clone().expect("the link says nothing about the host");
     assert!(said.contains("mac-mini is away since"), "{said}");
-    assert!(said.contains(&seen.to_rfc3339()), "it does not say since when: {said}");
+    // Since when, in the operator's own terms: the record keeps the moment to
+    // the microsecond and a person reads none of it (150a, S28, S214).
+    assert!(
+        said.contains(&seen.format("%Y-%m-%d %H:%M").to_string()),
+        "it does not say since when: {said}"
+    );
+    assert!(!said.contains('T'), "it says since when as the stamp the record keeps: {said}");
     // The link still opens the object; what is added is what it says (308).
     assert_eq!(line.link, format!("{ADDRESS}/bolt/atlas/plan-rows"));
     assert!(line.text().contains(&said), "the posted line drops it: {}", line.text());

@@ -462,6 +462,16 @@ fn short(at: &str) -> String {
         .unwrap_or_else(|| at.to_string())
 }
 
+/// A host past its stale window, as the page says it: the host, that it is
+/// away, and since when (150a, S214, S28).
+///
+/// The record keeps the moment to the microsecond and a person reads none of
+/// it, so the line says the moment the way the hosts strip says it and the way
+/// every other moment on the page is said — never the stamp itself (141, S28).
+pub(crate) fn away_said(away: &sinks::Away) -> String {
+    format!("{} is away since {}", away.host, short(&away.since.to_rfc3339()))
+}
+
 /// The answers among a read's objects, by the decision number each answered.
 /// Read from the same objects the rest of the page is, so the whole page is
 /// still one read (310).
@@ -2125,7 +2135,7 @@ fn card(read: &Read, decision: &DecisionInstance) -> String {
             out,
             "<p class=\"away\" data-away-host=\"{}\">{}</p>\n",
             escape(&away.host),
-            escape(&away.said())
+            escape(&away_said(away))
         );
     }
     // A fold of chores lists them as lettered rows, each its chore's own

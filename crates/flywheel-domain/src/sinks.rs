@@ -379,13 +379,6 @@ pub struct Away {
     pub since: DateTime<Utc>,
 }
 
-impl Away {
-    /// What a link to it says instead of failing silently (308, 150a).
-    pub fn said(&self) -> String {
-        format!("{} is away since {}", self.host, self.since.to_rfc3339())
-    }
-}
-
 /// Every object held by a host past its stale window, with the host and the
 /// since-when (150a).
 ///

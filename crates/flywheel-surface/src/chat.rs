@@ -326,7 +326,7 @@ pub fn line(
         object: decision.object.clone(),
         link: links::to_object(address, &decision.object)?,
         controls: decision.answers.clone(),
-        away: away.map(sinks::Away::said),
+        away: away.map(crate::page::away_said),
     })
 }
 
@@ -339,7 +339,7 @@ pub fn tail_line(address: &str, item: &sinks::TailItem, away: Option<&sinks::Awa
         object: item.object.clone(),
         link: links::to_object(address, &item.object)?,
         controls: vec![],
-        away: away.map(sinks::Away::said),
+        away: away.map(crate::page::away_said),
     })
 }
 
