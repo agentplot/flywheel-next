@@ -9,5 +9,6 @@ mod init;
 mod render_order;
 mod report;
 mod seeding;
+mod sessions;
 mod watch;
 mod work_order;

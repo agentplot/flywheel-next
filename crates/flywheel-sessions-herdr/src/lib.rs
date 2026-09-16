@@ -126,6 +126,24 @@ pub fn session_name(
     format!("flywheel-{instance}-{}", charged.role())
 }
 
+/// The label a host marks a session it made with: the mark two hosts on one
+/// computer share sight of, since the multiplexer session is what they share
+/// (218, `sessions.yaml` own).
+pub fn host_label(host: &str) -> String {
+    format!("host/{host}")
+}
+
+/// Whose a running herdr session is (218).
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub enum Own {
+    /// This host started it: its own after a restart.
+    Mine,
+    /// Another host on this computer already runs an instance of this name.
+    AnotherHost(String),
+    /// No host's label at all: a session the operator made by that name.
+    TheOperators,
+}
+
 /// Who charged a session, from the object it is under and the chain of parents
 /// above it: a unit's stage session is the bolts' and an elaboration's is the
 /// intents', while curation, planning and capture reading are the machinery's
@@ -284,13 +302,40 @@ impl Herdr {
         }))
     }
 
-    /// The session, running. One herdr does not list running is started
-    /// headless as a detached child — `herdr --session <name> server` — and
-    /// the proof is the session listed running; the host never stops or
-    /// deletes one (174, `sessions.yaml` multiplexer_sessions.create).
-    pub fn ensure_session(&self) -> Result<()> {
-        if self.session.is_empty() || self.session_running()? {
+    /// The session, running and this host's to open panes in.
+    ///
+    /// One herdr does not list running is started headless as a detached child
+    /// — `herdr --session <name> server` — and the proof is the session listed
+    /// running; the host never stops or deletes one (174).
+    ///
+    /// An instance's name is unique on its computer, since its multiplexer
+    /// sessions and every agent in them are named from it (174, 196, 218). The
+    /// host that starts a session labels its first workspace `host/<host id>`;
+    /// a host that finds the session already running reads its workspaces
+    /// before any other call — its own label is its own after a restart,
+    /// another host's label means another host on this computer already runs
+    /// an instance of this name, and no host label at all is a session the
+    /// operator made by that name. Either collision is declined, naming what
+    /// it found, and no further herdr call is made (218, `sessions.yaml` own).
+    pub fn ensure_session(&self, host: &str) -> Result<()> {
+        if self.session.is_empty() {
             return Ok(());
+        }
+        if self.session_running()? {
+            return match self.whose(host)? {
+                Own::Mine => Ok(()),
+                Own::AnotherHost(other) => bail!(
+                    "the herdr session `{}` belongs to host `{other}`: another host on this \
+                     computer already runs an instance of this name, and an instance's name is \
+                     unique on its computer, so this host starts nothing (218)",
+                    self.session
+                ),
+                Own::TheOperators => bail!(
+                    "the herdr session `{}` carries no host's label, so it is the operator's own \
+                     session of that name; this host starts nothing in it (218)",
+                    self.session
+                ),
+            };
         }
         Command::new(&self.binary)
             .args(["--session", &self.session, "server"])
@@ -304,6 +349,10 @@ impl Herdr {
         // pause at all.
         for _ in 0..100 {
             if self.session_running()? {
+                // The session this host made is marked its own, once, so a
+                // second host of another instance by this name finds it and
+                // declines rather than opening panes beside these (218).
+                self.run(&["workspace", "create", "--label", &host_label(host), "--no-focus"])?;
                 return Ok(());
             }
             std::thread::sleep(std::time::Duration::from_millis(100));
@@ -314,6 +363,24 @@ impl Herdr {
             self.binary,
             self.session
         )
+    }
+
+    /// Whose session this is, read from its workspace labels (218).
+    pub fn whose(&self, host: &str) -> Result<Own> {
+        let mine = host_label(host);
+        let mut another = None;
+        for (_, label) in self.workspaces()? {
+            if label == mine {
+                return Ok(Own::Mine);
+            }
+            if let Some(other) = label.strip_prefix("host/") {
+                another = Some(other.to_string());
+            }
+        }
+        Ok(match another {
+            Some(other) => Own::AnotherHost(other),
+            None => Own::TheOperators,
+        })
     }
 
     /// This session's workspaces: each by its id and its label.
@@ -615,7 +682,7 @@ pub fn start<S: Records>(
     // is started headless first: a socket command against a stopped session is
     // refused, which is the signal to start it (174).
     let herdr = &herdr.in_session(&placement.session);
-    herdr.ensure_session()?;
+    herdr.ensure_session(host)?;
     let name = agent_name(&order.session);
     let mut pane = None;
     let mut workspace = None;
@@ -1036,8 +1103,8 @@ esac"#,
   *"session list"*) echo '{"sessions":[{"name":"flywheel-agentplot-machinery","running":true}]}' ;;
   *"agent get"*) if [ -e "$D/started" ]; then echo '{"result":{"agent":{"agent_status":"idle"}}}';
     else echo '{"error":{"message":"agent not found"}}' >&2; exit 1; fi ;;
-  *"workspace list"*) if [ -e "$D/ws" ]; then echo '{"result":{"workspaces":[{"workspace_id":"w1","label":"curation"}]}}';
-    else echo '{"result":{"workspaces":[]}}'; fi ;;
+  *"workspace list"*) if [ -e "$D/ws" ]; then echo '{"result":{"workspaces":[{"workspace_id":"w0","label":"host/mac-studio"},{"workspace_id":"w1","label":"curation"}]}}';
+    else echo '{"result":{"workspaces":[{"workspace_id":"w0","label":"host/mac-studio"}]}}'; fi ;;
   *"workspace create"*) touch "$D/ws"; echo '{"result":{"workspace":{"workspace_id":"w1"},"tab":{"tab_id":"w1:t1"},"root_pane":{"pane_id":"w1:p1"}}}' ;;
   *"tab list"*) if [ -e "$D/tab" ]; then echo '{"result":{"tabs":[{"tab_id":"w1:t1","label":"curation/agentplot/main/1","pane_count":1,"workspace_id":"w1"}]}}';
     else echo '{"result":{"tabs":[]}}'; fi ;;
@@ -1109,19 +1176,27 @@ esac"#;
             r#"case "$*" in
   *"session list"*) if [ -e "$D/up" ]; then echo '{"sessions":[{"name":"flywheel-agentplot-machinery","running":true}]}';
     else echo '{"sessions":[{"name":"flywheel-agentplot-machinery","running":false}]}'; fi ;;
+  *"workspace list"*) if [ -e "$D/labelled" ]; then echo '{"result":{"workspaces":[{"workspace_id":"w0","label":"host/mac-studio"}]}}';
+    else echo '{"result":{"workspaces":[]}}'; fi ;;
+  *"workspace create"*) touch "$D/labelled"; echo '{"result":{"workspace":{"workspace_id":"w0"},"tab":{"tab_id":"w0:t1"},"root_pane":{"pane_id":"w0:p1"}}}' ;;
   *"server"*) touch "$D/up"; echo '{"result":{}}' ;;
   *) echo '{"result":{}}' ;;
 esac"#,
         );
-        fake.herdr.ensure_session().unwrap();
+        fake.herdr.ensure_session("mac-studio").unwrap();
         let calls = fake.calls();
         assert!(
             calls.contains(&format!("--session {SESSION} server")),
             "the session was never started headless: {calls}"
         );
+        // The host marks the session it made as its own, once (218).
+        assert!(
+            calls.contains("workspace create --label host/mac-studio --no-focus"),
+            "the session it made carries no host label: {calls}"
+        );
         // Already running, so nothing is started a second time.
         let before = fake.calls().matches("server").count();
-        fake.herdr.ensure_session().unwrap();
+        fake.herdr.ensure_session("mac-studio").unwrap();
         assert_eq!(fake.calls().matches("server").count(), before);
     }
 
