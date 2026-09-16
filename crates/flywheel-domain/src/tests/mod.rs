@@ -13,6 +13,7 @@ mod elaboration_order;
 mod elaboration_type;
 mod envelope;
 mod offers;
+mod rail_answers;
 mod rail_folding;
 mod rail_record;
 mod response_taken;

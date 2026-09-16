@@ -47,7 +47,54 @@ pub fn standing(
 ) -> Vec<flywheel_engine::DecisionInstance> {
     let mut derived = flywheel_engine::rail::derive(defs, objects, register);
     fold_onto_the_parents_card(objects, &mut derived);
+    offer_only_what_applies(objects, &mut derived);
     derived
+}
+
+/// A decision offers the answers that apply to the object it stands on, and not
+/// every answer its machine names: an elaboration covering one intent has
+/// nothing to pick and no intent to take out of a gathering, so it offers
+/// neither `pick <intents>` nor the per-intent drop (27, 188, S226,
+/// `elaboration.yaml` proposed — "offers only the answers that apply — pick and
+/// the per-intent drop only when covers names more than one intent").
+///
+/// The narrowing is the machinery's and not a rendering's. The page drew the
+/// right controls already, but the standing decision carried the machine's
+/// whole list, and the chat's controls and the numbered reply grammar read that
+/// list too — so an answer the operator could never see on a card was one they
+/// could still send, and a reader checking the card against the decision found
+/// a control missing that was never the card's to draw.
+fn offer_only_what_applies(
+    objects: &BTreeMap<String, Object>,
+    derived: &mut [flywheel_engine::DecisionInstance],
+) {
+    for decision in derived.iter_mut() {
+        if decision.kind != "elaboration-proposed" || covers(objects, &decision.object) > 1 {
+            continue;
+        }
+        decision
+            .answers
+            .retain(|answer| !answer.starts_with("pick ") && !per_intent_drop(answer));
+    }
+}
+
+/// `<intent>: drop`: the answer that takes one intent out of a gathering (188).
+fn per_intent_drop(answer: &str) -> bool {
+    answer.starts_with('<') && answer.ends_with(": drop")
+}
+
+/// How many intents an elaboration covers: the gathering's own list, or the one
+/// intent it hangs under where it names none (188).
+fn covers(objects: &BTreeMap<String, Object>, id: &str) -> usize {
+    let Some(held) = objects.get(id) else {
+        return 1;
+    };
+    held.record
+        .get("covers")
+        .and_then(|v| v.as_array())
+        .map(|covered| covered.len())
+        .filter(|covered| *covered > 0)
+        .unwrap_or(1)
 }
 
 /// An elaboration proposed against an intent that is itself still proposed is

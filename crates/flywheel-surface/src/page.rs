@@ -954,12 +954,15 @@ fn offered(read: &Read, decision: &DecisionInstance) -> Vec<String> {
             .collect();
     }
     if decision.kind == "elaboration-proposed" {
-        let gathering = covered(read, &decision.object).len() > 1;
+        // Whether `pick` applies at all is the standing decision's own, so a
+        // chat control and a numbered reply narrow with the card rather than
+        // after it (`flywheel_domain::rail::standing`). What is left here is a
+        // rendering: a gathering's per-intent drops are drawn as the × on each
+        // intent's chip and not as controls of their own (188, S226).
         return decision
             .answers
             .iter()
             .filter(|answer| !is_per_intent_drop(answer))
-            .filter(|answer| gathering || !answer.starts_with("pick "))
             .cloned()
             .collect();
     }
