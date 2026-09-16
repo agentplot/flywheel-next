@@ -1171,8 +1171,8 @@ fn a_waiting_note_carries_its_five_controls_and_a_moved_one_none() {
     }
     assert!(html.contains(">add to bolt…<span class=\"k\">a</span>"), "no add to bolt control");
     assert!(html.contains(">attach to…<span class=\"k\">t</span>"), "no attach control");
-    assert!(html.contains("No intent is open yet."), "attach says nothing to pick from");
-    assert!(html.contains("No bolt is open yet."), "add to bolt says nothing to pick from");
+    assert!(html.contains("no intent is open yet"), "attach says nothing to pick from");
+    assert!(html.contains("no bolt is open yet"), "add to bolt says nothing to pick from");
     assert!(!commands::rail(&mut store, &defs).expect("the rail").iter().any(|d| d.object == capture), "a note raised a decision");
 
     let signal = flywheel_domain::signals::of_capture(&store, &capture).expect("a read").remove(0);
@@ -1259,7 +1259,10 @@ fn with_no_bolt_open_the_list_points_at_build_now() {
     a_note(&mut store, &mut world, &defs, "the rows lose their numbers on the second page");
 
     let html = rendered(&mut store, &world, &defs);
-    assert!(html.contains("No bolt is open yet. Build now starts one."), "the empty list says nothing: {html}");
+    assert!(html.contains("no bolt is open yet"), "the empty list says nothing: {html}");
+    let at = html.find("no bolt is open yet").expect("the empty list");
+    let body: String = html[at..].chars().take(400).collect();
+    assert!(body.contains(">build now<"), "the empty list points at nothing that makes one: {body}");
     assert!(!html.contains(&format!("value=\"{landed}\"")), "a bolt that landed is listed: {html}");
 }
 
@@ -1289,6 +1292,50 @@ fn a_capture_added_to_a_bolt_reads_added_to_it() {
     let html = rendered(&mut store, &world, &defs);
     assert!(html.contains("<span class=\"v added\">added</span>"), "Recently done does not read added: {html}");
     assert!(html.contains("<span class=\"v built\">built</span>"), "Recently done no longer reads built: {html}");
+}
+
+/// Past eight rows a picker takes a filter field at its head and says so;
+/// eight or fewer scroll without one (S233, S215).
+#[test]
+fn a_picker_past_eight_rows_takes_a_filter() {
+    let (mut store, _, defs) = a_page();
+    let mut world = world::Files::new().tracking("atlas");
+    for nth in 1..=8 {
+        a_bolt(&mut store, &defs, "atlas", &format!("bolt-{nth}"), None);
+    }
+    a_note(&mut store, &mut world, &defs, "the rows lose their numbers on the second page");
+
+    let html = rendered(&mut store, &world, &defs);
+    assert!(html.contains("open bolts · 8"), "the picker's head does not count its rows: {html}");
+    assert!(!html.contains("class=\"pk-q\""), "eight rows took a filter they do not need (S233)");
+    assert!(!html.contains("type to narrow"), "eight rows say to narrow them");
+
+    a_bolt(&mut store, &defs, "atlas", "bolt-9", None);
+    let html = rendered(&mut store, &world, &defs);
+    assert!(html.contains("open bolts · 9"), "the head does not count the ninth: {html}");
+    assert!(html.contains("class=\"pk-q\""), "past eight rows the picker takes no filter (S233)");
+    assert!(html.contains("type to narrow"), "the head does not say the rows can be narrowed");
+
+    let js = bundled(crate::page::script_address());
+    assert!(js.contains("pk-q"), "nothing narrows a picker's rows (S233)");
+    assert!(js.contains("pickerPick(box, pickerAt(box)+(e.key==='ArrowDown' ? 1 : -1))"), "↓ and ↑ walk nothing");
+}
+
+/// An empty picker says so in the operator's words and carries the sibling
+/// verb that makes one, so it is still one gesture from done (S233, S214,
+/// S224a).
+#[test]
+fn an_empty_picker_carries_the_verb_that_makes_one() {
+    let (mut store, _, defs) = a_page();
+    let mut world = world::Files::new().tracking("atlas");
+    a_note(&mut store, &mut world, &defs, "the rows lose their numbers on the second page");
+    let html = rendered(&mut store, &world, &defs);
+
+    for (said, verb) in [("no bolt is open yet", ">build now<"), ("no intent is open yet", ">make an intent<")] {
+        let at = html.find(said).unwrap_or_else(|| panic!("the empty picker does not say `{said}`: {html}"));
+        let body: String = html[at..].chars().take(400).collect();
+        assert!(body.contains(verb), "`{said}` carries no verb that makes one: {body}");
+    }
 }
 
 /// The stylesheet and the script the page asks its own host for.

@@ -42,6 +42,61 @@ fn still_unmoved(read: &Read, signal: &str) -> bool {
         .is_none_or(|state| state == "unmoved")
 }
 
+/// Past this many rows a picker takes a filter field: eight show and more
+/// scroll (S233, S215).
+const FILTER_AT: usize = 8;
+
+/// One picker: the panel `attach to…` and `add to bolt…` share (S233).
+///
+/// Its head names what it lists and how many; above eight rows a filter field
+/// at the head narrows them by their words. Every row is one line clipped at
+/// its end and is its own submit, so a pick is the whole gesture whether or
+/// not the script is there to walk it. With nothing to list the body says so
+/// and carries the sibling verb that makes one, so an empty picker is still
+/// one gesture from done (S214, S224a, S215).
+fn picker(
+    named: &str,
+    tool: &str,
+    field: &str,
+    carries: (&str, &str),
+    rows: &[(String, String)],
+    empty: &str,
+    verb: &str,
+) -> String {
+    let (holds, object) = carries;
+    let filtered = rows.len() > FILTER_AT;
+    let mut head = format!("<div class=\"pk-h\">{named} · {}", rows.len());
+    if filtered {
+        head.push_str("<span class=\"r\">type to narrow</span>");
+    }
+    head.push_str("</div>\n");
+    if rows.is_empty() {
+        return format!(
+            "<div class=\"picker\" data-picker=\"{field}\">\n{head}\
+             <div class=\"pk-empty\">{empty}{verb}</div>\n</div>\n"
+        );
+    }
+    let filter = match filtered {
+        true => "<input class=\"pk-q\" type=\"text\" autocomplete=\"off\" placeholder=\"narrow…\" \
+                 aria-label=\"narrow the list\">\n",
+        false => "",
+    };
+    let mut list = String::new();
+    for (value, label) in rows {
+        let _ = write!(
+            list,
+            "<button class=\"pk-row\" type=\"submit\" role=\"option\" name=\"{field}\" value=\"{value}\">{label}</button>\n"
+        );
+    }
+    format!(
+        "<form method=\"post\" action=\"{tool}\" class=\"picker\" data-picker=\"{field}\" \
+         role=\"listbox\" aria-label=\"{named}\">\
+         <input type=\"hidden\" name=\"{holds}\" value=\"{object}\">\n{head}{filter}\
+         <div class=\"pk-list\">\n{list}</div>\n\
+         <div class=\"pk-empty pk-none\" hidden></div>\n</form>\n"
+    )
+}
+
 /// The open bolts of the tracked repositories, in the order Construction shows
 /// them: the board's groups in the model's order, and within a group the rows
 /// as the status view holds them (S224a, 141). A bolt whose close is offered or
@@ -82,7 +137,7 @@ fn bolt_named(read: &Read, id: &str) -> String {
             .unwrap_or_default(),
         false => String::new(),
     };
-    format!("{pre}{}", escape(&clipped(&name)))
+    format!("{pre}<span class=\"lb\">{}</span>", escape(&clipped(&name)))
 }
 
 /// Who reads a waiting note next, and when, in the operator's words: how many
@@ -121,6 +176,9 @@ pub fn controls(read: &Read, object: &str) -> String {
     let key = |at: usize| keys[at].map(|k| (format!(" data-key=\"{k}\""), format!("<span class=\"k\">{k}</span>"))).unwrap_or_default();
     let object = escape(object);
     let mut out = format!("<div class=\"answers hand\" data-hand=\"{object}\">\n");
+    // The pickers hang under the whole row of verbs and not inside it, so the
+    // five stay one row and the note grows to hold the panel (S233).
+    let mut panels = String::new();
 
     let (key_attr, key_hint) = key(0);
     let does = "a chore on a new bolt named from its words, started now";
@@ -166,36 +224,38 @@ pub fn controls(read: &Read, object: &str) -> String {
 
     // A capture goes to a bolt as it goes to an intent: one already open that
     // the operator picks, the unit named from the capture's own words (34,
-    // S224a). With none open the list says so and points at the verb that
-    // makes one (S214).
+    // S224a). With none open the list says so and carries the verb that makes
+    // one (S214).
     let (key_attr, key_hint) = key(1);
     let _ = write!(
         out,
-        "<details class=\"pick\"><summary{key_attr} title=\"a chore on an open bolt you pick\">add to bolt…{key_hint}</summary>\n"
+        "<details class=\"pick\" data-for=\"bolt\"><summary{key_attr} aria-haspopup=\"listbox\" \
+         title=\"a chore on an open bolt you pick\">add to bolt…{key_hint}</summary></details>\n"
     );
-    let bolts = open_bolts(read);
-    match bolts.is_empty() {
-        true => out.push_str(
-            "<div class=\"pick-list\"><p class=\"none\">No bolt is open yet. Build now starts one.</p></div>\n",
+    let bolts: Vec<(String, String)> =
+        open_bolts(read).iter().map(|bolt| (escape(bolt), bolt_named(read, bolt))).collect();
+    // The verb that makes one, as its own control: with one repository tracked
+    // `build now` names it and asks nothing, and with several it is a pick of
+    // its own and so is named rather than pressed here (S224a, S214).
+    let builds = match read.repositories.as_slice() {
+        [one] => format!(
+            "<form method=\"post\" action=\"/api/tools/propose-unit\">\
+             <input type=\"hidden\" name=\"capture\" value=\"{object}\">\
+             <input type=\"hidden\" name=\"repository\" value=\"{}\">\
+             <button type=\"submit\" class=\"btn sm\">build now</button></form>",
+            escape(one)
         ),
-        false => {
-            let _ = write!(
-                out,
-                "<form method=\"post\" action=\"/api/tools/propose-unit\" class=\"pick-list\">\
-                 <input type=\"hidden\" name=\"capture\" value=\"{object}\">\n"
-            );
-            for bolt in bolts {
-                let _ = write!(
-                    out,
-                    "<button type=\"submit\" name=\"bolt\" value=\"{}\">{}</button>\n",
-                    escape(&bolt),
-                    bolt_named(read, &bolt)
-                );
-            }
-            out.push_str("</form>\n");
-        }
-    }
-    out.push_str("</details>\n");
+        _ => "<span class=\"r\">build now starts one</span>".to_string(),
+    };
+    panels.push_str(&picker(
+        "open bolts",
+        "/api/tools/propose-unit",
+        "bolt",
+        ("capture", &object),
+        &bolts,
+        "no bolt is open yet",
+        &builds,
+    ));
 
     let (key_attr, key_hint) = key(2);
     let _ = write!(
@@ -209,9 +269,12 @@ pub fn controls(read: &Read, object: &str) -> String {
     let (key_attr, key_hint) = key(3);
     let _ = write!(
         out,
-        "<details class=\"pick\"><summary{key_attr} title=\"put it on an intent that is open\">attach to…{key_hint}</summary>\n"
+        "<details class=\"pick\" data-for=\"intent\"><summary{key_attr} aria-haspopup=\"listbox\" \
+         title=\"put it on an intent that is open\">attach to…{key_hint}</summary></details>\n"
     );
-    let open: Vec<(&str, String)> = read
+    // The open intents by subject, in Inception's order, which is the order
+    // the objects themselves count (S233, 5.1).
+    let open: Vec<(String, String)> = read
         .objects
         .iter()
         .filter(|o| o.machine == "intent" && o.config.get("life").map(String::as_str) == Some("open"))
@@ -221,31 +284,23 @@ pub fn controls(read: &Read, object: &str) -> String {
                 .find_map(|field| o.record.get(*field).and_then(|v| v.as_str()).filter(|s| !s.trim().is_empty()))
                 .map(String::from)
                 .unwrap_or_else(|| o.id.rsplit('/').next().unwrap_or(&o.id).replace('-', " "));
-            (o.id.as_str(), subject)
+            (escape(&o.id), format!("<span class=\"lb\">{}</span>", escape(&clipped(&subject))))
         })
         .collect();
-    match open.is_empty() {
-        true => out.push_str(
-            "<div class=\"pick-list\"><p class=\"none\">No intent is open yet. Make an intent from a note first.</p></div>\n",
-        ),
-        false => {
-            let _ = write!(
-                out,
-                "<form method=\"post\" action=\"/api/tools/attach-signal\" class=\"pick-list\">\
-                 <input type=\"hidden\" name=\"signal\" value=\"{object}\">\n"
-            );
-            for (intent, subject) in open {
-                let _ = write!(
-                    out,
-                    "<button type=\"submit\" name=\"intent\" value=\"{}\">{}</button>\n",
-                    escape(intent),
-                    escape(&clipped(&subject))
-                );
-            }
-            out.push_str("</form>\n");
-        }
-    }
-    out.push_str("</details>\n");
+    let makes = format!(
+        "<form method=\"post\" action=\"/api/tools/open-intent\">\
+         <input type=\"hidden\" name=\"capture\" value=\"{object}\">\
+         <button type=\"submit\" class=\"btn sm\">make an intent</button></form>"
+    );
+    panels.push_str(&picker(
+        "open intents",
+        "/api/tools/attach-signal",
+        "intent",
+        ("signal", &object),
+        &open,
+        "no intent is open yet",
+        &makes,
+    ));
 
     let (key_attr, key_hint) = key(4);
     let _ = write!(
@@ -255,5 +310,6 @@ pub fn controls(read: &Read, object: &str) -> String {
          <button type=\"submit\" class=\"btn sm drop\"{key_attr} title=\"set it aside; revive brings it back\">drop{key_hint}</button></form>\n"
     );
     out.push_str("</div>\n");
+    out.push_str(&panels);
     out
 }

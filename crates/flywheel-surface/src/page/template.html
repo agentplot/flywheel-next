@@ -964,6 +964,31 @@ a.btn.pri{color:var(--accent-ink)}
 .answers summary .k{font:600 10px var(--mono);border:1px solid currentColor;border-radius:3px;padding:0 4px;opacity:.7;line-height:1.5}
 .answers details.pick[open]{flex-basis:100%}
 .answers details.pick[open] summary{border-color:var(--accent);color:var(--accent)}
+/* ---- the picker: one pattern for `attach to…` and `add to bolt…` (S233). A
+   panel inside the note under its verbs, the note growing to hold it, so a
+   scrolling lane or tray clips nothing and nothing beside it is covered; above
+   the drawer's footer at the footer's width; a bottom sheet on a phone. */
+.picker{display:none;margin:6px 0 0;padding:6px;max-width:320px;width:100%;box-sizing:border-box;background:var(--surface);border:1px solid var(--line);border-radius:8px;text-align:left;cursor:default}
+.hand:has(details[data-for="bolt"][open]) ~ .picker[data-picker="bolt"],
+.hand:has(details[data-for="intent"][open]) ~ .picker[data-picker="intent"]{display:block}
+.pk-h{display:flex;gap:8px;align-items:baseline;padding:3px 6px 5px;font:700 10px var(--mono);letter-spacing:.08em;text-transform:uppercase;color:var(--ink3)}
+.pk-h .r{font:10.5px var(--sans);letter-spacing:0;text-transform:none;color:var(--ink3)}
+.pk-q{width:100%;box-sizing:border-box;margin:0 0 4px;padding:5px 8px;border:1px solid var(--line);border-radius:6px;background:var(--bg);font:12.5px var(--sans);color:var(--ink)}
+.pk-list{display:flex;flex-direction:column;gap:2px;max-height:240px;overflow:auto}
+.pk-row{display:flex;align-items:center;gap:6px;width:100%;min-height:34px;padding:6px 8px;border:0;border-radius:6px;background:transparent;text-align:left;font-size:12.5px;font-weight:500;color:var(--ink);line-height:1.3;cursor:pointer}
+.pk-row:hover,.pk-row.sel{background:var(--surface2)}
+.pk-row .pre{flex:none;font:11px var(--mono);color:var(--ink3)}
+.pk-row .lb{min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.pk-empty{display:flex;flex-direction:column;gap:6px;align-items:flex-start;padding:6px 8px 4px;font-size:12.5px;color:var(--ink3)}
+.pk-empty form{margin:0}
+.dk-f{position:relative}
+.dk-f .picker{position:absolute;left:16px;right:16px;bottom:calc(100% + 4px);max-width:none;box-shadow:var(--shadow);z-index:20}
+/* On a phone a picker is a bottom sheet, as the capture box is (S233, S30).
+   It stands after the rules above so it is the one that answers there. */
+@media (max-width:760px){
+  .picker,.dk-f .picker{position:fixed;left:0;right:0;bottom:0;top:auto;width:auto;max-width:none;margin:0;border-radius:12px 12px 0 0;border-left:0;border-right:0;border-bottom:0;box-shadow:var(--shadow);z-index:40}
+  .pk-list{max-height:46vh}
+}
 .answers .pick-list{display:flex;flex-direction:column;gap:2px;margin:6px 0 0;padding:4px;border:1px solid var(--line);border-radius:8px;background:var(--surface2);max-width:100%}
 .answers .pick-list button{justify-content:flex-start;text-align:left;white-space:normal;border-color:transparent;background:transparent;font-weight:500;min-height:34px;width:100%}
 .answers .pick-list .none{font-size:12px;color:var(--ink3);margin:4px 6px}
@@ -1505,6 +1530,77 @@ body[data-served="view"] .dk-b{overflow:visible}
     focusObject(object);
     openDock(object);
   }
+
+  // ---- the picker `attach to…` and `add to bolt…` share (S233). One is open
+  // on the page at a time; its filter takes the cursor, ↓ and ↑ walk the rows
+  // while the rail stays put, Enter picks and Esc closes it back onto its verb,
+  // before anything else takes the key (S56, S57). Every row is its own submit,
+  // so a pick is the whole gesture with or without any of this.
+  function pickerBox(){
+    var d=document.querySelector('details.pick[data-for][open]'); if(!d) return null;
+    var hand=d.closest('.hand'); if(!hand || !hand.parentNode) return null;
+    return hand.parentNode.querySelector('.picker[data-picker="'+d.getAttribute('data-for')+'"]');
+  }
+  function pickerRows(box){
+    return Array.prototype.filter.call(box.querySelectorAll('.pk-row'), function(r){ return r.style.display!=='none'; });
+  }
+  function pickerAt(box){
+    var rows=pickerRows(box);
+    for(var i=0;i<rows.length;i++){ if(rows[i].classList.contains('sel')) return i; }
+    return -1;
+  }
+  function pickerPick(box, at){
+    var rows=pickerRows(box); if(!rows.length) return;
+    if(at<0) at=rows.length-1; if(at>=rows.length) at=0;
+    Array.prototype.forEach.call(box.querySelectorAll('.pk-row'), function(r){
+      r.classList.remove('sel'); r.setAttribute('aria-selected','false');
+    });
+    rows[at].classList.add('sel'); rows[at].setAttribute('aria-selected','true');
+    rows[at].scrollIntoView({block:'nearest'});
+  }
+  function pickerClose(back){
+    var d=document.querySelector('details.pick[open]'); if(!d) return;
+    d.open=false;
+    if(back){ var s=d.querySelector('summary'); if(s) s.focus(); }
+  }
+  document.addEventListener('toggle', function(e){
+    var d=e.target; if(!d.matches || !d.matches('details.pick') || !d.open) return;
+    Array.prototype.forEach.call(document.querySelectorAll('details.pick[open]'), function(o){ if(o!==d) o.open=false; });
+    var box=pickerBox(); if(!box) return;
+    pickerPick(box, 0);
+    var q=box.querySelector('.pk-q');
+    if(q){ q.focus(); q.setSelectionRange(q.value.length, q.value.length); }
+  }, true);
+  document.addEventListener('input', function(e){
+    var q=e.target; if(!q.classList || !q.classList.contains('pk-q')) return;
+    var box=q.closest('.picker'); if(!box) return;
+    var want=q.value.trim().toLowerCase();
+    Array.prototype.forEach.call(box.querySelectorAll('.pk-row'), function(r){
+      r.style.display=(!want || r.textContent.toLowerCase().indexOf(want)>=0) ? '' : 'none';
+    });
+    var none=box.querySelector('.pk-none');
+    if(none){ none.hidden=pickerRows(box).length>0; none.textContent='nothing here says “'+q.value+'”'; }
+    pickerPick(box, 0);
+  });
+  document.addEventListener('keydown', function(e){
+    var box=pickerBox(); if(!box) return;
+    if(e.metaKey||e.ctrlKey||e.altKey){ pickerClose(false); return; }
+    if(e.key==='Escape'){ e.preventDefault(); e.stopPropagation(); pickerClose(true); return; }
+    if(e.key==='ArrowDown'||e.key==='ArrowUp'){
+      e.preventDefault(); e.stopPropagation();
+      pickerPick(box, pickerAt(box)+(e.key==='ArrowDown' ? 1 : -1)); return;
+    }
+    if(e.key==='Enter'){
+      var sel=box.querySelector('.pk-row.sel');
+      if(sel){ e.preventDefault(); e.stopPropagation(); sel.click(); }
+    }
+  }, true);
+  document.addEventListener('click', function(e){
+    if(!document.querySelector('details.pick[open]')) return;
+    if(e.target.closest && e.target.closest('details.pick')) return;
+    pickerClose(false);
+  }, true);
+  addEventListener('hashchange', function(){ pickerClose(false); });
 
   // ---- a session chip's pane link (25.6, S234). The page cannot drive a
   // terminal, so the link opens a popover naming where the pane is and the
