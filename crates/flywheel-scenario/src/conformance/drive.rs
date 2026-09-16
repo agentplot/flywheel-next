@@ -189,7 +189,10 @@ pub fn play(
     // differs is the binding underneath, the way `--hosts real` differs from
     // this one. There is one action vocabulary and one runner.
     let bundle = flywheel_atoms::conformance::bundle_of(path);
-    for (index, action) in scenario.actions()?.iter().enumerate() {
+    let actions = scenario.actions()?;
+    // A caller may play up to one moment and stop, as `apply --through` does.
+    let through = options.through.unwrap_or(actions.len()).min(actions.len());
+    for (index, action) in actions.iter().take(through).enumerate() {
         let number = index + 1;
         play_action(&mut run, action, suite, &sessions, bundle.as_deref())
             .with_context(|| format!("action {number}"))?;
@@ -738,6 +741,31 @@ pub fn seed(defs: Definitions, scenario: &Scenario, suite: &Suite) -> Result<Run
             exists: true,
             ..Default::default()
         });
+    }
+
+    // The line a described state says it has is there, as its place is. The
+    // state is the machine's and the line is the world's, and a guard reads
+    // the world: without this an elaboration approved on a seeded intent waits
+    // on a line nothing made, its place is never taken, and the scenario
+    // cannot run past it. A seed covers what it seeds (19.6, 125, 149).
+    let lines: Vec<(String, String)> = store
+        .objects
+        .values()
+        .flat_map(|o| {
+            o.config
+                .iter()
+                .filter(|(path, state)| {
+                    (path.as_str() == "line" || path.ends_with(".line"))
+                        && !matches!(state.as_str(), "absent" | "removed" | "none")
+                })
+                .map(|(_, state)| (o.id.clone(), state.clone()))
+        })
+        .collect();
+    for (id, state) in lines {
+        let line = store.world.lines.entry(id).or_default();
+        line.exists = true;
+        line.absent = false;
+        line.landed = state == "landed";
     }
 
     // And the sessions under it: an object seeded with a session alive has a

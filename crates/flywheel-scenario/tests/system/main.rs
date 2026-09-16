@@ -18,4 +18,5 @@ mod current;
 mod phone;
 mod real_hosts;
 mod scripted;
+mod seeded_lines;
 mod storefront;

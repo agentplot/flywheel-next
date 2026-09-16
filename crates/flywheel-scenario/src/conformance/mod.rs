@@ -75,6 +75,11 @@ pub struct RunOptions {
     /// through the page after the steps are played (314, D15). The caller
     /// removes `Run::places` when it is done.
     pub keep_places: bool,
+    /// How many of the scenario's actions to play; all of them by default.
+    /// A caller that wants the instance as it stood at one moment plays up to
+    /// it and stops, exactly as `flywheel scenario apply --through` does for a
+    /// real instance. There is no stepping backwards (19.6).
+    pub through: Option<usize>,
 }
 
 impl Default for RunOptions {
@@ -87,6 +92,7 @@ impl Default for RunOptions {
             tracing: false,
             interval: chrono::Duration::seconds(60),
             keep_places: false,
+            through: None,
         }
     }
 }

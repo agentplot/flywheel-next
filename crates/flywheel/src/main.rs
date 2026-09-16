@@ -1009,6 +1009,8 @@ async fn main() -> Result<()> {
                 tracing: trace.is_some(),
                 interval: chrono::Duration::seconds(60),
                 keep_places: false,
+                // A run of the suite plays every action a scenario holds.
+                through: None,
             };
             let paths = if paths.is_empty() { vec![PathBuf::from("conformance")] } else { paths.clone() };
             let report = conformance::run(&paths, &options)?;
