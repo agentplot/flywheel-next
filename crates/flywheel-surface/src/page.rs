@@ -614,6 +614,36 @@ pub fn read_served<S: StateStore, W: World + ?Sized>(
                 said.push(line);
             }
         }
+        // A proposed intent's card is its weight and what it proposes: curation
+        // proposed it, the signals it cites, from how many sources, over what
+        // span by event date, and the elaborations it proposes each with its
+        // type. A count and an age said neither how wide the evidence was nor
+        // what saying yes would start (109, 118, 10, S5).
+        if decision.kind == "intent-proposed" {
+            said.clear();
+            said.push("curation".to_string());
+            if let Some(weighs) = weight.get(&object.id) {
+                said.push(format!("{} {}", weighs.count, counted("signals", weighs.count)));
+                let sources = weighs.sources.len();
+                if sources > 0 {
+                    said.push(format!("{sources} {}", counted("sources", sources)));
+                }
+                if let Some(days) = weighs.span_days() {
+                    said.push(match days {
+                        0 => "one day".to_string(),
+                        days => format!("{days}d"),
+                    });
+                }
+            }
+            let proposes: Vec<String> = object
+                .record
+                .get("elaborations")
+                .and_then(|value| serde_json::from_value(value.clone()).ok())
+                .unwrap_or_default();
+            if !proposes.is_empty() {
+                said.push(format!("elaborations: {}", proposes.join(", ")));
+            }
+        }
         // A fold of chores says who offered them; what they are is its
         // heading (S231, 11).
         if let Some((_, chores)) = chores_of(&objects, decision) {
@@ -2018,11 +2048,16 @@ fn card(read: &Read, decision: &DecisionInstance) -> String {
     // Why it is being asked: what the machine's own `shows:` names for this
     // decision kind, and how long it has stood (15, 11, 18).
     if let Some(said) = read.why.get(&decision.id).filter(|said| !said.is_empty()) {
-        let _ = write!(
-            out,
-            "<p class=\"tail why\">{}</p>\n",
-            escape(&said.join(" · "))
-        );
+        // What the card is read by carries the weight of its line: a proposed
+        // intent is read by how many signals it cites (S5, D16).
+        let parts: Vec<String> = said
+            .iter()
+            .map(|part| match part.ends_with(" signals") || part.ends_with(" signal") {
+                true => format!("<b>{}</b>", escape(part)),
+                false => escape(part),
+            })
+            .collect();
+        let _ = write!(out, "<p class=\"tail why\">{}</p>\n", parts.join(" · "));
     }
     if let Some(away) = read.away.get(&decision.object) {
         let _ = write!(

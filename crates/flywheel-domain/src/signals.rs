@@ -1177,6 +1177,15 @@ impl Weight {
             _ => None,
         }
     }
+
+    /// The span in days: from the earliest thing said to the latest, counted
+    /// by event date and never by when the flywheel read it (118, 109).
+    pub fn span_days(&self) -> Option<i64> {
+        let day = |said: &str| -> Option<chrono::NaiveDate> {
+            chrono::NaiveDate::parse_from_str(said.get(..10)?, "%Y-%m-%d").ok()
+        };
+        Some((day(self.last.as_deref()?)? - day(self.first.as_deref()?)?).num_days())
+    }
 }
 
 /// What the signals an intent cites weigh (109, 118).

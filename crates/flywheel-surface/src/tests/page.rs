@@ -1181,6 +1181,70 @@ fn a_waiting_note_carries_its_four_controls_and_a_moved_one_none() {
     assert!(html.contains("<div class=\"tail\">dropped</div>"), "its drawer says what became of it");
 }
 
+/// A proposed intent's card shows its weight and what it proposes: curation
+/// proposed it, how many signals it cites, from how many sources, over what
+/// span counted by event date, and the elaborations it proposes each with its
+/// type (109, 118, 10, S5). A count and an age said neither how wide the
+/// evidence was nor what a yes would start.
+#[test]
+fn a_proposed_intents_card_shows_its_weight_and_elaborations() {
+    use flywheel_domain::signals;
+    let (mut store, mut world, defs) = a_page();
+    let at = commands::now(&store).expect("a point");
+    // Seven signals from three sources, the first said on the 1st and the last
+    // on the 13th: twelve days by event date, never by when they were read.
+    let mut cited: Vec<String> = Vec::new();
+    for (source, day, how_many) in
+        [("wispr-flow", "2026-09-01", 3u64), ("chat-forward", "2026-09-06", 2), ("meeting", "2026-09-13", 2)]
+    {
+        let key = format!("signals/signals/{day}-{source}");
+        let capture = signals::Capture {
+            key: key.clone(),
+            source: source.into(),
+            event_at: day.into(),
+            captured_by: "chuck".into(),
+            raw: format!("signals/.raw/{source}.txt"),
+        };
+        signals::write_capture(&mut world, &capture).expect("the capture");
+        for ordinal in 1..=how_many {
+            let signal = signals::Signal {
+                id: signals::signal_object(&key, ordinal),
+                capture: signals::object_of(&key),
+                kind: "ask".into(),
+                asserted_by: "Amy".into(),
+                subject_tags: vec!["export".into()],
+                assertion: format!("who owns the export when {source} publishes it ({ordinal})"),
+                excerpt: String::new(),
+                position: "line 1".into(),
+                argues_with: vec![],
+            };
+            signals::write_signal(&mut world, &key, ordinal, &signal).expect("the signal");
+            cited.push(signal.id);
+        }
+    }
+    let record = [
+        ("subject".to_string(), json!("who owns an export two teams publish")),
+        ("signals".to_string(), json!(cited)),
+        ("elaborations".to_string(), json!(["self-closing"])),
+    ];
+    commands::put_new(&mut store, &defs, "intent/export-ownership", "intent", None, record.into_iter().collect(), at)
+        .expect("the proposed intent");
+    commands::rail(&mut store, &defs).expect("the rail derives");
+
+    let read = crate::page::read(&mut store, &world, &defs, ADDRESS, "chuck").expect("the page reads");
+    let decision = read
+        .decisions
+        .iter()
+        .find(|d| d.kind == "intent-proposed")
+        .expect("the intent stands as a proposal");
+    let why = read.why.get(&decision.id).expect("the card says why").join(" · ");
+    for said in ["curation", "7 signals", "3 sources", "12d", "elaborations: self-closing"] {
+        assert!(why.contains(said), "the card does not say `{said}`: {why}");
+    }
+    let html = crate::page::render(&read);
+    assert!(html.contains("<b>7 signals</b>"), "the count the card is read by carries no weight: {why}");
+}
+
 /// A proposal whose type the instance has no definition of says so on its
 /// card, in place of its type, with what to do about it; one whose type is
 /// defined says its type (85a).
