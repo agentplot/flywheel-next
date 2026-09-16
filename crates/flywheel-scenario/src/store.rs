@@ -64,6 +64,12 @@ pub struct World {
     /// repository and are cited by the captures that point at them (111).
     #[serde(default)]
     pub raw: BTreeMap<String, String>,
+    /// What the machinery pinned on the git host, `<repository>/<reference>` to
+    /// the revision it holds (62, 232). This world keeps no git host, so a pin
+    /// is a fact of it as a place or a line is: without one, recording an offer
+    /// fails at the pin and the offer stays pending for ever.
+    #[serde(default)]
+    pub pins: BTreeMap<String, String>,
 }
 
 /// One host's checkout of the state repository, behind the record operations.

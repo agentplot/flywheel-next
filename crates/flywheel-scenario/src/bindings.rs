@@ -227,6 +227,8 @@ fn prefix_check(repository: &str, path: &str, by_response: Option<&str>) -> Resu
 #[derive(Debug, Default)]
 pub struct FilesWorld {
     pub files: std::collections::BTreeMap<String, String>,
+    /// The pins, `<repository>/<reference>` to the revision held (62, 232).
+    pub pins: std::collections::BTreeMap<String, String>,
 }
 
 impl FilesWorld {
@@ -238,6 +240,36 @@ impl FilesWorld {
 impl World for FilesWorld {
     fn manifest(&self) -> Result<Value> {
         Ok(json!({}))
+    }
+
+    /// A pin is a fact of this world. Recording an offer pins the offering
+    /// place's revision before any record points at it, so a world that
+    /// refuses to pin fails the whole recording: the offer stays uncited, the
+    /// session's `offers_pending` stays true, and its state loops on the
+    /// effect for ever without a record ever being made (62, 232).
+    fn pin(&mut self, repository: &str, reference: &str, revision: &str) -> Result<bool> {
+        let held = format!("{repository}/{reference}");
+        if self.pins.get(&held).is_some_and(|at| at == revision) {
+            return Ok(false);
+        }
+        self.pins.insert(held, revision.to_string());
+        Ok(true)
+    }
+
+    fn pins(&self, repository: &str, under: &str) -> Result<Vec<(String, String)>> {
+        let prefix = format!("{repository}/");
+        Ok(self
+            .pins
+            .iter()
+            .filter_map(|(held, revision)| Some((held.strip_prefix(&prefix)?, revision)))
+            .filter(|(reference, _)| reference.starts_with(under))
+            .map(|(reference, revision)| (reference.to_string(), revision.clone()))
+            .collect())
+    }
+
+    fn unpin(&mut self, repository: &str, reference: &str, _revision: &str) -> Result<()> {
+        self.pins.remove(&format!("{repository}/{reference}"));
+        Ok(())
     }
 
     fn repositories(&self) -> Result<Vec<RepositoryRef>> {
@@ -299,8 +331,10 @@ pub fn with_files<T>(
 ) -> T {
     let mut world = FilesWorld {
         files: std::mem::take(&mut store.world.files),
+        pins: std::mem::take(&mut store.world.pins),
     };
     let out = act(store, &mut world);
     store.world.files = std::mem::take(&mut world.files);
+    store.world.pins = std::mem::take(&mut world.pins);
     out
 }

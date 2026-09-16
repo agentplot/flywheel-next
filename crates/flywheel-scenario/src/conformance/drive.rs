@@ -2226,6 +2226,9 @@ fn action_session(
 ) -> Result<()> {
     let id = action_session_of(&run.runtime.store, &session.object)?;
     let mut delivered = Vec::new();
+    // What the session wrote in its place, to be committed there before it
+    // reports: an offer names a document committed at the place's head.
+    let mut wrote: Vec<(String, String)> = Vec::new();
     for (from, to) in &session.deliver {
         let bundle = bundle.ok_or_else(|| {
             anyhow!(
@@ -2244,12 +2247,49 @@ fn action_session(
         // files and the machinery reads them by path, so the repository is
         // carried for the binding that has repositories on disk.
         let under = to.split_once('/').map(|(_, path)| path).unwrap_or(to);
+        wrote.push((under.to_string(), body.clone()));
         run.runtime
             .store
             .world
             .files
             .insert(under.to_string(), body);
         delivered.push(to.clone());
+    }
+
+    // A real session commits its work in its place and offers a document from
+    // there, and `flywheel offer` reads the place's head to pin the revision a
+    // record points at (62). A scripted session delivered into the world alone,
+    // so its place held no commit and every offer a scenario wrote was refused
+    // in those words — the finding the storefront's research offers became no
+    // proposed elaboration, and the scenario could not run past the answer that
+    // names it (58, 67, 93).
+    if !wrote.is_empty() {
+        let place = sessions.place(&id);
+        std::fs::create_dir_all(&place)
+            .with_context(|| format!("making the place {}", place.display()))?;
+        let repo = flywheel_world_host::git::Repo::at(&place);
+        if !place.join(".git").is_dir() {
+            repo.git(&["init", "--initial-branch=main", "--quiet", "."])?;
+        }
+        for (path, body) in &wrote {
+            let full = place.join(path);
+            if let Some(parent) = full.parent() {
+                std::fs::create_dir_all(parent)?;
+            }
+            std::fs::write(&full, body)?;
+            repo.git(&["add", "--", path])?;
+        }
+        let said = repo.run(&["commit", "--quiet", "-m", "the session's delivery"])?;
+        if !said.ok
+            && !said.out.contains("nothing to commit")
+            && !said.err.contains("nothing to commit")
+        {
+            bail!(
+                "committing the session's delivery in {}: {}",
+                place.display(),
+                said.err.trim()
+            );
+        }
     }
     // The session was there: the machinery started it and it stalled where a
     // real one would be working, so the multiplexer reports its pane before it

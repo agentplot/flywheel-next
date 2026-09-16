@@ -131,6 +131,53 @@ impl ScriptedSessions {
         if !reports {
             return Ok(());
         }
+        // An offer names a document the session wrote in its place, and
+        // `flywheel offer` reads the place's head to pin the revision the
+        // record will point at (62). A scripted session writes nothing on
+        // disk, so its place held no commit and every offer it made was
+        // refused there: the finding it offered became no proposed
+        // elaboration, and a scenario answering that elaboration found it
+        // standing nowhere (58, 67, 93).
+        if !entry.offers.is_empty() {
+            let place = self.place(session);
+            std::fs::create_dir_all(&place)
+                .with_context(|| format!("making the place {}", place.display()))?;
+            let repo = flywheel_world_host::git::Repo::at(&place);
+            if !place.join(".git").is_dir() {
+                repo.git(&["init", "--initial-branch=main", "--quiet", "."])?;
+            }
+            for offer in &entry.offers {
+                let full = place.join(&offer.document);
+                if let Some(parent) = full.parent() {
+                    std::fs::create_dir_all(parent)?;
+                }
+                if !full.exists() {
+                    // What the session delivered where the scenario carries
+                    // it; the record holds the document's path and never its
+                    // text, so a scripted offer with no delivery stands for
+                    // the writing and not for what was written (62).
+                    let body = store
+                        .world
+                        .files
+                        .get(&offer.document)
+                        .cloned()
+                        .unwrap_or_else(|| format!("{}\n", offer.document));
+                    std::fs::write(&full, body)?;
+                }
+                repo.git(&["add", "--", &offer.document])?;
+            }
+            let said = repo.run(&["commit", "--quiet", "-m", "what the session offers"])?;
+            if !said.ok
+                && !said.out.contains("nothing to commit")
+                && !said.err.contains("nothing to commit")
+            {
+                anyhow::bail!(
+                    "committing what `{session}` offers in {}: {}",
+                    place.display(),
+                    said.err.trim()
+                );
+            }
+        }
         // The command writes through this host's checkout of the state
         // repository, and what it wrote is read back from there: the assertion
         // reads the thread entry the command wrote and never the script (67).
