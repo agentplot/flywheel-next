@@ -486,11 +486,24 @@ pub fn view<S: StateStore, W: World + ?Sized>(
     let Some(tool) = query(&call.tool) else {
         bail!("`{}` is no view of the page", call.tool);
     };
+    let _ = tool;
     // A member's client reaches the instance through the host it added, and
     // names none of its own: no pane is marked as being on another computer
     // (293a, S234).
     let read = crate::page::read(store, world, defs, address, &call.by)?;
-    crate::page::view(&read, tool.name, call.text("object").as_deref()).map_err(|refused| anyhow::anyhow!(refused))
+    view_of(&read, call)
+}
+
+/// The same view from a read already made.
+///
+/// A client's view is the page's own, so it is answered the way the page is
+/// answered: while the host's pass holds the store, from the instance as it was
+/// last read rather than by waiting for the pass to end (310a, S235, 293a).
+pub fn view_of(read: &crate::page::Read, call: &Call) -> Result<crate::page::View> {
+    let Some(tool) = query(&call.tool) else {
+        bail!("`{}` is no view of the page", call.tool);
+    };
+    crate::page::view(read, tool.name, call.text("object").as_deref()).map_err(|refused| anyhow::anyhow!(refused))
 }
 
 /// A refusal of a session's call, on the session's own thread: the operation,

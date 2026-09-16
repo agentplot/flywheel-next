@@ -41,6 +41,19 @@ const SETTLED_WITHIN: std::time::Duration = std::time::Duration::from_secs(1);
 /// What a call sent while the host was busy is answered with.
 pub const KEPT: &str = "sent · it shows here once the host is free";
 
+/// Where a file a session left is read from.
+///
+/// Opening a deliverable is a read, and a read is answered whatever the host
+/// is doing. A deliverable is a file and not the instance, so it cannot come
+/// from the last read: it is opened from its repository's shared line as the
+/// line stands, by the page itself, waiting on no turn at the store and no
+/// lock on the host's world. What makes that safe is that the page has already
+/// found it among what the last read says was delivered, and the line holds it
+/// whole (310a, S235, 190).
+pub trait Files: Send + Sync {
+    fn read_file(&self, repository: &str, path: &str) -> anyhow::Result<Option<Vec<u8>>>;
+}
+
 /// The instance as it was last read (310a, S221).
 pub struct Latest {
     pub read: page::Read,
@@ -151,6 +164,11 @@ pub struct Served<S: StateStore + Send + 'static> {
     /// next turn makes it; none where no loop runs beside the page, and a call
     /// there waits for the store (310a, 137).
     pub kept: Option<std::path::PathBuf>,
+    /// The page's own reader for a file a session left, built from the root
+    /// and each repository's shared line. None where the caller bound none,
+    /// and the deliverable is then read through the world like anything else
+    /// (310a, S235).
+    pub files: Option<Arc<dyn Files>>,
     /// Whether the loop beside the page has its turn at the store.
     passing: Arc<AtomicBool>,
     /// Whether the read that follows the store has started.
@@ -170,6 +188,7 @@ impl<S: StateStore + Send + 'static> Clone for Served<S> {
             woken: self.woken.clone(),
             changed: self.changed.clone(),
             run_record: self.run_record,
+            files: self.files.clone(),
             latest: self.latest.clone(),
             shown: self.shown.clone(),
             kept: self.kept.clone(),
@@ -201,6 +220,7 @@ impl<S: StateStore + Send + 'static> Served<S> {
             woken: Arc::new(tokio::sync::Notify::new()),
             changed: Arc::new(tokio::sync::watch::Sender::new(1)),
             run_record: None,
+            files: None,
             latest: Arc::new(std::sync::RwLock::new(None)),
             shown: Arc::new(tokio::sync::watch::Sender::new(0)),
             kept: None,
@@ -1112,7 +1132,15 @@ async fn protocol_message<S: StateStore + Send + 'static>(
                     };
                 }
                 Some(Err(reply)) => return (StatusCode::OK, Json(reply)).into_response(),
-                None => served.store.lock().await,
+                // A read is answered from the instance as it was last read, as
+                // the page's own reads are, rather than waiting for the pass to
+                // give the store back (310a, S235, 293a, D11).
+                None => match served.current().await.ok().and_then(|latest| {
+                    protocol::from_read(&latest.read, &message, served.operator())
+                }) {
+                    Some(reply) => return (StatusCode::OK, Json(reply)).into_response(),
+                    None => served.store.lock().await,
+                },
             },
         };
         let mut world = served.world.lock().await;
@@ -1276,17 +1304,12 @@ async fn deliverable<S: StateStore + Send + 'static>(
             .into_response();
     }
     let named = named.trim_matches('/').to_string();
-    let mut store = served.store.lock().await;
-    let world = served.world.lock().await;
-    let mut read = match page::read_served(
-        &mut *store,
-        &**world,
-        &served.defs,
-        &served.address,
-        served.operator(),
-        &served.host,
-    ) {
-        Ok(read) => read,
+    // Opening what a session left is a read like any other, so it is answered
+    // from the instance as it was last read while the host's pass holds the
+    // store; the file itself comes from the host's checkout, which a pass does
+    // not hold (310a, S235, D11).
+    let mut read = match served.current().await {
+        Ok(latest) => latest.read.clone(),
         Err(refused) => {
             return (
                 StatusCode::INTERNAL_SERVER_ERROR,
@@ -1313,7 +1336,16 @@ async fn deliverable<S: StateStore + Send + 'static>(
         )
             .into_response();
     };
-    let body = match world.read_file(&file.repository, &file.path) {
+    // Read from the line itself where the caller bound the page a reader, so
+    // opening it waits on no pass; through the world otherwise (310a, S235).
+    let held = match served.files.as_ref() {
+        Some(files) => files.read_file(&file.repository, &file.path),
+        None => {
+            let world = served.world.lock().await;
+            world.read_file(&file.repository, &file.path)
+        }
+    };
+    let body = match held {
         Ok(Some(body)) => body,
         Ok(None) => {
             return (

@@ -1690,3 +1690,203 @@ fn a_page_read_is_answered_while_a_pass_records_a_delivery() {
     assert!(tray.contains(NOTE), "the page does not show the capture once it is made");
     let _ = std::fs::remove_dir_all(&dir);
 }
+
+/// A member's client is answered whatever the host is doing.
+///
+/// Its view is the page's own, so it is answered the way the page is: while a
+/// pass holds the store recording a curator's delivery, a read-only call and
+/// the file a session left are answered from the instance as it was last read,
+/// each within the first press's bound, and neither waits for the pass to give
+/// the store back (293a, 310a, S235, D11).
+#[test]
+fn a_clients_view_is_answered_while_a_pass_records_a_delivery() {
+    const FIRST_PRESS: std::time::Duration = std::time::Duration::from_millis(1500);
+    let dir = base("client-while-a-pass");
+    let now = at(0);
+    let git = sandbox(&dir, "mac-mini", now).unwrap();
+    let mut host = Host::over(
+        "mac-mini",
+        "willdan",
+        flywheel_domain::set::load().unwrap(),
+        git,
+        Bindings { world: "host".into(), workspace: "recorded".into(), sessions: "operator".into() },
+        Declaration { repositories: vec!["atlas".into()], types: vec![], kinds: vec!["all".into()] },
+        now,
+    );
+    host.sinks.address = "http://mac-mini.example/willdan".into();
+    // The root this host clones under, which every host started from a
+    // manifest has: it is what the page builds its own reader from, so a file
+    // a session left is opened from its repository's line and not through the
+    // host (310a, S235).
+    host.store.root = Some(dir.clone());
+    let defs = host.defs.clone();
+    flywheel_domain::commands::put_new(
+        &mut host.store,
+        &defs,
+        "curation/willdan",
+        "curation",
+        None,
+        [
+            ("threshold".to_string(), json!(2)),
+            ("cadence".to_string(), json!(flywheel_domain::cadence::DEFAULT)),
+        ]
+        .into_iter()
+        .collect(),
+        now,
+    )
+    .unwrap();
+    // A bolt with its close offered, so `object` has one to be asked about.
+    seed(
+        &mut host,
+        "bolt/atlas/plan-rows",
+        "bolt",
+        &[("life", "open"), ("life.open.close", "offered")],
+        &[("repository", json!("atlas"))],
+    );
+    // A session on it that reported a file it left (190, 213).
+    let session = Object {
+        id: "fact/session/bolt/atlas/plan-rows/1".into(),
+        machine: "fact".into(),
+        parent: None,
+        config: Default::default(),
+        entered_at: Default::default(),
+        record: [
+            ("host".to_string(), json!("mac-mini")),
+            ("runner".to_string(), json!("operator")),
+            ("started_at".to_string(), json!(now.to_rfc3339())),
+        ]
+        .into_iter()
+        .collect(),
+        counters: Default::default(),
+        applied_responses: vec![],
+        seq: 0,
+        created: 0,
+    };
+    host.store.git.seed_objects(std::slice::from_ref(&session)).unwrap();
+    Records::append(
+        &mut host.store.git,
+        "bolt/atlas/plan-rows/1",
+        &flywheel_atoms::ThreadEntry {
+            at: now,
+            kind: "exit".into(),
+            by: Some("builder".into()),
+            fields: [
+                ("exit".to_string(), json!("done")),
+                ("deliverables".to_string(), json!(["atlas/notes/rows.md"])),
+            ]
+            .into_iter()
+            .collect(),
+        },
+    )
+    .expect("the session's exit is on its thread");
+    host.store.git.fetch().expect("the shared line");
+
+    let host = Arc::new(Mutex::new(host));
+    let runtime = tokio::runtime::Builder::new_multi_thread().enable_all().build().unwrap();
+    let served = flywheel::serve::page_of(&host, 4242, &["chuck".to_string()]);
+    let address = runtime.block_on(async {
+        let listener = tokio::net::TcpListener::bind("127.0.0.1:0").await.unwrap();
+        let address = listener.local_addr().unwrap();
+        tokio::spawn(flywheel_surface::http::serve_on(served.clone(), listener));
+        address
+    });
+    let pass = |minute: i64| -> usize {
+        let (turn, taken) = runtime.block_on(served.take_turn());
+        let mut held = host.lock().unwrap();
+        held.set_now(at(minute));
+        held.sweep().unwrap();
+        drop(held);
+        drop(turn);
+        taken.unwrap()
+    };
+    let asked = |method: &str, path: &str| {
+        let began = std::time::Instant::now();
+        let reply = speak_whole(
+            address,
+            &format!("{method} {path} HTTP/1.1\r\nHost: mac-mini.example\r\nConnection: close\r\n\r\n"),
+        );
+        (reply, began.elapsed())
+    };
+    let form = |path: &str, body: &str| {
+        speak_whole(
+            address,
+            &format!(
+                "POST {path} HTTP/1.1\r\nHost: mac-mini.example\r\nConnection: close\r\n\
+                 Referer: http://mac-mini.example/willdan/\r\n\
+                 Content-Type: application/x-www-form-urlencoded\r\nContent-Length: {}\r\n\r\n{body}",
+                body.len()
+            ),
+        )
+    };
+
+    // Two captures through the box, and the passes that charge curation.
+    for text in ["the rows lose their numbers on the second page", "the second page drops the row numbers again"] {
+        let answered = form("/api/tools/capture", &format!("text={}&source=page", encode(text)));
+        assert!(answered.starts_with("HTTP/1.1 303"), "{answered}");
+    }
+    pass(1);
+    pass(2);
+    // The curator's delivery, which the pass below records (93b, 116).
+    let signals: Vec<String> = host.lock().unwrap().store.with_world(|_, world| {
+        flywheel_domain::signals::unmoved(&flywheel_domain::signals::Blueprints(world))
+            .into_iter()
+            .map(|signal| signal.id)
+            .collect()
+    });
+    assert_eq!(signals.len(), 2, "the box wrote one signal per capture (19)");
+    let delivery = signals
+        .iter()
+        .map(|signal| format!("move.{0}=drop", encode(signal)))
+        .collect::<Vec<_>>()
+        .join("&");
+    let answered = form("/api/curate", &delivery);
+    assert!(answered.starts_with("HTTP/1.1 303") && !answered.contains("refused="), "{answered}");
+
+    // A pass on that delivery, holding the store while the client asks.
+    let (holding, held) = std::sync::mpsc::channel::<()>();
+    let (answered, done) = std::sync::mpsc::channel::<()>();
+    let passing = std::thread::spawn({
+        let (served, host, runtime) = (served.clone(), host.clone(), runtime.handle().clone());
+        move || {
+            let (turn, taken) = runtime.block_on(served.take_turn());
+            taken.unwrap();
+            let mut pass = host.lock().unwrap();
+            holding.send(()).unwrap();
+            pass.set_now(at(3));
+            pass.sweep().unwrap();
+            done.recv().unwrap();
+            drop(pass);
+            drop(turn);
+        }
+    });
+    held.recv().unwrap();
+
+    // The rail, as a client asks for it.
+    let began = std::time::Instant::now();
+    let rail = client_call(address, tool_call(2, "rail", json!({}), None));
+    let took = began.elapsed();
+    assert_eq!(rail["result"]["isError"], json!(false), "the rail is not answered during a pass: {rail}");
+    assert!(took < FIRST_PRESS, "the client's rail waited {took:?} on the pass");
+
+    // One object, the same way.
+    let began = std::time::Instant::now();
+    let object = client_call(address, tool_call(3, "object", json!({"object": "bolt/atlas/plan-rows"}), None));
+    let took = began.elapsed();
+    assert_eq!(object["result"]["isError"], json!(false), "an object is not answered during a pass: {object}");
+    assert!(took < FIRST_PRESS, "the client's object waited {took:?} on the pass");
+
+    // And the file a session left, which the client opens at its own address.
+    // This host holds no checkout of atlas, so what comes back says the file is
+    // not here — which is the answer after the record was read, and the record
+    // is what the pass would have made it wait for (190, 213).
+    let (left, took) = asked("GET", "/willdan/deliverable/atlas/notes/rows.md");
+    assert!(
+        left.contains("notes/rows.md"),
+        "the deliverable is not answered from the record during a pass: {left}"
+    );
+    assert!(took < FIRST_PRESS, "the deliverable waited {took:?} on the pass");
+
+    answered.send(()).unwrap();
+    passing.join().unwrap();
+    let _ = std::fs::remove_dir_all(&dir);
+}

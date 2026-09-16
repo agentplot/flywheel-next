@@ -176,14 +176,51 @@ impl World for SharedWorld {
 }
 
 /// The page this host serves: its own store, its own world, its own address.
+/// The page's own reader for a file a session left: the root this host clones
+/// under, and each repository's shared line as the manifest names it.
+///
+/// It holds nothing of the host, so opening a deliverable waits on no turn at
+/// the store and no lock on the world. A deliverable is a file and not the
+/// instance, so it is read from the line as the line stands (310a, S235, 190).
+pub struct SharedFiles {
+    root: std::path::PathBuf,
+    lines: std::collections::BTreeMap<String, String>,
+}
+
+impl flywheel_surface::http::Files for SharedFiles {
+    fn read_file(&self, repository: &str, path: &str) -> Result<Option<Vec<u8>>> {
+        let Some(line) = self.lines.get(repository) else {
+            return Ok(None);
+        };
+        let bare = flywheel_world_host::git::Repo::at(self.root.join(format!("{repository}.git")));
+        if !bare.exists() {
+            return Ok(None);
+        }
+        Ok(flywheel_world_host::git::show(&bare, line, path)?.map(String::into_bytes))
+    }
+}
+
 pub fn page_of(host: &Shared, port: u16, operators: &[String]) -> Served<SharedStore> {
-    let (defs, address, kept) = {
+    let (defs, address, kept, files) = {
         let held = host.lock().expect("the running host is poisoned");
         // A call sent while a pass holds the host is kept beside the state
         // checkout, outside what it tracks, until the loop's next turn makes
         // it (310a, 137).
         let kept = held.store.git.repo.dir.join(".git").join("flywheel-kept");
-        (held.defs.clone(), held.sinks.address.clone(), kept)
+        // What the page reads a deliverable from, taken once here rather than
+        // through the host on every request (310a, S235).
+        let files = held.store.root.clone().map(|root| SharedFiles {
+            root,
+            lines: held
+                .store
+                .world
+                .repositories()
+                .unwrap_or_default()
+                .into_iter()
+                .map(|repository| (repository.name, repository.shared_line))
+                .collect(),
+        });
+        (held.defs.clone(), held.sinks.address.clone(), kept, files)
     };
     // Which host serves this page: a session chip's pane link says whether the
     // pane is on this computer or another (S234, 232).
@@ -198,6 +235,9 @@ pub fn page_of(host: &Shared, port: u16, operators: &[String]) -> Served<SharedS
     served.localhost_port = port;
     served.host = me;
     served.kept = Some(kept);
+    if let Some(files) = files {
+        served.files = Some(std::sync::Arc::new(files));
+    }
     served.run_record = Some(
         |shared: &mut SharedStore, refused: &[flywheel_surface::protocol::Refused]| {
             shared.write_refusals(refused)

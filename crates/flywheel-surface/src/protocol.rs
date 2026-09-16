@@ -358,6 +358,53 @@ fn looked<S: StateStore, W: World + ?Sized>(
     }
 }
 
+/// The answer a message has from the instance as it was last read.
+///
+/// A member's client is answered whatever the host is doing: its view is the
+/// page's own, and the page is answered from the latest read while the host's
+/// pass holds the store (310a, S235, 293a, D11). Every method here reads and
+/// records nothing, so none of them needs the store. `None` is what needs it —
+/// a call that writes, which is kept for the turn after instead (137).
+///
+/// A view refused here is answered as a refusal like any other and is not
+/// written to the run record: the run record is the host's and the host has
+/// the store (79).
+pub fn from_read(read: &crate::page::Read, message: &Value, by: &str) -> Option<Value> {
+    let fields = message.as_object().filter(|fields| fields.get("jsonrpc") == Some(&json!("2.0")))?;
+    let id = fields.get("id").cloned()?;
+    let method = fields.get("method").and_then(Value::as_str)?;
+    let params = fields.get("params").cloned().unwrap_or_else(|| json!({}));
+    let result = match method {
+        "initialize" => initialize(&params),
+        "ping" => json!({}),
+        "tools/list" => json!({"tools": tools()}),
+        "resources/list" => json!({"resources": resources()}),
+        "resources/templates/list" => json!({"resourceTemplates": []}),
+        "resources/read" => read_resource(&params).ok()?,
+        "tools/call" => {
+            let name = params.get("name").and_then(Value::as_str)?;
+            catalogue::query(name)?;
+            let arguments = match params.get("arguments") {
+                None | Some(Value::Null) => Map::new(),
+                Some(Value::Object(arguments)) => arguments.clone(),
+                Some(_) => return None,
+            };
+            let mut asked = Call::new(name, by, DELIVERY);
+            asked.args = arguments.into_iter().collect();
+            match catalogue::view_of(read, &asked) {
+                Ok(view) => json!({
+                    "content": [{"type": "text", "text": view.said}],
+                    "structuredContent": view.handed(),
+                    "isError": false,
+                }),
+                Err(refused) => refusal(&refused.to_string()),
+            }
+        }
+        _ => return None,
+    };
+    Some(json!({"jsonrpc": "2.0", "id": id, "result": result}))
+}
+
 /// A call the catalogue refused, as the protocol answers a tool that failed:
 /// the reason in words, and the version it was answered under (326).
 fn refusal(reason: &str) -> Value {
