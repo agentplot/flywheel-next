@@ -857,27 +857,26 @@ a.btn.pri{color:var(--accent-ink)}
 @media (max-width: 760px) {
   :root{--hosts:38px}
   .hosts{flex-wrap:nowrap;overflow-x:auto;padding:0 12px}
-  /* The header must not set the width of the document: at 390px its own
-     content is wider than the screen, and a grid column of `1fr` then resolves
-     against that width, which puts a card's answer controls off the right edge
-     where no tap reaches them (306, 307, 311).
-     It wraps rather than clipping, and grows to the rows it needs: what a
-     phone clipped off the right edge was the `yes all` control and the numbers
-     on it, and a control only the desktop can reach is what 306 forbids. */
-  .top{gap:8px 10px;padding:6px 10px;overflow:hidden;flex-wrap:wrap;height:auto;min-height:var(--top);align-content:center}
-  .top .count{margin-left:0}
-  .top .yesall-form{margin-left:auto}
-  .top #yesall{max-width:100%;flex-wrap:wrap}
-  /* The title is the one thing on the header a person on a phone already
-     knows — they opened it — and the room it takes is the room the instance
-     and the operator's own name need to survive (17.0, 153, 219). */
-  .top h1{display:none}
-  .top .palbtn{display:none}
-  .top .meta{min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
-  .top .theme{display:none}
-  .top .keys{display:none}
-  .top .count span.hint{display:none}
-  .top .palbtn{display:none}
+  /* The header keeps what the operator acts on here, in one row that nothing
+     runs past: the instance with the as-of time of its read, `yes all` as the
+     word alone while an approve decision waits, the sent count that opens the
+     log, and the account item at the right (145, S2, S152, S236).
+     What it drops is carried elsewhere or known already: the page's title,
+     which a person who opened it knows; the key hints, since a phone has no
+     keys to hint at; the numbers on `yes all`, which the card each stands on
+     says; the count of decisions, which the Decisions tab's badge carries at
+     the foot; and the capture box, since the capture control on both tabs
+     raises the palette as a bottom sheet here (S38, S211, S236, 306, 314).
+     The header must not set the width of the document either: at 390px a
+     wider header made a `1fr` grid column resolve against its width, which put
+     a card's answer controls off the right edge where no tap reaches them. */
+  .top{gap:8px;padding:0 10px;overflow:hidden;flex-wrap:nowrap}
+  .top h1,.top .count,.top .theme,.top .keys,.top .palbtn{display:none}
+  .top .meta{margin-right:auto;min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+  .top .btn{padding:5px 8px;flex:none}
+  .top .yesall-form{margin-left:0;flex:none}
+  .top #yesall{max-width:100%}
+  .top #yesall .k{display:none}
   .phone-only{display:inline-flex}
   /* One column no wider than the screen, whatever its content's widest line:
      a `1fr` column is `minmax(auto, 1fr)`, and the rail's head set it to 418px
@@ -1009,6 +1008,9 @@ a.btn.pri{color:var(--accent-ink)}
 @media (max-width:760px){
   .picker,.dk-f .picker{position:fixed;left:0;right:0;bottom:0;top:auto;width:auto;max-width:none;margin:0;border-radius:12px 12px 0 0;border-left:0;border-right:0;border-bottom:0;box-shadow:var(--shadow);z-index:40}
   .pk-list{max-height:46vh}
+  /* The pane popover is a sheet here too, above the tabs rather than anchored
+     under a chip too small to hang 380px off (S234, S233, S30, 306). */
+  .panepop{left:8px!important;right:8px;top:auto!important;bottom:58px;width:auto;border-radius:12px}
 }
 .answers .pick-list{display:flex;flex-direction:column;gap:2px;margin:6px 0 0;padding:4px;border:1px solid var(--line);border-radius:8px;background:var(--surface2);max-width:100%}
 .answers .pick-list button{justify-content:flex-start;text-align:left;white-space:normal;border-color:transparent;background:transparent;font-weight:500;min-height:34px;width:100%}
@@ -1204,6 +1206,9 @@ body[data-served="view"] .dk-b{overflow:visible}
   // ---- the capture box: one box, opened under itself while it has the cursor,
   // and over the page on a phone
   function openBox(seed){
+    // The palette closes a pane popover, as it closes a picker: one thing is
+    // open on the page at a time (S234, S233, S56).
+    closePanePop();
     if(shown(box)){ if(seed!==undefined) box.value=seed; box.focus(); if(seed===undefined) box.select(); if(drop) drop.hidden=false; }
     else if(scrim){ scrim.classList.add('open'); if(palq){ if(seed!==undefined) palq.value=seed; palq.focus(); } }
     sel=0; update();

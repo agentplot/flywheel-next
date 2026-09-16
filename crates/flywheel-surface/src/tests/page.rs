@@ -2250,3 +2250,64 @@ fn a_proposed_shared_line_chore_is_a_slip_in_bolt_plan() {
         "an accepted chore is still a slip in the plan: {plan}"
     );
 }
+
+/// Under 760px the header is one row that keeps what the operator acts on —
+/// the instance with the as-of time of its read, `yes all` as the word alone
+/// while an approve decision waits, the sent count that opens the log, and the
+/// account item — and drops the title, the key hints, the numbers on `yes
+/// all`, the count of decisions, which the Decisions tab's badge carries at the
+/// foot, and the capture box, since the capture control on both tabs raises the
+/// palette as a bottom sheet there (S236, S2, S38, S152, S211, 145, 306, 314).
+///
+/// The theme control the ruling moves into the account item's menu is a later
+/// phase's: this one has no sign-in and so no menu, and what stands in the
+/// header is a readout saying the page follows the system's theme, not a
+/// control. It is dropped here with the rest, and nothing is out of reach for
+/// it (D10, 253a, 310).
+#[test]
+fn the_header_at_phone_width_keeps_what_is_acted_on() {
+    let css = bundled(crate::page::style_address());
+    let (desktop, phone) = css
+        .split_once("@media (max-width: 760px)")
+        .expect("the bundle lays out under 760px");
+
+    // One row, and the header never sets the document's width.
+    assert!(
+        phone.contains(".top{gap:8px;padding:0 10px;overflow:hidden;flex-wrap:nowrap}"),
+        "the header is not one row that clips at 390px: {phone}"
+    );
+    // What it drops, in one rule.
+    assert!(
+        phone.contains(".top h1,.top .count,.top .theme,.top .keys,.top .palbtn{display:none}"),
+        "the header keeps the title, the count, the theme readout, the key hints or the capture box: {phone}"
+    );
+    // `yes all` stays as the word, and the numbers on it go.
+    assert!(phone.contains(".top #yesall .k{display:none}"), "the numbers are still on `yes all`: {phone}");
+    assert!(!phone.contains(".top .yesall-form{display:none}"), "`yes all` itself is dropped: {phone}");
+    // What it keeps is not hidden, and the instance is cut at its end rather
+    // than pushing the row out (S215).
+    for kept in [".top .meta{display:none}", ".top .acct-wrap{display:none}", "#logbtn{display:none}"] {
+        assert!(!phone.contains(kept), "the header drops something the operator acts on: `{kept}`");
+    }
+    assert!(
+        phone.contains(".top .meta{margin-right:auto;min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}"),
+        "the instance is not cut at its end: {phone}"
+    );
+    // The desktop keeps all of it: nothing here is the phone's alone (306).
+    assert!(!desktop.contains(".top h1{display:none}"), "the title is dropped on the desktop too: {desktop}");
+
+    // And the count it dropped is carried at the foot, on the Decisions tab's
+    // badge, from the same read (S38, S236).
+    let (mut store, world, defs) = a_page();
+    let html = rendered(&mut store, &world, &defs);
+    let count = html
+        .split("<b id=\"count\">")
+        .nth(1)
+        .and_then(|rest| rest.split('<').next())
+        .expect("the header renders the count")
+        .to_string();
+    assert!(
+        html.contains(&format!("<span class=\"bd\" id=\"bd-plan\">{count}</span>")),
+        "the Decisions tab's badge does not carry the count the header dropped: {html}"
+    );
+}
