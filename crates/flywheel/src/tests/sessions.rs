@@ -188,6 +188,27 @@ fn the_host_answers_a_prompt_yes_only_on_the_orders_own_command() {
     assert_eq!(answer_to_prompt(trust, COMMAND), None);
 }
 
+/// The refusal names the command the program asked about, which its pane quotes
+/// above the question. Below the question is the prompt's own chrome: a refusal
+/// naming that says nothing of what the session tried to run (72).
+#[test]
+fn the_refusal_names_the_command_and_not_the_prompts_chrome() {
+    use crate::host::asked_command;
+
+    let shown = " Bash command\n\n   │ mkdir -p .flywheel/deliverables && cat > signal.rec <<'EOF'\n   \
+                 │ Kind: reaction\n   Write the signal deliverable and commit it\n\n \
+                 Do you want to proceed?\n ❯ 1. Yes\n   2. No\n\n Esc to cancel · Tab to amend";
+    assert_eq!(
+        asked_command(shown),
+        "mkdir -p .flywheel/deliverables && cat > signal.rec <<'EOF'"
+    );
+
+    // A prompt that quotes nothing falls back to what the pane last said above
+    // the question, never to the keys below it.
+    let bare = "something happened\n\n Do you want to proceed?\n ❯ 1. Yes\n   2. No\n\n Esc to cancel";
+    assert_eq!(asked_command(bare), "something happened");
+}
+
 /// A host declines to start an instance whose name another host on this
 /// computer already runs, names the one running, and starts nothing (218).
 #[test]

@@ -1424,13 +1424,7 @@ impl Host {
             // The second choice is the refusal; what the pane last showed names
             // what was asked.
             let _ = herdr.send_keys(&live.agent, &["down", "enter"]);
-            let asked = shown
-                .lines()
-                .rev()
-                .find(|line| !line.trim().is_empty())
-                .unwrap_or_default()
-                .trim()
-                .to_string();
+            let asked = asked_command(&shown);
             let refused = flywheel_domain::report::Report::Refuse {
                 reason: format!("the program asked to run `{asked}`, which the order did not give"),
             };
@@ -3176,6 +3170,34 @@ pub(crate) fn answer_to_prompt(shown: &str, command: &str) -> Option<bool> {
         return None;
     }
     Some(!command.is_empty() && shown.contains(command))
+}
+
+/// The command the program is asking about, as its own pane shows it: the
+/// program quotes the command above the question, a line at a time. What sits
+/// below the question is the prompt's own chrome — the keys it takes — and
+/// names nothing the session tried to run (72).
+pub(crate) fn asked_command(shown: &str) -> String {
+    let above = shown.split("Do you want to proceed?").next().unwrap_or(shown);
+    let quoted = above
+        .lines()
+        .filter_map(|line| {
+            let line = line.trim();
+            let line = line.strip_prefix('│').or_else(|| line.strip_prefix('|'))?;
+            Some(line.trim())
+        })
+        .find(|line| !line.is_empty());
+    match quoted {
+        Some(command) => command.to_string(),
+        // A prompt that quotes nothing: the line before the question is the
+        // most the pane says about it.
+        None => above
+            .lines()
+            .map(str::trim)
+            .rev()
+            .find(|line| !line.is_empty())
+            .unwrap_or_default()
+            .to_string(),
+    }
 }
 
 pub(crate) fn how_to_report(r: &Reporting) -> String {
