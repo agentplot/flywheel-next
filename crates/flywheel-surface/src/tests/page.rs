@@ -1827,6 +1827,59 @@ fn accepted_chores_stand_under_a_chores_head_per_repository() {
     );
 }
 
+/// A chore stands under its repository's head while it stands. Its merge onto
+/// the shared line is its landing, and a landed chore leaves the lane as a
+/// landed bolt's units do: the head holds what is still standing, and Recently
+/// done carries the landed one's single merged line with its repository greyed
+/// before the name (S15, S9, 60).
+#[test]
+fn a_landed_chore_leaves_the_chores_head() {
+    let (mut store, world, defs) = a_page();
+    let at = commands::now(&store).expect("a point");
+    chores_of_repository(&mut store, &defs, "atlas", &["agents-md", "rename-ref"]);
+    for (id, life) in [("unit/atlas/chore-1", "in-flight"), ("unit/atlas/chore-2", "landed")] {
+        let mut held = store.get(id).expect("a read").expect("the chore");
+        held.config.retain(|region, _| !region.starts_with("life."));
+        held.config.insert("life".into(), life.into());
+        held.entered_at.insert("life".into(), at);
+        let base = held.seq;
+        store.put(id, &held, base).expect("the chore's state is written");
+    }
+    commands::rail(&mut store, &defs).expect("the rail derives");
+    let html = rendered(&mut store, &world, &defs);
+
+    let at = html
+        .find("<section class=\"chores-lane\" data-repository=\"atlas\">")
+        .unwrap_or_else(|| panic!("atlas has no chores head: {html}"));
+    let rest = &html[at..];
+    let head = &rest[..rest.find("</section>").expect("the head closes")];
+    assert!(head.contains("href=\"#dock-unit/atlas/chore-1\""), "the standing chore left the head: {head}");
+    assert!(head.contains("1 chore<"), "the head counts what still stands: {head}");
+    assert!(
+        !head.contains("unit/atlas/chore-2"),
+        "a landed chore stands under the head it left when it merged (S15, 60): {head}"
+    );
+
+    // And it is drawn nowhere else in the lane either: it left it.
+    let lanes = html.split("<ul class=\"since\">").next().expect("the board is drawn");
+    assert!(!lanes.contains("unit/atlas/chore-2"), "a landed chore is still on the board: {lanes}");
+
+    // Recently done carries its one line, merged, its repository greyed before
+    // the name (S9).
+    let listed = html
+        .split("<ul class=\"since\">")
+        .nth(1)
+        .and_then(|rest| rest.split("</ul>").next())
+        .expect("what happened lately is listed");
+    assert!(
+        listed.contains("<span class=\"pre\">atlas · </span>chore-2</a>"),
+        "the landed chore has no merged line: {listed}"
+    );
+    assert_eq!(listed.matches("chore-2").count(), 2, "one line, its link and its name: {listed}");
+    assert!(listed.contains("<span class=\"v merged\">merged</span>"), "the line does not read merged: {listed}");
+    assert!(!listed.contains("chore-1"), "a standing chore is on Recently done: {listed}");
+}
+
 /// A row's letter stays with its chore: once the second of three is dropped the
 /// fold keeps its number and the rows a and c, on the card and in the dock, and
 /// a tenth chore joining is d. A chore of the repository merged before the fold

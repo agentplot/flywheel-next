@@ -1871,6 +1871,10 @@ fn since_items(read: &Read) -> Vec<Since<'_>> {
             },
             "unit" => match object.config.get("life").map(String::as_str) {
                 Some("merged") => "merged",
+                // A chore of a shared line lands on the pass that merges it, so
+                // it is never merged for a reader to see. It keeps the one
+                // merged line its merge earned (60, S15, S9).
+                Some("landed") if is_shared_line_chore(object) => "merged",
                 Some("dropped") => "dropped",
                 _ => continue,
             },
@@ -2391,7 +2395,13 @@ fn lane_head(read: &Read, title: &str, sub: &str, machines: &[&str], mine: &[&st
 /// read as the machine talking to itself, and the grouping is what 141 asks for
 /// (141, D16).
 fn lane_group(read: &Read, id: &str, group: &str, mine: &[&status::Row]) -> String {
-    let held = group_rows(read, group, mine);
+    // A chore stands under its head until it merges, which on the shared line
+    // is its landing; it then leaves the lane as a landed bolt's units do, and
+    // Recently done carries its one merged line (S15, S9, 60).
+    let held: Vec<&status::Row> = group_rows(read, group, mine)
+        .into_iter()
+        .filter(|row| !landed_shared_line_chore(read, row))
+        .collect();
     // An accepted chore is work on a repository's shared line, not a bolt, so
     // it stands under a head of its own rather than in a ledger (S15, S75, 60).
     let (chores, rows): (Vec<&status::Row>, Vec<&status::Row>) =
@@ -2414,18 +2424,9 @@ fn lane_group(read: &Read, id: &str, group: &str, mine: &[&status::Row]) -> Stri
 /// that hangs off no bolt and is past its proposal. A proposed one is a slip,
 /// answered or dropped; an accepted one is an item on that line (60, S14, S75).
 fn accepted_shared_line_chore(read: &Read, row: &status::Row) -> bool {
-    if row.machine != "unit" {
-        return false;
-    }
-    let Some(object) = read.object(&row.object) else {
+    let Some(object) = read.object(&row.object).filter(|o| is_shared_line_chore(o)) else {
         return false;
     };
-    if object.record.get("type").and_then(|v| v.as_str()) != Some("chore") {
-        return false;
-    }
-    if object.parent.as_deref().is_some_and(|parent| parent.starts_with("bolt/")) {
-        return false;
-    }
     !matches!(
         object.config.get("life").map(String::as_str),
         None | Some("in-proposal")
@@ -2436,6 +2437,24 @@ fn accepted_shared_line_chore(read: &Read, row: &status::Row) -> bool {
             | Some("dropped")
             | Some("retired")
     )
+}
+
+/// A chore on a repository's or the instance's shared line: a unit of the chore
+/// type hanging off no bolt, wherever it stands in its life (60, 62).
+fn is_shared_line_chore(object: &Object) -> bool {
+    object.machine == "unit"
+        && object.record.get("type").and_then(|v| v.as_str()) == Some("chore")
+        && !object.parent.as_deref().is_some_and(|parent| parent.starts_with("bolt/"))
+}
+
+/// The same chore once it has merged: on the shared line that merge is its
+/// landing, so it is done and has left the lane (60, S15).
+fn landed_shared_line_chore(read: &Read, row: &status::Row) -> bool {
+    read.object(&row.object)
+        .filter(|o| is_shared_line_chore(o))
+        .is_some_and(|object| {
+            matches!(object.config.get("life").map(String::as_str), Some("merged") | Some("landed"))
+        })
 }
 
 /// The accepted chores of a lane, under a "chores" head per repository and
