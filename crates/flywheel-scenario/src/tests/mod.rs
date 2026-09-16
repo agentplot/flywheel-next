@@ -5,4 +5,5 @@ mod acceptance_gate;
 mod actions;
 mod invariants;
 mod runner_rules;
+mod seeded_lines;
 mod sessions;

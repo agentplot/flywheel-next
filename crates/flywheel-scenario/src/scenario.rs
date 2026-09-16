@@ -10,6 +10,46 @@ use std::collections::BTreeMap;
 
 pub use flywheel_atoms::scenario::{load, Given, GivenObject, Scenario};
 
+/// Refuse a described state whose line no repository holds, naming what is
+/// missing.
+///
+/// A line belongs to a repository — a unit's and a bolt's to the one they name,
+/// an intent's to the blueprints — and a seed that says a line is there when
+/// the instance tracks no repository to hold it describes work no host can act
+/// on. It is refused the way an uncovered object is, saying what would have to
+/// be tracked first, rather than seeding a line that stands for nothing
+/// (19.6, 125, 149).
+pub fn lines_held(sc: &Scenario, tracked: &[String]) -> anyhow::Result<()> {
+    let mut missing: Vec<String> = Vec::new();
+    for g in &sc.given.objects {
+        let Some(state) = g.state.get("line") else { continue };
+        if matches!(state.as_str(), "absent" | "removed") {
+            continue;
+        }
+        // The blueprints hold every intent's line, and the instance always has
+        // them: only a line naming a built repository can be missing one.
+        let Some(repository) = g.record.get("repository").and_then(|v| v.as_str()) else {
+            continue;
+        };
+        if tracked.iter().any(|held| held == repository) {
+            continue;
+        }
+        let named = format!("`{repository}` (the line of {})", g.id);
+        if !missing.contains(&named) {
+            missing.push(named);
+        }
+    }
+    if missing.is_empty() {
+        return Ok(());
+    }
+    anyhow::bail!(
+        "this instance tracks no repository to hold {}. A line is a branch of a repository, so \
+         nothing is seeded until the instance tracks what the described state names \
+         (`flywheel.yaml` repositories, 149, 205, 206)",
+        missing.join(", ")
+    )
+}
+
 pub fn seed(defs: Definitions, sc: &Scenario) -> Runtime {
     let mut store = Store::default();
     store.scenario = Some(sc.scenario.clone());
@@ -76,6 +116,20 @@ pub fn seed(defs: Definitions, sc: &Scenario) -> Runtime {
             let mut o2 = snapshot;
             flywheel_engine::initialise(&defs, &mut o2, entered);
             *o = o2;
+        }
+        // A line a described state says is there is there. The state is the
+        // machine's and the fact is the world's, and a guard reads the fact:
+        // without it an elaboration approved on a seeded intent waits on a line
+        // nothing made, and the scenario cannot run past it. A seed covers what
+        // it seeds (19.6, 125, 149).
+        let held = store.objects.get(&g.id).and_then(|o| o.config.get("line").cloned());
+        if let Some(state) = held {
+            if !matches!(state.as_str(), "absent" | "removed") {
+                let line = store.world.lines.entry(g.id.clone()).or_default();
+                line.exists = true;
+                line.absent = false;
+                line.landed = state == "landed";
+            }
         }
     }
     // An item works its unit's type at the version the unit recorded (57), and
