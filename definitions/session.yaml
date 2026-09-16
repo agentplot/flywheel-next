@@ -18,7 +18,9 @@
 # asks a person for before a command — is never the session's exit and reads
 # as neither idle nor blocked; the binding answers it from what the pane
 # shows, yes to the order's own commands and no to any other, the no a
-# refusal on the thread (72, sessions.yaml prompts).
+# refusal on the thread (72, sessions.yaml prompts); the place admits the
+# session's own work in its tree outright, so the no never falls on a
+# deliverable (67, host.yaml prepare_place).
 # A session its type does not keep alive is ended on the pass that records
 # its exit — done, stalled or invalid alike — after its deliverables are read,
 # so its pane closes then; blocked is not an exit and keeps the pane for the

@@ -105,11 +105,15 @@ prompts:
     the exit, offer and ask lines of `how to report`, matched whole — and no
     to any other, the no appended to the session's thread as a refusal naming
     the command (43, record_refusals), so the program carries on with the
-    refusal and the session decides what to do with it. A yes on one of the
-    order's own lines is also reported as a fault of the place's preparation
-    (81), since prepare_place admits the machinery's command and writes the
-    order's lines as arguments the parser reads whole (host.yaml
-    prepare_place). session.activity reads working while a pane shows a
+    refusal and the session decides what to do with it. The no is safe
+    because prepare_place grants the program its tools whole inside the
+    place — every read, edit, write, command and commit in the session's
+    own tree runs unprompted, its deliverables among them — so a prompt is
+    on something outside the session's reach (67, host.yaml prepare_place).
+    A yes on one of the order's own lines is also reported as a fault of the
+    place's preparation (81), since prepare_place admits the machinery's
+    command and writes the order's lines as arguments the parser reads whole
+    (host.yaml prepare_place). session.activity reads working while a pane shows a
     prompt. How herdr surfaces a prompt is to be verified before this is
     relied on (gaps 72).
 evidence:
