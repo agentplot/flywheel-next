@@ -250,8 +250,14 @@ impl HostStore {
             if !workspaces.iter().any(|(_, label)| label == &mine) {
                 continue;
             }
+            // The workspace carrying the host's own mark is no view of work:
+            // none of its tabs is read, and neither it nor its tab is closed
+            // (218, 186, 196).
             let mut tabs: Vec<(String, String)> = Vec::new();
-            for (id, _) in &workspaces {
+            for (id, label) in &workspaces {
+                if label.starts_with("host/") {
+                    continue;
+                }
                 tabs.extend(herdr.tabs(id).unwrap_or_default());
             }
             let decided = flywheel_domain::sessions::layout_to_close(

@@ -117,6 +117,12 @@ pub fn layout_to_close<S: Records>(
     };
     let mut out = Layout::default();
     for label in tabs {
+        // The label a host marks its own session with is not a view of work,
+        // at the tab level as at the workspace level: the marker workspace's
+        // own tab carries it too (218, 186).
+        if label.starts_with("host/") {
+            continue;
+        }
         // A machinery run's tab is labelled by its session id; it goes once
         // the run is final and its pane is gone.
         if let Some(run) = run_of(store, &records, label) {

@@ -352,7 +352,16 @@ impl Herdr {
                 // The session this host made is marked its own, once, so a
                 // second host of another instance by this name finds it and
                 // declines rather than opening panes beside these (218).
-                self.run(&["workspace", "create", "--label", &host_label(host), "--no-focus"])?;
+                let made = self.run(&["workspace", "create", "--label", &host_label(host), "--no-focus"])?;
+                // The workspace herdr makes comes with a tab of its own,
+                // labelled by its number. That tab carries the host's mark
+                // too, so reconciliation reads it as the mark it is rather
+                // than as a tab naming work that has left every view — which
+                // is what closed the mark, and with it the session's hold on
+                // its own name (218, 186, 196).
+                if let Ok(tab) = text_at(&made, &["/result/tab/tab_id", "/result/tab_id"]) {
+                    self.rename_tab(&tab, &host_label(host))?;
+                }
                 return Ok(());
             }
             std::thread::sleep(std::time::Duration::from_millis(100));
@@ -1193,6 +1202,12 @@ esac"#,
         assert!(
             calls.contains("workspace create --label host/mac-studio --no-focus"),
             "the session it made carries no host label: {calls}"
+        );
+        // The marker's own tab carries the mark too, so reconciliation reads
+        // it as the mark and never as a tab naming work that has left (218).
+        assert!(
+            calls.contains("tab rename w0:t1 host/mac-studio"),
+            "the marker workspace's tab keeps herdr's own label: {calls}"
         );
         // Already running, so nothing is started a second time.
         let before = fake.calls().matches("server").count();

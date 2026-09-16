@@ -152,6 +152,24 @@ fn an_exited_sessions_open_pane_is_ended_by_reconciliation() {
     assert!(ending.iter().all(|p| !p.why.is_empty()));
 }
 
+/// The workspace a host marks its own session with, and the tab inside it, are
+/// the mark and not a view of work: reconciliation closes neither (218, 186,
+/// 196).
+///
+/// herdr keeps an empty labelled workspace for as long as it has a tab, so
+/// closing that tab is what took the mark away, and with it the session's hold
+/// on its own name.
+#[test]
+fn a_hosts_own_mark_is_never_closed() {
+    let defs = defs();
+    let store = FakeStore::default();
+    let workspaces = ["host/mac-studio".to_string(), "curation".to_string()];
+    let tabs = ["host/mac-studio".to_string()];
+    let closing = layout_to_close(&store, &defs, &workspaces, &tabs).expect("the layout is read");
+    assert_eq!(closing.tabs, Vec::<String>::new(), "the marker workspace's own tab was closed (218)");
+    assert_eq!(closing.workspaces, Vec::<String>::new(), "the marker workspace was closed (218)");
+}
+
 /// A machinery run's tab goes once the run is final and its pane is gone; the
 /// machinery workspaces stay, because they are per kind and not per object
 /// (186, 196).
