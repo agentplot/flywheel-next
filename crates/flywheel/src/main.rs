@@ -897,10 +897,20 @@ async fn main() -> Result<()> {
             let by = std::env::var("USER").unwrap_or_else(|_| "operator".into());
             // The tracked names, from the manifest as the ask reads them, and
             // only when a chore's scope needs them (`sessions.yaml` commands.offer).
+            // A manifest this command cannot read leaves the instance tracking
+            // none, and the chore is refused on the thread naming what it could
+            // have given — never dropped for want of a manifest. A session's
+            // report is recorded whatever becomes of it, refusal and all
+            // (60, 80).
             let tracked = || -> Result<Vec<String>> {
-                let read = flywheel::host::manifest_with_root(manifest, host, root.as_deref())?;
-                let world = flywheel_world_host::HostWorld::open(read, host)?;
-                flywheel_domain::offers::tracked(&world)
+                let Ok(read) = flywheel::host::manifest_with_root(manifest, host, root.as_deref())
+                else {
+                    return Ok(vec![]);
+                };
+                let Ok(world) = flywheel_world_host::HostWorld::open(read, host) else {
+                    return Ok(vec![]);
+                };
+                Ok(flywheel_domain::offers::tracked(&world).unwrap_or_default())
             };
             // The command runs in the session's place, whose head the entry
             // names (62).
