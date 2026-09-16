@@ -372,8 +372,14 @@ impl<S: Records> Workspace for HostWorkspace<'_, S> {
     /// The agent program's own deny list, beside the git hooks that refuse
     /// line operations: the session's reach is its place and the query tools
     /// (89, 173, `host.yaml` prepare_place).
-    fn write_agent_settings(&mut self, place: &str, program: &str, handed_in: &[String]) -> Result<()> {
-        let Some((at, body)) = flywheel_domain::order::agent_settings(program, handed_in) else {
+    fn write_agent_settings(
+        &mut self,
+        place: &str,
+        program: &str,
+        handed_in: &[String],
+        command: &str,
+    ) -> Result<()> {
+        let Some((at, body)) = flywheel_domain::order::agent_settings(program, handed_in, command) else {
             // A program with no such settings is trusted to its order.
             return Ok(());
         };

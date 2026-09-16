@@ -122,7 +122,8 @@ fn a_place_carries_the_programs_deny_list_and_the_agent_it_starts_as() {
     let place = place_dir(&root, "storefront", item, "bolt/storefront/plan-rows");
 
     // The deny list, with what the order handed in beside the place.
-    ws.write_agent_settings(item, "claude", &["/flywheel/state/main".to_string()]).expect("the settings");
+    ws.write_agent_settings(item, "claude", &["/flywheel/state/main".to_string()], "/bin/flywheel")
+        .expect("the settings");
     let settings = place.join(".claude/settings.local.json");
     let read: serde_json::Value =
         serde_json::from_str(&std::fs::read_to_string(&settings).expect("the place carries the deny list")).unwrap();
@@ -144,8 +145,13 @@ fn a_place_carries_the_programs_deny_list_and_the_agent_it_starts_as() {
     // which is what every place got while the call site handed the type (173).
     ws.prepare_place("bolt/storefront/plan-rows#own", "", "# the operator's place\n").expect("the line's own place");
     let own = place_dir(&root, "storefront", "bolt/storefront/plan-rows#own", "bolt/storefront/plan-rows");
-    ws.write_agent_settings("bolt/storefront/plan-rows#own", "capture-reading", &["/flywheel".to_string()])
-        .expect("a type is no program");
+    ws.write_agent_settings(
+        "bolt/storefront/plan-rows#own",
+        "capture-reading",
+        &["/flywheel".to_string()],
+        "/bin/flywheel",
+    )
+    .expect("a type is no program");
     ws.write_agent_definition("bolt/storefront/plan-rows#own", "capture-reading", "capture-reader", "the agent\n")
         .expect("a type is no program");
     assert!(!own.join(".claude").exists(), "a session's type was taken for its program: {own:?}");

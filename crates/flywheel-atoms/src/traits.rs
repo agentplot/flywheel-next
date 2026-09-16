@@ -492,7 +492,13 @@ pub trait Workspace {
     /// a session reads its place, the paths the order hands in, and nothing
     /// else (89, 173). A binding that makes no real place writes nothing, and
     /// a kind with no such settings is trusted to its order.
-    fn write_agent_settings(&mut self, _place: &str, _program: &str, _handed_in: &[String]) -> Result<()> {
+    fn write_agent_settings(
+        &mut self,
+        _place: &str,
+        _program: &str,
+        _handed_in: &[String],
+        _command: &str,
+    ) -> Result<()> {
         Ok(())
     }
 

@@ -241,10 +241,17 @@ fn every_order_gives_the_offer_command_and_curations_the_ask() {
     let curation = "curation/scratch/main/1";
     for session in [chore, curation] {
         let said = how_to_report(&reporting(session, &named));
+        // The session, the state repository and the manifest are the command's
+        // own arguments: a line the program's shell parser can read whole is
+        // one it runs without asking a person (67, 72).
         assert!(
-            said.contains("/bin/flywheel exit done --deliverable commits --deliverable verdict --host laptop"),
+            said.contains(&format!(
+                "/bin/flywheel exit done --deliverable commits --deliverable verdict \
+                 --session {session} --state /hosts/laptop/scratch/flywheel-state/main --host laptop"
+            )),
             "{said}"
         );
+        assert!(!said.contains("FLYWHEEL_SESSION="), "the order still writes an environment prefix: {said}");
         let offer = said
             .lines()
             .find(|line| line.contains("/bin/flywheel offer "))
@@ -252,9 +259,10 @@ fn every_order_gives_the_offer_command_and_curations_the_ask() {
         assert_eq!(
             offer.trim(),
             format!(
-                "FLYWHEEL_SESSION={session} FLYWHEEL_STATE=/hosts/laptop/scratch/flywheel-state/main \
-                 FLYWHEEL_MANIFEST=/flywheel/flywheel.yaml \
-                 /bin/flywheel offer finding|chore|signal --document <path> --about <object> [--scope bolt-line|<repository>] --host laptop"
+                "/bin/flywheel offer finding|chore|signal --document <path> --about <object> \
+                 [--scope bolt-line|<repository>] --session {session} \
+                 --state /hosts/laptop/scratch/flywheel-state/main \
+                 --manifest /flywheel/flywheel.yaml --host laptop"
             ),
         );
         assert!(
@@ -264,7 +272,8 @@ fn every_order_gives_the_offer_command_and_curations_the_ask() {
     }
     assert!(!how_to_report(&reporting(chore, &named)).contains(" ask "), "a chore's order gives the ask");
     assert!(
-        how_to_report(&reporting(curation, &named)).contains("/bin/flywheel ask <repository> \"<the words>\" --host laptop"),
+        how_to_report(&reporting(curation, &named))
+            .contains("/bin/flywheel ask <repository> \"<the words>\" --session curation/scratch/main/1"),
         "curation's order gives no ask"
     );
 }

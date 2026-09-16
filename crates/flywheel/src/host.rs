@@ -1374,9 +1374,76 @@ impl Host {
                 break;
             }
         }
+        self.answer_prompts();
         self.last_sweep = Some(self.now());
         self.settle_record()?;
         Ok(fired)
+    }
+
+    /// Answer a prompt a program put to its own pane, on the pass that sees it
+    /// (72; `sessions.yaml` prompts).
+    ///
+    /// Such a prompt is never the session's exit and the session reads working
+    /// through it, so nothing else moves on it: the host decides, and no person
+    /// is waited for. Yes to a command the order itself gave; no to any other,
+    /// the no written to the session's thread as a refusal naming what was
+    /// asked, so the program carries on with the refusal and the session
+    /// decides what to do with it (43, 72).
+    fn answer_prompts(&mut self) {
+        if self.bindings.sessions != "herdr" {
+            return;
+        }
+        let command = std::env::current_exe()
+            .ok()
+            .map(|at| at.display().to_string())
+            .unwrap_or_else(|| "flywheel".into());
+        let now = self.now();
+        let me = self.name.clone();
+        for live in flywheel_sessions_herdr::live_agents(&self.store.git) {
+            let herdr = flywheel_sessions_herdr::Herdr::unbound().in_session(&live.multiplexer);
+            if herdr.status(&live.agent).unwrap_or_default() != "blocked" {
+                continue;
+            }
+            let Ok(shown) = herdr.read_visible(&live.agent) else {
+                continue;
+            };
+            let Some(gave) = answer_to_prompt(&shown, &command) else {
+                continue;
+            };
+            if gave {
+                let _ = herdr.send_keys(&live.agent, &["enter"]);
+                self.run.push(RunEntry::new(
+                    now,
+                    &me,
+                    "session",
+                    &live.session,
+                    "a prompt on a command the order gave was answered yes",
+                ));
+                continue;
+            }
+            // The second choice is the refusal; what the pane last showed names
+            // what was asked.
+            let _ = herdr.send_keys(&live.agent, &["down", "enter"]);
+            let asked = shown
+                .lines()
+                .rev()
+                .find(|line| !line.trim().is_empty())
+                .unwrap_or_default()
+                .trim()
+                .to_string();
+            let refused = flywheel_domain::report::Report::Refuse {
+                reason: format!("the program asked to run `{asked}`, which the order did not give"),
+            };
+            if let Err(e) = flywheel_domain::report::write_report(
+                &mut self.store.git,
+                &live.session,
+                &me,
+                now,
+                &refused,
+            ) {
+                eprintln!("the refusal of a prompt could not be written: {e:#}");
+            }
+        }
     }
 
     /// Write what this host still owes its run record. A tick's append is one
@@ -2183,7 +2250,16 @@ fn performing(
             // opencode — and not the session's type: a deny list handed the
             // type matches no program and the place gets none (89, 173).
             let program = order.program.clone();
-            with_workspace(store, |ws| ws.write_agent_settings(&place, &program, &handed_in))?;
+            // The machinery's own command, by the full path the order names it
+            // with: the place admits it beside the deny list, so the lines the
+            // order gives run unprompted (67).
+            let command = std::env::current_exe()
+                .ok()
+                .map(|at| at.display().to_string())
+                .unwrap_or_else(|| "flywheel".into());
+            with_workspace(store, |ws| {
+                ws.write_agent_settings(&place, &program, &handed_in, &command)
+            })?;
             // What the session is started as, where its program looks for it:
             // `claude --agent <name>` resolves against the definitions the
             // program can find, and what it finds must be the flywheel's own
@@ -3084,22 +3160,45 @@ pub(crate) struct Reporting<'a> {
 /// commands.offer). The ask is the curation session's and the operator's own
 /// session's, so theirs alone carry its command (116, 197, `sessions.yaml`
 /// commands.ask).
+/// What the host answers a prompt the program put to its own pane: yes to a
+/// command the order itself gave, no to any other (72; `sessions.yaml`
+/// prompts). `None` where the pane shows no prompt to answer.
+///
+/// Every line of the order's `how to report` invokes the machinery's command
+/// by its full path, which is the one command the place admits beside the deny
+/// list, so a prompt naming that command is a prompt on a line the order gave
+/// and a prompt naming anything else is not (67).
+/// The program's first-run question about the folder it works in is not one of
+/// these: it is answered when the session starts, before it has an order to
+/// judge a command against (197).
+pub(crate) fn answer_to_prompt(shown: &str, command: &str) -> Option<bool> {
+    if !shown.contains("Do you want to proceed?") {
+        return None;
+    }
+    Some(!command.is_empty() && shown.contains(command))
+}
+
 pub(crate) fn how_to_report(r: &Reporting) -> String {
     let Reporting { session, state, flywheel, host, .. } = r;
-    let env = format!("FLYWHEEL_SESSION={session} FLYWHEEL_STATE={state}");
+    // The session's identity, the state repository and the manifest are the
+    // command's own arguments and never an environment prefix: a line the
+    // program's shell parser cannot read whole is one it stops at to ask a
+    // person before running, and an unattended session has none (67, 72;
+    // `host.yaml` prepare_place, `sessions.yaml` prompts).
+    let named = format!("--session {session} --state {state}");
     let manifest = r
         .manifest
-        .map(|m| format!(" FLYWHEEL_MANIFEST={}", m.display()))
+        .map(|m| format!(" --manifest {}", m.display()))
         .unwrap_or_default();
     let mut body = String::from("\n## how to report\n\n");
     body.push_str("When the work is done, from this directory:\n\n");
     body.push_str(&format!(
-        "    {env} {flywheel} exit done{} --host {host}\n\n",
+        "    {flywheel} exit done{} {named} --host {host}\n\n",
         r.deliverables.iter().map(|d| format!(" --deliverable {d}")).collect::<String>()
     ));
     body.push_str("When you cannot go on without the operator's answer:\n\n");
     body.push_str(&format!(
-        "    {env} {flywheel} exit blocked --question \"<the question>\" --host {host}\n\n"
+        "    {flywheel} exit blocked --question \"<the question>\" {named} --host {host}\n\n"
     ));
     body.push_str(
         "To offer what is outside the job, pointing at a document you committed here: a finding when it \
@@ -3109,7 +3208,7 @@ pub(crate) fn how_to_report(r: &Reporting) -> String {
          bolt may leave off, or a repository the instance tracks, blueprints among them:\n\n",
     );
     body.push_str(&format!(
-        "    {env}{manifest} {flywheel} offer finding|chore|signal --document <path> --about <object> [--scope bolt-line|<repository>] --host {host}\n\n"
+        "    {flywheel} offer finding|chore|signal --document <path> --about <object> [--scope bolt-line|<repository>] {named}{manifest} --host {host}\n\n"
     ));
     if flywheel_domain::asks::granted(session) {
         body.push_str(
@@ -3117,7 +3216,7 @@ pub(crate) fn how_to_report(r: &Reporting) -> String {
              signal's route move names:\n\n",
         );
         body.push_str(&format!(
-            "    {env}{manifest} {flywheel} ask <repository> \"<the words>\" --host {host}\n\n"
+            "    {flywheel} ask <repository> \"<the words>\" {named}{manifest} --host {host}\n\n"
         ));
     }
     body.push_str("The machinery reads the report and nothing else you leave here; what you leave here is your work (66, 67).\n");

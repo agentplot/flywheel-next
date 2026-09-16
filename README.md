@@ -125,9 +125,10 @@ report with (67, 89, 196). Watch it work in the pane. When it is done it
 reports with that line, which from the place is:
 
 ```sh
-FLYWHEEL_SESSION=work-item/flywheel-next/readme-crates-table-lacks/wi-1/fix/1 \
-FLYWHEEL_STATE=~/flywheel/hosts/laptop/agentplot/flywheel-state/main \
-  cargo run -q -- exit done --deliverable commits --deliverable verdict --host laptop
+cargo run -q -- exit done --deliverable commits --deliverable verdict \
+  --session work-item/flywheel-next/readme-crates-table-lacks/wi-1/fix/1 \
+  --state ~/flywheel/hosts/laptop/agentplot/flywheel-state/main \
+  --host laptop
 ```
 
 With `--sessions operator` instead, no pane opens and that line is yours to

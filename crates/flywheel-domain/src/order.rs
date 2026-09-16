@@ -151,8 +151,8 @@ pub fn agent_definition(program: &str, agent: &str, body: &str) -> Option<(Strin
 /// is denied the ways out of the tree that do not go through a file read.
 ///
 /// `None` for a kind whose program has no such settings.
-pub fn agent_settings(kind: &str, handed_in: &[String]) -> Option<(String, String)> {
-    if !KINDS_WITH_A_DENY_LIST.contains(&kind) {
+pub fn agent_settings(program: &str, handed_in: &[String], command: &str) -> Option<(String, String)> {
+    if !KINDS_WITH_A_DENY_LIST.contains(&program) {
         return None;
     }
     let directories: Vec<Value> = handed_in
@@ -166,6 +166,15 @@ pub fn agent_settings(kind: &str, handed_in: &[String]) -> Option<(String, Strin
             // place's tree and what the order handed in (89).
             "blockReadsOutsideWorkingDirectories": true,
             "additionalDirectories": directories,
+            // The machinery's own command is admitted beside the deny list, so
+            // the order's exit, offer and ask lines run unprompted: they are
+            // the session's only way to report, and a session stopped at a
+            // prompt before its own exit is one nothing can finish (67; ruled
+            // 2026-09-16, `host.yaml` prepare_place).
+            "allow": match command.is_empty() {
+                true => vec![],
+                false => vec![Value::String(format!("Bash({command}:*)"))],
+            },
             // The shell's own ways out of the tree. The git hooks are what
             // refuse a line operation, for every kind of agent (S15, 43).
             "deny": [

@@ -847,6 +847,12 @@ pub fn evidence<S: Records>(store: &S, herdr: &Herdr, session: &str, name: &str)
         "session.activity" => json!(match status.as_str() {
             "working" => "working",
             "absent" => "none",
+            // A pane at its program's own prompt — a trust dialog, a permission
+            // it asks a person for before a command it cannot analyse — is
+            // never the session's exit and is neither idle nor blocked: the
+            // session is working, and the host answers the prompt from what the
+            // pane shows (72; ruled 2026-09-16, `sessions.yaml` prompts).
+            "blocked" => "working",
             _ => "idle",
         }),
         "session.idle_since" => Value::Null,
