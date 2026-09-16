@@ -126,6 +126,7 @@ form.busy .btn.pri{opacity:.85}
 .dk-f:has(> .dk-answers.none:empty){display:none}
 .dk-b blockquote.said{margin:0 0 10px;padding:8px 12px;border-left:3px solid var(--accent);background:var(--surface2);border-radius:0 6px 6px 0;font-size:13.5px;line-height:1.5}
 .dk-b .row .st{min-width:84px;flex:none;font:600 10.5px var(--mono);letter-spacing:.04em;text-transform:uppercase;color:var(--ink3);padding-top:3px}
+.dk-b .row .ab{font:11px var(--mono);color:var(--ink3)}
 .dk-b .deliv.commits td{padding:3px 8px 3px 0;vertical-align:top;border-bottom:1px solid var(--line2)}
 .dk-b .deliv.commits td.mono{font:11.5px var(--mono);color:var(--ink2);white-space:nowrap}
 /* ---------- hosts strip ---------- */
@@ -271,9 +272,9 @@ form.busy .btn.pri{opacity:.85}
 .card .chores{list-style:none;margin:6px 0 0;padding:0;display:flex;flex-direction:column;gap:4px}
 .card .chore{display:flex;align-items:center;gap:8px;min-width:0;border:1px solid var(--line);border-radius:5px;padding:2px 2px 2px 8px;min-height:30px;font-size:12.5px;background:var(--surface2)}
 .card .chore .lt{flex:none;width:12px;font:600 11px var(--mono);color:var(--ink3)}
-.card .chore .nm{min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;color:var(--ink);text-decoration:none}
+.card .chore .nm{flex:1 1 auto;min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;color:var(--ink);text-decoration:none}
 .card .chore .nm:hover{text-decoration:underline;text-decoration-color:var(--ink3)}
-.card .chore .f{margin-left:auto;min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;font:11px var(--mono);color:var(--ink3)}
+.card .chore .f{flex:0 1 auto;margin-left:auto;min-width:0;max-width:45%;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;font:11px var(--mono);color:var(--ink3)}
 .card .chore form{flex:none;margin:0 0 0 auto}
 .card .chore .f + form{margin-left:0}
 .card .chore .gx{width:28px;height:28px;display:grid;place-items:center;border:0;border-radius:50%;background:transparent;color:var(--ink3);font-size:15px;line-height:1;cursor:pointer}

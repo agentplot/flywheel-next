@@ -636,11 +636,21 @@ fn unit_page(read: &Read, unit: &Object, row_: Option<&status::Row>) -> String {
                 true => super::row_drop(&number, &row.letter, Some(&format!("{number}{}: drop", row.letter))),
                 false => String::new(),
             };
+            // A row reads as the card's does: its letter, the document's name
+            // in words and what the offer said it concerns. The path the
+            // document is at is the link's title and the unit's own `from`
+            // line; a row that prints it says nothing a person judges (S232).
             let _ = write!(
                 rows,
-                "<div class=\"row\" data-row=\"{letter}\"><span class=\"st mono\">{letter}</span><span class=\"grow\">{}</span>{drop}</div>\n",
-                link(read, &row.chore.id, document),
+                "<div class=\"row\" data-row=\"{letter}\"><span class=\"st mono\">{letter}</span>\
+                 <span class=\"grow\"><a class=\"elaboration\" href=\"#dock-{id}\" title=\"{document}\">{words}</a>{about}</span>{drop}</div>\n",
                 letter = escape(&row.letter),
+                id = escape(&row.chore.id),
+                document = escape(document),
+                words = escape(&super::chore_words(document)),
+                about = field(row.chore, "about")
+                    .map(|about| format!(" <span class=\"ab\">{}</span>", escape(about)))
+                    .unwrap_or_default(),
             );
         }
         rows.push_str("</div>\n");

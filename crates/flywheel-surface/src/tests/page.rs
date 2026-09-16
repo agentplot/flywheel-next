@@ -1388,8 +1388,18 @@ fn shared_line_chores_fold_by_repository() {
 
     read.opened = Some("unit/atlas/chore-2".into());
     let docked = crate::page::render(&read);
-    for document in ["flywheel/curation/chores/agents-md.md", "flywheel/curation/chores/rename-ref.md"] {
-        assert!(docked.contains(document), "the fold's page does not list {document}");
+    // The page lists every chore of the fold by the document's name in words,
+    // as the card letters them; the path it is at is the row's title and the
+    // unit's own `from` line (S232).
+    for (document, words) in [
+        ("flywheel/curation/chores/agents-md.md", "agents md"),
+        ("flywheel/curation/chores/rename-ref.md", "rename ref"),
+    ] {
+        assert!(docked.contains(words), "the fold's page does not name {document} in words");
+        assert!(
+            docked.contains(&format!("title=\"{document}\"")),
+            "the row of {document} does not keep the path it is at"
+        );
     }
     assert!(docked.contains("atlas · chores"));
 }
