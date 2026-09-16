@@ -223,6 +223,10 @@ pub fn rail<S: StateStore>(store: &mut S, defs: &Definitions) -> Result<Vec<Deci
     register.number_all(&standing);
     let ids: Vec<String> = standing.iter().map(|d| d.id.clone()).collect();
     register.retract_gone(&ids, at);
+    // An entry outlives its decision so a late reply still resolves and is
+    // reported, and is pruned thirty days after the decision went, so the
+    // register does not grow for ever (15, 235).
+    register.prune_retracted(at);
     set_register(store, &register, &ids)?;
     Ok(crate::rail::standing(defs, &objects, &register))
 }

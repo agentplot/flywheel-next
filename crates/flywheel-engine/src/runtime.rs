@@ -201,6 +201,34 @@ impl Register {
         retracted
     }
 
+    /// How long an entry is kept after its decision went (15, 235).
+    ///
+    /// A reply naming a number that has gone still resolves and is reported
+    /// until then — a chat message answering yesterday's card is the ordinary
+    /// case — and after it the register stops growing.
+    pub const KEPT_AFTER_RETRACTION_DAYS: i64 = 30;
+
+    /// Drop every entry retracted longer ago than that, so a number resolves
+    /// while a late reply could still name it and no longer once none can. A
+    /// number is never reused whether or not its entry is still here: the
+    /// counter only grows (15, 235).
+    pub fn prune_retracted(&mut self, at: DateTime<Utc>) -> Vec<String> {
+        let gone: Vec<String> = self
+            .entries
+            .iter()
+            .filter(|(_, entry)| {
+                entry
+                    .retracted_at
+                    .is_some_and(|went| (at - went).num_days() >= Self::KEPT_AFTER_RETRACTION_DAYS)
+            })
+            .map(|(id, _)| id.clone())
+            .collect();
+        for id in &gone {
+            self.entries.remove(id);
+        }
+        gone
+    }
+
     /// Record the response that answered a decision on its entry, so a second
     /// response to that number is refused as already answered and every reader
     /// sees by whom and when.

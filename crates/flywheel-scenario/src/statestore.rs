@@ -137,7 +137,10 @@ impl Store {
         let standing: Vec<String> = self.standing_now().into_iter().map(|d| d.id).collect();
         let now = self.now;
         let retracted = self.register.retract_gone(&standing, now);
-        if !retracted.is_empty() {
+        // And an entry whose decision went thirty days ago is pruned, as it is
+        // on a running host: a late reply resolves until then (15, 235).
+        let pruned = self.register.prune_retracted(now);
+        if !retracted.is_empty() || !pruned.is_empty() {
             self.write_rail_record();
         }
         retracted
