@@ -2192,3 +2192,61 @@ fn the_served_template_keeps_everything_but_its_comments() {
         assert!(served.contains(rule), "`{rule}` is not served");
     }
 }
+
+/// A proposed chore of a repository's shared line is a slip in Bolt plan,
+/// where every proposal is read, naming its repository before its name; only
+/// once it is accepted has it a line to be worked on, and only then does it
+/// stand under Construction's chores head (S14, S15, 60).
+#[test]
+fn a_proposed_shared_line_chore_is_a_slip_in_bolt_plan() {
+    let (mut store, world, defs) = a_page();
+    let at = commands::now(&store).expect("a point");
+    chores_of_repository(&mut store, &defs, "atlas", &["agents-md", "rename-ref"]);
+    // The first is accepted; the second is still proposed.
+    let mut held = store.get("unit/atlas/chore-1").expect("a read").expect("the chore");
+    held.config.insert("life".into(), "approved".into());
+    held.entered_at.insert("life".into(), at);
+    let base = held.seq;
+    store.put("unit/atlas/chore-1", &held, base).expect("the chore's state is written");
+    commands::rail(&mut store, &defs).expect("the rail derives");
+    let html = rendered(&mut store, &world, &defs);
+
+    let lane = |name: &str| -> String {
+        let start = html
+            .find(&format!("id=\"{name}-head\""))
+            .unwrap_or_else(|| panic!("the page draws no {name} lane: {html}"));
+        let rest = &html[start..];
+        let end = rest
+            .find(&format!("id=\"{name}-empty\""))
+            .unwrap_or_else(|| panic!("the {name} lane does not close"));
+        rest[..end].to_string()
+    };
+    let plan = lane("lane-plan");
+    let construction = lane("lane-construction");
+
+    // The proposed one is a slip in the plan, its repository greyed before it.
+    assert!(
+        plan.contains("href=\"#dock-unit/atlas/chore-2\""),
+        "a proposed chore is not in Bolt plan: {plan}"
+    );
+    assert!(plan.contains("class=\"slip\""), "a proposed chore is not drawn as a slip: {plan}");
+    assert!(plan.contains("atlas"), "a slip does not name its repository: {plan}");
+    assert!(
+        !construction.contains("unit/atlas/chore-2"),
+        "a proposed chore still stands in Construction (S14): {construction}"
+    );
+
+    // The accepted one is an item under Construction's chores head.
+    assert!(
+        construction.contains("href=\"#dock-unit/atlas/chore-1\""),
+        "an accepted chore is not in Construction: {construction}"
+    );
+    assert!(
+        construction.contains("<section class=\"chores-lane\" data-repository=\"atlas\">"),
+        "an accepted chore stands under no chores head: {construction}"
+    );
+    assert!(
+        !plan.contains("unit/atlas/chore-1"),
+        "an accepted chore is still a slip in the plan: {plan}"
+    );
+}

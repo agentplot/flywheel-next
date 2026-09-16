@@ -1567,7 +1567,7 @@ fn said_board(read: &Read) -> String {
             .status
             .rows
             .iter()
-            .filter(|row| !OFF_THE_BOARD.contains(&row.machine.as_str()) && in_lane(&row.machine, machines))
+            .filter(|row| !OFF_THE_BOARD.contains(&row.machine.as_str()) && row_in_lane(read, row, machines))
             .collect();
         let _ = writeln!(out, "{title} · {}", rows.len());
         if rows.is_empty() {
@@ -2579,7 +2579,7 @@ fn lane_rows<'a>(read: &'a Read, machines: &[&str]) -> Vec<&'a status::Row> {
     read.status
         .rows
         .iter()
-        .filter(|row| !OFF_THE_BOARD.contains(&row.machine.as_str()) && in_lane(&row.machine, machines))
+        .filter(|row| !OFF_THE_BOARD.contains(&row.machine.as_str()) && row_in_lane(read, row, machines))
         .filter(|row| !(row.machine == "capture" && several_signals(read, &row.object)))
         .collect()
 }
@@ -2598,6 +2598,32 @@ fn group_rows<'a>(read: &Read, group: &str, mine: &[&'a status::Row]) -> Vec<&'a
 /// A lane's id on the page, from its slot in the template.
 fn lane_id(slot: &str) -> String {
     slot.trim_matches(|c| c == '{' || c == '}').to_ascii_lowercase().replace('_', "-")
+}
+
+/// A proposed unit that hangs off no bolt: a slip, which Bolt plan holds.
+///
+/// Every slip is read in the plan, whatever its type, and a chore of a
+/// repository's shared line is one until it is accepted: only then has it a
+/// line to be worked on, and only then does it stand under Construction's
+/// chores head (S14, S15, 60).
+fn slip_in_the_plan(read: &Read, row: &status::Row) -> bool {
+    read.object(&row.object).is_some_and(|object| {
+        object.machine == "unit"
+            && !object.parent.as_deref().is_some_and(|parent| parent.starts_with("bolt/"))
+            && matches!(
+                object.config.get("life").map(String::as_str),
+                Some("proposed") | Some("in-proposal")
+            )
+    })
+}
+
+/// Which lane this row sits in: its machine's, except for a slip, which is
+/// Bolt plan's wherever its machine would otherwise put it (S14).
+fn row_in_lane(read: &Read, row: &status::Row, machines: &[&str]) -> bool {
+    match slip_in_the_plan(read, row) {
+        true => machines.contains(&"proposal"),
+        false => in_lane(&row.machine, machines),
+    }
 }
 
 /// Whether a machine's objects sit in this lane. A machine no lane names sits
@@ -3649,7 +3675,15 @@ fn dock_head(read: &Read, object: &Object, row: Option<&status::Row>) -> String 
             "bolt" if dock::is_landed(object) => "landed",
             other => other,
         }),
-        phase = escape(&phase_of(&object.machine).to_lowercase()),
+        // Where it sits is the phase it is in, so a slip says the plan's, as
+        // the board puts it there (209, S14).
+        phase = escape(
+            &match row.filter(|row| slip_in_the_plan(read, row)) {
+                Some(_) => "Bolt plan".to_string(),
+                None => phase_of(&object.machine).to_string(),
+            }
+            .to_lowercase()
+        ),
     );
     // The link at the host's address, which is the one every notification and
     // chat line carries: from the dock it is what the operator copies to send
