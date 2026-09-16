@@ -17,7 +17,7 @@ machine: curation
 version: 5
 kind: object
 tier: core
-satisfies: [4, 12, 20, 58, 60, 108, 110, 116, 118, 171, 182, 188]
+satisfies: [4, 12, 20, 58, 60, 74, 108, 110, 116, 118, 171, 182, 188]
 object: curation
 singleton: instance
 record:
@@ -53,8 +53,10 @@ regions:
         transitions:
           - when: {all: [{final: exited}, {ev: session.exit, is: done}]}
             to: applying
+            note: "keep_alive false: the session's pane closed on the pass that recorded the exit, after its deliverables were read (74); the run's tab goes with the next layout reconciliation"
           - when: {all: [{final: exited}, {ev: session.exit, in: [stalled, invalid]}]}
             to: failed
+            note: the pane closed the same way; the report stands on the thread (74)
           - when: {final: lost}
             to: failed
           - when: {response: retire}

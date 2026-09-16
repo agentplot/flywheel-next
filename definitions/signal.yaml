@@ -6,8 +6,9 @@
 # chore or the ask the curation session, being a session, offered for a
 # signal that argues with no claim (58–60, 116). An unmoved signal is never
 # a decision: the operator's hand on it is a control on its capture — build
-# now, make an intent, attach to an open intent, drop — each a catalogue
-# tool that writes the move record curation would have (19a, 110, 193).
+# now, add to an open bolt, make an intent, attach to an open intent, drop —
+# each a catalogue tool that writes the move record curation would have
+# (19a, 110, 193, S224a).
 machine: signal
 version: 3
 kind: object
@@ -29,7 +30,7 @@ regions:
     initial: unmoved
     states:
       unmoved:
-        doc: counted and aged by source on the status view and listed there with the operator's controls; never discarded (118). Never a decision (19a) — curation moves it on its cadence, its threshold or the operator's run-now dictation (110), or the operator moves it by hand with a control on its capture, `propose-unit` (route, naming the unit), `open-intent` (attach, to the intent the same gesture opened), `attach-signal` or `drop-signal`, each a dictation that writes the move record (12, 107, 193)
+        doc: counted and aged by source on the status view and listed there with the operator's controls; never discarded (118). Never a decision (19a) — curation moves it on its cadence, its threshold or the operator's run-now dictation (110), or the operator moves it by hand with a control on its capture, `propose-unit` (route, naming the unit, on a new bolt from the capture's words or an open bolt the operator picked; S224a), `open-intent` (attach, to the intent the same gesture opened), `attach-signal` or `drop-signal`, each a dictation that writes the move record (12, 107, 193)
         transitions:
           - {when: {ev: signal.move, is: attach}, to: attached}
           - {when: {ev: signal.move, is: challenge}, to: challenging}

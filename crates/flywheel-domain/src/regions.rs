@@ -137,6 +137,63 @@ fn agent_at(
     agent
 }
 
+/// Whether the session sub-machine under a region keeps its session alive when
+/// it exits (`session.yaml` params.keep_alive, 74).
+///
+/// The deepest state along the path that runs a session machine is the one
+/// that says, as with the agent above. A type that names none leaves it to the
+/// session record's own default.
+pub fn keep_alive_of(
+    defs: &flywheel_engine::Definitions,
+    object: &flywheel_engine::Object,
+    region: &str,
+) -> Option<bool> {
+    let under = format!("{region}.");
+    let mut deepest: Option<(usize, bool)> = None;
+    for path in object.config.keys() {
+        if path != region && !path.starts_with(&under) {
+            continue;
+        }
+        let Some(keep) = keep_alive_at(defs, &object.machine, path) else {
+            continue;
+        };
+        let depth = path.split('.').count();
+        if deepest.as_ref().is_none_or(|(held, _)| depth > *held) {
+            deepest = Some((depth, keep));
+        }
+    }
+    deepest.map(|(_, keep)| keep)
+}
+
+/// The keep_alive named along one region path, walked as `agent_at` walks it.
+fn keep_alive_at(
+    defs: &flywheel_engine::Definitions,
+    machine: &str,
+    region: &str,
+) -> Option<bool> {
+    let machine = defs.for_object(machine).or_else(|| defs.get(machine))?;
+    let mut regions = &machine.regions;
+    let mut keep: Option<bool> = None;
+    let mut parts = region.split('.');
+    loop {
+        let Some(name) = parts.next() else { break };
+        let Some(region) = regions.get(name) else { break };
+        let Some(state_name) = parts.next() else { break };
+        let Some(state) = region.states.get(state_name) else {
+            break;
+        };
+        if state.machine.as_deref() == Some("session") {
+            keep = state
+                .params
+                .as_ref()
+                .and_then(|p| p.get("keep_alive"))
+                .and_then(|v| v.as_bool());
+        }
+        regions = &state.regions;
+    }
+    keep
+}
+
 /// A session's id: deterministic, `<owner id>/<stage or type>/<attempt>`, and
 /// also the pane's and the agent's name (`session.yaml` id, 196). The attempt
 /// is what makes a fresh session after a takeover or a lost pane a session of

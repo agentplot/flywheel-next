@@ -8,7 +8,7 @@
 # planning silently; an approved unstarted one is a decision; a started one
 # follows the bolt's claim-moved decision (35).
 machine: unit
-version: 4
+version: 5
 kind: object
 tier: core
 object: unit
@@ -102,6 +102,9 @@ regions:
           - when: {response: "redo: <notes>"}
             to: withdrawn
             effects: [{do: request_replan, args: {notes: $response}}]
+          - when: {response: drop}
+            to: dropped
+            note: the operator's response on the proposal; a fold row's drop is this transition on that row's chore, and the card's drop is it on every row still standing (S232)
           - when: {response: later}
             to: deferred
       deferred:

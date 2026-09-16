@@ -7,7 +7,7 @@
 # host's agent's interpreter proposes one tool call per thing asked, the operator confirms each, and the
 # confirmation is what is recorded (194).
 machine: response
-version: 3
+version: 4
 kind: engine
 tier: core
 object: response
@@ -35,10 +35,13 @@ regions:
             to: applied
           - when: {ev: response.decision_present, is: false}
             to: unapplicable
+          - when: {ev: response.taken, is: false}
+            to: unapplicable
+            note: the decision stands but no transition of the object's active states names the answer, or the dictation is one the object's state does not take (gaps 4, 6); applied is tried first, so a response the object took on this pass is never read against the state it left
       applied:
         final: true
       unapplicable:
-        doc: the decision was gone before the response arrived — answered by another member, whose name and time the register keeps (235), or retracted — reported once under attention, never dropped (6, 129); the tool server refuses at once a response to a number the register already shows answered, so this state is reached only by a race
+        doc: the decision was gone before the response arrived — answered by another member, whose name and time the register keeps (235), or retracted — or the answer is one no transition of the object's active states names; reported once under attention, never dropped (6, 129). The tool server refuses at once a response to a number the register already shows answered, and check.py fails a decision offering an answer no transition of its state names, so this state is reached by a race, by a reply outside the decision's list, or by a dictation the object's state does not take
         decision: {kind: response-unapplicable, group: attention, answers: [ok], shows: [response.answer], satisfies: [6, 129]}
         transitions:
           - when: {any: [{ev: response.reported, is: true}, {response: ok}]}

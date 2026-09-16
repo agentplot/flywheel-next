@@ -5,7 +5,7 @@
 # machinery when the work it served is merged, dropped or retired, unless the
 # operator holds it; every removal is a recorded effect (55).
 machine: place
-version: 2
+version: 3
 kind: template
 tier: core
 satisfies: [4, 42, 45, 46, 51, 52, 55, 238, 240]
@@ -74,6 +74,9 @@ regions:
         transitions:
           - when: {response: retry}
             to: behind
+          - when: {response: hold}
+            to: conflict-stalled
+            note: the place stays stalled with its decision standing, as a line's hold does (52)
       merging:
         doc: entered by the owner when its work is done; one place merges at a time in the fixed order (38)
         transitions:

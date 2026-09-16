@@ -28,6 +28,7 @@ pub mod offers;
 pub mod rail;
 pub mod records;
 pub mod regions;
+pub mod sessions;
 
 /// The rail's own record: the register, and the decisions standing after the
 /// last derive (`profiles/record-derived.yaml`).

@@ -1287,6 +1287,73 @@ esac"#,
         );
     }
 
+    /// Ending a pane that is already gone is not an error: the end is what was
+    /// wanted (73, 74).
+    #[test]
+    fn ending_a_pane_already_gone_is_not_an_error() {
+        let fake = Fake::new(
+            "gone-pane",
+            r#"case "$*" in
+  *"pane close"*) echo '{"error":{"message":"pane w1:p1 not found"}}' >&2; exit 1 ;;
+  *) echo '{"result":{}}' ;;
+esac"#,
+        );
+        let mut store = FakeStore::default();
+        operator::set(
+            &mut store,
+            "curation/agentplot/main/1",
+            &[
+                ("started_at", json!("2026-09-15T09:00:00Z")),
+                ("ended_at", Value::Null),
+                ("host", json!("mac-studio")),
+                ("herdr_agent", json!("curation-agentplot-main-1")),
+                ("herdr_pane", json!("w1:p1")),
+                ("herdr_session", json!(SESSION)),
+            ],
+        )
+        .unwrap();
+
+        end(&mut store, &fake.herdr, "curation/agentplot/main/1", Utc::now())
+            .expect("a pane already gone is not an error");
+        assert!(fake.calls().contains("pane close w1:p1"), "{}", fake.calls());
+        // And the record is closed all the same.
+        assert!(!operator::running(&store, "curation/agentplot/main/1"));
+    }
+
+    /// Reconciliation reads the host's own herdr sessions and no other: every
+    /// call it makes names the session it was given (174, 196, 218).
+    #[test]
+    fn reconciliation_reads_only_the_hosts_own_sessions() {
+        let fake = Fake::new(
+            "reconcile",
+            r#"case "$*" in
+  *"agent list"*) echo '{"result":{"agents":[{"name":"curation-agentplot-main-1","pane_id":"w1:p1"}]}}' ;;
+  *"workspace list"*) echo '{"result":{"workspaces":[{"workspace_id":"w0","label":"host/mac-studio"},{"workspace_id":"w1","label":"curation"}]}}' ;;
+  *"tab list"*) echo '{"result":{"tabs":[{"tab_id":"w1:t1","label":"curation/agentplot/main/1"}]}}' ;;
+  *"pane list"*) echo '{"result":{"panes":[{"pane_id":"w1:p1","tab_id":"w1:t1"}]}}' ;;
+  *) echo '{"result":{}}' ;;
+esac"#,
+        );
+        let mine = fake.herdr.in_session("flywheel-agentplot-machinery");
+        assert_eq!(mine.agents().unwrap().len(), 1);
+        assert_eq!(mine.workspaces().unwrap().len(), 2);
+        assert_eq!(mine.tabs("w1").unwrap().len(), 1);
+        assert_eq!(mine.panes("w1").unwrap().len(), 1);
+        // The mark that says the session is this host's (218).
+        assert!(mine
+            .workspaces()
+            .unwrap()
+            .iter()
+            .any(|(_, label)| label == &host_label("mac-studio")));
+
+        for line in fake.calls().lines().filter(|l| !l.trim().is_empty()) {
+            assert!(
+                line.starts_with("--session flywheel-agentplot-machinery "),
+                "reconciliation reached a session that is not the host's own: {line}"
+            );
+        }
+    }
+
     /// A call that names no session is refused rather than run against
     /// whatever server this process sits in (174).
     #[test]

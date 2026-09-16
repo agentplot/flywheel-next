@@ -14,7 +14,7 @@ machine: stage
 version: 4
 kind: template
 tier: core
-satisfies: [4, 41, 56, 70, 150, 173, 190, 285]
+satisfies: [4, 41, 56, 70, 74, 150, 173, 190, 285]
 record:
   attempt: int             # the attempt in the session id <owner id>/<stage>/<attempt>; starts at 1 and bumps each time a lost session sends the stage round again
 params:
@@ -34,7 +34,7 @@ regions:
           - when: {ev: stage.agents, exists: true}
             to: sessions
       sessions:
-        doc: one session submachine per agent in the set, side by side, each with its own instruction and persona
+        doc: "one session submachine per agent in the set, side by side, each with its own instruction and persona. keep_alive false: each session's pane closes on the pass that records its exit, done, stalled or invalid, after its deliverables are read; a blocked session keeps its pane for the answer; the item's tab stays while the item is in a view (74, 196)"
         machine: session
         params: {agent: $each, kind: $each.kind, place: $place, work_order: rendered, keep_alive: false, deliverables: $deliverables}
         transitions:

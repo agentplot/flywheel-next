@@ -13,6 +13,8 @@ mod envelope;
 mod offers;
 mod rail_folding;
 mod rail_record;
+mod response_taken;
+mod session_life;
 mod set;
 mod signals;
 mod status;

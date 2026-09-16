@@ -32,6 +32,7 @@ evidence:
   lease.holder_is_me: {read: "leases(id).holder == me"}
   response.decision_present: {read: "for an answer: the register entry for the response's number names an object whose active states include that decision state; for a dictation: always true"}
   response.applied: {read: "the response's id is in get(object).applied_responses"}
+  response.taken: {read: "for an answer: the object's machine, at the states get(object) is in, has a transition in one of them or a state enclosing it whose guard names the answer's first word; for a dictation: the same for the tool's name (commands' dictation_takes). Read from the definitions and the object's record, never from what the pass did"}
   response.reported: {read: "a sink's delivery newer than the response carried the response's id under attention"}
   response.answer: {read: "the op-response record's answer and args"}
   rail.unnumbered: {read: "a decision derived this tick (object, kind, entered_at) has no register entry; a fold (kind, batch) has no entry of that kind and batch without retracted_at"}
@@ -47,7 +48,7 @@ evidence:
   intent.material_pending: {read: "signals moved attach to the intent, or finding records on it, that no elaboration record in state proposed or later cites, on this intent or covering it"}
   intent.covered_by: {read: "among elaboration records whose parent is another intent and whose covers name this one, the newest by entered_at: none when there is none; proposed when its state is proposed; active in approved, placing, working, writing-back or finishing; done when done (dropped counts as none)"}
   intent.material_held: {read: "the intent has exactly one elaboration in proposed and it cites all pending material"}
-  intent.close_declined_since_last_final: {read: "get(intent).close_declined_at is newer than every child elaboration's entered_at of done"}
+  intent.close_declined_since_last_final: {read: "get(intent).close_declined_at is newer than every child elaboration's entered_at of done; close_declined_at is the time of the last keep open on the offered close or hold on a failed archive"}
   intent.split_done: {read: "two intent records name this one as split_from"}
   elaboration.type: {read: "get(id).type"}
   elaboration.type_version: {read: "get(id).type_version"}

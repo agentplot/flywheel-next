@@ -134,6 +134,11 @@ pub fn evidence<S: Records>(store: &S, session: &str, name: &str) -> Option<Valu
         "session.operator_present" => json!(false),
         "session.exit" => json!(exit.unwrap_or_else(|| "none".into())),
         "session.exit_recorded" => json!(exit.is_some()),
+        // The owner's keep_alive, written on the record when the session
+        // started (74). A record written before the field existed keeps its
+        // pane: a standing or with-operator session is kept, and ending a pane
+        // is the direction that cannot be undone.
+        "session.keep_alive" => json!(field("keep_alive").and_then(|v| v.as_bool()).unwrap_or(true)),
         "session.question" => json!(entries("exit")
             .last()
             .and_then(|e| e.fields.get("question").cloned())),

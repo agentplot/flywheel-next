@@ -112,6 +112,10 @@ impl Bindings {
     }
 }
 
+/// What reconciliation would close, per herdr session: the tabs and the
+/// workspaces, each by its id and its label (186, 196).
+type LayoutClose = Vec<(String, (Vec<(String, String)>, Vec<(String, String)>))>;
+
 /// The state store a host runs on: the git-only profile's, with the evidence
 /// the recorded workspace and the operator's sessions answer layered over the
 /// record-derived half (D8, `record-derived.yaml`).
@@ -191,6 +195,82 @@ impl HostStore {
 
     fn saw(&self, what: &str) {
         self.trace.borrow_mut().push(what.to_string());
+    }
+
+    /// The herdr sessions this host opens panes in: the three its instance
+    /// names, and any its manifest overrode by kind or repository (174). The
+    /// operator's own session is never among them, which is what keeps
+    /// reconciliation off the panes the operator runs.
+    pub fn own_multiplexer_sessions(&self) -> Vec<String> {
+        use flywheel_sessions_herdr::{session_name, Charged};
+        let none = BTreeMap::new();
+        let mut out: Vec<String> = match self.instance_name.is_empty() {
+            true => vec![],
+            false => [Charged::Intents, Charged::Bolts, Charged::Machinery]
+                .into_iter()
+                .map(|charged| session_name(&self.instance_name, charged, &none, "", ""))
+                .collect(),
+        };
+        out.extend(self.multiplexer_sessions.values().filter(|s| !s.is_empty()).cloned());
+        out.sort();
+        out.dedup();
+        out
+    }
+
+    /// Whether herdr still lists the agent of a pane reconciliation would end.
+    /// A session recorded before panes were addressed by name names no herdr
+    /// session: its pane is in the operator's own and is theirs to close (174).
+    fn pane_is_listed(&self, pane: &flywheel_domain::sessions::OpenPane) -> bool {
+        if pane.herdr_session.is_empty() {
+            return false;
+        }
+        flywheel_sessions_herdr::Herdr::unbound()
+            .in_session(&pane.herdr_session)
+            .agent(&flywheel_sessions_herdr::agent_name(&pane.session))
+            .ok()
+            .flatten()
+            .is_some()
+    }
+
+    /// What reconciliation would close, per herdr session: the tabs and the
+    /// workspaces, each by its id and its label (186, 196).
+    ///
+    /// Only sessions this host made are read, and only ones carrying its own
+    /// `host/<id>` label, so the operator's own session is never touched even
+    /// when it happens to share a name (218).
+    fn layout_to_close(&self, defs: &Definitions) -> Result<LayoutClose> {
+        let mine = flywheel_sessions_herdr::host_label(&self.reading.me);
+        let mut out = Vec::new();
+        for session in self.own_multiplexer_sessions() {
+            let herdr = flywheel_sessions_herdr::Herdr::unbound().in_session(&session);
+            if !herdr.session_running().unwrap_or(false) {
+                continue;
+            }
+            let workspaces = herdr.workspaces().unwrap_or_default();
+            if !workspaces.iter().any(|(_, label)| label == &mine) {
+                continue;
+            }
+            let mut tabs: Vec<(String, String)> = Vec::new();
+            for (id, _) in &workspaces {
+                tabs.extend(herdr.tabs(id).unwrap_or_default());
+            }
+            let decided = flywheel_domain::sessions::layout_to_close(
+                &self.git,
+                defs,
+                &workspaces.iter().map(|(_, label)| label.clone()).collect::<Vec<_>>(),
+                &tabs.iter().map(|(_, label)| label.clone()).collect::<Vec<_>>(),
+            )?;
+            let close_tabs: Vec<(String, String)> =
+                tabs.into_iter().filter(|(_, label)| decided.tabs.contains(label)).collect();
+            let close_workspaces: Vec<(String, String)> = workspaces
+                .into_iter()
+                .filter(|(_, label)| decided.workspaces.contains(label))
+                .collect();
+            if !close_tabs.is_empty() || !close_workspaces.is_empty() {
+                out.push((session, (close_tabs, close_workspaces)));
+            }
+        }
+        Ok(out)
     }
 
     /// The signal material, read once and answered from until it is taken
@@ -389,6 +469,24 @@ impl EvidenceSource for HostStore {
                 }
             }
         }
+        // Whether any transition of the object's active states, an enclosing
+        // state's included, names the answer. An answer no transition takes is
+        // reported once under attention rather than recorded and kept in
+        // silence (6, 129, `atoms.yaml` response.taken).
+        if let (true, Some(defs)) = (name == "response.taken", self.defs.as_ref()) {
+            if let Some(held) = self.git.get(object).ok().flatten() {
+                let named = held
+                    .record
+                    .get("object")
+                    .and_then(|v| v.as_str())
+                    .and_then(|id| self.git.get(id).ok().flatten());
+                let taken = flywheel_domain::commands::answer_taken(defs, &held, named.as_ref())
+                    .or_else(|| flywheel_domain::commands::dictation_takes(defs, &held, named.as_ref()));
+                // A response this rule does not speak for — a dictation the
+                // call itself applied — is taken.
+                return Some(json!(taken.unwrap_or(true)));
+            }
+        }
         flywheel_domain::derived::evidence(&self.git, &self.reading, object, name)
             // The stage's own reads — its agents from the type, its join and
             // verdict from the sessions' threads — and the item's retry bound
@@ -497,6 +595,39 @@ impl EvidenceSource for HostStore {
                         let defs = self.defs.as_ref()?;
                         let stale = flywheel_domain::offers::stale_pins(&self.git, &*self.world, defs).ok()?;
                         Some(json!(stale.is_empty()))
+                    })
+                    .flatten()
+            })
+            // A pane still open for a session already exited, ended or retired
+            // (74, 196, `host.yaml` host.no_exited_panes). Only a pane herdr
+            // still lists is open; under the operator binding there is no pane
+            // at all, so there is nothing to end.
+            .or_else(|| {
+                (name == "host.no_exited_panes")
+                    .then(|| {
+                        let defs = self.defs.as_ref()?;
+                        if self.sessions != "herdr" {
+                            return Some(json!(true));
+                        }
+                        let ending = flywheel_domain::sessions::panes_to_end(&self.git, defs).ok()?;
+                        Some(json!(!ending.iter().any(|pane| self.pane_is_listed(pane))))
+                    })
+                    .flatten()
+            })
+            // The workspaces and tabs of this host's own sessions name only
+            // objects still in a view, and no run's tab is final with its pane
+            // gone (186, 196, `host.yaml` host.layout_current).
+            .or_else(|| {
+                (name == "host.layout_current")
+                    .then(|| {
+                        let defs = self.defs.as_ref()?;
+                        if self.sessions != "herdr" {
+                            return Some(json!(true));
+                        }
+                        let closing = self.layout_to_close(defs).ok()?;
+                        Some(json!(closing
+                            .iter()
+                            .all(|(_, (tabs, workspaces))| tabs.is_empty() && workspaces.is_empty())))
                     })
                     .flatten()
             })
@@ -2069,6 +2200,17 @@ fn performing(
                 }
                 _ => flywheel_sessions_operator::start(&mut store.git, host, now, &order)?,
             }
+            // The owner's keep_alive, on the record from the start, so the pass
+            // that records the exit can read whether the session is one its
+            // type keeps (74, `session.yaml` record.keep_alive).
+            if let Some(keep) = store
+                .get(object)
+                .ok()
+                .flatten()
+                .and_then(|held| flywheel_domain::regions::keep_alive_of(defs, &held, region))
+            {
+                flywheel_sessions_operator::set(&mut store.git, &fresh, &[("keep_alive", json!(keep))])?;
+            }
         }
         "end_session" => match store.sessions.as_str() {
             "herdr" => flywheel_sessions_herdr::end(&mut store.git, &flywheel_sessions_herdr::Herdr::unbound(), &session, now)?,
@@ -2119,6 +2261,64 @@ fn performing(
                         .with("revision", &pin.revision)
                         .with("ended", pin.record.as_deref().unwrap_or("none: the offer made nothing")),
                 );
+            }
+            if !removed.is_empty() {
+                store.git.append_run(&removed)?;
+            }
+        }
+        // A pane still open for a session that has finished with it is ended,
+        // one record per pane: this covers a pass that recorded an exit and
+        // could not end its pane, and every pane left open before an exit
+        // ended sessions (73, 74, 196, `host.yaml` end_exited_sessions).
+        "end_exited_sessions" => {
+            let ending = flywheel_domain::sessions::panes_to_end(&store.git, defs)?;
+            let mut ended = Vec::new();
+            for pane in &ending {
+                if !store.pane_is_listed(pane) {
+                    continue;
+                }
+                flywheel_sessions_herdr::end(
+                    &mut store.git,
+                    &flywheel_sessions_herdr::Herdr::unbound(),
+                    &pane.session,
+                    now,
+                )?;
+                ended.push(
+                    RunEntry::new(now, host, "write", &pane.session, "a pane open for a finished session is ended")
+                        .with("pane", &pane.pane)
+                        .with("herdr_session", &pane.herdr_session)
+                        .with("why", &pane.why),
+                );
+            }
+            if !ended.is_empty() {
+                store.git.append_run(&ended)?;
+            }
+        }
+        // A tab or workspace naming an object that has left every view, and a
+        // machinery run's tab once the run is final and its pane is gone. The
+        // machinery workspaces stay, and only the host's own herdr sessions are
+        // reached — never the operator's (186, 196).
+        "remove_stale_layout" => {
+            let closing = store.layout_to_close(defs)?;
+            let mut removed = Vec::new();
+            for (session, layout) in &closing {
+                let herdr = flywheel_sessions_herdr::Herdr::unbound().in_session(session);
+                for (id, label) in &layout.0 {
+                    herdr.close_tab(id)?;
+                    removed.push(
+                        RunEntry::new(now, host, "write", object, "a tab naming work that has left every view is closed")
+                            .with("herdr_session", session)
+                            .with("tab", label),
+                    );
+                }
+                for (id, label) in &layout.1 {
+                    herdr.close_workspace(id)?;
+                    removed.push(
+                        RunEntry::new(now, host, "write", object, "a workspace naming work that has left every view is closed")
+                            .with("herdr_session", session)
+                            .with("workspace", label),
+                    );
+                }
             }
             if !removed.is_empty() {
                 store.git.append_run(&removed)?;

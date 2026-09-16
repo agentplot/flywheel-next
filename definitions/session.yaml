@@ -14,8 +14,15 @@
 # holds the session's owner is away (150a), the pane, activity, idle time and
 # exit read as the host last reported them and the idle clock pauses, so the
 # session is neither lost nor stalled by the host's absence.
+# A session its type does not keep alive is ended on the pass that records
+# its exit — done, stalled or invalid alike — after its deliverables are read,
+# so its pane closes then; blocked is not an exit and keeps the pane for the
+# answer; a kept session (standing, with-operator) keeps its pane until its
+# owner ends it; a pane gone without an exit is lost and there is nothing to
+# end (74). The host's reconciliation ends any pane still open for a session
+# already exited or retired (engine/host.yaml end_exited_sessions).
 machine: session
-version: 4
+version: 5
 kind: template
 tier: core
 satisfies: [4, 24, 65, 66, 67, 70, 71, 72, 73, 80, 93, 150, 171, 173, 174, 190, 196, 197, 226, 251]
@@ -25,10 +32,11 @@ params:
   place: the place prepared for it
   work_order: the closed set of inputs, rendered by the engine from the context enumeration for the session's type (profiles/context.yaml, 226) and handed into the place
   deliverables: "the entries {name, producer, schema, surface} the owner names; the producers, schemas and surfaces in force are resolved when the session starts and written into the work order with their versions, and the names are recorded as expected (88, 89, 190)"
-  keep_alive: whether idle keeps the process (standing, with-operator) or the type ends it
+  keep_alive: "whether idle keeps the process (standing, with-operator, the operator's own) or the exit ends it: a session with keep_alive false is ended on the pass that records its exit, done, stalled or invalid alike (74)"
 record:
   id: session-id           # deterministic: <owner id>/<stage or type>/<attempt>; also the pane's and the agent's name (196)
   identity: string         # the token issued at start and written into the work order; every tool call from the pane carries it (197)
+  keep_alive: bool         # the owner's keep_alive, written at start so the exit can read it (74)
   host: host-id
   started_at: time
   exit: enum
@@ -99,7 +107,7 @@ regions:
                     to: working
                     effects: [{do: deliver_answer, args: {text: $response}, note: "to the same session if it lives, else a fresh one that starts with it"}]
               exited:
-                doc: an exit was reported and recorded; the owner reads session.exit
+                doc: an exit was reported and recorded; the owner reads session.exit. Blocked never comes here (70)
                 final: true
           presence:
             initial: unknown
@@ -112,17 +120,21 @@ regions:
                 doc: the pane vanished without an exit report; the owner decides whether to start again
                 final: true
         transitions:
+          - when: {all: [{region: {name: activity, in: [exited]}}, {ev: session.keep_alive, is: false}]}
+            to: exited
+            effects: [{do: end_session, note: "the type does not keep the session: the pane closes on the pass that recorded the exit, after the deliverables were read (record_exit ran first); done, stalled and invalid alike, since what went wrong is the exit's report on the thread and the work in the place, and the pane's scrollback was never state (67, 68, 74)"}]
           - when: {region: {name: activity, in: [exited]}}
             to: exited
+            note: a kept session (standing, with-operator) stands after its exit until its owner ends it (25, 26)
           - when: {all: [{region: {name: presence, in: [gone]}}, {not: {ev: session.exit, in: [done, blocked, stalled, invalid]}}]}
             to: lost
       exited:
-        doc: exit recorded; the owner reads session.exit and decides what it means (66)
+        doc: exit recorded; the owner reads session.exit and decides what it means (66). A session its type does not keep has no pane here (74); a kept one has, until its owner ends it
         final: true
       lost:
-        doc: process gone without an exit — including a pane the operator killed by hand, which is never read as a response (4); standing owners restart it, stages start a fresh attempt
+        doc: process gone without an exit — including a pane the operator killed by hand, which is never read as a response (4); standing owners restart it, stages start a fresh attempt. Nothing to end; the pane is already absent (73)
         final: true
       ended:
-        doc: reached only by the owner's explicit end (a type's rule, the operator's response, or retirement of the work, I6, 74)
+        doc: reached only by the owner's explicit end (a type's rule, the operator's response, or retirement of the work, I6, 74); a pane already gone is not an error, the end is what was wanted (73)
         entry: [{do: end_session}]
         final: true

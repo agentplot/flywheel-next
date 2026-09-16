@@ -13,7 +13,9 @@ the requirements.
 - every file carries `tier: core | extensible` matching its directory; a type file is named
   `<machine>@<version>.yaml`, two files never declare the same name and version, and a registered
   file's content hash (machines/registry.yaml, written by `check.py --register`) never moves
-- every decision has a kind, group, answers and satisfies; decision kinds are collected for the rail catalogue
+- every decision has a kind, group, answers and satisfies, and every answer it offers is named by a
+  `response:` guard of a transition of its state or of a state enclosing it, so no answer is recorded
+  and never applied (6, 129); decision kinds are collected for the rail catalogue
 - every diagram in ../diagrams/*.svg names states (data-state="machine.state"), decision kinds
   (data-decision) and effects (data-effect) that exist, so a picture cannot drift from the runtime (83)
 - every profile marked complete binds every evidence and effect name (140)
@@ -346,16 +348,35 @@ def walk_effects(effs, where):
     for e in effs or []:
         if e['do'] not in effects: bad.append(f"{where}: unknown effect {e['do']}")
 
-def walk_region(mname, rname, region, where):
+def answer_word(a):
+    """the word a `response:` guard or an `answers:` entry is matched on: its first word, `redo: <notes>` → redo"""
+    return str(a).split()[0].rstrip(':')
+
+def response_words(g, out):
+    """every answer word the guard names, through all/any/not"""
+    if isinstance(g, dict):
+        for k, v in g.items():
+            if k == 'response': out.add(answer_word(v))
+            else: response_words(v, out)
+    elif isinstance(g, list):
+        for x in g: response_words(x, out)
+
+def walk_region(mname, rname, region, where, taken=frozenset()):
     states = region['states']
     if region['initial'] not in states:
         bad.append(f"{where}: initial {region['initial']} not a state")
     for sname, st in states.items():
         sw = f"{where}.{sname}"
         st = st or {}
+        # the answers a response can take here: this state's transitions and every enclosing state's
+        named = set(taken)
+        for t in st.get('transitions') or []: response_words(t.get('when'), named)
         if 'decision' in st:
             d = st['decision']; decisions.setdefault(d['kind'], []).append(f"{mname}.{sname}")
             cite(d.get('satisfies'), f"decision {d['kind']} at {mname}.{sname}")
+            for a in d.get('answers') or []:
+                if answer_word(a) not in named:
+                    bad.append(f"{sw}: decision {d['kind']} offers {a!r} but no transition of the state or an enclosing one names it (6, 129)")
         walk_effects(st.get('entry'), sw); walk_effects(st.get('exit'), sw)
         mref = st.get('machine')
         if mref and not mref.startswith('$'):
@@ -367,7 +388,7 @@ def walk_region(mname, rname, region, where):
             elif target and versions[target[0]][target[1]][1].get('retired') and '@' not in mref:
                 bad.append(f"{sw}: {mref} resolves to a retired version {target[0]}@{target[1]}")
         for rn, rg in (st.get('regions') or {}).items():
-            walk_region(mname, rn, rg, f"{sw}[{rn}]")
+            walk_region(mname, rn, rg, f"{sw}[{rn}]", frozenset(named))
         for i, t in enumerate(st.get('transitions') or []):
             tw = f"{sw}.transitions[{i}]"
             walk_guard(t['when'], tw)

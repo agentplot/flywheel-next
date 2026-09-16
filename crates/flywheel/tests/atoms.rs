@@ -32,7 +32,6 @@ const DEFERRED: &[(&str, &str)] = &[
     // Construction (A.5): lines, places, stages, work items, services,
     // planning and proposals.
     ("bolt.services_declared", "phase 2 — construction (47)"),
-    ("host.layout_current", "phase 2 — construction (186, 196)"),
     ("host.no_stray_places", "phase 2 — construction (55)"),
     ("host.stray_places", "phase 2 — construction (55)"),
     ("line.conflict_job_done", "phase 2 — construction"),

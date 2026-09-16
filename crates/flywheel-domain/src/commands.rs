@@ -359,6 +359,36 @@ pub fn dictation_takes(defs: &Definitions, response: &Object, named: Option<&Obj
     )
 }
 
+/// Whether some transition of the object's active states, an enclosing state's
+/// included, names this answer — `response.taken` for an answer (6, 129,
+/// `atoms.yaml` response.taken, `engine/response.yaml` v4).
+///
+/// `None` where the response is no answer to a decision, so `dictation_takes`
+/// above is what speaks for it. A decision offers only answers its state's
+/// transitions name, which `check.py` enforces, so an answer that is not taken
+/// is one from outside the decision's list — a reply naming an answer the card
+/// never offered, or one whose object has since moved on. Either way it is
+/// reported once under attention rather than recorded and silently kept.
+///
+/// The object's live region paths include the enclosing ones — `life` and
+/// `life.alive.activity` are both in `config` — so walking them all is what
+/// "an enclosing state's included" means.
+pub fn answer_taken(defs: &Definitions, response: &Object, named: Option<&Object>) -> Option<bool> {
+    if !response.record.get("decision").is_some_and(|decision| !decision.is_null()) {
+        return None;
+    }
+    let answer = response.record.get("answer")?.as_str()?;
+    let named = named?;
+    Some(
+        named
+            .config
+            .keys()
+            .filter(|region| flywheel_engine::tick::is_live(named, region))
+            .filter_map(|region| flywheel_engine::tick::state_def(defs, named, region))
+            .any(|(_, state)| state.transitions.iter().any(|t| guard_takes(&t.when, answer))),
+    )
+}
+
 /// Whether any state of a region, or of a region nested in one, has a
 /// transition taking this answer.
 fn region_takes(region: &flywheel_engine::defs::Region, answer: &str) -> bool {

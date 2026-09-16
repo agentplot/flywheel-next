@@ -18,7 +18,7 @@ machine: planning
 version: 3
 kind: object
 tier: core
-satisfies: [4, 28, 29, 60, 64, 98, 101, 102, 104, 171, 172, 182, 198, 199, 200, 202]
+satisfies: [4, 28, 29, 60, 64, 74, 98, 101, 102, 104, 171, 172, 182, 198, 199, 200, 202]
 object: planning
 singleton: repository
 owns: [proposal]
@@ -56,8 +56,10 @@ regions:
         transitions:
           - when: {all: [{final: exited}, {ev: session.exit, is: done}]}
             to: applying
+            note: "keep_alive false: the session's pane closed on the pass that recorded the exit, after its deliverables were read (74); the run's tab goes with the next layout reconciliation"
           - when: {all: [{final: exited}, {ev: session.exit, in: [stalled, invalid]}]}
             to: failed
+            note: the pane closed the same way; the report stands on the thread (74)
           - when: {final: lost}
             to: failed
           - when: {response: retire}

@@ -134,7 +134,6 @@ const OUT_OF_PHASE: &[(&str, &str)] = &[
     ("seed_take_conflict", "a real take conflict needs a real line, phase 2"),
     ("seed_conflict_job", "a real conflict needs a real line, phase 2"),
     ("remove_stray_places", "worktrees are phase 2"),
-    ("remove_stale_layout", "the multiplexer's layout is phase 2"),
     ("forward_answer", "the proposal's per-unit answer waits on planning, phase 2"),
     ("assign_owner", "owners on decisions wait on membership, phase 4"),
     // A.28-A.32: packages, pools, enrolment — phases 3 to 5.

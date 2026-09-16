@@ -34,7 +34,7 @@ machine: capture
 version: 2
 kind: object
 tier: core
-satisfies: [4, 19, 106, 111, 112, 114, 115, 178, 181, 215, 216, 263, 271, 288, 290]
+satisfies: [4, 19, 74, 106, 111, 112, 114, 115, 178, 181, 215, 216, 263, 271, 288, 290]
 object: capture
 parent: null
 owns: [signal]
@@ -75,9 +75,11 @@ regions:
           - when: {all: [{final: exited}, {ev: session.exit, is: done}]}
             to: read
             effects: [{do: record_offers, note: "the signals the session read are written once, immutable"}]
+            note: "keep_alive false: the reader's pane closed on the pass that recorded the exit, after its deliverables were read (74); the run's tab goes with the next layout reconciliation"
           - when: {any: [{final: lost}, {all: [{final: exited}, {ev: session.exit, in: [stalled, invalid]}]}]}
             to: captured
             effects: [{do: report, args: {text: capture reader did not deliver}}]
+            note: a stalled or invalid exit closed the pane the same way; a lost pane was already gone (74)
           - when: {response: retire}
             to: captured
             enter: {session: ended, place: removing}
