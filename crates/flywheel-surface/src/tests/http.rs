@@ -180,6 +180,41 @@ fn the_style_and_script_are_cached_under_the_binarys_version() {
     });
 }
 
+/// The page is the state as of the moment it was asked for, and no cache holds
+/// it: everything the host renders from the store — the page, a dock page, what
+/// the catalogue answers, the redirect a control answers a press with — says
+/// `no-store`, so the browser asks again after a press instead of serving the
+/// copy it held before it. What is addressed by build keeps its year (291,
+/// 310a, S235).
+#[test]
+fn nothing_rendered_from_the_store_is_held_by_a_cache() {
+    in_a_runtime(async {
+        let address = a_served_page().await;
+        // The page at either of its addresses, a dock page as the drawer
+        // fetches one, and what the catalogue answers.
+        for path in ["/", "/willdan", "/willdan/", "/willdan/bolt-1?part=dock", "/api/tools"] {
+            let (head, _) = split(&asked(address, path, "").await);
+            assert_eq!(header(&head, "cache-control"), Some("no-store"), "{path}: {head}");
+        }
+
+        // The answer to a press is a redirect to the page the browser already
+        // has, so the copy it holds is exactly what it would show instead.
+        let (head, _) = split(&posted(address, "/tour/next", "").await);
+        assert!(head.starts_with("http/1.1 303"), "{head}");
+        assert_eq!(header(&head, "cache-control"), Some("no-store"), "{head}");
+
+        // And the faces, the stylesheet and the script are untouched by it: a
+        // warm visit still carries neither.
+        let faces = crate::page::FONTS.iter().map(|(name, ..)| crate::page::font_address(name));
+        for own in [crate::page::style_address(), crate::page::script_address()].into_iter().chain(faces) {
+            let (head, _) = split(&asked(address, &own, "").await);
+            let cache = header(&head, "cache-control").unwrap_or_default();
+            assert!(cache.contains("max-age=31536000") && cache.contains("immutable"), "{own}: {head}");
+            assert!(!cache.contains("no-store"), "{own}: {head}");
+        }
+    });
+}
+
 /// A form body posted the way the page's script posts one, with what the page
 /// holds in the query, and the reply as it came.
 async fn posted(address: std::net::SocketAddr, path: &str, body: &str) -> Vec<u8> {

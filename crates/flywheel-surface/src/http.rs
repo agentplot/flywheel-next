@@ -110,6 +110,7 @@ fn with_delivery(call: &mut Call) -> String {
 }
 use tower_http::compression::predicate::{DefaultPredicate, NotForContentType, Predicate};
 use tower_http::compression::CompressionLayer;
+use tower_http::set_header::SetResponseHeaderLayer;
 
 /// What the transport holds: the store every call writes through, the
 /// definitions it ticks against, and the identity every response records as
@@ -1594,6 +1595,17 @@ pub fn router<S: StateStore + Send + 'static>(served: Served<S>) -> Router {
                 .gzip(true)
                 .compress_when(DefaultPredicate::new().and(NotForContentType::const_new("font/"))),
         )
+        // The page is the state as of the moment it was asked for, and a cache
+        // must never hold it: every control on it posts and answers a redirect
+        // back to the page, so a browser reading its own held copy would show
+        // the operator the state before their press — the press landed and the
+        // page never moved. The faces, the stylesheet and the script are
+        // addressed by build and set their own year, and what already carries a
+        // cache-control keeps it (291, 310a, S235).
+        .layer(SetResponseHeaderLayer::if_not_present(
+            axum::http::header::CACHE_CONTROL,
+            axum::http::HeaderValue::from_static("no-store"),
+        ))
 }
 
 /// Serve the router at an address, until the process ends.
