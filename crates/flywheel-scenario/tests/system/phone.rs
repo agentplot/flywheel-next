@@ -267,9 +267,23 @@ fn pass(path: &std::path::Path, viewport: (u32, u32)) -> Result<(), String> {
         let measured = driver::measure(tab, &selector)
             .map_err(|e| e.to_string())?
             .ok_or_else(|| format!("no control for answer `{answer}`"))?;
-        if !measured.tappable() {
+        // The tap size is the input's rule and not the viewport's. A finger is
+        // the input at the phone's width and asks 44px; at the desktop's a
+        // pointer is, and the controls keep the 36px the mockup draws. Both
+        // widths hold every answer to being shown, on the screen, reached and
+        // behind no hover (311, 306; blueprints 2bce6a6).
+        let finger = viewport == driver::PHONE;
+        let held = match finger {
+            true => measured.tappable(),
+            false => measured.reachable(),
+        };
+        if !held {
             return Err(format!(
-                "the answer `{answer}` is not reachable by tap at {}px: {measured:?}",
+                "the answer `{answer}` is not {} at {}px: {measured:?}",
+                match finger {
+                    true => "reachable by a finger",
+                    false => "there for a pointer",
+                },
                 viewport.0
             ));
         }

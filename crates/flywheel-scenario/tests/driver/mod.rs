@@ -175,16 +175,21 @@ pub struct Measured {
 }
 
 impl Measured {
-    /// A finger can reach it: it is on the page, nothing covers it, it is at
-    /// least the 44px a tap target needs, and it is not behind a hover (311).
+    /// The control is there for whatever the input is: laid out, on the screen,
+    /// nothing covering it, and not behind a hover a finger cannot do (311).
+    pub fn reachable(&self) -> bool {
+        self.shown && self.reached && !self.behind_hover && self.left >= 0.0 && self.top >= 0.0
+    }
+
+    /// A finger can reach it: reachable, and at least the 44px a tap target
+    /// needs.
+    ///
+    /// The size is the *input's* rule and not the viewport's. A finger is the
+    /// input at the phone's width, and asks 44px; where a pointer is, the
+    /// controls keep the 36px the mockup draws and do not grow (311, 306;
+    /// blueprints 2bce6a6).
     pub fn tappable(&self) -> bool {
-        self.shown
-            && self.reached
-            && !self.behind_hover
-            && self.width >= 44.0
-            && self.height >= 44.0
-            && self.left >= 0.0
-            && self.top >= 0.0
+        self.reachable() && self.width >= 44.0 && self.height >= 44.0
     }
 }
 
