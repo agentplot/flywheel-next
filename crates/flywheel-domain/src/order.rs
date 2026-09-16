@@ -160,21 +160,44 @@ pub fn agent_settings(program: &str, handed_in: &[String], command: &str) -> Opt
         .filter(|path| !path.is_empty())
         .map(|path| Value::String(path.clone()))
         .collect();
+    // Inside its place a session is free (65): the program's every tool is
+    // granted whole — its file reads, searches, edits, writes and shell
+    // commands, each an allow with no pattern — so every read, edit, write,
+    // command and commit the session makes in its own tree and in the paths
+    // the order hands in, its deliverables under `.flywheel/deliverables/`
+    // among them, runs without a prompt (67; ruled 2026-09-16, `host.yaml`
+    // prepare_place). The deny list and the block on reads outside the place
+    // stand above the grant, a deny outranking an allow, so what the place
+    // keeps from the session is refused outright rather than asked; and the
+    // tools that reach past the place — the program's web fetch and search,
+    // its messaging — are granted nothing, so a prompt the program still
+    // raises is on something outside the session's reach and the host's no is
+    // the right answer to it (72, 89, 173, `sessions.yaml` prompts).
+    let mut allow: Vec<Value> = ["Bash", "Edit", "Glob", "Grep", "NotebookEdit", "Read", "Write"]
+        .iter()
+        .map(|tool| Value::String((*tool).to_string()))
+        .collect();
+    if !command.is_empty() {
+        // The machinery's own command by the path the order names, admitted by
+        // a rule of its own: the order's exit, offer and ask lines are the
+        // session's only way to report, and a session stopped at a prompt
+        // before its own exit is one nothing can finish (67).
+        allow.push(Value::String(format!("Bash({command}:*)")));
+    }
     let settings = serde_json::json!({
         "permissions": {
+            // Nothing is ever asked. What the grant does not admit and the
+            // deny list or the read block keeps from the session is refused
+            // outright, in the tool's own answer, so the session reads the
+            // refusal and works on; an unattended session has no one to ask
+            // (67, 68, 72; ruled 2026-09-16). The host's answering rule stands
+            // behind this for a prompt the program raises anyway.
+            "defaultMode": "dontAsk",
             // Every file read, search and language-server lookup outside the
             // place's tree and what the order handed in (89).
             "blockReadsOutsideWorkingDirectories": true,
             "additionalDirectories": directories,
-            // The machinery's own command is admitted beside the deny list, so
-            // the order's exit, offer and ask lines run unprompted: they are
-            // the session's only way to report, and a session stopped at a
-            // prompt before its own exit is one nothing can finish (67; ruled
-            // 2026-09-16, `host.yaml` prepare_place).
-            "allow": match command.is_empty() {
-                true => vec![],
-                false => vec![Value::String(format!("Bash({command}:*)"))],
-            },
+            "allow": allow,
             // The shell's own ways out of the tree. The git hooks are what
             // refuse a line operation, for every kind of agent (S15, 43).
             "deny": [

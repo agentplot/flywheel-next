@@ -127,8 +127,15 @@ fn a_place_carries_the_programs_deny_list_and_the_agent_it_starts_as() {
     let settings = place.join(".claude/settings.local.json");
     let read: serde_json::Value =
         serde_json::from_str(&std::fs::read_to_string(&settings).expect("the place carries the deny list")).unwrap();
+    assert_eq!(read["permissions"]["defaultMode"], json!("dontAsk"));
     assert_eq!(read["permissions"]["blockReadsOutsideWorkingDirectories"], json!(true));
     assert_eq!(read["permissions"]["additionalDirectories"], json!(["/flywheel/state/main"]));
+    // The place carries the grant too: the session's own work in its tree, its
+    // deliverable write among it, runs unprompted (67).
+    let allowed = read["permissions"]["allow"].as_array().expect("a grant").clone();
+    for tool in ["Bash", "Edit", "Read", "Write"] {
+        assert!(allowed.iter().any(|rule| rule.as_str() == Some(tool)), "{allowed:?}");
+    }
 
     // The agent the session starts as, where `claude --agent <name>` looks for
     // it: without it the program refuses the name and no session starts.

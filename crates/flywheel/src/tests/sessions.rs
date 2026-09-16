@@ -120,6 +120,10 @@ fn a_place_denies_what_the_order_did_not_hand_in() {
     assert_eq!(at, ".claude/settings.local.json");
     let settings: serde_json::Value = serde_json::from_str(&body).expect("the settings are json");
 
+    // Nothing is ever asked: what the place keeps from the session is refused
+    // in the tool's own answer, which the session reads and works on, since an
+    // unattended session has no one to ask (67, 68, 72).
+    assert_eq!(settings["permissions"]["defaultMode"], serde_json::json!("dontAsk"));
     // Every file read, search and language-server lookup outside the place's
     // tree is refused, in every permission mode.
     assert_eq!(settings["permissions"]["blockReadsOutsideWorkingDirectories"], serde_json::json!(true));
@@ -128,14 +132,36 @@ fn a_place_denies_what_the_order_did_not_hand_in() {
         settings["permissions"]["additionalDirectories"],
         serde_json::json!(["/flywheel/state/main", "/flywheel"])
     );
-    // The machinery's own command runs unprompted: the order's exit, offer and
-    // ask lines are the session's only way to report, and a session stopped at
-    // a prompt before its own exit is one nothing can finish (67).
+    // The session's own work runs unprompted: every tool the program has is
+    // granted whole at the place, with no pattern, so every read, edit, write,
+    // command and commit in the session's own tree and the handed-in paths —
+    // its deliverables among them — is admitted outright, and the machinery's
+    // own command is admitted by a rule of its own, the order's exit, offer
+    // and ask lines being the session's only way to report (67).
     assert_eq!(
         settings["permissions"]["allow"],
-        serde_json::json!(["Bash(/bin/flywheel:*)"]),
-        "the place does not admit the machinery's own command"
+        serde_json::json!([
+            "Bash",
+            "Edit",
+            "Glob",
+            "Grep",
+            "NotebookEdit",
+            "Read",
+            "Write",
+            "Bash(/bin/flywheel:*)"
+        ]),
+        "the place does not admit the session's own work"
     );
+    // What reaches past the place is granted nothing, so a prompt the program
+    // still raises is on something outside the session's reach and the host's
+    // no falls only there (72, 89, 173).
+    let allowed = settings["permissions"]["allow"].as_array().expect("a grant");
+    for beyond in ["WebFetch", "WebSearch"] {
+        assert!(
+            !allowed.iter().any(|rule| rule.as_str() == Some(beyond)),
+            "`{beyond}` reaches past the place and is no part of the grant"
+        );
+    }
     // The shell's own ways out of the tree are denied beside the git hooks.
     let denied = settings["permissions"]["deny"].as_array().expect("a deny list");
     assert!(denied.iter().any(|rule| rule.as_str() == Some("Bash(cd /*)")), "{denied:?}");
