@@ -157,6 +157,13 @@ form.busy .btn.pri{opacity:.85}
 .sc.working .ac{color:var(--ok)} .sc.blocked .ac{color:var(--warn);font-weight:600} .sc.with .ac{color:var(--accent);font-weight:600} .sc.idle .ac,.sc.scheduled .ac{color:var(--ink3)}
 .sc .pane{color:var(--accent);font:inherit;padding:2px 7px 2px 5px;border-left:1px solid var(--line2);border-radius:0 999px 999px 0}
 .sc.hostlit{border-color:var(--accent);background:var(--accent-soft)} .sc.hostdim{opacity:.4}
+.panepop{position:fixed;z-index:26;width:min(380px,calc(100vw - 16px));background:var(--surface);border:1px solid var(--line);border-radius:8px;box-shadow:var(--shadow,0 8px 24px rgba(0,0,0,.18));padding:8px 10px 9px;font:12px var(--sans);color:var(--ink2);text-align:left}
+.panepop .pp-h{display:flex;gap:8px;align-items:baseline;font:700 10px var(--mono);letter-spacing:.08em;text-transform:uppercase;color:var(--ink3)} .panepop .pp-h .r{letter-spacing:0;text-transform:none;font-weight:600;font-size:12px;color:var(--ink)}
+.panepop .pp-where{margin-top:4px;font-size:12px} .panepop .pp-where b{font-family:var(--mono);font-weight:600;color:var(--ink)}
+.panepop .pp-line{display:flex;gap:6px;align-items:center;margin-top:7px} .panepop .pp-k{flex:none;width:44px;font:10.5px var(--mono);color:var(--ink3)}
+.panepop code{flex:1;min-width:0;font:11.5px var(--mono);color:var(--ink);background:var(--surface2,var(--surface));border:1px solid var(--line2,var(--line));padding:4px 7px;border-radius:5px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.panepop .pp-gone{margin-top:7px;font-size:12px;color:var(--ink3);font-family:var(--mono)}
+.panepop .pp-note{margin-top:8px;font-size:11px;color:var(--ink3)}
 .el{display:flex;align-items:center;gap:8px;flex-wrap:wrap;padding:4px 0 0;font-size:12px}
 .el .en{font-weight:600;min-width:0}
 .leave{font:10.5px var(--mono);color:var(--ink3)} .leave.soon{color:var(--warn)}
@@ -1102,6 +1109,7 @@ body[data-served="view"] .dk-b{overflow:visible}
      (153, 154). -->
 <aside class="log" id="log"><h3>Responses sent <span>each one on its own, the moment it was given</span></h3><ol id="loglist">{{LOG}}</ol></aside>
 <div class="toasts" id="toasts" aria-live="polite"></div>
+<div id="panepop"></div>
 <div class="progress" id="progress" hidden><i></i></div>
 <!-- The page's own script: the capture box, the keys of S56, and the
      feedback every control gives. Nothing here is state a reload loses and
@@ -1463,6 +1471,62 @@ body[data-served="view"] .dk-b{overflow:visible}
     focusObject(object);
     openDock(object);
   }
+
+  // ---- a session chip's pane link (25.6, S234). The page cannot drive a
+  // terminal, so the link opens a popover naming where the pane is and the
+  // lines to reach it, each with its own copy control. Everything it says is
+  // rendered into the chip's own attributes, so the popover fetches nothing
+  // and the page carries no second copy of the session (310a).
+  var panepop=document.getElementById('panepop');
+  function closePanePop(){ if(panepop) panepop.innerHTML=''; }
+  function panePopOpen(btn){
+    if(!panepop) return;
+    var d=btn.dataset;
+    // A second press on the same chip closes it.
+    if(panepop.getAttribute('data-for')===d.sessId && panepop.innerHTML){ closePanePop(); return; }
+    var r=btn.getBoundingClientRect();
+    var line=function(k,cmd,hint){
+      return '<div class="pp-line"><span class="pp-k">'+esc(k)+'</span><code>'+esc(cmd)+'</code>'+
+        '<button type="button" class="btn sm" data-copy="'+esc(cmd)+'" title="'+esc(hint)+'">copy</button></div>';
+    };
+    var where='in <b>'+esc(d.sessSession||'—')+'</b> · on <b>'+esc(d.sessHost||'—')+'</b>'+
+      (d.sessRemote ? ' · another computer' : '');
+    var body=d.sessGone
+      ? '<div class="pp-gone">'+esc(d.sessGone)+'</div>'
+      : line('attach', d.sessAttach||'', d.sessRemote ? "through herdr's remote attach, naming the host's machine" : 'a terminal not yet in that session')
+        + line('then', d.sessFocus||'', 'once attached, focus this pane');
+    panepop.setAttribute('data-for', d.sessId||'');
+    panepop.innerHTML='<div class="panepop" role="dialog" aria-label="the session\'s pane">'+
+      '<div class="pp-h">pane<span class="r">'+esc(d.sessId||'')+'</span></div>'+
+      '<div class="pp-where">'+where+'</div>'+body+
+      '<div class="pp-note">the page opens no pane itself · everything the session reported is here</div></div>';
+    var box=panepop.firstElementChild; if(!box) return;
+    var w=box.offsetWidth, h=box.offsetHeight;
+    var left=Math.max(8, Math.min(r.left, window.innerWidth - w - 8));
+    var top=(r.bottom + 4 + h > window.innerHeight - 8) ? Math.max(8, r.top - 4 - h) : r.bottom + 4;
+    box.style.left=left+'px'; box.style.top=top+'px';
+  }
+  document.addEventListener('click', function(e){
+    var t=e.target;
+    var btn=t.closest && t.closest('[data-pane]');
+    if(btn){ e.preventDefault(); panePopOpen(btn); return; }
+    var copy=t.closest && t.closest('[data-copy]');
+    if(copy){
+      e.preventDefault();
+      var text=copy.getAttribute('data-copy')||'';
+      if(navigator.clipboard && navigator.clipboard.writeText) navigator.clipboard.writeText(text);
+      toast('copied · '+text);
+      return;
+    }
+    // A click anywhere else closes it, as the palette and a picker do.
+    if(panepop && panepop.innerHTML && !(t.closest && t.closest('#panepop'))) closePanePop();
+  }, true);
+  // Esc closes the popover before anything else, and a dock page or the
+  // palette opening closes it too (S56, S57).
+  document.addEventListener('keydown', function(e){
+    if(e.key==='Escape' && panepop && panepop.innerHTML){ e.preventDefault(); e.stopPropagation(); closePanePop(); }
+  }, true);
+  addEventListener('hashchange', closePanePop);
 
   document.addEventListener('keydown', function(e){
     var t=e.target;

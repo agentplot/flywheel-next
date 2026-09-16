@@ -117,6 +117,9 @@ pub struct Served<S: StateStore + Send + 'static> {
     /// The host's own address, which every link on the page is written at
     /// (205a, 308, D10a).
     pub address: String,
+    /// The host serving the page, by its id. A session chip's pane link reads
+    /// it to say whether the pane is on this computer or another (S234, 232).
+    pub host: String,
     /// The port the operator at the machine uses, which 245 permits beside the
     /// private-network address (46, 155).
     pub localhost_port: u16,
@@ -162,6 +165,7 @@ impl<S: StateStore + Send + 'static> Clone for Served<S> {
             defs: self.defs.clone(),
             operators: self.operators.clone(),
             address: self.address.clone(),
+            host: self.host.clone(),
             localhost_port: self.localhost_port,
             woken: self.woken.clone(),
             changed: self.changed.clone(),
@@ -190,6 +194,9 @@ impl<S: StateStore + Send + 'static> Served<S> {
             defs: Arc::new(defs),
             operators: operators.to_vec(),
             address: address.to_string(),
+            // The caller names the host it serves for; a page served by no
+            // named host marks no pane as being on another computer.
+            host: String::new(),
             localhost_port: 4242,
             woken: Arc::new(tokio::sync::Notify::new()),
             changed: Arc::new(tokio::sync::watch::Sender::new(1)),
@@ -249,7 +256,7 @@ impl<S: StateStore + Send + 'static> Served<S> {
         // The store's generation as this read begins, which the read holds at
         // least.
         let generation = *self.changed.borrow();
-        let mut read = page::read(store, world, &self.defs, &self.address, self.operator())?;
+        let mut read = page::read_served(store, world, &self.defs, &self.address, self.operator(), &self.host)?;
         read.generation = generation;
         let latest = Arc::new(Latest { point: read.status.as_of.clone(), read, generation });
         if let Ok(mut held) = self.latest.write() {
@@ -1271,12 +1278,13 @@ async fn deliverable<S: StateStore + Send + 'static>(
     let named = named.trim_matches('/').to_string();
     let mut store = served.store.lock().await;
     let world = served.world.lock().await;
-    let mut read = match page::read(
+    let mut read = match page::read_served(
         &mut *store,
         &**world,
         &served.defs,
         &served.address,
         served.operator(),
+        &served.host,
     ) {
         Ok(read) => read,
         Err(refused) => {

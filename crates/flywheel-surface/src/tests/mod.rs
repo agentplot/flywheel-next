@@ -18,3 +18,4 @@ mod protocol;
 mod signals;
 mod tray;
 mod views;
+mod pane;

@@ -177,6 +177,9 @@ pub fn page_of(host: &Shared, port: u16, operators: &[String]) -> Served<SharedS
         let kept = held.store.git.repo.dir.join(".git").join("flywheel-kept");
         (held.defs.clone(), held.sinks.address.clone(), kept)
     };
+    // Which host serves this page: a session chip's pane link says whether the
+    // pane is on this computer or another (S234, 232).
+    let me = host.lock().expect("the running host is poisoned").name.clone();
     let mut served = Served::over(
         SharedStore(host.clone()),
         Box::new(SharedWorld(host.clone())),
@@ -185,6 +188,7 @@ pub fn page_of(host: &Shared, port: u16, operators: &[String]) -> Served<SharedS
         &address,
     );
     served.localhost_port = port;
+    served.host = me;
     served.kept = Some(kept);
     served.run_record = Some(
         |shared: &mut SharedStore, refused: &[flywheel_surface::protocol::Refused]| {

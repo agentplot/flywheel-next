@@ -3,7 +3,7 @@
 //! commits — and nothing about how the machinery works (S214).
 
 use super::lists::{self, Row};
-use super::{deliverables, discussion, escape, name_of, sec, Read};
+use super::{deliverables, discussion, escape, name_of, pane_link, sec, Read};
 use flywheel_atoms::CommitRef;
 use flywheel_domain::status;
 use flywheel_engine::Object;
@@ -19,6 +19,9 @@ pub struct Session {
     pub runner: String,
     pub agent: Option<String>,
     pub pane: Option<String>,
+    /// The herdr session the pane is in, as the record names it (174). The
+    /// chip's pane link says so, since a pane is reached through its session.
+    pub herdr_session: Option<String>,
     pub started: Option<String>,
     pub exit: Option<String>,
     pub exit_at: Option<String>,
@@ -236,7 +239,7 @@ fn elaboration_page(read: &Read, elaboration: &Object, row_: Option<&status::Row
     let sessions = sessions_of(read, elaboration);
     match sessions.is_empty() {
         true => out.push_str(&sec("sessions", "", "<p class=\"none\">No session yet: one starts when it is approved.</p>\n")),
-        false => out.push_str(&sec("sessions", "", &session_rows(&elaboration.id, &sessions))),
+        false => out.push_str(&sec("sessions", "", &session_rows(&elaboration.id, &sessions, &read.served_by))),
     }
     out
 }
@@ -374,14 +377,14 @@ fn sessions_of<'a>(read: &'a Read, object: &Object) -> Vec<&'a Session> {
 }
 
 /// A page's sessions, fifty at a time (310a, S235).
-fn session_rows(object: &str, sessions: &[&Session]) -> String {
+fn session_rows(object: &str, sessions: &[&Session], served_by: &str) -> String {
     format!(
         "<div class=\"rows\">\n{}</div>\n",
-        lists::page(&session_items(sessions), 0, Some(object), "sessions", Row::Div)
+        lists::page(&session_items(sessions, served_by), 0, Some(object), "sessions", Row::Div)
     )
 }
 
-fn session_items(sessions: &[&Session]) -> Vec<String> {
+fn session_items(sessions: &[&Session], served_by: &str) -> Vec<String> {
     sessions
         .iter()
         .map(|s| {
@@ -407,9 +410,11 @@ fn session_items(sessions: &[&Session]) -> Vec<String> {
             }
             let _ = write!(
                 out,
-                "<div class=\"row\"><span class=\"st\">{}</span><span class=\"grow\">{}</span></div>\n",
+                "<div class=\"row\"><span class=\"st\">{}</span><span class=\"grow\">{}</span>\
+                 <span class=\"sc\">{}</span></div>\n",
                 escape(s.id.rsplit('/').nth(1).unwrap_or("session")),
-                bits.join(" · ")
+                bits.join(" · "),
+                pane_link(s, served_by),
             );
             if let Some(q) = &s.question {
                 let _ = write!(out, "<div class=\"row\"><span class=\"st\">asks</span><span class=\"grow\">{}</span></div>\n", escape(q));
@@ -508,7 +513,7 @@ fn bolt_page(read: &Read, bolt: &Object, row_: Option<&status::Row>) -> String {
 
     let sessions = sessions_of(read, bolt);
     if !sessions.is_empty() {
-        out.push_str(&sec("sessions", "", &session_rows(&bolt.id, &sessions)));
+        out.push_str(&sec("sessions", "", &session_rows(&bolt.id, &sessions, &read.served_by)));
     }
     if let Some(commits) = read.commits.get(&bolt.id) {
         out.push_str(&sec(commits_title(read, &bolt.id), "", &commit_rows(&bolt.id, commits)));
@@ -653,7 +658,7 @@ fn unit_page(read: &Read, unit: &Object, row_: Option<&status::Row>) -> String {
     }
     let sessions = sessions_of(read, unit);
     if !sessions.is_empty() {
-        out.push_str(&sec("sessions", "", &session_rows(&unit.id, &sessions)));
+        out.push_str(&sec("sessions", "", &session_rows(&unit.id, &sessions, &read.served_by)));
     }
     if let Some((bolt, commits)) = unit.parent.as_deref().and_then(|b| read.commits.get(b).map(|c| (b, c))) {
         out.push_str(&sec(commits_title(read, bolt), "", &commit_rows(&unit.id, commits)));
@@ -712,7 +717,7 @@ fn item_page(read: &Read, item: &Object, row_: Option<&status::Row>) -> String {
     out.push_str(&sec("the work item", "", &facts));
     let sessions = sessions_of(read, item);
     if !sessions.is_empty() {
-        out.push_str(&sec("sessions", "", &session_rows(&item.id, &sessions)));
+        out.push_str(&sec("sessions", "", &session_rows(&item.id, &sessions, &read.served_by)));
     }
     let bolt = item
         .parent
@@ -831,7 +836,7 @@ fn held_items(read: &Read, object: &Object) -> Vec<String> {
 pub fn list_part(read: &Read, id: &str, list: &str, from: usize) -> Option<String> {
     let object = read.objects.iter().find(|o| o.id == id)?;
     let (rows, row) = match list {
-        "sessions" => (session_items(&sessions_of(read, object)), Row::Div),
+        "sessions" => (session_items(&sessions_of(read, object), &read.served_by), Row::Div),
         "commits" => (commit_items(commits_of(read, object)?), Row::Tr(4)),
         "units" => (unit_items(read, object), Row::Div),
         "items" => (item_items(read, object), Row::Div),

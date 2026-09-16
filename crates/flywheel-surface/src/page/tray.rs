@@ -49,9 +49,27 @@ pub fn trigger(read: &Read) -> String {
     format!("runs on its own at {threshold}, or {}", cadence::in_words(schedule))
 }
 
-/// Curation's chip while it reads: the same chip a session shows on the board.
-const READING: &str = "<span class=\"sc working\"><span class=\"dot working\"></span>\
-                       <span class=\"ag\">curation</span><span class=\"ac\">reading</span></span>";
+/// Curation's chip while it reads: the same chip a session shows on the board,
+/// with the host it runs on and the link that says where its pane is (S53,
+/// S234). A run the page knows no session record for shows what it is doing
+/// and offers no link, since there is no pane to name.
+fn reading_chip(read: &Read) -> String {
+    let session = read.curation.as_deref().and_then(|id| read.sessions.get(id));
+    let host = match session {
+        Some(session) if !session.host.is_empty() => {
+            format!("<span class=\"hs\">@{}</span>", super::escape(&session.host))
+        }
+        _ => String::new(),
+    };
+    let pane = match session {
+        Some(session) => super::pane_link(session, &read.served_by),
+        None => String::new(),
+    };
+    format!(
+        "<span class=\"sc working\"><span class=\"dot working\"></span>\
+         <span class=\"ag\">curation</span>{host}<span class=\"ac\">reading</span>{pane}</span>"
+    )
+}
 
 /// How many wait, from which sources, and how old the oldest is.
 fn summary(read: &Read, waiting: &[(&signals::Waiting, Vec<&signals::Signal>)]) -> (usize, String, Option<String>) {
@@ -111,7 +129,7 @@ pub fn counter(read: &Read) -> String {
         }
     }
     if running(read) {
-        out.push_str(READING);
+        out.push_str(&reading_chip(read));
     }
     out.push_str("</a>\n");
     out
@@ -136,7 +154,8 @@ pub fn surface(read: &Read, opened: bool) -> String {
         let _ = write!(
             out,
             "<div class=\"tray-run running\"><div class=\"tray-bar\"><i></i></div>\
-             <p class=\"next\">curation is reading them now {READING}</p></div>\n"
+             <p class=\"next\">curation is reading them now {chip}</p></div>\n",
+            chip = reading_chip(read),
         );
     } else if curation(read).is_some() {
         let _ = write!(

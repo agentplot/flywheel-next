@@ -158,6 +158,9 @@ pub struct Read {
     pub objects: Vec<Object>,
     /// The host's address, for the links every rail line carries (308, 205a).
     pub address: String,
+    /// The host serving this page, by its id: what a session chip's pane link
+    /// reads to say whether the pane is on this computer or another (S234).
+    pub served_by: String,
     /// The identity every response records as given by (153, 236a, 253a).
     pub operator: String,
     /// The built repositories the instance tracks, which is where a unit
@@ -501,12 +504,28 @@ fn answers_of(objects: &[Object]) -> BTreeMap<u32, Vec<Answered>> {
 }
 
 /// Read once, for one request (310).
+/// The same, read for no named host: nothing is marked as being on another
+/// computer, which is what a member's client and a test see (293a, S234).
 pub fn read<S: StateStore, W: World + ?Sized>(
     store: &mut S,
     world: &W,
     defs: &Definitions,
     address: &str,
     operator: &str,
+) -> anyhow::Result<Read> {
+    read_served(store, world, defs, address, operator, "")
+}
+
+/// What one request read, for the host serving it. `served_by` is that host's
+/// id: a session chip's pane link reads it to say whether the pane is on this
+/// computer or another (S234, 232).
+pub fn read_served<S: StateStore, W: World + ?Sized>(
+    store: &mut S,
+    world: &W,
+    defs: &Definitions,
+    address: &str,
+    operator: &str,
+    served_by: &str,
 ) -> anyhow::Result<Read> {
     let decisions = commands::rail_read(store, defs)?;
     let at = commands::now(store)?;
@@ -679,6 +698,7 @@ pub fn read<S: StateStore, W: World + ?Sized>(
             runner: text("runner").unwrap_or_else(|| "operator".into()),
             agent: text("herdr_agent"),
             pane: text("herdr_pane"),
+            herdr_session: text("herdr_session"),
             started: text("started_at"),
             ..Default::default()
         };
@@ -709,6 +729,7 @@ pub fn read<S: StateStore, W: World + ?Sized>(
         status,
         objects,
         address: address.to_string(),
+        served_by: served_by.to_string(),
         operator: operator.to_string(),
         repositories,
         asks,
@@ -2818,13 +2839,20 @@ fn lg_unit(read: &Read, row: &status::Row, lane: &[&status::Row]) -> String {
         for item in items {
             // Each work item is a board object of its own, so a click on it
             // opens the item and not the unit around it (S219).
+            // The session running the item, where one is: its chip carries the
+            // link that says where its pane is (S53, S234).
+            let session = read.sessions.values().find(|s| s.item == item.object);
             let _ = write!(
                 out,
                 "<span class=\"it\"{attributes}><span class=\"wi\">{name}</span>\
-                 <span class=\"sc\"><span>{said}</span></span></span>",
+                 <span class=\"sc\"><span>{said}</span>{pane}</span></span>",
                 attributes = board_attributes(item),
                 name = escape(name_of(&item.object)),
                 said = escape(&item.said),
+                pane = match session {
+                    Some(session) => pane_link(session, &read.served_by),
+                    None => String::new(),
+                },
             );
         }
         out.push_str("</span>");
@@ -2965,6 +2993,72 @@ pub(crate) fn pointed(raw: &str) -> String {
         true => raw.rsplit('/').next().unwrap_or(raw).to_string(),
         false => raw.to_string(),
     }
+}
+
+/// A session chip's pane link: where the pane is, and how to reach it (S53,
+/// S234, 174, 196, 232).
+///
+/// The page cannot drive a terminal and never tries to: the link opens a
+/// popover naming the herdr session the pane is in, the host it runs on and the
+/// pane by its session id, with the two lines to copy. Everything it says is
+/// written here, into the link's own attributes, so the popover fetches nothing
+/// and the page carries no second copy of the session (310a).
+///
+/// A pane that is gone says so and offers nothing to copy (68).
+pub(crate) fn pane_link(session: &Session, served_by: &str) -> String {
+    let gone = match (&session.pane, session.exit.as_deref()) {
+        (None, _) => Some("lost".to_string()),
+        (Some(_), Some(exit @ ("done" | "stalled" | "invalid"))) => Some(exit.to_string()),
+        _ => None,
+    };
+    if let Some(exit) = gone {
+        let said = match (&session.exit_at, exit.as_str()) {
+            (Some(at), "done") => format!("no pane · the session exited at {}", when_short(at)),
+            (Some(at), "lost") => format!("no pane · the session was lost at {}", when_short(at)),
+            (Some(at), other) => format!("no pane · the session {other} at {}", when_short(at)),
+            (None, "lost") => "no pane · the session was lost without an exit".to_string(),
+            (None, other) => format!("no pane · the session {other}"),
+        };
+        return format!(
+            "<button type=\"button\" class=\"pane\" data-pane=\"\" data-sess-id=\"{id}\" \
+             data-sess-host=\"{host}\" data-sess-gone=\"{said}\" \
+             title=\"where this pane is, and how to reach it\">pane ↗</button>",
+            id = escape(&session.id),
+            host = escape(&session.host),
+            said = escape(&said),
+        );
+    }
+    // A session recorded before panes were addressed by name names none: it is
+    // in the operator's own session, which the page does not presume to name.
+    let named = session.herdr_session.clone().unwrap_or_default();
+    let remote = !served_by.is_empty() && !session.host.is_empty() && session.host != served_by;
+    let attach = match (remote, named.is_empty()) {
+        (_, true) => String::new(),
+        (true, false) => format!("herdr --remote {} --session {named}", session.host),
+        (false, false) => format!("herdr session attach {named}"),
+    };
+    format!(
+        "<button type=\"button\" class=\"pane\" data-pane=\"{pane}\" data-sess-id=\"{id}\" \
+         data-sess-host=\"{host}\" data-sess-session=\"{named}\"{remote} \
+         data-sess-attach=\"{attach}\" data-sess-focus=\"herdr agent focus {id}\" \
+         title=\"where this pane is, and how to reach it\">pane ↗</button>",
+        pane = escape(session.pane.as_deref().unwrap_or_default()),
+        id = escape(&session.id),
+        host = escape(&session.host),
+        named = escape(&named),
+        remote = match remote {
+            true => " data-sess-remote=\"1\"",
+            false => "",
+        },
+        attach = escape(&attach),
+    )
+}
+
+/// A moment in the operator's own terms, short enough for a chip.
+fn when_short(at: &str) -> String {
+    chrono::DateTime::parse_from_rfc3339(at)
+        .map(|t| t.with_timezone(&chrono::Utc).format("%H:%M").to_string())
+        .unwrap_or_else(|_| at.to_string())
 }
 
 /// The chip a capture carries while its reader reads it, as a session's chip

@@ -486,6 +486,9 @@ pub fn view<S: StateStore, W: World + ?Sized>(
     let Some(tool) = query(&call.tool) else {
         bail!("`{}` is no view of the page", call.tool);
     };
+    // A member's client reaches the instance through the host it added, and
+    // names none of its own: no pane is marked as being on another computer
+    // (293a, S234).
     let read = crate::page::read(store, world, defs, address, &call.by)?;
     crate::page::view(&read, tool.name, call.text("object").as_deref()).map_err(|refused| anyhow::anyhow!(refused))
 }
