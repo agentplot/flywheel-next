@@ -870,6 +870,9 @@ a.btn.pri{color:var(--accent-ink)}
      The header must not set the width of the document either: at 390px a
      wider header made a `1fr` grid column resolve against its width, which put
      a card's answer controls off the right edge where no tap reaches them. */
+  /* A finger is the input here, so an answer is a tap target and not a
+     pointer's: 44px, as the dock's answers already are (311, 306). */
+  .card .answers button,.card .answers .to-dock{min-height:44px}
   .top{gap:8px;padding:0 10px;overflow:hidden;flex-wrap:nowrap}
   .top h1,.top .count,.top .theme,.top .keys,.top .palbtn{display:none}
   .top .meta{margin-right:auto;min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
@@ -942,6 +945,12 @@ a.btn.pri{color:var(--accent-ink)}
    edge for a mouse. */
 @media (hover: hover) and (pointer: fine) {
   .btn:hover{border-color:var(--ink3)}
+  /* An answer control's own sharpening belongs here and not beside the
+     control. A rule that fires on hover reads as an affordance behind a hover
+     wherever it stands — which is what the phone pass measures — and an answer
+     must be reachable by a tap with nothing behind one (311, 306). */
+  .answers button:hover,.answers .to-dock:hover{border-color:var(--ink3);background:var(--surface2)}
+  .answers button.pri:hover{filter:brightness(1.08)}
   .sc .pane:hover{background:var(--accent-soft)}
   .gi .gx:hover{background:color-mix(in srgb,var(--crit) 15%,transparent);color:var(--crit)}
   .thread:hover .th-head::before,.thread .th-head .pickbox:checked~*{}
@@ -1046,9 +1055,7 @@ a.curation b{color:var(--ink);font-size:13px}
 .asks .ty{font:11.5px var(--mono);color:var(--ink3);margin-left:4px;white-space:nowrap}
 .gi form{display:inline-flex;margin:0}
 .answers button,.answers .to-dock{min-height:36px;min-width:44px;padding:6px 12px;border:1px solid var(--line);border-radius:7px;background:var(--surface);color:var(--ink);font-weight:600;font-size:12.5px;display:inline-flex;align-items:center;gap:7px;cursor:pointer;transition:border-color .1s,background .1s}
-.answers button:hover,.answers .to-dock:hover{border-color:var(--ink3);background:var(--surface2)}
 .answers button.pri{background:var(--accent);border-color:var(--accent);color:var(--accent-ink)}
-.answers button.pri:hover{filter:brightness(1.08)}
 .answers button.drop{color:var(--crit);border-color:color-mix(in srgb,var(--crit) 45%,var(--line))}
 .answers button .k,.answers .to-dock .k{font:600 10px var(--mono);border:1px solid currentColor;border-radius:3px;padding:0 4px;opacity:.7;line-height:1.5}
 .answers button.pri .k{border-color:var(--accent-ink);opacity:.85}
