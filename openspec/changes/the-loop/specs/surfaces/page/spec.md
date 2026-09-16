@@ -29,6 +29,34 @@ served, and its version SHALL be the binary's (307).
 - **THEN** every one is reachable at both, with the phone's layout the same
   bundle under 760px (306, 307)
 
+### Requirement: The header at phone width keeps what the operator acts on
+
+Under 760px the header SHALL be one row that nothing runs past at 390px,
+keeping the instance with the as-of time of its read, `yes all` as the word
+alone while an approve decision waits, the count of responses sent with the
+control that opens the log, and the account item (S236, S2, S152, 145). It
+SHALL drop the page's title, the key hints, the `yes all` numbers, the count of
+decisions — which the Decisions tab's badge carries at the foot — and the
+capture box, since the capture control on both tabs raises the palette as a
+bottom sheet there (S236, S38, S211). The theme control SHALL move into the
+account item's menu, last before sign-out, so every control of the desktop's
+header is still reached on the phone (S236, S152, 306). The dock's head and the
+tray's rows SHALL run past no edge at that width either, their text cut at its
+end (S236, S215, 314).
+
+#### Scenario: The header at 390px
+- **WHEN** the page is loaded at a 390px viewport with an approve decision
+  waiting
+- **THEN** the header is one row holding the instance with its as-of time, `yes
+  all` as the word alone, the sent count and the account item, nothing runs past
+  the right edge, and the title, the key hints, the numbers, the count of
+  decisions and the capture box are not drawn (S236, 314)
+
+#### Scenario: The theme control on a phone
+- **WHEN** the operator opens the account menu at a 390px viewport
+- **THEN** the theme control is the menu's last row before sign-out and changes
+  the theme from there (S236, S152)
+
 ### Requirement: Every answer is one tap or one short reply
 
 Every answer SHALL be one tap or one short reply (311). Nothing SHALL be
@@ -386,10 +414,14 @@ S232). The dock's page SHALL letter the rows the same way, each row's drop
 reading `415b: drop` (S232). The
 unit's page SHALL list every chore of the fold by its document and SHALL show a
 bolt only when a bolt stands above it (S231, S28). A proposed chore on no ledger
-SHALL be a slip naming its repository before its name, so two shared lines'
-chores of one name read apart (S14). Accepted chores of a shared line SHALL show
+SHALL be a slip in Bolt plan naming its repository before its name, so two
+shared lines' chores of one name read apart, and SHALL NOT stand in Construction
+(S14). Accepted chores of a shared line SHALL show
 in Construction as items on that repository's shared line under a chores head
-per repository, and never as a bolt (S15, 60).
+per repository, and never as a bolt (S15, 60). An item SHALL stand under that
+head until it merges, which on the shared line is its landing, and SHALL then
+leave the lane as a landed bolt's units do, Recently done carrying its one
+merged line with its repository greyed before the name (S15, S9, 60).
 
 #### Scenario: Two repositories' chores fold apart
 - **WHEN** sessions under no bolt offer two chores with `--scope storefront` and
@@ -415,7 +447,13 @@ per repository, and never as a bolt (S15, 60).
 #### Scenario: An accepted chore is not a bolt
 - **WHEN** the operator says yes to a storefront chores card
 - **THEN** Construction shows the chores as items under a chores head for
-  storefront, and no ledger is drawn for them (S15, 60)
+  storefront, no ledger is drawn for them, and a storefront chore still proposed
+  is a slip in Bolt plan (S15, S14, 60)
+
+#### Scenario: A landed chore leaves the chores head
+- **WHEN** one of storefront's accepted chores merges onto the shared line
+- **THEN** the chores head holds the chores still standing and no more, and
+  Recently done reads "storefront · chore-3" (S15, S9, 60)
 
 ### Requirement: A decision reads as a question
 
@@ -532,7 +570,14 @@ the pane is in, the host it runs on and the pane by its session id, with the
 line that attaches a terminal to that session — naming the host's machine when
 the host is another computer — and the line that focuses the pane, each with a
 copy control (S234, 174, 196). A pane that is gone SHALL say so and offer
-nothing to copy (S234). The page SHALL never open, focus or read a pane (68).
+nothing to copy, and a session whose record names no multiplexer session SHALL
+get the focus line alone (S234). A second press on the same chip SHALL close the
+popover, which SHALL otherwise close as a picker does — on Esc, a click outside,
+another picker, the palette or a dock page — and SHALL be a bottom sheet on a
+phone (S234, S233, S30, 306). Opening it SHALL fetch nothing, since everything
+it says is on the chip already (S234, 310a). A session chip SHALL name its agent
+and its model, the host and the activity word (S53). The page SHALL never open,
+focus or read a pane (68).
 
 #### Scenario: Reaching a curator's pane
 - **WHEN** the operator opens the pane link on a curator's chip
@@ -544,6 +589,11 @@ nothing to copy (S234). The page SHALL never open, focus or read a pane (68).
   exit
 - **THEN** the popover says the session exited and when, and offers nothing to
   copy (S234, 74)
+
+#### Scenario: The palette closes an open popover
+- **WHEN** a pane popover is open and the operator raises the palette
+- **THEN** the popover closes, as it does on a second press of its chip, and at
+  390px it had been a bottom sheet (S234, S233, S30)
 
 ### Requirement: The dock gives each kind its page
 

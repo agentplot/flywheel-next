@@ -195,7 +195,14 @@ place, and the host's reconciliation SHALL remove it once the record the offer
 made has ended, or the offer made nothing and is not pending, recording each
 removal (42, 55; `remove_stale_offer_pins`). Removing the offering place SHALL
 withdraw nothing; a proposed or deferred chore of a bolt that is dropped SHALL
-retire with the bolt (62, 74; `unit.yaml`).
+retire with the bolt (62, 74; `unit.yaml`). A chore under a repository or under
+the instance SHALL be final at its merge: the shared line is where a landing
+puts work and no bolt stands above such a chore to land with, so it SHALL land
+on the pass that merges it, with its cited claim's cell due again, its place
+released and its offer's pin stale then (60, 62, 64, 55; `unit.yaml` merged →
+landed on `unit.shared_line`). A chore on a bolt's line SHALL land with its
+bolt, and a chore on an intent's line with that line as the intent closes (60,
+52).
 
 #### Scenario: A curation session's finding reaches its exit
 - **WHEN** a curation session offers a finding and exits done
@@ -245,6 +252,12 @@ retire with the bolt (62, 74; `unit.yaml`).
   its bolt
 - **THEN** the unit's work order carries the finding's text at the offer's
   revision (62)
+
+#### Scenario: A shared-line chore lands when it merges
+- **WHEN** a chore on a repository's shared line merges onto it
+- **THEN** it is landed on that same pass, the claim it cited is due again, its
+  place is released, and its offer's pin is removed with the removal recorded
+  (60, 62, 64, 55)
 
 #### Scenario: A chore of a dropped bolt retires with it
 - **WHEN** a bolt holding a proposed and a deferred chore is dropped

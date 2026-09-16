@@ -901,6 +901,13 @@ asserts the served page carries its regions and controls, so the page cannot
 drift from the design the way a paraphrase can. Every later change to the
 page's design is a change to the mockup first.
 
+The mockup's style and script are taken whole. A rule the page does not write
+yet is a surface still to build, not weight to shed: neither file is trimmed by
+hand or by a pass over what the page writes, a rule the design has no surface
+for leaves the mockup first and the page follows, and the two are bound by the
+budget's numbers alone, since both are cached under the binary's version and the
+first view's HTML does not count them (S235, S236, 310a).
+
 A fresh instance has to be able to raise a decision with nothing written by
 hand. Curation is charged by the tick or by the operator's `curate` (110). Its
 session runs through the host's sessions binding like a chore's, a Herdr pane
