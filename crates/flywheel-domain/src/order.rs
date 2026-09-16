@@ -101,6 +101,45 @@ pub const SECTIONS: &[&str] = &[
 /// on the deny list, which is the git hooks' and the order's (89).
 pub const KINDS_WITH_A_DENY_LIST: &[&str] = &["claude"];
 
+/// The agent programs that resolve `--agent <name>` against a definition in
+/// the place (173, `sessions.yaml` kinds). A program with no such convention
+/// is started without one and reads the agent's text in its order.
+pub const PROGRAMS_THAT_READ_AN_AGENT_FILE: &[&str] = &["claude"];
+
+/// Where a program looks for the agent definition a session is started as.
+///
+/// `claude --agent <name>` resolves the name against the definitions it can
+/// find, so the flywheel's own definition is written into the place: what a
+/// session starts as is the flywheel's choice and never what the computer the
+/// host runs on happens to hold (89, 173, `sessions.yaml` agents, kinds).
+///
+/// `None` for a program with no such convention, and where the shipped set
+/// holds no definition for the agent — the order carries its text either way.
+pub fn agent_definition(program: &str, agent: &str, body: &str) -> Option<(String, String)> {
+    if !PROGRAMS_THAT_READ_AN_AGENT_FILE.contains(&program) || agent.is_empty() || body.trim().is_empty() {
+        return None;
+    }
+    // The flywheel's text is the definition; the header is what the program
+    // needs to resolve the name it was started with. A definition written
+    // without one is a name the program does not know, and no session starts
+    // (173). The set's own front matter is the machinery's and is not it.
+    let says = body
+        .trim()
+        .split("\n\n")
+        .next()
+        .unwrap_or(body)
+        .split_whitespace()
+        .collect::<Vec<_>>()
+        .join(" ");
+    // A JSON string is a double-quoted YAML scalar, so a description carrying
+    // a colon or a quote stays one value.
+    let says = serde_json::to_string(&says).unwrap_or_else(|_| "\"\"".into());
+    Some((
+        format!(".claude/agents/{agent}.md"),
+        format!("---\nname: {agent}\ndescription: {says}\n---\n\n{}\n", body.trim()),
+    ))
+}
+
 /// Where a kind's settings live inside the place, and what they say: a session
 /// reads its place, the paths the order hands in, and nothing else (89, 173,
 /// `host.yaml` prepare_place).
@@ -137,8 +176,12 @@ pub fn agent_settings(kind: &str, handed_in: &[String]) -> Option<(String, Strin
                 "Bash(head /*)",
                 "Bash(tail /*)",
                 "Bash(find /*)",
-                "Bash(grep:* /*)",
-                "Bash(rg:* /*)",
+                // The wildcard form its neighbours use. `grep:* /*` is no rule
+                // the program accepts — a prefix match's `:*` must end the
+                // pattern — so it skipped both and warned, and a warned
+                // program stops at a prompt no session is there to answer.
+                "Bash(grep /*)",
+                "Bash(rg /*)",
                 "Bash(open /*)",
             ],
         }

@@ -107,6 +107,54 @@ fn a_line_is_a_branch_with_a_worktree_and_a_place_is_a_worktree_off_it() {
     ws.prepare_place("work-item/storefront/plan-rows/wi-1#own", "", "# the job\n").expect("a repeat changes nothing");
 }
 
+/// A place carries what its program reads and nothing the session wrote: the
+/// deny list of 89 and the agent definition the session is started as, both
+/// keyed on the *program* and neither in the place's commits (89, 173, 203).
+#[test]
+fn a_place_carries_the_programs_deny_list_and_the_agent_it_starts_as() {
+    let (_dir, root) = a_host_with("storefront", "program-files");
+    let mut store = FakeStore::default();
+    a_bolt(&mut store);
+    let mut ws = HostWorkspace::new(&mut store, &root);
+    ws.create_line("bolt/storefront/plan-rows", "").expect("the line");
+    let item = "work-item/storefront/plan-rows/wi-1#own";
+    ws.prepare_place(item, "work-item/storefront/plan-rows/wi-1", "# the job\n").expect("the place");
+    let place = place_dir(&root, "storefront", item, "bolt/storefront/plan-rows");
+
+    // The deny list, with what the order handed in beside the place.
+    ws.write_agent_settings(item, "claude", &["/flywheel/state/main".to_string()]).expect("the settings");
+    let settings = place.join(".claude/settings.local.json");
+    let read: serde_json::Value =
+        serde_json::from_str(&std::fs::read_to_string(&settings).expect("the place carries the deny list")).unwrap();
+    assert_eq!(read["permissions"]["blockReadsOutsideWorkingDirectories"], json!(true));
+    assert_eq!(read["permissions"]["additionalDirectories"], json!(["/flywheel/state/main"]));
+
+    // The agent the session starts as, where `claude --agent <name>` looks for
+    // it: without it the program refuses the name and no session starts.
+    ws.write_agent_definition(item, "claude", "capture-reader", "reads a capture into signals\n")
+        .expect("the definition");
+    let definition = std::fs::read_to_string(place.join(".claude/agents/capture-reader.md")).unwrap();
+    assert_eq!(
+        definition,
+        "---\nname: capture-reader\ndescription: \"reads a capture into signals\"\n---\n\nreads a capture into signals\n",
+        "the definition carries no header the program can resolve the name by (173)"
+    );
+
+    // A session's type is no program. Handed one, the place gets nothing —
+    // which is what every place got while the call site handed the type (173).
+    ws.prepare_place("bolt/storefront/plan-rows#own", "", "# the operator's place\n").expect("the line's own place");
+    let own = place_dir(&root, "storefront", "bolt/storefront/plan-rows#own", "bolt/storefront/plan-rows");
+    ws.write_agent_settings("bolt/storefront/plan-rows#own", "capture-reading", &["/flywheel".to_string()])
+        .expect("a type is no program");
+    ws.write_agent_definition("bolt/storefront/plan-rows#own", "capture-reading", "capture-reader", "the agent\n")
+        .expect("a type is no program");
+    assert!(!own.join(".claude").exists(), "a session's type was taken for its program: {own:?}");
+
+    // Neither file is the session's work, so the place is clean (203).
+    let status = Repo::at(&place).git(&["status", "--porcelain"]).unwrap();
+    assert!(status.trim().is_empty(), "the machinery's own files stand in the place's commits: {status}");
+}
+
 #[test]
 fn a_places_commits_merge_into_the_line_and_the_line_lands_on_the_git_host() {
     let (dir, root) = a_host_with("storefront", "merge-and-land");

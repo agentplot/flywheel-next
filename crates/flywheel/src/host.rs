@@ -2179,8 +2179,19 @@ fn performing(
             .into_iter()
             .flatten()
             .collect();
-            let kind = order.kind.clone();
-            with_workspace(store, |ws| ws.write_agent_settings(&place, &kind, &handed_in))?;
+            // The settings are the agent *program*'s — claude, codex,
+            // opencode — and not the session's type: a deny list handed the
+            // type matches no program and the place gets none (89, 173).
+            let program = order.program.clone();
+            with_workspace(store, |ws| ws.write_agent_settings(&place, &program, &handed_in))?;
+            // What the session is started as, where its program looks for it:
+            // `claude --agent <name>` resolves against the definitions the
+            // program can find, and what it finds must be the flywheel's own
+            // and not whatever this computer holds (89, 173).
+            if let Some(agent) = order.agent.clone() {
+                let definition = agent_text(&agent).map(|(definition, _)| definition).unwrap_or_default();
+                with_workspace(store, |ws| ws.write_agent_definition(&place, &program, &agent, &definition))?;
+            }
         }
         "rebase_place" => {
             with_workspace(store, |ws| ws.rebase_place(&place))?;
@@ -3178,6 +3189,26 @@ fn kind_of_agent(
             .and_then(|a| a.as_array())
             .and_then(|a| a.first())
             .and_then(|a| a.as_str().map(String::from).or_else(|| a.get("name").and_then(|n| n.as_str()).map(String::from)));
+    }
+    // Every other session is started as the agent its machine names on the
+    // session region: `curator` for a curation, `planner` for a planning, and
+    // the elaboration's own type where the machine says `by-type`
+    // (`curation.yaml`, `session.yaml` params.agent, ruling 3). Named by its
+    // stage instead, a session is started as a name the shipped set holds no
+    // definition for: the program refuses it and the order carries neither the
+    // agent nor its skill (89, 173).
+    let named = held
+        .config
+        .keys()
+        .filter(|region| flywheel_engine::tick::is_live(held, region))
+        .filter_map(|region| flywheel_engine::tick::state_def(defs, held, region))
+        .filter(|(_, state)| state.machine.as_deref() == Some("session"))
+        .find_map(|(_, state)| state.params.as_ref()?.get("agent")?.as_str().map(String::from));
+    if let Some(named) = named {
+        return match named.as_str() {
+            "by-type" => held.record.get("type").and_then(|v| v.as_str()).map(String::from),
+            _ => Some(named),
+        };
     }
     stage.map(String::from)
 }

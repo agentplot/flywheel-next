@@ -132,6 +132,18 @@ fn a_place_denies_what_the_order_did_not_hand_in() {
     let denied = settings["permissions"]["deny"].as_array().expect("a deny list");
     assert!(denied.iter().any(|rule| rule.as_str() == Some("Bash(cd /*)")), "{denied:?}");
     assert!(denied.iter().any(|rule| rule.as_str() == Some("Bash(cat /*)")), "{denied:?}");
+    assert!(denied.iter().any(|rule| rule.as_str() == Some("Bash(grep /*)")), "{denied:?}");
+    assert!(denied.iter().any(|rule| rule.as_str() == Some("Bash(rg /*)")), "{denied:?}");
+    // A rule the program cannot read is a rule it skips — and it says so at a
+    // prompt no session is there to answer, so nothing starts. A prefix
+    // match's `:*` ends the pattern or the rule is no rule (173).
+    for rule in denied {
+        let rule = rule.as_str().unwrap_or_default();
+        assert!(
+            !rule.contains(":*") || rule.ends_with(":*)"),
+            "`{rule}` is a rule the program skips, and it warns rather than starts"
+        );
+    }
 
     // A kind whose program has no such settings is trusted to its order, and
     // nothing of the machinery's correctness rests on the deny list.

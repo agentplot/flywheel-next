@@ -492,7 +492,17 @@ pub trait Workspace {
     /// a session reads its place, the paths the order hands in, and nothing
     /// else (89, 173). A binding that makes no real place writes nothing, and
     /// a kind with no such settings is trusted to its order.
-    fn write_agent_settings(&mut self, _place: &str, _kind: &str, _handed_in: &[String]) -> Result<()> {
+    fn write_agent_settings(&mut self, _place: &str, _program: &str, _handed_in: &[String]) -> Result<()> {
+        Ok(())
+    }
+
+    /// The agent definition the session is started as, written where its
+    /// program looks for it: `claude --agent <name>` resolves a name the
+    /// program can find, and what it finds must be the flywheel's own
+    /// definition (89, 173, `sessions.yaml` kinds). A binding that makes no
+    /// real place writes nothing, and a program with no such convention is
+    /// started without one.
+    fn write_agent_definition(&mut self, _place: &str, _program: &str, _agent: &str, _body: &str) -> Result<()> {
         Ok(())
     }
 
