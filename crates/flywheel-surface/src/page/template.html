@@ -384,6 +384,16 @@ label.chore .f{margin-left:auto;font:11px var(--mono);color:var(--ink3)}
 .thread.lit .th-name{background:var(--lit);box-shadow:0 0 0 2px var(--lit-line)} .thread.lit .th-line{border-color:var(--lit-line)} .thread.lit .th-head::before{background:var(--lit-line)}
 .thread.open-in-dock .th-line{box-shadow:-3px 0 0 var(--accent-soft)}
 /* ledger: a bolt is a machine; flat, square, units as a chain left to right */
+.chores-lane{margin:0 0 12px}
+.chores-lane .ch-head{display:flex;align-items:baseline;gap:8px;padding:3px 2px 4px;border-bottom:1px solid var(--line);font:600 10.5px var(--mono);letter-spacing:.06em;text-transform:uppercase;color:var(--ink2)}
+.chores-lane .ch-head .ch-repo{text-transform:none;letter-spacing:0;font-weight:400;color:var(--ink3)}
+.chores-lane .ch-head .ch-n{margin-left:auto;font-weight:400;letter-spacing:0;text-transform:none;color:var(--ink3)}
+.chores-lane .ch-item{display:flex;align-items:baseline;gap:8px;min-width:0;padding:4px 2px;border-bottom:1px solid var(--line2);font-size:12px;cursor:pointer}
+.chores-lane .ch-item:last-child{border-bottom:0}
+.chores-lane .ch-item .ch-nm{min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;font-weight:600;color:var(--ink);text-decoration:none}
+.chores-lane .ch-item .ch-nm:hover{text-decoration:underline;text-decoration-color:var(--ink3)}
+.chores-lane .ch-item .ch-st{margin-left:auto;font:11px var(--mono);color:var(--ink3);white-space:nowrap}
+.chores-lane .ch-item .marks{margin-left:6px}
 .ledger{background:var(--surface2);border:1px solid var(--ink3);border-radius:0;margin-bottom:12px;cursor:pointer;font-size:12px}
 .ledger.lit{background:var(--lit);border-color:var(--lit-line);box-shadow:0 0 0 2px var(--lit)}
 .ledger.open-in-dock{outline:1px solid var(--accent);outline-offset:-1px}

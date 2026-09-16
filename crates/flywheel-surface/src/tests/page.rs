@@ -1471,6 +1471,64 @@ fn a_chores_fold_carries_a_drop_on_each_row() {
     assert!(!storefront.contains("row-drop"), "a fold of one is answered by the card's own drop: {storefront}");
 }
 
+/// An accepted chore of a shared line stands in Construction under a "chores"
+/// head of its repository, and is never drawn as a bolt: two repositories'
+/// chores read apart, and neither line is a ledger with a chain (S15, S75, 60).
+#[test]
+fn accepted_chores_stand_under_a_chores_head_per_repository() {
+    let (mut store, world, defs) = a_page();
+    let at = commands::now(&store).expect("a point");
+    chores_of_repository(&mut store, &defs, "atlas", &["agents-md", "rename-ref"]);
+    chores_of_repository(&mut store, &defs, "storefront", &["readme-row", "citation-fix"]);
+    // Both of atlas's are accepted; storefront's first is, and its second is
+    // still proposed, so it stays a slip and takes no place under the head.
+    for (id, life) in [
+        ("unit/atlas/chore-1", "approved"),
+        ("unit/atlas/chore-2", "in-flight"),
+        ("unit/storefront/chore-1", "approved"),
+    ] {
+        let mut held = store.get(id).expect("a read").expect("the chore");
+        held.config.insert("life".into(), life.into());
+        held.entered_at.insert("life".into(), at);
+        let base = held.seq;
+        store.put(id, &held, base).expect("the chore's state is written");
+    }
+    commands::rail(&mut store, &defs).expect("the rail derives");
+    let html = rendered(&mut store, &world, &defs);
+
+    let head = |repository: &str| -> String {
+        let at = html
+            .find(&format!("<section class=\"chores-lane\" data-repository=\"{repository}\">"))
+            .unwrap_or_else(|| panic!("{repository} has no chores head: {html}"));
+        let rest = &html[at..];
+        rest[..rest.find("</section>").expect("the head closes")].to_string()
+    };
+    let atlas = head("atlas");
+    assert!(atlas.contains(">chores<") && atlas.contains(">atlas<"), "the head names its repository: {atlas}");
+    assert!(atlas.contains("2 chores"), "the head counts what is under it: {atlas}");
+    for (id, named) in [("unit/atlas/chore-1", "agents md"), ("unit/atlas/chore-2", "rename ref")] {
+        assert!(atlas.contains(&format!("href=\"#dock-{id}\"")), "{id} is not an item under atlas's head: {atlas}");
+        assert!(atlas.contains(named), "an item is not named by its document: {atlas}");
+    }
+    let storefront = head("storefront");
+    assert!(storefront.contains("1 chore<"), "the head counts one: {storefront}");
+    assert!(storefront.contains("href=\"#dock-unit/storefront/chore-1\""), "{storefront}");
+    assert!(
+        !storefront.contains("unit/storefront/chore-2"),
+        "a proposed chore stands as a slip and not under the head (S14): {storefront}"
+    );
+    assert!(
+        !atlas.contains("unit/storefront/"),
+        "two repositories' chores are under one head: {atlas}"
+    );
+
+    // And never as a bolt: no ledger is drawn for either line (S75, 209).
+    assert!(
+        !html.contains("<article class=\"ledger\""),
+        "an accepted chore is drawn as a bolt's ledger (S75)"
+    );
+}
+
 /// A row's letter stays with its chore: once the second of three is dropped the
 /// fold keeps its number and the rows a and c, on the card and in the dock, and
 /// a tenth chore joining is d. A chore of the repository merged before the fold

@@ -2328,18 +2328,110 @@ fn lane_head(read: &Read, title: &str, sub: &str, machines: &[&str], mine: &[&st
 /// read as the machine talking to itself, and the grouping is what 141 asks for
 /// (141, D16).
 fn lane_group(read: &Read, id: &str, group: &str, mine: &[&status::Row]) -> String {
-    let rows = group_rows(read, group, mine);
+    let held = group_rows(read, group, mine);
+    // An accepted chore is work on a repository's shared line, not a bolt, so
+    // it stands under a head of its own rather than in a ledger (S15, S75, 60).
+    let (chores, rows): (Vec<&status::Row>, Vec<&status::Row>) =
+        held.into_iter().partition(|row| accepted_shared_line_chore(read, row));
     let slug = group.replace(' ', "-");
     format!(
-        "<section class=\"sec-h-group{empty}\" data-group=\"{slug}\">\n<h2>{group}</h2>\n{rows}</section>\n",
-        empty = match rows.is_empty() {
+        "<section class=\"sec-h-group{empty}\" data-group=\"{slug}\">\n<h2>{group}</h2>\n{rows}{chores}</section>\n",
+        empty = match rows.is_empty() && chores.is_empty() {
             true => " empty",
             false => "",
         },
         rows = lists::page_with(&rows, 0, None, &format!("{id}.{slug}"), lists::Row::Div, |row| {
             object_on_the_board(read, row, mine)
         }),
+        chores = chores_heads(read, &chores),
     )
+}
+
+/// An accepted chore of a repository's shared line: a unit of the chore type
+/// that hangs off no bolt and is past its proposal. A proposed one is a slip,
+/// answered or dropped; an accepted one is an item on that line (60, S14, S75).
+fn accepted_shared_line_chore(read: &Read, row: &status::Row) -> bool {
+    if row.machine != "unit" {
+        return false;
+    }
+    let Some(object) = read.object(&row.object) else {
+        return false;
+    };
+    if object.record.get("type").and_then(|v| v.as_str()) != Some("chore") {
+        return false;
+    }
+    if object.parent.as_deref().is_some_and(|parent| parent.starts_with("bolt/")) {
+        return false;
+    }
+    !matches!(
+        object.config.get("life").map(String::as_str),
+        None | Some("in-proposal")
+            | Some("proposed")
+            | Some("deferred")
+            | Some("withdrawn")
+            | Some("superseded")
+            | Some("dropped")
+            | Some("retired")
+    )
+}
+
+/// The accepted chores of a lane, under a "chores" head per repository and
+/// never drawn as a bolt: two repositories' chores read apart, and neither is a
+/// ledger with a chain (S15, S75, 209).
+fn chores_heads(read: &Read, chores: &[&status::Row]) -> String {
+    if chores.is_empty() {
+        return String::new();
+    }
+    let mut by_repository: BTreeMap<&str, Vec<&status::Row>> = BTreeMap::new();
+    for row in chores {
+        let repository = read
+            .object(&row.object)
+            .and_then(|o| o.record.get("repository"))
+            .and_then(|v| v.as_str())
+            .or_else(|| repository_of(&row.object))
+            .unwrap_or("the instance");
+        by_repository.entry(repository).or_default().push(row);
+    }
+    let mut out = String::new();
+    for (repository, rows) in by_repository {
+        let _ = write!(
+            out,
+            "<section class=\"chores-lane\" data-repository=\"{repository}\">\n\
+             <div class=\"ch-head\"><span class=\"ch-k\">chores</span>\
+             <span class=\"ch-repo\">{repository}</span>\
+             <span class=\"ch-n\">{how_many} {counted}</span></div>\n",
+            repository = escape(repository),
+            how_many = rows.len(),
+            counted = counted("chores", rows.len()),
+        );
+        for row in rows {
+            out.push_str(&chore_item(read, row));
+        }
+        out.push_str("</section>\n");
+    }
+    out
+}
+
+/// One accepted chore as an item on its line: what it fixes, in the words its
+/// document is named by, and what it is doing (S75, S232).
+fn chore_item(read: &Read, row: &status::Row) -> String {
+    let named = read
+        .object(&row.object)
+        .and_then(|o| o.record.get("document"))
+        .and_then(|v| v.as_str())
+        .map(chore_words)
+        .unwrap_or_else(|| name_of(&row.object).to_string());
+    let (state, _) = state_and_rest(&row.said);
+    let item = format!(
+        "<div class=\"ch-item\"{attributes}>\
+         <a class=\"ch-nm\" href=\"#dock-{object}\">{named}</a>\
+         <span class=\"ch-st\">{state}</span></div>\n",
+        attributes = board_attributes(row),
+        object = escape(&row.object),
+        named = escape(&named),
+        state = escape(state),
+    );
+    with_marks(item, marks(read, &row.object))
 }
 
 /// What a lane with nothing in it says, which is what to do next (S214, S225).
