@@ -3131,8 +3131,14 @@ fn quote(read: &Read, row: &status::Row) -> String {
         "capture" => reader_chip(read, &row.object),
         _ => String::new(),
     };
+    // A note the operator can act on takes the focus: Tab reaches it, its own
+    // letters press its verbs and Enter opens its page (S233, S218).
+    let focus = match hand.is_empty() {
+        true => String::new(),
+        false => format!(" tabindex=\"0\" data-note=\"{}\"", escape(&row.object)),
+    };
     format!(
-        "<div class=\"quote\"{attributes}>\
+        "<div class=\"quote\"{attributes}{focus}>\
          <q><a href=\"#dock-{object}\">{said}</a></q>\
          <span class=\"qm\">{under}</span>{reader}{next}{hand}</div>\n",
         attributes = board_attributes(row),
@@ -3530,6 +3536,20 @@ fn surface(read: &Read, object: &Object, opened: bool) -> String {
     );
     out.push_str(&dock_head(read, object, row));
     out.push_str(&dock::body(read, object, row));
+    // A note's verbs stand at rest in the drawer's footer, where a decision's
+    // page carries its answers: everywhere else they wait for the hand, and on
+    // a phone this is the only place they are (S233, S28, 311).
+    if matches!(object.machine.as_str(), "capture" | "signal") {
+        let hand = hand::controls(read, &object.id);
+        if !hand.is_empty() {
+            let _ = write!(
+                out,
+                "<div class=\"dk-f\"><div class=\"dk-answers hand-h\" data-answerable=\"false\">\n\
+                 <div class=\"fl\">your hand<span class=\"r\">or leave it to curation</span></div>\n\
+                 {hand}</div></div>\n"
+            );
+        }
+    }
     out.push_str("</article>\n");
     out
 }
@@ -3592,14 +3612,6 @@ fn dock_head(read: &Read, object: &Object, row: Option<&status::Row>) -> String 
     // title where the number already is: one place to read, one place to
     // press (S220, S27, 308).
     out.push_str(&dock_answers(read, &dock::answers_object(read, object)));
-    // A note carries its controls under its title, where a decision carries
-    // its answers, and asks nothing (19a, S224).
-    if matches!(object.machine.as_str(), "capture" | "signal") {
-        let hand = hand::controls(read, &object.id);
-        if !hand.is_empty() {
-            let _ = write!(out, "<div class=\"dk-answers hand-h\" data-answerable=\"false\">\n{hand}</div>\n");
-        }
-    }
     out.push_str("</div>\n");
     out
 }

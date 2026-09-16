@@ -243,7 +243,11 @@ pub fn rows_part(read: &Read, from: usize) -> String {
         };
         let _ = write!(
             out,
-            "<div class=\"quote tray-row\" data-signal=\"{}\"><q>{}</q><span class=\"qm\">{}</span>{}</div>\n",
+            // The row takes the focus as the board's note does, so twenty rows
+            // read as twenty quotes and the one under the hand shows its verbs
+            // (S233).
+            "<div class=\"quote tray-row\" data-signal=\"{0}\" data-note=\"{0}\" tabindex=\"0\">\
+             <q>{1}</q><span class=\"qm\">{2}</span>{3}</div>\n",
             escape(&signal.id),
             escape(said),
             escape(&line),

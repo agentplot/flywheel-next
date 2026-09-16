@@ -1291,6 +1291,83 @@ fn a_capture_added_to_a_bolt_reads_added_to_it() {
     assert!(html.contains("<span class=\"v built\">built</span>"), "Recently done no longer reads built: {html}");
 }
 
+/// The stylesheet and the script the page asks its own host for.
+fn bundled(address: String) -> &'static str {
+    let file = address.rsplit('/').next().expect("a name").to_string();
+    crate::page::bundled(&file).expect("the served bundle").1
+}
+
+/// At rest a note is its words, its source and the line saying who acts next,
+/// and no verb: its five verbs are one row under that line, in their order,
+/// shown while the pointer is over it or while it holds the focus, and at rest
+/// in the drawer's footer, which is where a phone answers (S233, S38, 311).
+#[test]
+fn a_captures_verbs_are_one_row_shown_under_the_hand() {
+    let (mut store, _, defs) = a_page();
+    let mut world = world::Files::new().tracking("atlas");
+    let capture = a_note(&mut store, &mut world, &defs, "the rows lose their numbers on the second page");
+    let html = rendered(&mut store, &world, &defs);
+
+    // One row, under the line, with the five verbs in their order and no other.
+    let at = html.find(&format!("data-hand=\"{capture}\"")).expect("the note carries no row of verbs");
+    let line = html.find("<span class=\"next\">").expect("the note says who acts next");
+    assert!(line < at, "the verbs stand above the line saying who acts next (S233)");
+    let row = &html[at..];
+    let mut last = 0;
+    for (verb, key) in [
+        ("build now", "b"),
+        ("add to bolt…", "a"),
+        ("make an intent", "m"),
+        ("attach to…", "t"),
+        ("drop", "d"),
+    ] {
+        let mark = format!(">{verb}<span class=\"k\">{key}</span>");
+        let found = row.find(&mark).unwrap_or_else(|| panic!("the row has no `{verb}`: {row}"));
+        assert!(found > last, "`{verb}` is out of the row's order (S233)");
+        last = found;
+    }
+    assert!(
+        html.contains(&format!("tabindex=\"0\" data-note=\"{capture}\"")),
+        "the note does not take the focus, so Tab never reaches its verbs (S233, S218): {html}"
+    );
+
+    // Hidden at rest, shown under the hand, and never on a phone's board.
+    let css = bundled(crate::page::style_address());
+    assert!(css.contains(".quote .answers.hand{display:none"), "a note shows its verbs at rest (S233)");
+    assert!(
+        css.contains(".quote:hover .answers.hand,.quote:focus .answers.hand,.quote:focus-within .answers.hand{display:flex}"),
+        "the verbs never show under the hand (S233)"
+    );
+    assert!(css.contains(".dk-f .answers.hand{display:flex"), "the drawer's footer hides them (S233)");
+
+    // The drawer carries the row at rest, in its footer and not in its head.
+    let page = docked(&mut store, &world, &defs, &capture);
+    let footer = page.find("<div class=\"dk-f\">").expect("the drawer has no footer for the note");
+    let hand = page.find(&format!("data-hand=\"{capture}\"")).expect("the footer carries no verbs");
+    assert!(footer < hand, "the note's verbs are not in the drawer's footer (S233, S28)");
+}
+
+/// While a note holds the focus its own letters press its verbs — b, a, m, t
+/// and d, shown on the buttons — and Enter opens its page; the page's own b
+/// and m are not heard until the focus leaves it (S233, S218).
+#[test]
+fn a_focused_captures_letters_press_its_verbs() {
+    let (mut store, _, defs) = a_page();
+    let mut world = world::Files::new().tracking("atlas");
+    let capture = a_note(&mut store, &mut world, &defs, "the rows lose their numbers on the second page");
+    let html = rendered(&mut store, &world, &defs);
+    for key in ["b", "a", "m", "t", "d"] {
+        assert!(html.contains(&format!("data-key=\"{key}\"")), "no verb is pressed by `{key}`: {html}");
+        assert!(html.contains(&format!("<span class=\"k\">{key}</span>")), "`{key}` is not shown on its button");
+    }
+    assert!(html.contains(&format!("data-note=\"{capture}\"")), "the letters have no note to act on");
+
+    let js = bundled(crate::page::script_address());
+    assert!(js.contains("closest('[data-note]')"), "the script hears no letter on a focused note (S233)");
+    assert!(js.contains(".hand [data-key=\"'+k+'\"]"), "a focused note's letter presses no verb (S233)");
+    assert!(js.contains("openDock(held.getAttribute('data-note'))"), "Enter on a note opens no page (S233)");
+}
+
 /// A proposed intent's card shows its weight and what it proposes: curation
 /// proposed it, how many signals it cites, from how many sources, over what
 /// span counted by event date, and the elaborations it proposes each with its

@@ -900,6 +900,11 @@ a.btn.pri{color:var(--accent-ink)}
   .tabs .tab{flex:1;display:flex;flex-direction:column;align-items:center;justify-content:center;gap:1px;font-size:12px;color:var(--ink3);font-weight:700;text-decoration:none}
   .tabs .tab .bd{font:600 10px var(--mono);color:var(--ink3)}
   .back { display: block; }
+  /* A phone has no hover, so a note shows no verb on the board or in the tray:
+     a tap opens its page full screen and its verbs stand in the footer there
+     (S233, S38, 306, 311). */
+  .quote .answers.hand,.quote:hover .answers.hand,.quote:focus .answers.hand,.quote:focus-within .answers.hand{display:none}
+  .dk-f .answers.hand{display:flex}
   .dock { position: fixed; inset: 0; background: var(--surface); overflow: auto; z-index: 25; border-left: 0; width: 100%; }
   .dock:not(:has(.surface:target)):not(:has(.surface[data-opened="true"])) { display: none; }
   /* The dock lives under the board panel, and under 760px a panel that is not
@@ -939,7 +944,18 @@ a.btn.pri{color:var(--accent-ink)}
    asks nothing (19a, S224). A pick is a list under its control, each choice its
    own press, so it works by tap with nothing behind a hover (311). */
 .quote .next{display:block;font-size:11.5px;color:var(--ink3);margin-top:4px;line-height:1.35}
-.quote .answers.hand{margin-top:8px;cursor:default}
+/* At rest a note is its words, its source and the line saying who acts next,
+   and no verb at all, so a lane of them and a tray of them read as notes. The
+   row of five verbs shows under that line while the pointer is over the note
+   and while it holds the focus; the drawer's footer carries it at rest, which
+   is where a phone answers (S233, 311). */
+.quote[data-note]{cursor:pointer}
+.quote .answers.hand{display:none;margin-top:6px;cursor:default}
+.quote:hover .answers.hand,.quote:focus .answers.hand,.quote:focus-within .answers.hand{display:flex}
+.dk-f .answers.hand{display:flex;margin-top:0;gap:6px}
+.quote .answers.hand button,.quote .answers.hand summary{font-weight:500;color:var(--ink2)}
+.quote .answers.hand button:hover,.quote .answers.hand summary:hover{color:var(--ink)}
+.quote .answers.hand button.drop{color:var(--crit)}
 .answers.hand{display:flex;flex-wrap:wrap;gap:6px;align-items:flex-start}
 .answers.hand form.answer{margin:0;display:inline-flex}
 .answers.hand button{min-height:32px;padding:5px 10px}
@@ -1475,6 +1491,13 @@ body[data-served="view"] .dk-b{overflow:visible}
       if(link && obj.contains(link)) target=decodeURIComponent(link.getAttribute('href').slice(6));
       e.preventDefault(); openObject(target); return;
     }
+    // A note is one thing to press: a click anywhere on it that is not one of
+    // its own controls opens its page, where its verbs stand at rest — which
+    // is how a phone reaches them (S233, 311).
+    var note=t.closest('[data-note]');
+    if(note && !t.closest('a,button,input,label,form,select,textarea,details,summary')){
+      e.preventDefault(); openDock(note.getAttribute('data-note')); return;
+    }
     var chip=t.closest('#hosts .host[data-host]');
     if(chip){ e.preventDefault(); openObject('host/'+chip.getAttribute('data-host')); return; }
   });
@@ -1554,6 +1577,15 @@ body[data-served="view"] .dk-b{overflow:visible}
     if((t===box || t===palq) && (e.key==='ArrowDown' || e.key==='ArrowUp')){ if(move(e.key==='ArrowDown' ? 1 : -1)) e.preventDefault(); return; }
     if(typing(t)||e.metaKey||e.ctrlKey||e.altKey) return;
     var k=e.key;
+    // While a note holds the focus its own letters press its verbs and Enter
+    // opens its page; the page's own b and m are not heard until the focus
+    // leaves it, and j and k still walk the rail (S233, S218).
+    var held=document.activeElement && document.activeElement.closest ? document.activeElement.closest('[data-note]') : null;
+    if(held){
+      if(k==='Enter'){ e.preventDefault(); openDock(held.getAttribute('data-note')); return; }
+      var verb=held.querySelector('.hand [data-key="'+k+'"]');
+      if(verb){ e.preventDefault(); verb.click(); return; }
+    }
     // `/` opens the box with the commands already listed (S56).
     if(k==='/'){ e.preventDefault(); openBox('/'); return; }
     if(k==='j'||k==='ArrowDown'){ e.preventDefault(); focusCard(at+1); return; }
