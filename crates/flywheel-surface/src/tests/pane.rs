@@ -82,3 +82,66 @@ fn a_gone_pane_offers_nothing_to_copy() {
     assert!(link.contains("lost"), "{link}");
     assert!(!link.contains("data-sess-attach"), "{link}");
 }
+
+/// The bundle's own file, as the host serves it.
+fn bundled(address: String) -> &'static str {
+    let file = address.rsplit('/').next().expect("a name").to_string();
+    crate::page::bundled(&file).expect("the served bundle").1
+}
+
+/// The popover closes as a picker does: on Esc, a click anywhere outside it,
+/// another picker, a dock page or the palette — and on a second press of its
+/// own chip. The palette is the one that could be raised by a key rather than
+/// a click, so it closes the popover itself (S234, S233, S56, S57).
+#[test]
+fn the_palette_closes_an_open_pane_popover() {
+    let js = bundled(crate::page::script_address());
+
+    let opens = js
+        .split("function openBox(")
+        .nth(1)
+        .and_then(|rest| rest.split("function closeBox(").next())
+        .expect("the palette's own opening is in the bundle");
+    assert!(
+        opens.contains("closePanePop()"),
+        "raising the palette leaves a pane popover open (S234): {opens}"
+    );
+
+    // And the rest of the ways it goes, which a click or a key reaches.
+    assert!(
+        js.contains("addEventListener('hashchange', closePanePop)"),
+        "a dock page opening leaves the popover open (S234)"
+    );
+    assert!(
+        js.contains("if(panepop && panepop.innerHTML && !(t.closest && t.closest('#panepop'))) closePanePop();"),
+        "a click outside — another picker among them — leaves the popover open (S234)"
+    );
+    assert!(
+        js.contains("if(e.key==='Escape' && panepop && panepop.innerHTML)"),
+        "Esc does not close the popover first (S56)"
+    );
+    assert!(
+        js.contains("if(panepop.getAttribute('data-for')===d.sessId && panepop.innerHTML){ closePanePop(); return; }"),
+        "a second press on the same chip does not close it (S234)"
+    );
+}
+
+/// On a phone the popover is a bottom sheet, as the palette and a picker are:
+/// a chip is too small to hang a 380px panel off, and a sheet above the tabs
+/// is what a thumb reaches (S234, S233, S30, 306).
+#[test]
+fn a_pane_popover_is_a_bottom_sheet_under_760px() {
+    let css = bundled(crate::page::style_address());
+    let (desktop, phone) = css
+        .split_once("@media (max-width: 760px)")
+        .expect("the bundle lays out under 760px");
+
+    assert!(
+        desktop.contains(".panepop{position:fixed;"),
+        "the popover is not placed at all on the desktop: {desktop}"
+    );
+    assert!(
+        phone.contains(".panepop{left:8px!important;right:8px;top:auto!important;bottom:58px;width:auto;border-radius:12px}"),
+        "the popover is still anchored under its chip at phone width (S234): {phone}"
+    );
+}
