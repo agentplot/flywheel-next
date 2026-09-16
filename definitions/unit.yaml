@@ -8,7 +8,7 @@
 # planning silently; an approved unstarted one is a decision; a started one
 # follows the bolt's claim-moved decision (35).
 machine: unit
-version: 5
+version: 6
 kind: object
 tier: core
 object: unit
@@ -169,10 +169,14 @@ regions:
       merged:
         tail: merged
         transitions:
-          - when: {parent: {in: [landed]}}
+          - when: {parent: {in: [landed, closed]}}
             to: landed
+            note: a bolt's unit lands with the bolt; an intent's conflict chore lands with the intent's line, which lands as the intent closes (52)
+          - when: {ev: unit.shared_line, is: true}
+            to: landed
+            note: a chore under a repository or the instance merged straight onto the shared line, and no bolt stands above it to land with, so its merge is its landing — final on the same pass, its pin stale, its cited claim's cell due again (60, 62, 64)
       landed:
-        doc: a unit that landed with an empty claims list joins the review surface's batch — the units landed since the operator's mark citing no claim, read in one sitting under one question (317, model.md 8.5). The answer is recorded by record_claim_answer against the unit; the unit is not reopened for it and nothing waits on it. A chore that did cite a claim makes that claim's cell due again at its landing (64)
+        doc: a unit that landed with an empty claims list joins the review surface's batch — the units landed since the operator's mark citing no claim, read in one sitting under one question (317, model.md 8.5). The answer is recorded by record_claim_answer against the unit; the unit is not reopened for it and nothing waits on it. A chore that did cite a claim makes that claim's cell due again at its landing (64). A shared-line chore comes here from merged on the same pass (60)
         final: true
       withdrawn:
         doc: back to planning with the notes; the next proposal is a new unit

@@ -68,6 +68,7 @@ evidence:
   proposal.answer_forwarded: {read: "the unit the answer names lists a response with id <this response id>/forward in applied_responses"}
   unit.target_is_new_bolt: {read: "get(id).target.new_name is set and target.bolt is not"}
   unit.deps_merged: {read: "every id in get(id).depends_on has state merged or landed"}
+  unit.shared_line: {read: "get(id).parent names a repository or the instance — get(id).scope is shared-line (60, 123)"}
   unit.claim_moved: {read: "get(id).claims names claim@v and the blueprints' shared line holds that claim at a version > v, and get(id).citation_choices holds no choice for that claim and version"}
   unit.claim_answer: {read: "get(id).claim_answer, none when the field is absent; the review view lists the landed units whose claims are empty and whose claim_answer is none, since the rail's reviewed mark (317)"}
   unit.bolt_exists: {read: "a bolt record exists with id derived from (repository, new_name) or the unit's target.bolt names an existing bolt"}

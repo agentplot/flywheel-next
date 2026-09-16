@@ -363,6 +363,29 @@ pub fn evidence<S: Records>(
             }))
         }
 
+        // ---- a chore that stands on a shared line (60, 62, 123)
+        //
+        // "get(id).parent names a repository or the instance — get(id).scope is
+        // shared-line" (`record-derived.yaml`). Such a unit has no bolt above it
+        // to land with, so its merge is its landing. The parent is what is read
+        // and the scope is the same fact written on the record, so a unit whose
+        // parent has gone is still read by what it was made with.
+        "unit.shared_line" => {
+            let Some(unit) = held.as_ref() else {
+                return Some(json!(false));
+            };
+            if unit.record.get("scope").and_then(|v| v.as_str()) == Some("shared-line") {
+                return Some(json!(true));
+            }
+            json!(unit.parent.as_deref().is_some_and(|parent| {
+                store
+                    .get(parent)
+                    .ok()
+                    .flatten()
+                    .is_some_and(|o| o.machine == "repository" || o.machine == "instance")
+            }))
+        }
+
         // ---- the work item's slot (31, 32)
         //
         // "host.running < host.bound and no ready item of an earlier ordinal on

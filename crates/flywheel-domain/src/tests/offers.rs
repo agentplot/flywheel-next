@@ -212,6 +212,35 @@ fn a_pin_is_stale_once_its_record_has_ended() {
     assert_eq!(ended.reference, offers::pin_of(&format!("{session}#0")));
     assert_eq!(ended.record.as_deref(), Some(made[0].as_str()));
     assert_eq!((ended.repository.as_str(), ended.revision.as_str()), (signals::BLUEPRINTS, revision));
+
+    // And a chore of a repository's shared line ends by merging: its merge is
+    // its landing, so the pin it was done from goes stale on that pass and
+    // reconciliation takes it (60, 62). Until the merge was a landing this pin
+    // stood for ever, which is what 23.6's run left behind.
+    let second = "session/curation/main/2";
+    offer_at(&mut store, second, "chore", "flywheel/curation/chores/rename-ref.md", Some("atlas"), Some(revision));
+    let merging = offers::record(&mut store, &mut world, &defs, second, "curation/main", now()).unwrap();
+    let chore = merging.first().expect("the second chore");
+    let mut unit = store.get(chore).unwrap().expect("the chore unit");
+    unit.config.retain(|region, _| !region.starts_with("life."));
+    unit.config.insert("life".into(), "merged".into());
+    let base = unit.seq;
+    Records::put(&mut store, chore, &unit, base).unwrap();
+    // The fake store answers only what a test seeds; the read behind this name
+    // is `chore_landing`'s (`record-derived.yaml` unit.shared_line).
+    store.given(chore, "unit.shared_line", json!(true));
+    assert!(
+        !offers::stale_pins(&store, &world, &defs).unwrap().iter().any(|pin| pin.record.as_deref() == Some(chore.as_str())),
+        "a merged chore's pin is stale before the pass that lands it"
+    );
+
+    commands::tick(&mut store, &defs, &flywheel_atoms::Scope::All, |_, _, _, _| true, |_, _, _| {}).unwrap();
+    let stale = offers::stale_pins(&store, &world, &defs).unwrap();
+    let landed = stale
+        .iter()
+        .find(|pin| pin.record.as_deref() == Some(chore.as_str()))
+        .expect("the merged chore's pin is stale once it lands (60, 62)");
+    assert_eq!(landed.reference, offers::pin_of(&format!("{second}#0")));
 }
 
 /// A proposed or deferred chore of a bolt that is dropped retires with the bolt,

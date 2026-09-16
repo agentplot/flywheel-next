@@ -582,6 +582,18 @@ impl Store {
             "item.send_backs" => json!(obj.and_then(|o| o.counters.get("send_backs").copied()).unwrap_or(0)),
             "item.retry_max" => json!(3),
             "item.deps_merged" | "unit.deps_merged" => json!(obj.map(|o| self.deps_merged(o)).unwrap_or(true)),
+            // A chore under a repository or the instance stands on that shared
+            // line, so its merge is its landing; the stand-in and the git
+            // profile answer a record-derived name alike (60, 62,
+            // `record-derived.yaml` unit.shared_line).
+            "unit.shared_line" => json!(obj.is_some_and(|o| {
+                o.record.get("scope").and_then(|v| v.as_str()) == Some("shared-line")
+                    || o.parent.as_deref().is_some_and(|parent| {
+                        self.objects
+                            .get(parent)
+                            .is_some_and(|above| above.machine == "repository" || above.machine == "instance")
+                    })
+            })),
             "item.slot_free" => json!(self.host_running() < self.host_bound),
             "unit.claim_moved" | "bolt.citations_moved" | "bolt.chores_outstanding" | "bolt.hold_since_last_merge" => json!(false),
             "unit.items_exist" => json!(self.objects.values().any(|o| o.parent.as_deref() == Some(object) && o.machine == "work-item")),

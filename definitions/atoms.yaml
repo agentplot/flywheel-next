@@ -172,6 +172,7 @@ evidence:
   unit.claim_answer:       {of: unit, type: enum, values: [none, captured, declined], doc: "the operator's answer on the review surface for a unit that landed citing no claim: none until asked, captured when its change was attached to an intent where a claim is written, declined when nothing there was worth one. Stored on the unit and never on the ledger, since a unit naming no claim has no cell (317, 34a); asked once and stored once, as a not-applicable verdict is (101)"}
   unit.target_is_new_bolt: {of: unit, type: bool}
   unit.deps_merged:        {of: unit, type: bool}
+  unit.shared_line:        {of: unit, type: bool, doc: "the unit stands under a repository or the instance, a chore off every bolt (60, 123): its fix merges straight onto the shared line and no bolt stands above it to land with, so its merge is its landing (62)"}
   unit.type:               {of: unit, type: string}
   unit.type_version:       {of: unit, type: int}
   unit.type_defined:       {of: unit, type: bool, doc: the definitions in force hold the unit's type — the shipped registry lists it, or a template of that name the core set does not carry, the instance's own (223); false is a type the instance does not know, and the unit does not start until the operator sets one (85a)}
