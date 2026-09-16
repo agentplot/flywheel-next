@@ -1056,12 +1056,13 @@ fn propose_unit<S: StateStore, W: World + ?Sized>(
 ) -> Result<Outcome> {
     let at = commands::now(store)?;
     let capture = call.text("capture").map(|c| c.trim().to_string()).filter(|c| !c.is_empty());
+    let words = capture.as_deref().and_then(|c| words_of(store, world, c));
     // Built from a capture with no bolt named, the bolt is named from the
     // capture's first words: the operator types no name (S217).
     let (named, from_words) = match call.text("bolt").map(|b| b.trim().to_string()).filter(|b| !b.is_empty()) {
         Some(named) => (named, false),
-        None => match capture.as_deref().and_then(|c| words_of(store, world, c)) {
-            Some(words) => (signals::name_from_words(&words), true),
+        None => match words.as_deref() {
+            Some(words) => (signals::name_from_words(words), true),
             None => bail!("`propose-unit` takes the bolt's name, and the call names none"),
         },
     };
@@ -1099,25 +1100,29 @@ fn propose_unit<S: StateStore, W: World + ?Sized>(
     let Some(machine) = defs.get(&kind).filter(|m| m.regions.contains_key("stages")) else {
         bail!("`propose-unit`: `{kind}` is no unit type this set carries (37, 57)");
     };
-    // A name taken from the words takes the next number where a unit or a bolt
-    // holds it already; a name the operator gave is given once (I1).
-    let name = match from_words {
-        true => {
-            let taken = |name: &str| -> Result<bool> {
-                Ok(store.get(&format!("unit/{repository}/{name}"))?.is_some()
-                    || store.get(&format!("bolt/{repository}/{name}"))?.is_some())
-            };
-            let mut free = name.clone();
-            let mut nth = 1;
-            while taken(&free)? {
-                nth += 1;
-                free = format!("{name}-{nth}");
-            }
-            free
+    // A bolt that already stands is one the operator picked rather than one
+    // this call makes: `add to bolt…` and not `build now` or a dictation
+    // naming a bolt to come (34, S224a).
+    let joining = store.get(&format!("bolt/{repository}/{name}"))?.is_some();
+    // The bolt's name, and the unit's own. `build now` gives them one name
+    // from the capture's first words; a pick on a bolt already open leaves the
+    // bolt as it is and names the unit from those same words, so neither
+    // gesture asks for a name (S217, S224a). A dictation naming a bolt to come
+    // names both, as it did. A name taken from the words takes the next number
+    // where a unit or a bolt holds it already; a name the operator gave is
+    // given once (I1).
+    let (name, unit_name) = match (from_words, words.as_deref(), joining) {
+        (true, _, _) => {
+            let free = free_name(store, &repository, &name)?;
+            (free.clone(), free)
         }
-        false => name,
+        (false, Some(words), true) => {
+            let unit_name = free_name(store, &repository, &signals::name_from_words(words))?;
+            (name, unit_name)
+        }
+        (false, _, _) => (name.clone(), name),
     };
-    let unit = format!("unit/{repository}/{name}");
+    let unit = format!("unit/{repository}/{unit_name}");
     if store.get(&unit)?.is_some() {
         bail!("`{unit}` already exists; a name is given once (I1)");
     }
@@ -1176,6 +1181,12 @@ fn propose_unit<S: StateStore, W: World + ?Sized>(
         &unit,
         format!("approved on {bolt} by {}, {items} item(s)", call.by),
     ));
+    // New work arrived on a bolt whose close was offered or held, so the close
+    // can no longer be answered as posed: the offer goes back now rather than
+    // on the pass that would take it back anyway (S224a, `bolt.yaml` close).
+    if joining && take_close_back(store, &bolt, at)? {
+        record.journal.push(noted("propose-unit", &bolt, "its close offer is taken back".to_string()));
+    }
     let reason = format!("{} built {unit} from it on the {} ({})", call.by, call.delivery, record.id);
     let moved = move_signals(store, world, &routed, &format!("route {unit}"), &reason, at)?;
     record.journal.extend(moved);
@@ -1469,6 +1480,41 @@ fn approve_unit<S: StateStore>(
         .unwrap_or_else(|| format!("bolt/{repository}/{name}"));
     let items = flywheel_domain::effects::create_items(store, defs, unit, at)?;
     Ok((bolt, items))
+}
+
+/// The next free name under a repository: a name taken from a capture's words
+/// is not the operator's to give, so it takes the next number where a unit or
+/// a bolt holds it already (I1, S217).
+fn free_name<S: StateStore>(store: &S, repository: &str, want: &str) -> Result<String> {
+    let taken = |name: &str| -> Result<bool> {
+        Ok(store.get(&format!("unit/{repository}/{name}"))?.is_some()
+            || store.get(&format!("bolt/{repository}/{name}"))?.is_some())
+    };
+    let mut free = want.to_string();
+    let mut nth = 1;
+    while taken(&free)? {
+        nth += 1;
+        free = format!("{want}-{nth}");
+    }
+    Ok(free)
+}
+
+/// Take a bolt's close offer back, where one stands: work arrived on it, so
+/// the decision cannot be answered as it was posed (S224a, `bolt.yaml` close).
+/// The engine's own transition says the same on the next pass; this is so the
+/// page shows it at once, as every other part of this call does.
+fn take_close_back<S: StateStore>(store: &mut S, bolt: &str, at: chrono::DateTime<chrono::Utc>) -> Result<bool> {
+    let Some(mut held) = store.get(bolt)? else {
+        return Ok(false);
+    };
+    if !matches!(held.config.get("life.open.close").map(String::as_str), Some("offered") | Some("held")) {
+        return Ok(false);
+    }
+    let base = held.seq;
+    held.config.insert("life.open.close".into(), "not-offered".into());
+    held.entered_at.insert("life.open.close".into(), at);
+    store.put(bolt, &held, base)?;
+    Ok(true)
 }
 
 /// The built repositories the instance tracks: what a bolt lands on. The

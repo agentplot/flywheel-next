@@ -1865,12 +1865,9 @@ fn since_items(read: &Read) -> Vec<Since<'_>> {
             // the tray instead, where they wait (S9, S225).
             "capture" if several_signals(read, &object.id) => continue,
             "capture" => "captured",
-            "signal" => match object.config.get("move").map(String::as_str) {
-                Some("routed") if dock::routes_an_ask(object) => "asked",
-                Some("routed") => "built",
-                Some("joined") => "intent",
-                Some("dropped") => "dropped",
-                _ => continue,
+            "signal" => match signal_verb(read, object) {
+                Some(verb) => verb,
+                None => continue,
             },
             "unit" => match object.config.get("life").map(String::as_str) {
                 Some("merged") => "merged",
@@ -1911,6 +1908,37 @@ fn since_items(read: &Read) -> Vec<Since<'_>> {
         .collect();
     rows.truncate(recently_done(&days, today));
     rows
+}
+
+/// What became of a signal, in the word Recently done lists it under. It is
+/// read from the move record standing on it, as everything else the page says
+/// about a note is, so what the operator just did is on the list at once and
+/// not a tick later; the signal's own state answers where no record is here to
+/// say (107, S9, S224a).
+fn signal_verb(read: &Read, signal: &Object) -> Option<&'static str> {
+    // A note the operator put on a bolt already open reads as added, where
+    // build now reads built (S224a, S9).
+    let built = |unit: &str| match dock::added_to(read, unit) {
+        Some(_) => "added",
+        None => "built",
+    };
+    if let Some(moved) = read.moves.get(&signal.id) {
+        let named = moved.names();
+        return match moved.word() {
+            "route" if named.starts_with("ask/") => Some("asked"),
+            "route" => Some(built(named)),
+            "join" => Some("intent"),
+            "drop" => Some("dropped"),
+            _ => None,
+        };
+    }
+    match signal.config.get("move").map(String::as_str) {
+        Some("routed") if dock::routes_an_ask(signal) => Some("asked"),
+        Some("routed") => signal.record.get("route").and_then(|value| value.as_str()).map(built),
+        Some("joined") => Some("intent"),
+        Some("dropped") => Some("dropped"),
+        _ => None,
+    }
 }
 
 /// One line of Recently done, drawn when it is shown.

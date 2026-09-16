@@ -1148,12 +1148,12 @@ fn a_captures_line_reads_the_curation_record() {
     );
 }
 
-/// A waiting note carries its four controls — build now, make an intent,
-/// attach to… and drop — each a verb with its key posting to its tool, on the
-/// board and in its drawer, and a note whose signal has moved carries none
-/// (19a, S220, S224).
+/// A waiting note carries its five controls — build now, add to bolt…, make an
+/// intent, attach to… and drop — each a verb with its key posting to its tool,
+/// on the board and in its drawer, and a note whose signal has moved carries
+/// none (19a, S220, S224, S224a).
 #[test]
-fn a_waiting_note_carries_its_four_controls_and_a_moved_one_none() {
+fn a_waiting_note_carries_its_five_controls_and_a_moved_one_none() {
     let (mut store, _, defs) = a_page();
     let mut world = world::Files::new().tracking("atlas");
     let capture = a_note(&mut store, &mut world, &defs, "the rows lose their numbers on the second page");
@@ -1169,8 +1169,10 @@ fn a_waiting_note_carries_its_four_controls_and_a_moved_one_none() {
         assert!(html.contains(&format!("data-key=\"{key}\"")), "`{verb}` carries no key {key}");
         assert!(html.contains(&format!(">{verb}<span class=\"k\">{key}</span>")), "no `{verb}` control");
     }
-    assert!(html.contains(">attach to…<span class=\"k\">a</span>"), "no attach control");
+    assert!(html.contains(">add to bolt…<span class=\"k\">a</span>"), "no add to bolt control");
+    assert!(html.contains(">attach to…<span class=\"k\">t</span>"), "no attach control");
     assert!(html.contains("No intent is open yet."), "attach says nothing to pick from");
+    assert!(html.contains("No bolt is open yet."), "add to bolt says nothing to pick from");
     assert!(!commands::rail(&mut store, &defs).expect("the rail").iter().any(|d| d.object == capture), "a note raised a decision");
 
     let signal = flywheel_domain::signals::of_capture(&store, &capture).expect("a read").remove(0);
@@ -1179,6 +1181,114 @@ fn a_waiting_note_carries_its_four_controls_and_a_moved_one_none() {
     let html = rendered(&mut store, &world, &defs) + &docked(&mut store, &world, &defs, &capture);
     assert!(!html.contains(&format!("data-hand=\"{capture}\"")), "a moved note still carries its controls");
     assert!(html.contains("<div class=\"tail\">dropped</div>"), "its drawer says what became of it");
+}
+
+/// One bolt, as a seeded instance holds it.
+fn a_bolt(store: &mut FakeStore, defs: &Definitions, repository: &str, name: &str, life: Option<&str>) -> String {
+    let id = format!("bolt/{repository}/{name}");
+    let at = commands::now(store).expect("a point");
+    let record = [("repository".to_string(), json!(repository)), ("name".to_string(), json!(name))];
+    commands::put_new(store, defs, &id, "bolt", None, record.into_iter().collect(), at).expect("the bolt");
+    if let Some(life) = life {
+        let mut held = Records::get(store, &id).expect("a read").expect("the bolt");
+        held.config.insert("life".into(), life.into());
+        let base = held.seq;
+        Records::put(store, &id, &held, base).expect("the bolt's life");
+    }
+    id
+}
+
+/// The bolts a part of the page names, in the order they appear in it.
+fn bolts_in(html: &str, from: &str, to: &str) -> Vec<String> {
+    let start = html.find(from).unwrap_or_else(|| panic!("`{from}` is not on the page"));
+    let rest = &html[start..];
+    let end = rest.find(to).unwrap_or(rest.len());
+    let mut out: Vec<String> = Vec::new();
+    for at in rest[..end].match_indices("bolt/") {
+        let tail = &rest[..end][at.0..];
+        let id = tail.split(['"', '\'', '<', ' ']).next().unwrap_or_default().trim_end_matches('/');
+        if id.matches('/').count() == 2 && !out.iter().any(|held| held == id) {
+            out.push(id.to_string());
+        }
+    }
+    out
+}
+
+/// `add to bolt…` lists every open bolt of the tracked repositories in the
+/// order Construction draws them, each by its name with its repository greyed
+/// before it where the instance tracks more than one; a bolt that landed is
+/// not listed (S224a, S14, 141).
+#[test]
+fn add_to_bolt_lists_the_open_bolts_in_constructions_order() {
+    let (mut store, _, defs) = a_page();
+    let mut world = world::Files::new().tracking("atlas").tracking("switchboard");
+    a_bolt(&mut store, &defs, "atlas", "plan-rows", None);
+    a_bolt(&mut store, &defs, "switchboard", "tail-window", None);
+    let landed = a_bolt(&mut store, &defs, "atlas", "gone", Some("landed"));
+    a_note(&mut store, &mut world, &defs, "the rows lose their numbers on the second page");
+
+    let html = rendered(&mut store, &world, &defs);
+    let listed: Vec<String> = html
+        .match_indices("name=\"bolt\" value=\"")
+        .map(|(at, opening)| {
+            let tail = &html[at + opening.len()..];
+            tail[..tail.find('"').expect("the value is closed")].to_string()
+        })
+        .collect();
+    assert!(!listed.is_empty(), "add to bolt lists nothing: {html}");
+    assert!(!listed.contains(&landed), "a bolt that landed is listed: {listed:?}");
+    let drawn = bolts_in(&html, "id=\"lane-construction", "id=\"lane-operation");
+    assert_eq!(
+        listed.iter().take(drawn.len()).collect::<Vec<_>>(),
+        drawn.iter().filter(|id| **id != landed).collect::<Vec<_>>(),
+        "the list is not in the order Construction draws the bolts"
+    );
+    assert!(
+        html.contains("<span class=\"pre\">atlas · </span>"),
+        "two repositories are tracked and the list does not say which: {html}"
+    );
+}
+
+/// With no bolt open the list says so in the operator's words and points at
+/// the verb that makes one (S224a, S214).
+#[test]
+fn with_no_bolt_open_the_list_points_at_build_now() {
+    let (mut store, _, defs) = a_page();
+    let mut world = world::Files::new().tracking("atlas");
+    let landed = a_bolt(&mut store, &defs, "atlas", "gone", Some("landed"));
+    a_note(&mut store, &mut world, &defs, "the rows lose their numbers on the second page");
+
+    let html = rendered(&mut store, &world, &defs);
+    assert!(html.contains("No bolt is open yet. Build now starts one."), "the empty list says nothing: {html}");
+    assert!(!html.contains(&format!("value=\"{landed}\"")), "a bolt that landed is listed: {html}");
+}
+
+/// A capture the operator added to a bolt reads "added to <bolt>" with the
+/// bolt linked, on its page and in Recently done, where `build now` reads
+/// built (S224a, S9, S28).
+#[test]
+fn a_capture_added_to_a_bolt_reads_added_to_it() {
+    let (mut store, _, defs) = a_page();
+    let mut world = world::Files::new().tracking("atlas");
+    let bolt = a_bolt(&mut store, &defs, "atlas", "plan-rows", None);
+    let added = a_note(&mut store, &mut world, &defs, "the rows lose their numbers on the second page");
+    let onto = crate::catalogue::Call::new("propose-unit", "chuck", "page")
+        .arg("capture", json!(added))
+        .arg("bolt", json!(bolt));
+    crate::catalogue::call(&mut store, &mut world, &defs, &onto).expect("the capture goes to the bolt");
+    let built = a_note(&mut store, &mut world, &defs, "the export page times out on a big catalogue");
+    let now = crate::catalogue::Call::new("propose-unit", "chuck", "page").arg("capture", json!(built));
+    crate::catalogue::call(&mut store, &mut world, &defs, &now).expect("the capture is built now");
+
+    let page = docked(&mut store, &world, &defs, &added);
+    assert!(page.contains("added to"), "the capture's page does not say it was added: {page}");
+    assert!(page.contains(&format!("href=\"#dock-{bolt}\"")), "the bolt is not linked on the page: {page}");
+    let page = docked(&mut store, &world, &defs, &built);
+    assert!(page.contains("built ·"), "a capture built now no longer reads built: {page}");
+
+    let html = rendered(&mut store, &world, &defs);
+    assert!(html.contains("<span class=\"v added\">added</span>"), "Recently done does not read added: {html}");
+    assert!(html.contains("<span class=\"v built\">built</span>"), "Recently done no longer reads built: {html}");
 }
 
 /// A proposed intent's card shows its weight and what it proposes: curation

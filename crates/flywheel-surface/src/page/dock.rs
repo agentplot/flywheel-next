@@ -60,6 +60,21 @@ fn link(read: &Read, id: &str, text: &str) -> String {
     format!("<a class=\"elaboration\" href=\"#dock-{}\">{}</a>", escape(id), escape(text))
 }
 
+/// The bolt a capture's unit was added to, where the gesture was `add to
+/// bolt…` and not `build now`: the call that approved the unit named the bolt
+/// the operator picked, and `build now` names none (S224a, 34). The bolt
+/// itself is read from the unit's target, which the approval attached it to.
+pub fn added_to(read: &Read, unit: &str) -> Option<String> {
+    let unit = read.object(unit).filter(|o| o.machine == "unit")?;
+    let approval = unit.record.get("approval")?.as_str()?;
+    let response = read.object(&format!("response/{approval}"))?;
+    let named = response.record.get("args")?.get("bolt")?.as_str()?.trim();
+    if named.is_empty() {
+        return None;
+    }
+    unit.record.get("target")?.get("bolt")?.as_str().map(String::from)
+}
+
 /// Whether a signal's route names an ask for planning rather than a unit that
 /// was built (116, 28).
 pub fn routes_an_ask(signal: &Object) -> bool {
@@ -286,7 +301,10 @@ fn became(read: &Read, capture: Option<&Object>, signal: Option<&Object>) -> Opt
         let intent = || link(read, named, name_of(named));
         return Some(match moved.word() {
             "route" if named.starts_with("ask/") => ("asked".into(), asked(read, named)),
-            "route" => ("built".into(), format!("built · {}", link(read, named, named))),
+            "route" => match added_to(read, named) {
+                Some(bolt) => ("added".into(), format!("added to {}", link(read, &bolt, name_of(&bolt)))),
+                None => ("built".into(), format!("built · {}", link(read, named, named))),
+            },
             "attach" if made_from(read, named, capture, signal) => ("made an intent".into(), format!("made an intent · {}", intent())),
             "attach" => ("attached".into(), format!("attached to {}", intent())),
             "join" => ("joined an intent".into(), format!("joined {}", intent())),
@@ -299,7 +317,10 @@ fn became(read: &Read, capture: Option<&Object>, signal: Option<&Object>) -> Opt
         // and the repository they were asked of (28, 116).
         Some("routed") => match field(signal, "route") {
             Some(route) if routes_an_ask(signal) => Some(("asked".into(), asked(read, route))),
-            Some(unit) => Some(("built".into(), format!("built · {}", link(read, unit, unit)))),
+            Some(unit) => Some(match added_to(read, unit) {
+                Some(bolt) => ("added".into(), format!("added to {}", link(read, &bolt, name_of(&bolt)))),
+                None => ("built".into(), format!("built · {}", link(read, unit, unit))),
+            }),
             None => Some(("built".into(), String::new())),
         },
         Some("joined") | Some("attached") => {

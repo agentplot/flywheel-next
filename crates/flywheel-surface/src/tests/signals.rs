@@ -291,6 +291,86 @@ fn open_intent_opens_at_once_and_attaches_the_signal() {
     assert!(catalogue::call(&mut store, &mut world, &defs, &call).is_err(), "a signal took a second move");
 }
 
+/// `add to bolt…`: the bolt is the one the operator picked, the unit is named
+/// from the capture's own words, it stands approved on that bolt depending on
+/// nothing, and the capture's signal routes to it — no second bolt is made and
+/// no name is typed (34, 31, 12, 116, S224a).
+#[test]
+fn a_pick_puts_an_approved_unit_on_that_bolt_and_routes_the_signal() {
+    let (mut store, world, defs) = a_store();
+    let mut world = world.tracking("atlas");
+    let bolt = "bolt/atlas/plan-rows";
+    let at = flywheel_domain::commands::now(&store).expect("a point");
+    let record = [("repository".to_string(), json!("atlas")), ("name".to_string(), json!("plan-rows"))];
+    flywheel_domain::commands::put_new(&mut store, &defs, bolt, "bolt", None, record.into_iter().collect(), at)
+        .expect("the open bolt");
+    let (capture, signal) = a_note(&mut store, &mut world, &defs, "the rows lose their numbers on the second page");
+
+    let call = Call::new("propose-unit", "chuck", "page")
+        .arg("capture", json!(capture))
+        .arg("bolt", json!(bolt));
+    catalogue::call(&mut store, &mut world, &defs, &call).expect("the capture goes to the bolt");
+
+    let of = |store: &FakeStore, machine: &str| -> Vec<flywheel_atoms::Object> {
+        store.list_records(&flywheel_atoms::Scope::All).unwrap().into_iter().filter(|o| o.machine == machine).collect()
+    };
+    let bolts = of(&store, "bolt");
+    assert_eq!(bolts.len(), 1, "a second bolt was made for a bolt already open: {:?}", bolts.iter().map(|b| &b.id).collect::<Vec<_>>());
+    let units = of(&store, "unit");
+    assert_eq!(units.len(), 1, "{:?}", units.iter().map(|u| &u.id).collect::<Vec<_>>());
+    let unit = &units[0];
+    assert_eq!(unit.id, "unit/atlas/rows-lose-their-numbers", "the unit is not named from the capture's first words");
+    assert_eq!(unit.parent.as_deref(), Some(bolt), "the unit stands on another bolt");
+    assert_eq!(unit.config.get("life").map(String::as_str), Some("approved"), "the unit is not approved by the call");
+    assert_eq!(unit.record.get("target").and_then(|t| t.get("bolt")), Some(&json!(bolt)));
+    assert!(unit.record.get("approval").is_some(), "the call is not the unit's approval (I1)");
+    assert!(
+        unit.record.get("depends_on").and_then(|v| v.as_array()).is_none_or(|on| on.is_empty()),
+        "the unit waits on something (31)"
+    );
+    let moved = signals::standing_move(&world, &signal).unwrap().expect("the signal moved");
+    assert_eq!(moved.target, format!("route {}", unit.id));
+}
+
+/// A bolt whose close is offered or held is listed and adding to it takes the
+/// offer back: new work arrived, so the close cannot be answered as it was
+/// posed (S224a, `bolt.yaml` close).
+#[test]
+fn adding_to_a_bolt_whose_close_is_offered_takes_the_offer_back() {
+    let (mut store, world, defs) = a_store();
+    let mut world = world.tracking("atlas");
+    let bolt = "bolt/atlas/plan-rows";
+    let at = flywheel_domain::commands::now(&store).expect("a point");
+    let record = [("repository".to_string(), json!("atlas")), ("name".to_string(), json!("plan-rows"))];
+    flywheel_domain::commands::put_new(&mut store, &defs, bolt, "bolt", None, record.into_iter().collect(), at)
+        .expect("the open bolt");
+    let close = |store: &mut FakeStore, state: &str| {
+        let mut held: flywheel_atoms::Object = Records::get(store, bolt).unwrap().unwrap();
+        held.config.insert("life.open.close".into(), state.into());
+        let base = held.seq;
+        Records::put(store, bolt, &held, base).unwrap();
+    };
+    for offered in ["offered", "held"] {
+        close(&mut store, offered);
+        assert!(
+            flywheel_domain::commands::rail(&mut store, &defs).unwrap().iter().any(|d| d.object == bolt) || offered == "held",
+            "the close is not standing to be taken back"
+        );
+        let (capture, _) = a_note(&mut store, &mut world, &defs, &format!("one more thing while it is {offered}"));
+        let call = Call::new("propose-unit", "chuck", "page").arg("capture", json!(capture)).arg("bolt", json!(bolt));
+        catalogue::call(&mut store, &mut world, &defs, &call).expect("the capture goes to the bolt");
+
+        let held: flywheel_atoms::Object = Records::get(&store, bolt).unwrap().unwrap();
+        assert_eq!(
+            held.config.get("life.open.close").map(String::as_str),
+            Some("not-offered"),
+            "the close offer stands after work arrived on the bolt (S224a)"
+        );
+        let rail = flywheel_domain::commands::rail(&mut store, &defs).unwrap();
+        assert!(!rail.iter().any(|d| d.object == bolt && d.kind == "bolt-close"), "the close is still on the rail");
+    }
+}
+
 /// `attach to…`: the signal's move attaches it to the open intent picked, which
 /// cites it as material to propose from; an intent that is not open is refused
 /// naming the open ones, and the same delivery twice is one call (19a, 21, 116,
