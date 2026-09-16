@@ -96,6 +96,59 @@ pub const SECTIONS: &[&str] = &[
     "the change's artifacts",
 ];
 
+/// The agent programs whose own settings carry a deny list (173). A kind with
+/// none is trusted to its order: nothing of the machinery's correctness rests
+/// on the deny list, which is the git hooks' and the order's (89).
+pub const KINDS_WITH_A_DENY_LIST: &[&str] = &["claude"];
+
+/// Where a kind's settings live inside the place, and what they say: a session
+/// reads its place, the paths the order hands in, and nothing else (89, 173,
+/// `host.yaml` prepare_place).
+///
+/// Claude Code refuses every file read, search and language-server lookup
+/// outside its working directories when `blockReadsOutsideWorkingDirectories`
+/// is set, and `additionalDirectories` is what the order hands in beside the
+/// place — the state repository and the manifest its commands read. The shell
+/// is denied the ways out of the tree that do not go through a file read.
+///
+/// `None` for a kind whose program has no such settings.
+pub fn agent_settings(kind: &str, handed_in: &[String]) -> Option<(String, String)> {
+    if !KINDS_WITH_A_DENY_LIST.contains(&kind) {
+        return None;
+    }
+    let directories: Vec<Value> = handed_in
+        .iter()
+        .filter(|path| !path.is_empty())
+        .map(|path| Value::String(path.clone()))
+        .collect();
+    let settings = serde_json::json!({
+        "permissions": {
+            // Every file read, search and language-server lookup outside the
+            // place's tree and what the order handed in (89).
+            "blockReadsOutsideWorkingDirectories": true,
+            "additionalDirectories": directories,
+            // The shell's own ways out of the tree. The git hooks are what
+            // refuse a line operation, for every kind of agent (S15, 43).
+            "deny": [
+                "Bash(cd /*)",
+                "Bash(cd ~*)",
+                "Bash(cat /*)",
+                "Bash(less /*)",
+                "Bash(head /*)",
+                "Bash(tail /*)",
+                "Bash(find /*)",
+                "Bash(grep:* /*)",
+                "Bash(rg:* /*)",
+                "Bash(open /*)",
+            ],
+        }
+    });
+    Some((
+        ".claude/settings.local.json".to_string(),
+        serde_json::to_string_pretty(&settings).unwrap_or_default(),
+    ))
+}
+
 impl Order {
     /// Every input the order hands in, as the header names them (226).
     pub fn inputs(&self) -> Vec<String> {

@@ -2161,6 +2161,20 @@ fn performing(
         "prepare_place" => {
             let order = work_order(defs, store, &session, &place, object)?;
             with_workspace(store, |ws| ws.prepare_place(&place, object, &order.body))?;
+            // What the order hands the session beside its place: the state
+            // repository and the manifest its commands read (67, 89, 183).
+            let handed_in: Vec<String> = [
+                Some(store.git.repo.dir.display().to_string()),
+                store
+                    .manifest
+                    .as_ref()
+                    .and_then(|at| at.parent().map(|dir| dir.display().to_string())),
+            ]
+            .into_iter()
+            .flatten()
+            .collect();
+            let kind = order.kind.clone();
+            with_workspace(store, |ws| ws.write_agent_settings(&place, &kind, &handed_in))?;
         }
         "rebase_place" => {
             with_workspace(store, |ws| ws.rebase_place(&place))?;

@@ -101,6 +101,41 @@ fn placement() -> Placement {
     }
 }
 
+/// A session reads its place, the paths the order hands in, and nothing else
+/// (89, 173). A kind whose program has a deny list gets one; a kind with none
+/// is trusted to its order.
+#[test]
+fn a_place_denies_what_the_order_did_not_hand_in() {
+    let handed_in = vec![
+        "/flywheel/state/main".to_string(),
+        "/flywheel".to_string(),
+    ];
+
+    // Claude Code has settings of its own, so the place carries them.
+    let (at, body) = flywheel_domain::order::agent_settings("claude", &handed_in)
+        .expect("claude's program has a deny list");
+    assert_eq!(at, ".claude/settings.local.json");
+    let settings: serde_json::Value = serde_json::from_str(&body).expect("the settings are json");
+
+    // Every file read, search and language-server lookup outside the place's
+    // tree is refused, in every permission mode.
+    assert_eq!(settings["permissions"]["blockReadsOutsideWorkingDirectories"], serde_json::json!(true));
+    // What the order handed in is reachable, and nothing else is added.
+    assert_eq!(
+        settings["permissions"]["additionalDirectories"],
+        serde_json::json!(["/flywheel/state/main", "/flywheel"])
+    );
+    // The shell's own ways out of the tree are denied beside the git hooks.
+    let denied = settings["permissions"]["deny"].as_array().expect("a deny list");
+    assert!(denied.iter().any(|rule| rule.as_str() == Some("Bash(cd /*)")), "{denied:?}");
+    assert!(denied.iter().any(|rule| rule.as_str() == Some("Bash(cat /*)")), "{denied:?}");
+
+    // A kind whose program has no such settings is trusted to its order, and
+    // nothing of the machinery's correctness rests on the deny list.
+    assert!(flywheel_domain::order::agent_settings("codex", &handed_in).is_none());
+    assert!(flywheel_domain::order::agent_settings("opencode", &handed_in).is_none());
+}
+
 /// A host declines to start an instance whose name another host on this
 /// computer already runs, names the one running, and starts nothing (218).
 #[test]

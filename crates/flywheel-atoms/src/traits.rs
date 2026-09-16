@@ -462,6 +462,14 @@ pub trait Workspace {
     /// (42, 43, 45, 88, 89).
     fn prepare_place(&mut self, place: &str, line: &str, work_order: &str) -> Result<()>;
 
+    /// The agent program's own deny list in the place, where the kind has one:
+    /// a session reads its place, the paths the order hands in, and nothing
+    /// else (89, 173). A binding that makes no real place writes nothing, and
+    /// a kind with no such settings is trusted to its order.
+    fn write_agent_settings(&mut self, _place: &str, _kind: &str, _handed_in: &[String]) -> Result<()> {
+        Ok(())
+    }
+
     /// Rebase the place onto its line while no session works in it; aborted
     /// whole on conflict (42, 51, 179).
     fn rebase_place(&mut self, place: &str) -> Result<TakeOutcome>;

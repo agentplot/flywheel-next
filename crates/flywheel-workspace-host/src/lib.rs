@@ -344,6 +344,27 @@ impl<S: Records> Workspace for HostWorkspace<'_, S> {
         )
     }
 
+    /// The agent program's own deny list, beside the git hooks that refuse
+    /// line operations: the session's reach is its place and the query tools
+    /// (89, 173, `host.yaml` prepare_place).
+    fn write_agent_settings(&mut self, place: &str, kind: &str, handed_in: &[String]) -> Result<()> {
+        let Some((at, body)) = flywheel_domain::order::agent_settings(kind, handed_in) else {
+            // A kind whose program has no such settings is trusted to its order.
+            return Ok(());
+        };
+        let repository = self.repository_of(place)?;
+        let line = self.line_of(place)?;
+        let base = match line.is_empty() {
+            true => self.shared_line(&repository)?,
+            false => line,
+        };
+        let dir = place_dir(&self.root, &repository, place, &base);
+        let file = dir.join(&at);
+        std::fs::create_dir_all(file.parent().expect("the settings directory"))?;
+        std::fs::write(&file, body)?;
+        Ok(())
+    }
+
     fn rebase_place(&mut self, place: &str) -> Result<TakeOutcome> {
         let repository = self.repository_of(place)?;
         let line = self.line_of(place)?;
