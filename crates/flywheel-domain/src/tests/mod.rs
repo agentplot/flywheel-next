@@ -5,6 +5,7 @@ mod asks;
 mod binding;
 mod blueprints;
 mod capture_reader;
+mod chore_drop;
 mod curation;
 mod curator;
 mod elaboration_order;

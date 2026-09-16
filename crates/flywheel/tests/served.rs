@@ -758,6 +758,167 @@ fn an_answer_on_an_applied_instance_is_applied_on_the_pass_it_causes() {
     let _ = std::fs::remove_dir_all(&dir);
 }
 
+/// A chore of a repository's shared line, as `record_offers` makes one from a
+/// curation session's offers: one batch, so a repository's chores fold into one
+/// decision (60, 62).
+fn seed_chore(host: &mut Host, repository: &str, at_row: usize, name: &str) -> String {
+    let id = format!("unit/{repository}/chore-{}", at_row + 1);
+    let mut object = Object {
+        id: id.clone(),
+        machine: "unit".to_string(),
+        parent: Some(format!("repository/{repository}")),
+        config: Default::default(),
+        entered_at: Default::default(),
+        record: [
+            ("type".to_string(), json!("chore")),
+            ("type_version".to_string(), json!(2)),
+            ("batch".to_string(), json!(repository)),
+            ("repository".to_string(), json!(repository)),
+            ("document".to_string(), json!(format!("flywheel/curation/chores/{name}.md"))),
+            ("sources".to_string(), json!([format!("curation/storefront/main/1#{at_row}")])),
+        ]
+        .into_iter()
+        .collect::<BTreeMap<_, _>>(),
+        counters: Default::default(),
+        applied_responses: vec![],
+        seq: 0,
+        created: 0,
+    };
+    flywheel_engine::initialise(&host.defs, &mut object, host.now());
+    host.store.git.seed_objects(std::slice::from_ref(&object)).unwrap();
+    id
+}
+
+/// The form one row of a fold carries, read out of the document rather than
+/// spelled by the test: `415b · drop`, posted to the one answer tool (S232).
+fn row_form_on(page: &str, number: u32, letter: &str) -> (String, String) {
+    let form = page
+        .split("<form ")
+        .find(|block| block.contains(&format!("name=\"decision\" value=\"{number}{letter}\"")))
+        .unwrap_or_else(|| panic!("row {number}{letter} carries no drop of its own"));
+    let action = form
+        .split_once("action=\"")
+        .and_then(|(_, rest)| rest.split_once('"'))
+        .map(|(action, _)| action.to_string())
+        .expect("the control posts somewhere");
+    let mut fields: Vec<String> = Vec::new();
+    for input in form.split("<input ").skip(1) {
+        let value_of = |name: &str| -> Option<String> {
+            input
+                .split_once(&format!("{name}=\""))
+                .and_then(|(_, rest)| rest.split_once('"'))
+                .map(|(value, _)| value.to_string())
+        };
+        if let (Some(name), Some(value)) = (value_of("name"), value_of("value")) {
+            fields.push(format!("{name}={value}"));
+        }
+    }
+    (action, fields.join("&"))
+}
+
+/// A drop given on the page of an instance a scenario was applied into is
+/// applied on the pass it causes: the chore the row names is dropped, the rest
+/// of the fold stands under the same number, and the operator never nudges
+/// (13, 129, 130, S232, `unit.yaml` v5).
+///
+/// The proposed state offered `drop` and no transition took it, so every drop
+/// the operator gave on a chore — one row of a fold or the whole card — was
+/// recorded, never applied, and never reported either.
+#[test]
+fn a_drop_on_a_chore_of_an_applied_instance_is_applied_on_the_pass_it_causes() {
+    let dir = base("applied-drop");
+    let applied = flywheel::apply::apply(
+        &workspace().join("scenarios/storefront"),
+        &dir,
+        Some(6),
+        at(0),
+        Duration::seconds(60),
+    )
+    .expect("the storefront applied through the curation's delivery");
+    let mut host = Host::open(&applied.manifest, "local", None, applied.at).expect("the host opens over the applied instance");
+
+    // Three chores a review session offered outside its job, on the
+    // storefront's shared line: one fold, three lettered rows (S231, S232).
+    let chores: Vec<String> = ["agents-md", "rename-ref", "citation-fix"]
+        .iter()
+        .enumerate()
+        .map(|(at_row, name)| seed_chore(&mut host, "storefront", at_row, name))
+        .collect();
+    let number = {
+        let defs = host.defs.clone();
+        flywheel_domain::commands::rail(&mut host.store, &defs)
+            .unwrap()
+            .into_iter()
+            .find(|d| d.folds.iter().any(|folded| folded == &chores[0]))
+            .and_then(|d| d.number)
+            .expect("the fold of chores stands, numbered")
+    };
+
+    let named = flywheel_surface::http::private_host(&host.sinks.address).expect("the applied instance's address");
+    let host = Arc::new(Mutex::new(host));
+    let runtime = tokio::runtime::Builder::new_multi_thread().enable_all().build().unwrap();
+    let served = flywheel::serve::page_of(&host, 4242, &["operator".to_string()]);
+    let address = runtime.block_on(async {
+        let listener = tokio::net::TcpListener::bind("127.0.0.1:0").await.unwrap();
+        let address = listener.local_addr().unwrap();
+        let served = served.clone();
+        tokio::spawn(async move {
+            let _ = flywheel_surface::http::serve_on(served, listener).await;
+        });
+        address
+    });
+
+    // The drop on the second row, through the control the page rendered.
+    let page = speak(address, &format!("GET / HTTP/1.1\r\nHost: {named}\r\nConnection: close\r\n\r\n"));
+    let (action, body) = row_form_on(&page, number, "b");
+    let answered = {
+        let mut socket = std::net::TcpStream::connect(address).expect("the page answers");
+        socket.set_read_timeout(Some(std::time::Duration::from_secs(10))).expect("a bounded wait");
+        let request = format!(
+            "POST {action} HTTP/1.1\r\nHost: {named}\r\nConnection: close\r\nReferer: http://{named}/\r\n\
+             Content-Type: application/x-www-form-urlencoded\r\nContent-Length: {}\r\n\r\n{body}",
+            body.len()
+        );
+        socket.write_all(request.as_bytes()).expect("the request is sent");
+        let mut text = String::new();
+        socket.read_to_string(&mut text).expect("the page replies");
+        text
+    };
+    assert!(answered.starts_with("HTTP/1.1 2") || answered.starts_with("HTTP/1.1 3"), "the drop was not taken: {answered}");
+
+    // The pass the answer caused applies it: that chore is dropped, and the
+    // other two stand under the same number (130, S232).
+    {
+        let mut held = host.lock().unwrap();
+        let now = applied.at + Duration::seconds(1);
+        held.set_now(now);
+        assert!(
+            held.notified().unwrap().iter().any(|id| id == &chores[1]),
+            "the drop did not notify the chore it drops"
+        );
+        let _ = flywheel::tour::play_due(&mut held, now);
+        held.once().unwrap();
+        let life = |id: &str| {
+            Records::get(&held.store, id)
+                .unwrap()
+                .unwrap_or_else(|| panic!("{id}"))
+                .config
+                .get("life")
+                .cloned()
+                .unwrap_or_default()
+        };
+        assert_eq!(
+            life(&chores[1]),
+            "dropped",
+            "the drop was recorded and not applied on the pass it caused (6, 129, 130)"
+        );
+        for standing in [&chores[0], &chores[2]] {
+            assert_eq!(life(standing), "proposed", "{standing} went with the row that was dropped (S232)");
+        }
+    }
+    let _ = std::fs::remove_dir_all(&dir);
+}
+
 /// An answer given on the page is applied on the pass that answer caused, and
 /// it puts nothing back on the rail (13, 130, 137, 153).
 ///
