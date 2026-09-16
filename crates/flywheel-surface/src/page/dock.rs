@@ -18,6 +18,11 @@ pub struct Session {
     pub host: String,
     pub runner: String,
     pub agent: Option<String>,
+    /// The program it runs as — claude, codex or opencode — and the model it
+    /// was started with, both written on the record at start. The chip names
+    /// them; the page reads neither from the program itself (173, 183, S53).
+    pub kind: Option<String>,
+    pub model: Option<String>,
     pub pane: Option<String>,
     /// The herdr session the pane is in, as the record names it (174). The
     /// chip's pane link says so, since a pane is reached through its session.
@@ -413,6 +418,14 @@ fn session_items(sessions: &[&Session], served_by: &str) -> Vec<String> {
             let mut bits: Vec<String> = Vec::new();
             if let Some(agent) = &s.agent {
                 bits.push(format!("agent {}", mono(agent)));
+            }
+            // The page names the model in full here, where there is room for
+            // it; the chip says it short (S53, S28).
+            if let Some(kind) = &s.kind {
+                bits.push(format!("kind {}", mono(kind)));
+            }
+            if let Some(model) = &s.model {
+                bits.push(format!("model {}", mono(model)));
             }
             if let Some(pane) = &s.pane {
                 bits.push(format!("pane {}", mono(pane)));

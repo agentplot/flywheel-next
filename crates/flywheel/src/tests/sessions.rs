@@ -85,8 +85,11 @@ esac"#
 fn order() -> WorkOrder {
     WorkOrder {
         session: "curation/willdan/main/1".into(),
-        kind: "claude".into(),
+        kind: "curation".into(),
         place: "curation/willdan#own".into(),
+        agent: Some("curation".into()),
+        program: "claude".into(),
+        model: Some("claude-fable-5-1".into()),
         body: "the work order".into(),
     }
 }

@@ -55,6 +55,11 @@ pub fn perform(defs: &Definitions, store: &mut Store, object: &str, region: &str
                         session: skey.clone(),
                         kind: "work".into(),
                         place: pkey.clone(),
+                        // The stand-in starts no program, so it was started
+                        // as none (93a, D8).
+                        agent: None,
+                        program: String::new(),
+                        model: None,
                         body: String::new(),
                     },
                 );

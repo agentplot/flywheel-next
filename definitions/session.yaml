@@ -22,13 +22,14 @@
 # end (74). The host's reconciliation ends any pane still open for a session
 # already exited or retired (engine/host.yaml end_exited_sessions).
 machine: session
-version: 5
+version: 6
 kind: template
 tier: core
-satisfies: [4, 24, 65, 66, 67, 70, 71, 72, 73, 80, 93, 150, 171, 173, 174, 190, 196, 197, 226, 251]
+satisfies: [4, 24, 65, 66, 67, 70, 71, 72, 73, 80, 93, 150, 171, 173, 174, 183, 190, 196, 197, 226, 251]
 params:
   agent: the agent definition to start
   kind: the agent program that runs it — claude, codex or opencode; default claude; started through the one command whatever the kind (173)
+  model: "the model it runs, resolved by the owner when the session is requested — the stage's or type's own, else the manifest's default for the role that charged it (173, sessions.yaml models); never the program's own configuration (183)"
   place: the place prepared for it
   work_order: the closed set of inputs, rendered by the engine from the context enumeration for the session's type (profiles/context.yaml, 226) and handed into the place
   deliverables: "the entries {name, producer, schema, surface} the owner names; the producers, schemas and surfaces in force are resolved when the session starts and written into the work order with their versions, and the names are recorded as expected (88, 89, 190)"
@@ -37,6 +38,9 @@ record:
   id: session-id           # deterministic: <owner id>/<stage or type>/<attempt>; also the pane's and the agent's name (196)
   identity: string         # the token issued at start and written into the work order; every tool call from the pane carries it (197)
   keep_alive: bool         # the owner's keep_alive, written at start so the exit can read it (74)
+  agent: string            # the agent definition it was started as (params.agent)
+  kind: string             # the program it runs as — claude, codex or opencode — written at start (173)
+  model: string            # the model it was started with, written at start so the chip names it (173, S53)
   host: host-id
   started_at: time
   exit: enum
@@ -52,7 +56,7 @@ regions:
         transitions:
           - when: {always: true}
             to: starting
-            effects: [{do: start_session, args: {agent: $agent, kind: $kind, place: $place, work_order: $work_order}, note: "in the multiplexer session the manifest gives it — by default intents, bolts or machinery, by who charged it (174) — in its object's workspace and tab, the pane named by the session id (196), with its identity issued first (197)"}]
+            effects: [{do: start_session, args: {agent: $agent, kind: $kind, model: $model, place: $place, work_order: $work_order}, note: "in the multiplexer session the manifest gives it — by default intents, bolts or machinery, by who charged it (174) — in its object's workspace and tab, the pane named by the session id (196), with its identity issued first (197)"}]
       starting:
         doc: slow is slow, not failed (72); the proof is the pane, never the start command's return
         transitions:
@@ -60,7 +64,7 @@ regions:
             to: alive
           - when: {always: true}
             to: starting
-            effects: [{do: start_session, args: {agent: $agent, kind: $kind, place: $place, work_order: $work_order}, note: retry by the same name; refused if it already exists}]
+            effects: [{do: start_session, args: {agent: $agent, kind: $kind, model: $model, place: $place, work_order: $work_order}, note: retry by the same name; refused if it already exists}]
       alive:
         doc: the process exists; its inner state is what the multiplexer and the command's records report
         regions:

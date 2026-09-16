@@ -526,6 +526,17 @@ pub struct WorkOrder {
     pub session: String,
     pub kind: String,
     pub place: String,
+    /// The agent definition the session is started as (173, `session.yaml`
+    /// params.agent).
+    pub agent: Option<String>,
+    /// The program that runs it — claude, codex or opencode — resolved when
+    /// the session is requested and never read from the program's own
+    /// configuration (173, 183).
+    pub program: String,
+    /// The model it runs, resolved the same way: the stage's or type's own
+    /// where it names one, else the default for the role that charged it
+    /// (173, `sessions.yaml` models).
+    pub model: Option<String>,
     /// The closed set of inputs, rendered (89).
     pub body: String,
 }

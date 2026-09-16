@@ -105,6 +105,17 @@ impl Charged {
             Charged::Machinery => "machinery",
         }
     }
+
+    /// The role whose kind and model this session runs by default, which is
+    /// what the manifest declares and the shipped profile falls back to
+    /// (`sessions.yaml` models, 173).
+    pub fn model_role(&self) -> &'static str {
+        match self {
+            Charged::Intents => "elaboration",
+            Charged::Bolts => "construction",
+            Charged::Machinery => "machinery",
+        }
+    }
 }
 
 /// The herdr session a session starts in: `flywheel-<instance>-<role>` by who
@@ -535,11 +546,21 @@ impl Herdr {
         }
     }
 
-    /// `herdr agent start <name> --kind <kind> --pane <pane>`: returns once
-    /// the agent is ready for input (72).
-    pub fn start_agent(&self, name: &str, kind: &str, pane: &str) -> Result<()> {
-        self.run(&["agent", "start", name, "--kind", kind, "--pane", pane, "--timeout", "120000"])
-            .map(|_| ())
+    /// `herdr agent start <name> --kind <kind> --pane <pane> -- <the kind's
+    /// own arguments>`: returns once the agent is ready for input (72).
+    ///
+    /// What follows `--` is the program's own command line, naming the agent
+    /// and the model the machinery resolved for this session, so the program
+    /// runs what the flywheel chose and not what its own configuration says
+    /// (173, 183, `sessions.yaml` kinds).
+    pub fn start_agent(&self, name: &str, kind: &str, pane: &str, arguments: &[String]) -> Result<()> {
+        let mut call: Vec<&str> =
+            vec!["agent", "start", name, "--kind", kind, "--pane", pane, "--timeout", "120000"];
+        if !arguments.is_empty() {
+            call.push("--");
+            call.extend(arguments.iter().map(String::as_str));
+        }
+        self.run(&call).map(|_| ())
     }
 
     /// Text to a living agent, submitted as one prompt (197).
@@ -673,6 +694,28 @@ pub struct Placement {
     pub kind: String,
 }
 
+/// The program's own arguments, as the kind's command names them
+/// (`sessions.yaml` kinds): the agent definition and the model the machinery
+/// resolved for this session, handed to the program after `--` so what it runs
+/// is the flywheel's choice and not its own configuration (173, 183).
+fn program_arguments(order: &WorkOrder) -> Vec<String> {
+    let mut out = Vec::new();
+    let named = |flag: &str, value: &Option<String>, out: &mut Vec<String>| {
+        if let Some(value) = value.as_deref().filter(|v| !v.is_empty()) {
+            out.push(flag.to_string());
+            out.push(value.to_string());
+        }
+    };
+    match order.program.as_str() {
+        // claude and opencode name the agent the same way; codex names it a
+        // profile. The model is the same flag for all three.
+        "codex" => named("--profile", &order.agent, &mut out),
+        _ => named("--agent", &order.agent, &mut out),
+    }
+    named("--model", &order.model, &mut out);
+    out
+}
+
 /// Start the session: the record as the operator binding writes it, and the
 /// agent in a pane of its own at the place. A second start of the same name
 /// is refused by Herdr, which is the proof that it is running (72, 73).
@@ -719,7 +762,7 @@ pub fn start<S: Records>(
         // An agent stopped at its own first-run question is "blocked during
         // startup" to Herdr and not a failure here: the question is answered
         // below and the agent is then ready (72, 196).
-        match herdr.start_agent(&name, &placement.kind, &pane_id) {
+        match herdr.start_agent(&name, &placement.kind, &pane_id, &program_arguments(order)) {
             Ok(()) => {}
             Err(e) if e.to_string().contains("blocked during startup") => {}
             Err(e) => {
@@ -741,10 +784,16 @@ pub fn start<S: Records>(
     // The record keeps the herdr session's name beside the workspace, tab and
     // pane ids, so every later call — the pane's evidence, its end, an answer
     // — addresses the same server (174, 196).
+    // What it was started as, on the record from the start: the page's chip
+    // reads the program and the model from here and never from the program
+    // itself (173, 183, S53; `session.yaml` record agent, kind, model).
     let mut fields: Vec<(&str, Value)> = vec![
         ("runner", json!("herdr")),
         ("herdr_agent", json!(name)),
         ("herdr_session", json!(placement.session)),
+        ("agent", json!(order.agent)),
+        ("kind", json!(order.program)),
+        ("model", json!(order.model)),
     ];
     if let Some(pane) = &pane {
         fields.push(("herdr_pane", json!(pane)));
@@ -1128,8 +1177,11 @@ esac"#;
     fn order(session: &str) -> WorkOrder {
         WorkOrder {
             session: session.into(),
-            kind: "claude".into(),
+            kind: "curation".into(),
             place: "curation/agentplot#own".into(),
+            agent: Some("curation".into()),
+            program: "claude".into(),
+            model: Some("claude-fable-5-1".into()),
             body: "the work order".into(),
         }
     }
@@ -1269,7 +1321,16 @@ esac"#,
             "the second session splits the tab's pane: {calls}"
         );
         assert!(!calls.contains("tab create"), "the tab is made once: {calls}");
-        assert!(calls.contains("agent start curation-agentplot-main-2 --kind claude --pane w1:p9"), "{calls}");
+        // The program's own arguments follow `--`: the agent definition and
+        // the model the machinery resolved, so the program runs what the
+        // flywheel chose and not what its own configuration says (173, 183).
+        assert!(
+            calls.contains(
+                "agent start curation-agentplot-main-2 --kind claude --pane w1:p9 --timeout 120000 \
+                 -- --agent curation --model claude-fable-5-1"
+            ),
+            "{calls}"
+        );
     }
 
     /// Who charged the session names the herdr session it starts in, and a

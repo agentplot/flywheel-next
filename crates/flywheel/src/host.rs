@@ -2208,7 +2208,7 @@ fn performing(
             }
             match store.sessions.as_str() {
                 "herdr" => {
-                    let placement = placement_of(store, object, &place, &fresh)?;
+                    let placement = placement_of(store, object, &place, &fresh, &order.program)?;
                     flywheel_sessions_herdr::start(
                         &mut store.git,
                         &flywheel_sessions_herdr::Herdr::unbound(),
@@ -2668,6 +2668,7 @@ fn placement_of(
     object: &str,
     place: &str,
     session: &str,
+    program: &str,
 ) -> Result<flywheel_sessions_herdr::Placement> {
     let Some(cwd) = place_dir_of(store, place) else {
         bail!(
@@ -2686,7 +2687,9 @@ fn placement_of(
             break;
         }
     }
-    let kind = "claude".to_string();
+    // The program this session runs, resolved with its model when the session
+    // was requested (173, `sessions.yaml` models).
+    let kind = program.to_string();
     // Who charged the session names the herdr session it starts in, unless
     // this host overrode it for the kind or the repository (174).
     let repository = flywheel_domain::regions::repository_of(&store.git, object).unwrap_or_default();
@@ -2980,10 +2983,29 @@ pub(crate) fn work_order(
         body.push_str(&format!("\n## the agent · {}\n\n{definition}\n", agent.as_deref().unwrap_or_default()));
         body.push_str(&format!("\n## the skill\n\n{skill}\n"));
     }
+    // The program and the model this session runs, resolved when it is
+    // requested: the stage's or type's own where the type names them, else the
+    // default for the role that charged it. Never the program's own
+    // configuration (173, 183, `sessions.yaml` models).
+    let named = stage_agent_entry(defs, store, held.as_ref(), stage.as_deref());
+    let entry = |field: &str| {
+        named
+            .as_ref()
+            .and_then(|e| e.get(field))
+            .and_then(|v| v.as_str())
+            .map(String::from)
+    };
+    let role = flywheel_sessions_herdr::charged_by(object, &chain_of(store, object)).model_role();
+    let default = flywheel_domain::sessions::program_for(role);
+    let program = entry("kind").unwrap_or(default.kind);
+    let model = entry("model").or(default.model);
     Ok(WorkOrder {
         session: session.to_string(),
         kind,
         place: place.to_string(),
+        agent,
+        program,
+        model,
         body,
     })
 }
@@ -3095,6 +3117,43 @@ pub(crate) fn how_to_report(r: &Reporting) -> String {
 fn session_stage(session: &str) -> Option<String> {
     let stem = flywheel_domain::regions::stem_of(session);
     stem.rsplit('/').next().map(String::from).filter(|s| !s.is_empty())
+}
+
+/// The chain above an object, the object first: what names a session's
+/// workspace, and who charged it (174, 196).
+fn chain_of(store: &HostStore, object: &str) -> Vec<String> {
+    let mut chain = vec![object.to_string()];
+    let mut at = object.to_string();
+    while let Some(parent) = store.get(&at).ok().flatten().and_then(|o| o.parent) {
+        chain.push(parent.clone());
+        at = parent;
+        if chain.len() > 8 {
+            break;
+        }
+    }
+    chain
+}
+
+/// The stage's own entry for the agent it names, where the type gives one as
+/// `{name, kind, model}` rather than a bare name: the program and the model a
+/// stage may run that are not its role's (`stage.yaml` params.agents, 173).
+fn stage_agent_entry(
+    defs: &Definitions,
+    store: &HostStore,
+    held: Option<&Object>,
+    stage: Option<&str>,
+) -> Option<Value> {
+    let held = held.filter(|o| o.machine == "work-item")?;
+    let kind = flywheel_domain::stages::type_of(&store.git, held)?;
+    let state = flywheel_domain::stages::stage_state(defs, &kind, stage?)?;
+    state
+        .params
+        .as_ref()
+        .and_then(|p| p.get("agents"))
+        .and_then(|a| a.as_array())
+        .and_then(|a| a.first())
+        .filter(|entry| entry.is_object())
+        .cloned()
 }
 
 /// The agent the stage names for a work item's session, from the type's

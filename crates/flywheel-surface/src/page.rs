@@ -737,6 +737,10 @@ pub fn read_served<S: StateStore, W: World + ?Sized>(
             host: text("host").unwrap_or_default(),
             runner: text("runner").unwrap_or_else(|| "operator".into()),
             agent: text("herdr_agent"),
+            // What it was started as, from the record: the chip names the
+            // program and the model and reads neither from the program (S53).
+            kind: text("kind"),
+            model: text("model"),
             pane: text("herdr_pane"),
             herdr_session: text("herdr_session"),
             started: text("started_at"),
@@ -3084,10 +3088,16 @@ fn lg_unit(read: &Read, row: &status::Row, lane: &[&status::Row]) -> String {
             let _ = write!(
                 out,
                 "<span class=\"it\"{attributes}><span class=\"wi\">{name}</span>\
-                 <span class=\"sc\"><span>{said}</span>{pane}</span></span>",
+                 <span class=\"sc\">{program}<span>{said}</span>{pane}</span></span>",
                 attributes = board_attributes(item),
                 name = escape(name_of(&item.object)),
                 said = escape(&item.said),
+                // The program and the model the session runs, where the page
+                // has a record of one (S53).
+                program = match session.map(said_program).filter(|said| !said.is_empty()) {
+                    Some(named) => format!("<span class=\"ag\">{}</span>", escape(&named)),
+                    None => String::new(),
+                },
                 pane = match session {
                     Some(session) => pane_link(session, &read.served_by),
                     None => String::new(),
@@ -3297,6 +3307,22 @@ pub(crate) fn pane_link(session: &Session, served_by: &str) -> String {
         },
         attach = escape(&attach),
     )
+}
+
+/// What a session chip names it by: the program it runs and the model it was
+/// started with, by their short names — `claude · fable` — read from the
+/// session's record and never from the program itself (S53, 173, 183).
+///
+/// A record naming no model says the program alone, and one naming neither
+/// says nothing: a chip never names a model a session is not running.
+pub(crate) fn said_program(session: &Session) -> String {
+    let Some(kind) = session.kind.as_deref().filter(|kind| !kind.is_empty()) else {
+        return String::new();
+    };
+    match session.model.as_deref().filter(|model| !model.is_empty()) {
+        Some(model) => format!("{kind} · {}", flywheel_domain::sessions::model_short(kind, model)),
+        None => kind.to_string(),
+    }
 }
 
 /// A moment in the operator's own terms, short enough for a chip.

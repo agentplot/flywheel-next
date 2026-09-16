@@ -740,6 +740,9 @@ fn takeover_starts_attempt_two() {
             session: format!("{session}/1"),
             kind: "unit".into(),
             place: "unit/atlas/u".into(),
+            agent: Some("chore-fixer".into()),
+            program: "claude".into(),
+            model: Some("claude-opus-5".into()),
             body: "the first attempt".into(),
         },
     )
@@ -796,6 +799,9 @@ fn takeover_starts_attempt_two() {
             session: fresh.clone(),
             kind: "unit".into(),
             place: "unit/atlas/u".into(),
+            agent: Some("chore-fixer".into()),
+            program: "claude".into(),
+            model: Some("claude-opus-5".into()),
             body: "the second attempt".into(),
         },
     )

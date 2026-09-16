@@ -145,3 +145,35 @@ fn a_pane_popover_is_a_bottom_sheet_under_760px() {
         "the popover is still anchored under its chip at phone width (S234): {phone}"
     );
 }
+
+/// A session chip names the program it runs and the model it was started
+/// with, by their short names: the id with the program's own prefix and the
+/// trailing version dropped, so `claude-fable-5-1` reads `claude · fable`. It
+/// is read from the session's record and never from the program itself
+/// (S53, 173, 183).
+#[test]
+fn a_session_chip_names_its_agent_and_model() {
+    use crate::page::said_program;
+
+    let mut curator = a_session();
+    curator.kind = Some("claude".into());
+    curator.model = Some("claude-fable-5-1".into());
+    assert_eq!(said_program(&curator), "claude · fable");
+
+    // Whatever the version's shape, the model is named and not its number.
+    curator.model = Some("claude-opus-5".into());
+    assert_eq!(said_program(&curator), "claude · opus");
+
+    // An id shaped like no version of that program is said whole: a chip must
+    // never name a model the session is not running.
+    curator.kind = Some("codex".into());
+    curator.model = Some("gpt-5-codex".into());
+    assert_eq!(said_program(&curator), "codex · gpt-5-codex");
+
+    // A record naming no model says the program alone, and one naming neither
+    // says nothing at all.
+    curator.model = None;
+    assert_eq!(said_program(&curator), "codex");
+    curator.kind = None;
+    assert_eq!(said_program(&curator), "");
+}

@@ -65,9 +65,17 @@ fn reading_chip(read: &Read) -> String {
         Some(session) => super::pane_link(session, &read.served_by),
         None => String::new(),
     };
+    // The chip names the program and the model the session runs, from its
+    // record; a run the page knows no record for is named by what it is for
+    // (S53, 173).
+    let named = session
+        .map(super::said_program)
+        .filter(|said| !said.is_empty())
+        .unwrap_or_else(|| "curation".to_string());
     format!(
         "<span class=\"sc working\"><span class=\"dot working\"></span>\
-         <span class=\"ag\">curation</span>{host}<span class=\"ac\">reading</span>{pane}</span>"
+         <span class=\"ag\">{}</span>{host}<span class=\"ac\">reading</span>{pane}</span>",
+        super::escape(&named)
     )
 }
 

@@ -892,6 +892,11 @@ fn seed_session_facts(rt: &mut Runtime) -> Result<()> {
             session: session.clone(),
             kind: "work".into(),
             place: flywheel_domain::regions::place_key(&object, &region),
+            // The stand-in starts no program, so it was started as none
+            // (93a, D8).
+            agent: None,
+            program: String::new(),
+            model: None,
             body: String::new(),
         };
         flywheel_sessions_operator::start(&mut rt.store, &host, now, &order)?;

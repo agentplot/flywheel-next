@@ -13,6 +13,9 @@ fn order(session: &str) -> WorkOrder {
         session: session.to_string(),
         kind: "elaboration".into(),
         place: "elaboration/atlas/research-1".into(),
+        agent: Some("researcher".into()),
+        program: "claude".into(),
+        model: Some("claude-fable-5-1".into()),
         body: "the closed set of inputs, rendered".into(),
     }
 }

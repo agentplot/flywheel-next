@@ -198,3 +198,60 @@ fn ended_object(defs: &Definitions, object: &Object) -> bool {
 pub fn keep_alive_at(defs: &Definitions, object: &Object, region: &str) -> Option<bool> {
     regions::keep_alive_of(defs, object, region)
 }
+
+/// The program a session runs and the model it runs with (173, S53).
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct Program {
+    /// claude, codex or opencode.
+    pub kind: String,
+    pub model: Option<String>,
+}
+
+/// What the shipped profile names for a role, which is what a manifest
+/// declaring no default of its own runs (`sessions.yaml` models).
+///
+/// The machinery chooses both when the session is requested; nothing here is
+/// read from the agent program's own configuration (183).
+pub fn program_for(role: &str) -> Program {
+    static READ: std::sync::OnceLock<std::collections::BTreeMap<String, Program>> = std::sync::OnceLock::new();
+    let models = READ.get_or_init(|| {
+        let mut out: std::collections::BTreeMap<String, Program> = Default::default();
+        let Ok(text) = crate::profile::Profiles::read(&crate::profile::Embedded, "sessions") else {
+            return out;
+        };
+        let Ok(read) = serde_yaml::from_str::<serde_json::Value>(&text) else {
+            return out;
+        };
+        let Some(entries) = read.get("models").and_then(|m| m.as_object()) else {
+            return out;
+        };
+        for (role, entry) in entries {
+            let Some(fields) = entry.as_object() else { continue };
+            let Some(kind) = fields.get("kind").and_then(|v| v.as_str()) else { continue };
+            out.insert(
+                role.clone(),
+                Program {
+                    kind: kind.to_string(),
+                    model: fields.get("model").and_then(|v| v.as_str()).map(String::from),
+                },
+            );
+        }
+        out
+    });
+    models.get(role).cloned().unwrap_or(Program { kind: "claude".into(), model: None })
+}
+
+/// A model as a chip says it: the id with the program's own prefix and the
+/// trailing version dropped, so `claude-fable-5-1` under claude reads `fable`
+/// and `claude-opus-5` reads `opus` (S53).
+///
+/// An id shaped like no version of that program is said whole: what a chip
+/// must never do is name a model the session is not running.
+pub fn model_short(kind: &str, model: &str) -> String {
+    let short = model.strip_prefix(&format!("{kind}-")).unwrap_or(model);
+    let mut parts: Vec<&str> = short.split('-').collect();
+    while parts.len() > 1 && parts.last().is_some_and(|last| last.chars().all(|c| c.is_ascii_digit())) {
+        parts.pop();
+    }
+    parts.join("-")
+}

@@ -289,7 +289,10 @@ pub fn start<S: Records>(
         &[
             ("runner", json!("operator")),
             ("place", json!(order.place)),
-            ("kind", json!(order.kind)),
+            // What the session is of — a unit, an elaboration, a curation. The
+            // record's `kind` is the program a pane runs it as, which the
+            // operator's own session has none of (173, `session.yaml` record).
+            ("type", json!(order.kind)),
             ("work_order", json!(order.body)),
             ("host", json!(host)),
             ("started_at", json!(now.to_rfc3339())),
