@@ -670,6 +670,15 @@ fn ids_of(html: &str) -> Vec<String> {
 #[test]
 fn page_carries_the_mockups_regions() {
     let (_sandbox, page) = a_page("the-mockups-regions");
+    // A note the operator typed, so the capture's own form is on the page with
+    // the hand under it and the picker `attach to…` and `add to bolt…` share:
+    // the mockup draws both, and neither is on a page holding no note (S233,
+    // S224).
+    assert!(
+        page.form("/api/tools/capture", &[("text", "the rows lose their numbers"), ("source", "page")])
+            .recorded(),
+        "the capture box took the note"
+    );
     // A decision stands, so the rail's own answerable form is on the page.
     page.with_store(|store| {
         let defs = flywheel_domain::set::load().expect("the embedded definitions");
@@ -681,15 +690,38 @@ fn page_carries_the_mockups_regions() {
             .insert("life.open.close".into(), "offered".into());
         let base = bolt.seq;
         store.put("bolt/atlas/plan-rows", &bolt, base).expect("open");
+        // Nine bolts open, so the note's `add to bolt…` draws its picker with
+        // the filter field the mockup names at its head: eight or fewer scroll
+        // without one (S233, S215).
+        let at = commands::now(store).expect("a point");
+        for nth in 1..=9 {
+            let id = format!("bolt/atlas/open-{nth}");
+            commands::put_new(
+                store,
+                &defs,
+                &id,
+                "bolt",
+                None,
+                [("repository".to_string(), json!("atlas"))].into_iter().collect(),
+                at,
+            )
+            .unwrap_or_else(|e| panic!("{id}: {e}"));
+            let mut open = Records::get(store, &id).expect("a read").expect("the bolt");
+            open.config.insert("life".into(), "open".into());
+            let base = open.seq;
+            store.put(&id, &open, base).expect("open");
+        }
         commands::rail(store, &defs).expect("the rail derives");
     });
     // The drawer holds the dock page of the object opened, as it is fetched
-    // when the object is opened (310a, S235).
-    let html = page.html("/").replacen(
-        "<div class=\"dk-b\" id=\"dk-b\"></div>",
-        &format!("<div class=\"dk-b\" id=\"dk-b\">{}</div>", page.html("/willdan/bolt/atlas/plan-rows?part=dock")),
-        1,
-    );
+    // when the object is opened (310a, S235). The drawer's own element carries
+    // what an update compares it by, so the page is opened at the end of that
+    // element's tag rather than at a spelling of it (S221, S235).
+    let page_html = page.html("/");
+    let opened = page.html("/willdan/bolt/atlas/plan-rows?part=dock");
+    let at = page_html.find("id=\"dk-b\"").expect("the drawer is on the page");
+    let ends = at + page_html[at..].find('>').expect("the drawer's element ends") + 1;
+    let html = format!("{}{opened}{}", &page_html[..ends], &page_html[ends..]);
     let design = mockup();
     let style = page.html(&flywheel_surface::page::style_address());
 

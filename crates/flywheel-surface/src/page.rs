@@ -1268,6 +1268,35 @@ pub fn render(read: &Read) -> String {
         let id = lane_id(slot);
         out = out.replace(slot, &lane_frame(&id, &|piece| part(&format!("{id}-{piece}"))));
     }
+    one_pk_field_per_name(out)
+}
+
+/// The picker's filter field, named once.
+///
+/// The mockup has one picker open at a time and so one `pk-q`; the page writes
+/// a picker into every note, because a pick has to be one gesture with the
+/// script off (S233). So the first field of the document keeps the design's own
+/// name and the rest are numbered after it, and no two elements of a page share
+/// an id. Nothing reads them by name — the script reaches the open picker's
+/// field through that picker — so the number is only what keeps the id unique.
+fn one_pk_field_per_name(html: String) -> String {
+    let marker = "id=\"pk-q\"";
+    if html.matches(marker).count() < 2 {
+        return html;
+    }
+    let mut out = String::with_capacity(html.len());
+    let mut rest = html.as_str();
+    let mut nth = 0;
+    while let Some(at) = rest.find(marker) {
+        out.push_str(&rest[..at]);
+        nth += 1;
+        match nth {
+            1 => out.push_str(marker),
+            n => out.push_str(&format!("id=\"pk-q-{n}\"")),
+        }
+        rest = &rest[at + marker.len()..];
+    }
+    out.push_str(rest);
     out
 }
 

@@ -1321,6 +1321,34 @@ fn a_picker_past_eight_rows_takes_a_filter() {
     assert!(js.contains("pickerPick(box, pickerAt(box)+(e.key==='ArrowDown' ? 1 : -1))"), "↓ and ↑ walk nothing");
 }
 
+/// The mockup has one picker open at a time and so one field named `pk-q`; the
+/// page writes a picker into every note, because a pick has to be one gesture
+/// with the script off. So the first field of the document keeps the design's
+/// own name and the rest are numbered after it, and no two elements of a page
+/// share an id (S233, D16).
+#[test]
+fn two_notes_keep_one_field_named_for_the_design() {
+    let (mut store, _, defs) = a_page();
+    let mut world = world::Files::new().tracking("atlas");
+    for nth in 1..=9 {
+        a_bolt(&mut store, &defs, "atlas", &format!("bolt-{nth}"), None);
+    }
+    a_note(&mut store, &mut world, &defs, "the rows lose their numbers on the second page");
+    a_note(&mut store, &mut world, &defs, "the export page times out on a big catalogue");
+
+    let html = rendered(&mut store, &world, &defs);
+    assert!(
+        html.matches("class=\"pk-q\"").count() >= 2,
+        "two notes draw a filter field each, since each carries its own picker: {html}"
+    );
+    assert_eq!(
+        html.matches("id=\"pk-q\"").count(),
+        1,
+        "the design's own name is on one field and no more: {html}"
+    );
+    assert!(html.contains("id=\"pk-q-2\""), "the field after it is numbered: {html}");
+}
+
 /// An empty picker says so in the operator's words and carries the sibling
 /// verb that makes one, so it is still one gesture from done (S233, S214,
 /// S224a).

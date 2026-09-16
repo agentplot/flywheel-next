@@ -76,8 +76,12 @@ fn picker(
              <div class=\"pk-empty\">{empty}{verb}</div>\n</div>\n"
         );
     }
+    // The field the mockup calls `pk-q`, which narrows the rows as the palette
+    // narrows its commands (S233, D16). The narrowing is the script's, which
+    // reaches the open picker's field through that picker and never by name, so
+    // the id is the design's own and nothing reads it.
     let filter = match filtered {
-        true => "<input class=\"pk-q\" type=\"text\" autocomplete=\"off\" placeholder=\"narrow…\" \
+        true => "<input class=\"pk-q\" id=\"pk-q\" type=\"text\" autocomplete=\"off\" placeholder=\"narrow…\" \
                  aria-label=\"narrow the list\">\n",
         false => "",
     };
